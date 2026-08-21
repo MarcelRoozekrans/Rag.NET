@@ -14,10 +14,22 @@ PASS on all five criteria.
 > **This milestone was re-planned before it opened**, at the operator's request on 2026-08-15 —
 > *"make Milestone 6 about testing every available feature so we are battle-tested"* — from
 > `docs/plans/2026-08-15-milestone-6-battle-tested-replan.md`. The ROADMAP's Milestone 6 section
-> is rewritten from that note. **Two decisions in that note are the operator's and are still
-> open**: whether 6.1's live-service recordings gate v1.0 or `<VerifiedByReason>` does where no
-> credentials exist; and whether the #247 / #239 fixes ship in v1.0. Until they are decided, the
-> phases below carry the note's recommendation and say so.
+> is rewritten from that note. **Both of the note's operator decisions are now closed, and they
+> closed differently.**
+>
+> **The recordings question was decided on 2026-08-20, against the note's recommendation.** The
+> note proposed that `<VerifiedByReason>` carry the gap where no credentials exist, on the grounds
+> that a criterion satisfiable only by credentials that may never arrive is not falsifiable. The
+> operator decided instead that **6.1's recordings do gate v1.0**, with 6.1's *work* postponed
+> behind 6.2.3. Recorded with the trade-off attached because it was raised at the time and
+> accepted: v1.0 now waits on 18 cassettes whose blocker is accounts rather than effort, so if
+> those accounts do not arrive, the tag does not either. `<VerifiedByReason>` remains implemented
+> and enforced; it is simply no longer the answer for the connectors.
+>
+> **The #247 / #239 question was settled by events rather than by a decision**: both fixes are on
+> `main` as of 2026-08-18 (#311, #312; #296, #291), so they ship in v1.0 unless someone reverts
+> them. Noted as such because a decision nobody made is worth distinguishing from one that was
+> taken.
 
 ## Goal
 
@@ -33,7 +45,8 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 
 - [x] **Milestone 5 complete** — closed 2026-08-15 by audit, verdict PASS.
 - [ ] **All planned phases complete** — 6.0 Inventory, 6.1 Recorded Responses, 6.2 Raise the
-      Floor, 6.2.1 Retrieval & Answer Sweep, 6.2.2 Requested Features, 6.3 Release v1.0.
+      Floor, 6.2.1 Retrieval & Answer Sweep, 6.2.2 Requested Features, **6.2.3 Corpus-Level
+      RAPTOR** (added 2026-08-20, gates v1.0), 6.3 Release v1.0.
 - [ ] **Every `✅ Done` row in `features.md` names what exercises it** — an *Exercised by* column,
       pointing at a test or benchmark that runs the real thing, and a conventions test that fails a
       ✅ row with an empty column. Today: 56 rows, 0 pointers.
@@ -64,16 +77,29 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 | Phase | Name | Issues | Status |
 |---|---|---|---|
 | 6.0 | The Inventory | — | **complete** 2026-08-15 — both guards on every push, failing behind a work list: 5 packages at `benchmark`, 57 at bare `unit` owned by 6.1/6.2/6.2.1; 51 Done sections, 2 exercised, 49 owned |
-| 6.1 | Recorded Responses | #283, #290 | **in progress** — the harness did not work and now does. Record mode had two defects, both silent because recording proxies to the real service and therefore passes: recordings were written to a directory replay never read, and every mapping matched on `Host: localhost:{ephemeral port}`, which cannot match twice. Fixed in #290, which also recorded the first working cassette (GitHub, unauthenticated, 17 KB). #283 carries the corrected instructions for the remaining 18 services; the blocker is accounts, not work |
+| 6.1 | Recorded Responses | #283, #290 | **postponed** 2026-08-20, **still gating v1.0** — sequenced behind 6.2.3; the gate was kept rather than handed to `<VerifiedByReason>`, so the tag waits on accounts. Previously in progress: the harness did not work and now does. Record mode had two defects, both silent because recording proxies to the real service and therefore passes: recordings were written to a directory replay never read, and every mapping matched on `Host: localhost:{ephemeral port}`, which cannot match twice. Fixed in #290, which also recorded the first working cassette (GitHub, unauthenticated, 17 KB). #283 carries the corrected instructions for the remaining 18 services; the blocker is accounts, not work |
 | 6.2 | Raise the Floor on Unit-Only Packages | #286–#292 | **substantially complete** — 57 bare `unit` down to 22. Defined per kind: parsers/chunkers via a real file, stores via the parity leg, utilities via one real run. Every package picked up produced a defect in something adjacent: `Parsers.Audio` was filed as needing a hosted model and needs none (and is broken on Linux without `libgomp1`), `Parsers.Vision` had no CI tier that could run it, `DataProviders.Web`'s crawler yielded the seed page twice (#288). Remaining 22 are 6.1's credential-blocked connectors plus `Chunking.Templates` and 6.2.1's three |
-| 6.2.1 | Retrieval & Answer Sweep | #247, #176 | pending — the GraphRAG method applied to the rest; #247 fixed and re-measured first; the pipeline-parity test. #239 and #200 closed 2026-08-17 |
+| 6.2.1 | Retrieval & Answer Sweep | #176 | **active** 2026-08-20 — the GraphRAG method applied to the rest. **#247 closed 2026-08-18**, fixed twice over (#311 hides graph chunks from retrieval by default, #312 gives them their own store) and pinned at 0.3494 (#280); #239 and #200 closed 2026-08-17. The local-search thread completed 2026-08-20 (#323, #326). The sweep itself has not started: RAPTOR first, then HyDE, reranking, hybrid, late chunking, SPLADE, the three answer engines, the stores through the parity leg, the pipeline-parity test, #176, local search's unexplained yes/no abstention, and the now-unblocked deletion of the deprecated blend members |
 | 6.2.2 | Requested Features | #252 | **complete** 2026-08-16 — #252 built, both open design questions settled, exercised in the fast tier and over a real HTTP server |
-| 6.3 | Release v1.0 | — | pending — **but its first work is already done**: 71 packages live on nuget.org at 0.1.0 since 2026-08-11 (verified 2026-08-16), so the account, key and every package ID are settled. Only the v1.0 tag remains |
+| 6.2.3 | Corpus-Level RAPTOR | #331 | **pending** — added 2026-08-20, **gates v1.0**. `RaptorIngestionBehavior` clusters `ctx.EmbeddedChunks` and `IngestionContext` holds one document, so RAPTOR builds a per-document tree — #300's shape, and not the paper's mechanism. The fix needs RAPTOR to own persistent leaf-embedding state the way GraphRAG owns `IGraphStore`, because `IVectorStore` cannot enumerate and `IChunkLookup` returns `TextChunk` without vectors (#318). Roughly #302 plus #312. Both scopes stay selectable, per #323's precedent, so the 6.2.1 measurement prices old and new in one run |
+| 6.3 | Release v1.0 | — | pending — **but its first work is already done**: 71 packages live on nuget.org at 0.1.0 since 2026-08-11 (verified 2026-08-16), so the account, key and every package ID are settled. Only the v1.0 tag remains. **Now gated on 6.2.3** |
 
 ## Known debt carried into this milestone
 
-- **#247** one shared store for article and graph-derived chunks — measured −0.043 nDCG, −0.21
-  answer accuracy; the largest lever any Milestone 5 measurement found. 6.2.1, first.
+- **#247 closed 2026-08-18** — one shared store for article and graph-derived chunks, measured
+  −0.043 nDCG and −0.21 answer accuracy: the largest lever any Milestone 5 measurement found, and
+  the one debt this milestone opened pointing at. It resolved in the order the method prescribes.
+  **Measured before it was fixed** (#274): at n=50, top-6, a `filtered` arm that dropped the
+  graph-derived units after over-fetch reproduced the article-only `dense` arm to four decimals on
+  both scoring rules — 0.2727 against a polluted control's 0.1364 — so the entire loss was
+  *displacement*, not any cost of the graph store existing. The mechanism confirmed itself by
+  accident: 46 of 50 queries hit the answer cache, which is keyed on a prompt embedding the
+  context, so for those 46 the filtered top-6 was byte-identical to the article-only context.
+  **Then pinned** at 0.3494 (#280). **Then shipped**, and only then: #311 hid the graph's chunks
+  from retrieval results by default, #312 gave them their own store — option (b), Microsoft's
+  shape, though (c) had already recovered 100%. The three options separated on evidence rather
+  than on cost. *(RAPTOR indexes synthetic summaries the same way and is expected to take the same
+  fix; that is why it is 6.2.1's next thread.)*
 - **#239 closed 2026-08-17.** Its three findings resolved differently, which is worth recording
   because only two were code. **Point 1, the blend:** `PageRankWeight` defaulted to 0.3 while
   PageRank normalises to a mean of 1.6e-5 against cosine's 0.3–0.6, so the behaviour demoted
@@ -85,7 +111,13 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
   *not* changed. Measured at +0.00148 Recall@100 if the walk's findings were used; closed as a
   documented limitation, and `docs/guide/graphrag.md` now states plainly that the behaviour adds no
   candidates.
-- **#176** 65% singleton communities — open, 6.2.1. *(**#200** usage recording, **#246** the
+- **#176 singleton communities — open, 6.2.1, and worse than the issue title says.** It carries
+  65%; the full 609-article corpus measured on 2026-08-20 gives **2,816 singletons of 3,573 —
+  78.8%**. **Not a regression** — the 65% is 396 of 607 over the pinned **60-article** slice
+  (#168), so the two numbers were never measuring the same graph; 78.8% is simply the first
+  full-corpus reading, and it moves the wrong way with scale. The issue's own diagnosis stands:
+  it is extraction, not clustering — 273 of 8,999 entities on the slice had no relationship at
+  all, and roughly 123 more had edges yet still landed alone. *(**#200** usage recording, **#246** the
   Service Bus emulator lock race, and **#104** routing all closed. #104 was listed here in error;
   it closed 2026-08-10, before this milestone opened.)*
 - **#297 and #300, both found by questions rather than planned, both closed 2026-08-17.** The graph

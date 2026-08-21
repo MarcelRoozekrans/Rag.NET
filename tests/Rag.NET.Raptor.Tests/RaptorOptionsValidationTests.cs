@@ -49,9 +49,11 @@ public class RaptorOptionsValidationTests
     {
         // The nullable-numeric trap this repository hit before (#101): a bare range attribute
         // on int? treats null as 0 and fails it. The When predicate must keep null valid.
+        // TreeScope = PerDocument: unrelated to what this test checks, but the default is now
+        // Corpus, which requires leafStorePath and would fail UseRaptor before this ever ran (#331).
         var builder = NewBuilder();
 
-        builder.UseRaptor();
+        builder.UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDocument);
 
         var options = builder.Services.BuildServiceProvider().GetRequiredService<RaptorOptions>();
         Assert.Null(options.MaxClusters);
@@ -74,10 +76,15 @@ public class RaptorOptionsValidationTests
     public void SingleLevelTree_MaxTreeDepthOfOne_IsAccepted()
     {
         // The documented cost-mitigation setting ("MaxTreeDepth = 1 for single-level
-        // summaries") must stay valid.
+        // summaries") must stay valid. TreeScope = PerDocument for the same reason as
+        // NullMaxClusters_Passes_BicAutoSelectionRemainsTheDefault above (#331).
         var builder = NewBuilder();
 
-        builder.UseRaptor(o => o.MaxTreeDepth = 1);
+        builder.UseRaptor(o =>
+        {
+            o.TreeScope = RaptorTreeScope.PerDocument;
+            o.MaxTreeDepth = 1;
+        });
 
         var options = builder.Services.BuildServiceProvider().GetRequiredService<RaptorOptions>();
         Assert.Equal(1, options.MaxTreeDepth);
@@ -88,7 +95,11 @@ public class RaptorOptionsValidationTests
     {
         var builder = NewBuilder();
 
-        builder.UseRaptor(o => o.MaxTreeDepth = null);
+        builder.UseRaptor(o =>
+        {
+            o.TreeScope = RaptorTreeScope.PerDocument;
+            o.MaxTreeDepth = null;
+        });
 
         var options = builder.Services.BuildServiceProvider().GetRequiredService<RaptorOptions>();
         Assert.Null(options.MaxTreeDepth);
@@ -105,8 +116,13 @@ public class RaptorOptionsValidationTests
     {
         // ApplyBoost multiplies every summary score by this: zero buried all summaries,
         // negative inverted their order — the opposite of what Boost mode exists to do.
+        // TreeScope = PerDocument: ingestion options are validated (and pass) before retrieval
+        // options are even looked at, so with the Corpus default this would otherwise throw for
+        // missing leafStorePath instead of the SummaryBoostFactor message this test checks (#331).
         var ex = Assert.Throws<ArgumentException>(() =>
-            NewBuilder().UseRaptor(retrieval: o => o.SummaryBoostFactor = factor));
+            NewBuilder().UseRaptor(
+                o => o.TreeScope = RaptorTreeScope.PerDocument,
+                retrieval: o => o.SummaryBoostFactor = factor));
 
         Assert.Contains("SummaryBoostFactor", ex.Message, StringComparison.Ordinal);
     }
@@ -116,12 +132,15 @@ public class RaptorOptionsValidationTests
     {
         // The audit's Filter-mode case: an empty window fails every result against one bound
         // or the other, so retrieval returned nothing, every time, with no error.
+        // TreeScope = PerDocument: see InvalidSummaryBoostFactor_ThrowsAtRegistration (#331).
         var ex = Assert.Throws<ArgumentException>(() =>
-            NewBuilder().UseRaptor(retrieval: o =>
-            {
-                o.MinRaptorLevel = 2;
-                o.MaxRaptorLevel = 1;
-            }));
+            NewBuilder().UseRaptor(
+                o => o.TreeScope = RaptorTreeScope.PerDocument,
+                retrieval: o =>
+                {
+                    o.MinRaptorLevel = 2;
+                    o.MaxRaptorLevel = 1;
+                }));
 
         Assert.Contains("must not exceed", ex.Message, StringComparison.Ordinal);
     }
@@ -132,11 +151,13 @@ public class RaptorOptionsValidationTests
         // Min == Max is a one-level window — "only level-1 summaries" is a legitimate filter.
         var builder = NewBuilder();
 
-        builder.UseRaptor(retrieval: o =>
-        {
-            o.MinRaptorLevel = 1;
-            o.MaxRaptorLevel = 1;
-        });
+        builder.UseRaptor(
+            o => o.TreeScope = RaptorTreeScope.PerDocument,
+            retrieval: o =>
+            {
+                o.MinRaptorLevel = 1;
+                o.MaxRaptorLevel = 1;
+            });
 
         var options = builder.Services.BuildServiceProvider().GetRequiredService<RaptorRetrievalOptions>();
         Assert.Equal(1, options.MinRaptorLevel);
@@ -147,9 +168,12 @@ public class RaptorOptionsValidationTests
     public void NegativeMaxRaptorLevel_ThrowsAtRegistration()
     {
         // Levels are never negative (leaves are 0), so a negative upper bound excluded every
-        // result in Filter mode.
+        // result in Filter mode. TreeScope = PerDocument: see
+        // InvalidSummaryBoostFactor_ThrowsAtRegistration (#331).
         var ex = Assert.Throws<ArgumentException>(() =>
-            NewBuilder().UseRaptor(retrieval: o => o.MaxRaptorLevel = -1));
+            NewBuilder().UseRaptor(
+                o => o.TreeScope = RaptorTreeScope.PerDocument,
+                retrieval: o => o.MaxRaptorLevel = -1));
 
         Assert.Contains("MaxRaptorLevel", ex.Message, StringComparison.Ordinal);
     }
@@ -161,11 +185,13 @@ public class RaptorOptionsValidationTests
         // valid: MaxRaptorLevel = 0 is the documented "only leaf chunks" filter.
         var builder = NewBuilder();
 
-        builder.UseRaptor(retrieval: o =>
-        {
-            o.MinRaptorLevel = null;
-            o.MaxRaptorLevel = 0;
-        });
+        builder.UseRaptor(
+            o => o.TreeScope = RaptorTreeScope.PerDocument,
+            retrieval: o =>
+            {
+                o.MinRaptorLevel = null;
+                o.MaxRaptorLevel = 0;
+            });
 
         var options = builder.Services.BuildServiceProvider().GetRequiredService<RaptorRetrievalOptions>();
         Assert.Null(options.MinRaptorLevel);
@@ -196,9 +222,12 @@ public class RaptorOptionsValidationTests
     [Fact]
     public void Defaults_Register()
     {
+        // TreeScope = PerDocument: see InvalidSummaryBoostFactor_ThrowsAtRegistration (#331). What
+        // this test checks — ReducedDimensionality and SummaryBoostFactor's defaults — is
+        // unaffected by TreeScope either way.
         var builder = NewBuilder();
 
-        builder.UseRaptor();
+        builder.UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDocument);
 
         var provider = builder.Services.BuildServiceProvider();
         var options = provider.GetRequiredService<RaptorOptions>();

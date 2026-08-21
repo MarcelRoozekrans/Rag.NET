@@ -8,6 +8,11 @@ internal static class GaussianMixtureModel
     private const double VarianceFloor = 1e-6;
     private const double EmptyClusterThreshold = 1e-10;
 
+    // The smallest component that is a cluster rather than a memorised point. Measured in hard
+    // assignments, not in summed responsibilities — see IsDegenerateFit for both that distinction
+    // and the reason a lone undersized component does not by itself disqualify a candidate.
+    private const int MinimumComponentPoints = 2;
+
     internal static GmmResult Fit(float[][] data, int k, int maxIterations = 100, double tolerance = 1e-6)
     {
         int n = data.Length;
@@ -33,6 +38,12 @@ internal static class GaussianMixtureModel
         for (int k = 1; k <= maxK; k++)
         {
             var result = Fit(data, k, maxIterations);
+
+            if (IsDegenerateFit(result, k))
+            {
+                continue;
+            }
+
             double logLikelihood = ComputeLogLikelihood(data, result, k, d);
             int numParams = k * (2 * d + 1) - 1;
             double bic = -2.0 * logLikelihood + numParams * System.Math.Log(n);
@@ -45,6 +56,64 @@ internal static class GaussianMixtureModel
         }
 
         return bestK;
+    }
+
+    /// <summary>
+    /// Reports whether <paramref name="gmmResult"/> is a fit BIC has no vocabulary to reject.
+    /// </summary>
+    /// <remarks>
+    /// Two independent disqualifications, because BIC scores both as excellent fits (#333).
+    ///
+    /// An empty component means <paramref name="k"/> overstates the model actually fitted, so its
+    /// parameter count — and therefore its penalty — is simply wrong for what was fitted.
+    ///
+    /// A component owning a single point has no spread to estimate: its variance collapses to
+    /// <see cref="VarianceFloor"/> and its log-density at its own mean reaches roughly +47.9 nats
+    /// at eight dimensions, which through <c>-2 * logLikelihood</c> is about 95.8 of BIC gain
+    /// against a penalty of only some 39.1. Splitting therefore always won, and <c>SelectK</c>
+    /// returned k = n for every n from 2 to 10.
+    ///
+    /// The test is on the *share of points* those components hold rather than on their mere
+    /// existence. A single genuine outlier is a fact about the data, not a broken fit: on two tight
+    /// blobs plus one far-away point, every k from 2 to 7 isolates that point, so disqualifying any
+    /// fit containing one left k = 1 as the only candidate and no tree could be built at all. What
+    /// distinguishes the #333 pathology is not that some component is alone but that most points
+    /// are — a fit where half the data sits in components of one is fragmentation, not clustering.
+    ///
+    /// Counts hard assignments rather than summing responsibilities. It is exact: a component that
+    /// genuinely owns exactly two points sums its responsibilities to slightly under two (measured:
+    /// 1.9988) because the other components keep a sliver of the mass, so a threshold on the soft
+    /// count rejects real clusters unless it carries an epsilon nobody can justify. And it matches
+    /// what happens downstream: <c>RaptorIngestionBehavior</c> groups by
+    /// <see cref="GmmResult.Assignments"/>, so the hard counts are the sizes of the clusters that
+    /// actually get summarised.
+    /// </remarks>
+    /// <param name="gmmResult">The fit to inspect.</param>
+    /// <param name="k">The component count the fit used.</param>
+    /// <returns>Whether the fit is too degenerate to be scored against other candidates.</returns>
+    private static bool IsDegenerateFit(in GmmResult gmmResult, int k)
+    {
+        int[] counts = new int[k];
+        foreach (int assignment in gmmResult.Assignments)
+        {
+            counts[assignment]++;
+        }
+
+        int pointsInRealComponents = 0;
+        for (int j = 0; j < k; j++)
+        {
+            if (counts[j] == 0)
+            {
+                return true;
+            }
+
+            if (counts[j] >= MinimumComponentPoints)
+            {
+                pointsInRealComponents += counts[j];
+            }
+        }
+
+        return pointsInRealComponents * 2 <= gmmResult.Assignments.Length;
     }
 
     private static double[][] InitializeVariances(int k, int d)

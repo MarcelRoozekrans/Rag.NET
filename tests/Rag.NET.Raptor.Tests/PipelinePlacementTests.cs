@@ -29,8 +29,10 @@ public sealed class PipelinePlacementTests
     [Fact]
     public void UseRaptor_WithNoPipelineDelegates_PlacesIngestionBehaviourAfterEmbedding()
     {
+        // TreeScope = PerDocument: unrelated to placement, but the default is now Corpus, which
+        // requires leafStorePath and would fail UseRaptor before placement ran at all (#331).
         var services = new ServiceCollection();
-        services.AddRagNet(rag => rag.UseRaptor());
+        services.AddRagNet(rag => rag.UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDocument));
 
         var types = IngestionChain(services);
 
@@ -43,8 +45,9 @@ public sealed class PipelinePlacementTests
     [Fact]
     public void UseRaptor_WithNoPipelineDelegates_PlacesRetrievalBehaviourBeforeReranking()
     {
+        // TreeScope = PerDocument: see UseRaptor_WithNoPipelineDelegates_PlacesIngestionBehaviourAfterEmbedding (#331).
         var services = new ServiceCollection();
-        services.AddRagNet(rag => rag.UseRaptor());
+        services.AddRagNet(rag => rag.UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDocument));
 
         var types = RetrievalChain(services);
 
@@ -69,7 +72,7 @@ public sealed class PipelinePlacementTests
     {
         var services = new ServiceCollection();
         services.AddRagNet(
-            configure: rag => rag.UseRaptor(),
+            configure: rag => rag.UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDocument),
             ingestion: pipeline => pipeline
                 .Add<RaptorIngestionBehavior>(after: typeof(SparseEmbeddingBehavior)),
             retrieval: pipeline => pipeline
@@ -97,9 +100,13 @@ public sealed class PipelinePlacementTests
     [Fact]
     public void UseRaptor_WithoutAddRagNet_ThrowsNamingWhatIsMissing()
     {
+        // TreeScope = PerDocument: the Corpus-requires-leafStorePath check runs before the
+        // AddRagNet check this test targets, so without it the thrown exception would be the
+        // wrong ArgumentException rather than the InvalidOperationException asserted below (#331).
         var builder = new RagBuilder(new ServiceCollection());
 
-        var ex = Assert.Throws<InvalidOperationException>(() => builder.UseRaptor());
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            builder.UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDocument));
 
         Assert.Contains("UseRaptor", ex.Message, StringComparison.Ordinal);
         Assert.Contains("AddRagNet", ex.Message, StringComparison.Ordinal);
