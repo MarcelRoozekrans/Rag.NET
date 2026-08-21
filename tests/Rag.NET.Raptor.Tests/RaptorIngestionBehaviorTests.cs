@@ -186,19 +186,27 @@ public class RaptorIngestionBehaviorTests
     [Fact]
     public async Task SummaryChunks_HaveUniqueChunkIndexes_AcrossEveryTreeLevel()
     {
-        // 6 leaves cluster into several level-1 summaries, which cluster again into a
-        // level-2 summary. MaxTreeDepth is capped at 2 (not left at its null default) because
-        // GaussianMixtureModel.SelectK always selects k = n for genuinely distinct points up to
-        // maxK = 10 (see #333): a singleton cluster's floored variance makes its log-density
-        // enormous, so BIC never rewards merging back down, and BuildLevelAsync never shrinks
-        // the level below the leaf-cluster count. With MaxTreeDepth = null that is an infinite
-        // loop (an LLM call per cluster per level) rather than a slow test. Depth 2 is exactly
-        // enough to exercise #332: the collision is level 1's first summary against level 2's
-        // first summary; a deeper tree proves nothing further.
+        // Used to force a depth-2 tree with chunkCount = 6 and rely on GaussianMixtureModel
+        // .SelectK's #333 bug (it selects k = n for genuinely distinct points) to turn each of 6
+        // leaves into its own level-1 "cluster", then each of those 6 summaries into its own
+        // level-2 "cluster" — a non-reducing tree that only terminated because MaxTreeDepth
+        // capped it. The non-reducing-level guard this task adds (BuildLevelAsync rejects any
+        // level whose k would not shrink the count) now rejects that first level outright, and
+        // that is by design: an infinite version of the same shape is exactly #333's defect.
+        //
+        // Sweeping chunkCount from 6 to 100 (with and without a UMAP-reducing
+        // ReducedDimensionality) against this test harness's independently-random embeddings
+        // never produced two consecutive non-degenerate levels: GMM/BIC over unclustered points
+        // either picks k = 1 (no split) or k = n (rejected by the guard), and the rare
+        // in-between k it does pick leaves too few points for a second real split. A genuine
+        // depth-2 tree is not constructible against this bug, which is exactly why Task 6 exists
+        // to fix it. Until then, this test asserts what the guard still allows to be checked:
+        // #332's invariant — unique chunk indices — holds over however many levels a real (as
+        // opposed to degenerate) build produces, including the single real level below.
         _helpers.SetupChatClient("a summary");
         _helpers.SetupEmbedder(dims: 8);
-        var ctx = _helpers.CreateContext(chunkCount: 6);
-        var options = new RaptorOptions { MaxTreeDepth = 2 };
+        var ctx = _helpers.CreateContext(chunkCount: 15);
+        var options = new RaptorOptions { ReducedDimensionality = 2, MaxTreeDepth = 2 };
         var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
 
         await behavior.HandleAsync(ctx, CancellationToken.None,
@@ -208,15 +216,32 @@ public class RaptorIngestionBehaviorTests
             .Where(c => c.Chunk.Metadata.ContainsKey("raptor_level"))
             .ToList();
 
-        // Guards against the tree silently degrading to depth 1 in future, which would make
-        // the ChunkKey-uniqueness assertion below pass vacuously.
-        Assert.True(summaries.Count > 1, "test needs a tree with more than one summary to be meaningful");
-        Assert.Contains(summaries, c => !string.Equals(c.Chunk.Metadata["raptor_level"].ToString(), "1", StringComparison.Ordinal));
+        // Guards against the guard itself silently swallowing the level entirely, which would
+        // make the ChunkKey-uniqueness assertion below pass vacuously.
+        Assert.NotEmpty(summaries);
 
         var keys = ctx.EmbeddedChunks
             .Select(c => new ChunkKey(c.Chunk.DocumentId.Value, c.Chunk.ChunkIndex))
             .ToList();
 
         Assert.Equal(keys.Count, keys.Distinct().Count());
+    }
+
+    [Fact]
+    public async Task TreeBuilding_Terminates_AtDefaultOptionsWithNoDepthCap()
+    {
+        // MaxTreeDepth deliberately left at its default null. Before the non-reducing-level guard
+        // this hung forever (#333). The timeout is the assertion: a regression reintroducing
+        // non-termination fails here rather than wedging the suite.
+        _helpers.SetupChatClient("a summary");
+        _helpers.SetupEmbedder(dims: 8);
+        var ctx = _helpers.CreateContext(chunkCount: 24);
+        var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, new RaptorOptions());
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await behavior.HandleAsync(ctx, cts.Token, static (_, _) => ValueTask.FromResult(
+            new IngestionResult { DocumentId = new DocumentId("test-doc"), ChunksStored = 0 }));
+
+        Assert.False(cts.IsCancellationRequested, "tree building did not terminate at default options");
     }
 }

@@ -18,6 +18,9 @@ public sealed class RaptorIngestionBehavior(
     RaptorOptions options,
     IRaptorLeafStore? leafStore = null) : IIngestionBehavior
 {
+    private readonly Lock _buildGate = new();
+    private int _leavesAtLastBuild = -1;
+
     public async ValueTask<IngestionResult> HandleAsync(
         IngestionContext ctx, CancellationToken ct,
         Func<IngestionContext, CancellationToken, ValueTask<IngestionResult>> next)
@@ -28,6 +31,23 @@ public sealed class RaptorIngestionBehavior(
         if (options.TreeScope == RaptorTreeScope.Corpus)
         {
             await PersistLeavesAsync(ctx, ct).ConfigureAwait(false);
+
+            var leafCount = await leafStore!.CountAsync(ct).ConfigureAwait(false);
+            if (ShouldBuild(leafCount))
+            {
+                var leaves = await leafStore.GetAllLeavesAsync(ct).ConfigureAwait(false);
+                if (leaves.Count > 1)
+                {
+                    await BuildTreeAsync(
+                        ctx,
+                        ToEmbeddedChunks(leaves),
+                        new DocumentId(RaptorCorpusDocumentId.Value),
+                        firstChunkIndex: 0,
+                        activity: null,
+                        ct).ConfigureAwait(false);
+                }
+            }
+
             return await next(ctx, ct).ConfigureAwait(false);
         }
 
@@ -37,18 +57,129 @@ public sealed class RaptorIngestionBehavior(
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.raptor.build");
         activity?.SetTag("document.id", ctx.Metadata.DocumentId.Value);
 
-        var currentLevel = new List<EmbeddedChunk>(ctx.EmbeddedChunks);
+        var summaryCount = await BuildTreeAsync(
+            ctx,
+            new List<EmbeddedChunk>(ctx.EmbeddedChunks),
+            ctx.Metadata.DocumentId,
+            firstChunkIndex: ctx.EmbeddedChunks.Count,
+            activity,
+            ct).ConfigureAwait(false);
+
+        activity?.SetTag("raptor.summary.count", summaryCount);
+
+        if (!options.StoreLeafChunks)
+        {
+            var summaries = ctx.EmbeddedChunks
+                .Where(c => c.Chunk.Metadata.ContainsKey("raptor_level"))
+                .ToList();
+            ctx.EmbeddedChunks.Clear();
+            ctx.EmbeddedChunks.AddRange(summaries);
+        }
+
+        return await next(ctx, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Decides whether the corpus has grown enough since the last build to justify another.
+    /// </summary>
+    /// <remarks>
+    /// Mirrors <c>CommunityDetectionBehavior.ShouldDetect</c> deliberately — including the lock and
+    /// the -1 sentinel for "no build has run yet" — so that a reader of one recognises the other.
+    /// Always true for the first build and whenever the threshold is zero or lower, so a rebuild on
+    /// every ingest is available by configuration rather than only by forking.
+    /// </remarks>
+    /// <param name="leafCount">Leaves currently in the leaf store.</param>
+    /// <returns>Whether to build the corpus tree for this ingest.</returns>
+    private bool ShouldBuild(int leafCount)
+    {
+        lock (_buildGate)
+        {
+            if (_leavesAtLastBuild < 0 || options.CorpusGrowthThreshold <= 0)
+            {
+                _leavesAtLastBuild = leafCount;
+                return true;
+            }
+
+            var required = _leavesAtLastBuild * (1 + options.CorpusGrowthThreshold);
+            if (leafCount < required)
+                return false;
+
+            _leavesAtLastBuild = leafCount;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Clusters every stored leaf and appends the resulting summaries to <paramref name="ctx"/>,
+    /// regardless of the growth threshold, resetting the threshold's baseline.
+    /// </summary>
+    /// <remarks>
+    /// The entry point <c>RaptorTreeRebuilder</c> uses. Deliberately the same code path as
+    /// ingestion: a rebuild that clustered its own way would be a second implementation of the
+    /// thing under measurement, free to drift from the one that runs during ingest.
+    /// </remarks>
+    /// <param name="ctx">Receives the summary chunks.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>How many summaries the build produced; zero when the store holds fewer than two leaves.</returns>
+    internal async Task<int> BuildCorpusTreeNowAsync(IngestionContext ctx, CancellationToken ct)
+    {
+        if (leafStore is null)
+            throw new InvalidOperationException("Corpus tree building requires an IRaptorLeafStore.");
+
+        var leaves = await leafStore.GetAllLeavesAsync(ct).ConfigureAwait(false);
+        if (leaves.Count < 2)
+            return 0;
+
+        lock (_buildGate)
+        {
+            _leavesAtLastBuild = leaves.Count;
+        }
+
+        return await BuildTreeAsync(
+            ctx,
+            ToEmbeddedChunks(leaves),
+            new DocumentId(RaptorCorpusDocumentId.Value),
+            firstChunkIndex: 0,
+            activity: null,
+            ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs the level loop over <paramref name="seed"/> and appends every summary produced to
+    /// <paramref name="ctx"/>. Shared by the per-document and corpus paths so the two cannot drift.
+    /// </summary>
+    /// <param name="ctx">Receives the summaries.</param>
+    /// <param name="seed">The level-0 chunks to cluster.</param>
+    /// <param name="summaryDocumentId">
+    /// The document id every summary is filed under. The per-document path passes the ingesting
+    /// document's id; the corpus path passes <see cref="RaptorCorpusDocumentId.Value"/>. Explicit
+    /// rather than read from <paramref name="ctx"/>, because a corpus summary filed under whichever
+    /// document happened to trigger the build is a corpus-level summary attributed to one arbitrary
+    /// article — the defect <c>GraphProjectionRebuilder</c>'s remarks describe.
+    /// </param>
+    /// <param name="firstChunkIndex">The index the first summary takes; it counts up from there across every level (#332).</param>
+    /// <param name="activity">
+    /// The caller's <c>ragnet.raptor.build</c> span, tagged with the depth reached once the loop
+    /// ends. Null for the corpus path, which builds outside any such span.
+    /// </param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>How many summaries were appended.</returns>
+    private async Task<int> BuildTreeAsync(
+        IngestionContext ctx, List<EmbeddedChunk> seed, DocumentId summaryDocumentId,
+        int firstChunkIndex, System.Diagnostics.Activity? activity, CancellationToken ct)
+    {
+        var currentLevel = seed;
         var allSummaries = new List<EmbeddedChunk>();
         var level = 0;
-        // Summary indices continue past the leaves and keep counting across levels. They must not
+        // Summary indices continue past the seed and keep counting across levels. They must not
         // restart per level: ctx.EmbeddedChunks is not appended to until after this loop, so a
         // per-level index made level 2's first summary collide with level 1's (#332).
-        var nextChunkIndex = ctx.EmbeddedChunks.Count;
+        var nextChunkIndex = firstChunkIndex;
 
         while (currentLevel.Count > 1 && (options.MaxTreeDepth is null || level < options.MaxTreeDepth))
         {
             level++;
-            var summaryChunks = await BuildLevelAsync(currentLevel, ctx, level, nextChunkIndex, ct).ConfigureAwait(false);
+            var summaryChunks = await BuildLevelAsync(currentLevel, summaryDocumentId, level, nextChunkIndex, ct).ConfigureAwait(false);
             if (summaryChunks is null)
                 break;
 
@@ -58,14 +189,35 @@ public sealed class RaptorIngestionBehavior(
         }
 
         activity?.SetTag("raptor.tree.depth", level);
-        activity?.SetTag("raptor.summary.count", allSummaries.Count);
-
-        if (!options.StoreLeafChunks)
-            ctx.EmbeddedChunks.Clear();
-
         ctx.EmbeddedChunks.AddRange(allSummaries);
+        return allSummaries.Count;
+    }
 
-        return await next(ctx, ct).ConfigureAwait(false);
+    /// <summary>Maps stored leaves back to the embedded-chunk shape clustering runs on.</summary>
+    /// <remarks>
+    /// Keeps each leaf's own document id and chunk index — clustering only reads the vectors, and a
+    /// leaf's identity should not be rewritten just because it is being read back from the store.
+    /// </remarks>
+    /// <param name="leaves">The leaves to convert.</param>
+    /// <returns>One <see cref="EmbeddedChunk"/> per leaf.</returns>
+    private static List<EmbeddedChunk> ToEmbeddedChunks(IReadOnlyList<RaptorLeaf> leaves)
+    {
+        var result = new List<EmbeddedChunk>(leaves.Count);
+        foreach (var leaf in leaves)
+        {
+            result.Add(new EmbeddedChunk
+            {
+                Chunk = new TextChunk
+                {
+                    Text = leaf.Text,
+                    DocumentId = new DocumentId(leaf.DocumentId),
+                    ChunkIndex = leaf.ChunkIndex,
+                },
+                Embedding = leaf.Embedding,
+            });
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -111,7 +263,7 @@ public sealed class RaptorIngestionBehavior(
     }
 
     private async Task<List<EmbeddedChunk>?> BuildLevelAsync(
-        List<EmbeddedChunk> currentLevel, IngestionContext ctx, int level, int baseChunkIndex, CancellationToken ct)
+        List<EmbeddedChunk> currentLevel, DocumentId summaryDocumentId, int level, int baseChunkIndex, CancellationToken ct)
     {
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.raptor.summarize");
         activity?.SetTag("raptor.tree.level", level);
@@ -134,6 +286,20 @@ public sealed class RaptorIngestionBehavior(
             return null;
         }
 
+        // A level that would produce as many summaries as it consumed cannot terminate the tree
+        // loop: the next level clusters the same count into the same count, forever, at one LLM
+        // call per cluster per level. Detected here, before any summarisation, so a degenerate
+        // level costs nothing. #333 is this exact case — GaussianMixtureModel.SelectK returns
+        // k = n for distinct points because a singleton cluster's variance floors to 1e-6 and its
+        // log-density then dwarfs the BIC penalty. This guard is deliberately written against the
+        // symptom rather than that cause, so a future clustering regression of the same shape is
+        // bounded too.
+        if (k >= currentLevel.Count)
+        {
+            activity?.SetTag("raptor.cluster.degenerate", true);
+            return null;
+        }
+
         var gmm = GaussianMixtureModel.Fit(reduced, k);
         var clusters = GroupByClusters(currentLevel, gmm.Assignments);
         activity?.SetTag("raptor.cluster.count", clusters.Count);
@@ -146,7 +312,7 @@ public sealed class RaptorIngestionBehavior(
         {
             var cluster = clusters[i];
             var summaryChunk = await SummarizeClusterAsync(
-                cluster.Chunks, cluster.ClusterId, ctx, level, baseChunkIndex + summaryChunks.Count, client, emb, ct)
+                cluster.Chunks, cluster.ClusterId, summaryDocumentId, level, baseChunkIndex + summaryChunks.Count, client, emb, ct)
                 .ConfigureAwait(false);
             summaryChunks.Add(summaryChunk);
         }
@@ -184,7 +350,7 @@ public sealed class RaptorIngestionBehavior(
     }
 
     private async Task<EmbeddedChunk> SummarizeClusterAsync(
-        List<EmbeddedChunk> childChunks, int clusterId, IngestionContext ctx,
+        List<EmbeddedChunk> childChunks, int clusterId, DocumentId summaryDocumentId,
         int level, int chunkIndex, IChatClient client,
         IEmbeddingGenerator<string, Embedding<float>> emb, CancellationToken ct)
     {
@@ -204,7 +370,7 @@ public sealed class RaptorIngestionBehavior(
             Chunk = new TextChunk
             {
                 Text = summaryText,
-                DocumentId = ctx.Metadata.DocumentId,
+                DocumentId = summaryDocumentId,
                 ChunkIndex = chunkIndex,
                 Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                 {
