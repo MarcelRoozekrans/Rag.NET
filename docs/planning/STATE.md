@@ -57,43 +57,39 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Recommended Next Step
 
-**Phase 6.2.3 — Corpus-Level RAPTOR (#331).** Brainstorm the fix design, then plan, then build. It
-is architectural: it needs a new persistent store for leaf embeddings, so it does not skip
-brainstorming.
+**Open the PR for `phase/6.2.3-corpus-level-raptor`, and read the three parked residuals below
+before merging.** The phase is implemented and reviewed; the merge is the operator's.
 
-**How this became the next step, because the order was deliberately reversed.** The thread started
-as "RAPTOR under the Real protocol", 6.2.1's next measurement. Reading the package before spending
-anything found three shipped defects, and the largest is structural: RAPTOR builds its tree **per
-document**, not over the corpus, so it does not implement the paper's central mechanism. The design
-at `docs/superpowers/specs/2026-08-20-raptor-real-protocol-design.md` first deferred that fix on a
-measured trigger, following #247's measure-then-fix order.
+After the merge: **6.2.1's RAPTOR measurement**, whose design at
+`docs/superpowers/specs/2026-08-20-raptor-real-protocol-design.md` has been waiting since 2026-08-20.
+It can now price both tree scopes in one run, because 6.2.3 kept `PerDocument` selectable rather
+than deleting it.
 
-**The operator reversed it on 2026-08-20** — *"fix it first before spending again"* — on the
-grounds that the defect was established by reading `IngestionContext`, not inferred from a figure,
-so a paid sweep would buy evidence for something already known. The reversal costs a pinned figure
-for the shipped state, and **keeping both tree scopes selectable is what gives it back**: one later
-run prices old and new together, per #323's precedent for keeping `GraphLocalSearchBehavior` alive.
-
-**So 6.2.1's RAPTOR measurement is not cancelled — it is queued behind 6.2.3**, and its design spec
-already exists and stays valid apart from the ordering in §2.
-
-**Also now unblocked, and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`. They
-were kept alive deliberately — `[Obsolete]` would have been a build error under
-`TreatWarningsAsErrors` across 17 files, and deleting them would have made three pinned figures
-unreproducible — on the stated condition that 6.x.7 publish the replacement figure. It published on
-2026-08-20. *(Note the tension with 6.2.3's decision to keep both RAPTOR scopes: the same
-reproducibility argument that retired these members only once their replacement figure existed is
-why RAPTOR's per-document path must not be deleted before its replacement figure exists.)*
+**Also still unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`. They
+were kept alive until 6.x.7 published its replacement figure, which it did on 2026-08-20.
 
 ## Working State
 
-**Branch:** `chore/roadmap-refresh-6-2-1`, cut from `main` at `3f5d14fb`. Six commits, nothing
-pushed, no PR open. `bench/graphrag-localspec-measurement` is merged and safe to delete.
+**Branch:** `phase/6.2.3-corpus-level-raptor`, cut from `main` at `3f5d14fb`. **22 commits, nothing
+pushed, no PR open.** `bench/graphrag-localspec-measurement` is merged and safe to delete.
 
-**On the branch:** the state-file refresh; `docs/superpowers/specs/2026-08-20-raptor-real-protocol-design.md`
-(6.2.1's measurement, now queued behind 6.2.3); the #331 disposition; phase 6.2.3; the 6.1
-postponement and the decision that closed with it; and
-`docs/superpowers/specs/2026-08-20-corpus-level-raptor-design.md` (6.2.3's design).
+**Phase 6.2.3 is implemented and reviewed but NOT merged.** ROADMAP and MILESTONE still show it
+`pending` deliberately — it is promoted to `complete` after the merge, not before. Do not mark it
+complete from this file.
 
-**Filed this session:** #331 (per-document tree scope) and #332 (summary chunks collide on
-`ChunkIndex` across tree levels — shipped, fires at default settings, independent of #331).
+**What the branch carries:** the state-file refresh; two design specs (6.2.1's measurement, 6.2.3's
+fix); the implementation plan; and seven implemented tasks — the #332 collision fix, the
+`Rag.NET.Raptor.Store` package, `TreeScope`, corpus clustering with a growth debounce,
+`RaptorTreeRebuilder`, the #333 `SelectK` fix, and the breaking default flip.
+
+**Issues filed this session:** #331 and #332 (both fixed here), #333 (fixed here), #336, #337, #338
+(all three filed, documented as known limitations, deliberately not fixed).
+
+**Three residuals parked for the human reviewer**, none affecting correctness:
+1. `TestProjectTierTests.cs:16` says "65 test projects"; the true count is 76. It was already wrong
+   at 64 and the fix applied a literal increment. A corrected comment that is still untrue.
+2. `docs/guide/raptor.md`'s Ingestion-Options and Retrieval-Options samples still call `UseRaptor`
+   without `leafStorePath` under `Corpus` scope, so copying them throws. Every nuget-shipping README
+   is clean; these two guide blocks are not.
+3. `docs/reference/opentelemetry.md` lists `ragnet.raptor.build` unconditionally, but
+   `RaptorTreeRebuilder`'s path emits no span.
