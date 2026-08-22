@@ -36,7 +36,7 @@ public sealed class CassetteSecretTests
     /// </summary>
     private static readonly string[] KnownPlaceholders =
     [
-        "fake-pat", "fake-token", "test-key", "test-token", "fake-key", "dummy",
+        "fake-pat", "fake-token", "test-key", "test-token", "fake-key", "dummy", "cassette-key",
         "devstoreaccount1", "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==",
         "R4gNet!Emulator", "sbemulatorns", "AccountKey=dGVzdA==",
     ];
@@ -58,6 +58,16 @@ public sealed class CassetteSecretTests
         ("private key block", new Regex(@"-----BEGIN [A-Z ]*PRIVATE KEY-----", RegexOptions.None, TimeSpan.FromSeconds(2))),
         ("JWT", new Regex(@"eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}", RegexOptions.None, TimeSpan.FromSeconds(2))),
         ("Bearer header value", new Regex(@"""(?i:authorization)""\s*:\s*""(?i:bearer)\s+(?!fake|test|dummy)[A-Za-z0-9._-]{20,}""", RegexOptions.None, TimeSpan.FromSeconds(2))),
+        // Azure keys are opaque — 32 hex characters classically, longer since — so there is no
+        // prefix to key off the way gh*_ and xox*- allow. Both shapes therefore match on the
+        // header NAME instead and treat whatever value sits with it as the credential, which is
+        // also why they are the only two entries here that can produce a false positive on an
+        // innocent long value. That is the direction this guard errs in on purpose.
+        ("Azure key header", new Regex(@"""(?i:ocp-apim-subscription-key|api-key)""\s*:\s*""[^""]{16,}""", RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(2))),
+        // And the same key as a *recording* lays it out: the name and the value are separated by
+        // the matcher envelope WireMock writes, so the flat shape above cannot see it. Recorded
+        // cassettes are the case this guard was built for; it could not read one until now.
+        ("Azure key matcher", new Regex(@"""(?i:ocp-apim-subscription-key|api-key)""[\s\S]{0,300}?""Pattern""\s*:\s*""[^""]{16,}""", RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(2))),
     ];
 
     [Fact]
@@ -79,19 +89,13 @@ public sealed class CassetteSecretTests
         var failures = new List<string>();
         foreach (var file in cassettes)
         {
-            var text = File.ReadAllText(file);
-            foreach (var (name, pattern) in CredentialShapes)
+            var found = FindCredential(File.ReadAllText(file));
+            if (found is not null)
             {
-                var match = pattern.Match(text);
-                if (!match.Success || IsPlaceholder(match.Value))
-                {
-                    continue;
-                }
-
                 failures.Add(
-                    $"{Path.GetRelativePath(root, file)}: looks like a {name} " +
-                    $"({Redact(match.Value)}). Scrub it, and ROTATE THE CREDENTIAL — it is in git " +
-                    "history the moment it is committed.");
+                    $"{Path.GetRelativePath(root, file)}: looks like a {found.Value.Name} " +
+                    $"({Redact(found.Value.Value)}). Scrub it, and ROTATE THE CREDENTIAL — it is in " +
+                    "git history the moment it is committed.");
             }
         }
 
@@ -102,6 +106,84 @@ public sealed class CassetteSecretTests
             "fixture, and re-recording against a live service (WIREMOCK_RECORD=true) proxies " +
             "Authorization headers straight into these files.\n  - " +
             string.Join("\n  - ", failures));
+    }
+
+    /// <summary>
+    /// The first credential shape <paramref name="text"/> matches, or <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// Extracted from the scan above so the shapes can be tested against known-bad and
+    /// known-good inputs directly. The scan reads whatever happens to be committed, so on a
+    /// clean tree it passes whether the patterns work or not — it can prove a leak, never the
+    /// ability to detect one.
+    /// </remarks>
+    /// <param name="text">A cassette's contents.</param>
+    /// <returns>The matching shape's name and the matched text, or <see langword="null"/>.</returns>
+    internal static (string Name, string Value)? FindCredential(string text)
+    {
+        foreach (var (name, pattern) in CredentialShapes)
+        {
+            var match = pattern.Match(text);
+            if (match.Success && !IsPlaceholder(match.Value))
+            {
+                return (name, match.Value);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// A hand-written cassette carrying an Azure key beside its header name.
+    /// </summary>
+    [Fact]
+    public void FindCredential_DetectsAnAzureKeyHeader()
+    {
+        const string Cassette = """
+            { "Request": { "Headers": { "Ocp-Apim-Subscription-Key": "0123456789abcdef0123456789abcdef" } } }
+            """;
+
+        Assert.Equal("Azure key header", FindCredential(Cassette)?.Name);
+    }
+
+    /// <summary>
+    /// The same key as a recorded cassette carries it: header name, then the value some way
+    /// below inside a matcher. The flat shape above does not match this one, and a recording is
+    /// the case this guard exists for.
+    /// </summary>
+    [Fact]
+    public void FindCredential_DetectsAnAzureKeyRecordedAsAMatcher()
+    {
+        const string Cassette = """
+            {
+              "Request": {
+                "Headers": [
+                  {
+                    "Name": "api-key",
+                    "Matchers": [
+                      { "Name": "WildcardMatcher", "Pattern": "0123456789abcdef0123456789abcdef" }
+                    ]
+                  }
+                ]
+              }
+            }
+            """;
+
+        Assert.Equal("Azure key matcher", FindCredential(Cassette)?.Name);
+    }
+
+    /// <summary>
+    /// The placeholder the Document Intelligence suite authenticates with. A guard that fired on
+    /// it would fire on every clean run, which is how a guard gets switched off.
+    /// </summary>
+    [Fact]
+    public void FindCredential_IgnoresThePlaceholderKeyTheCassettesUse()
+    {
+        const string Cassette = """
+            { "Request": { "Headers": { "Ocp-Apim-Subscription-Key": "cassette-key-not-a-real-one" } } }
+            """;
+
+        Assert.Null(FindCredential(Cassette));
     }
 
     private static bool IsPlaceholder(string value) =>
