@@ -4,7 +4,7 @@
 
 **Goal:** Measure RAPTOR on MultiHop-RAG with a real model and a real corpus, differenced against controls, and pin the figures — the first measurement RAPTOR has ever had.
 
-**Architecture:** A `RaptorRun` class mirrors `GraphRagRun`: ingest the corpus with the growth debounce suppressed, then call `RaptorTreeRebuilder.RebuildAsync()` **once**. Four new arms join the existing answer harness, sharing two ingestions (one corpus-scope store, one per-document store) and differing only in retrieval policy. A cheap pilot gates the expensive sweep.
+**Architecture:** A `RaptorRun` class mirrors `GraphRagRun`. Under `Corpus` scope it **bypasses `RaptorIngestionBehavior.HandleAsync` entirely** — writing leaves straight to the leaf store and the vector store — then calls `RaptorTreeRebuilder.RebuildAsync()` **once**. *(Task 1 replaced this plan's original approach of merely suppressing the growth debounce: the debounce baseline after the first document is that article's chunk count, so a second whole-corpus build fires around article 101 of 609, and whether it fires at all depends on which article is ingested first. A measurement harness cannot carry a hidden variable of that shape.)* Four new arms join the existing answer harness, sharing two ingestions (one corpus-scope store, one per-document store) and differing only in retrieval policy. A cheap pilot gates the expensive sweep.
 
 **Tech Stack:** .NET 10, C#, xunit.v3, `Rag.NET.Raptor`, `Rag.NET.Raptor.Store`, ONNX embeddings, `openai/gpt-4o-mini` at temperature 0.
 

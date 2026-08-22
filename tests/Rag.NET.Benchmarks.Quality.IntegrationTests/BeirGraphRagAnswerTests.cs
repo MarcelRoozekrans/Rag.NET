@@ -63,7 +63,17 @@ public sealed class BeirGraphRagAnswerTests
     /// <summary>Bounds the run to N queries, stratified by type — the pilot. Absent means every query.</summary>
     public const string MaxQueriesVariable = "RAGNET_GRAPHRAG_ANSWERS_MAX_QUERIES";
 
-    /// <summary>Comma-separated arms to run: <c>dense</c>, <c>local</c>, <c>global</c>. Absent means all three.</summary>
+    /// <summary>
+    /// Comma-separated arms to run. Absent means <b>every arm that has a recorded figure</b> — not
+    /// every arm in <see cref="AnswerArm.All"/>.
+    /// </summary>
+    /// <remarks>
+    /// The default deliberately skips arms whose reproduction entry carries an empty figure array,
+    /// so a freshly added, unmeasured arm cannot break the replay run that re-verifies the pinned
+    /// figures. Naming an arm here overrides that: an unmeasured arm named explicitly still runs,
+    /// which is how it gets measured in the first place. The filter is data-driven, so an arm
+    /// rejoins the default set the moment a figure is pinned for it — no code change.
+    /// </remarks>
     public const string ArmsVariable = "RAGNET_GRAPHRAG_ANSWERS_ARMS";
 
     /// <summary>The paper's context depth: six chunks.</summary>
@@ -192,10 +202,16 @@ public sealed class BeirGraphRagAnswerTests
     /// file-backed store would only risk leaves accumulating across repeated runs for no benefit.
     /// </summary>
     /// <remarks>
-    /// Logs <see cref="RaptorRun.CorpusRebuildCount"/> and the run's other counters to
-    /// <paramref name="output"/> the moment the build finishes — the only point this run's stop
-    /// condition (a paid run must see <c>CorpusRebuildCount == 1</c> before spending anything on
-    /// answers) can actually be read from a <c>dotnet test</c> transcript.
+    /// Logs the run's counters to <paramref name="output"/> the moment the build finishes — the
+    /// only point they can be read from a <c>dotnet test</c> transcript, and a paid run should see
+    /// them before it spends anything on answers.
+    /// <para>
+    /// <b><see cref="RaptorRun.CorpusRebuildCount"/> is logged but is not a gate.</b> It is set to
+    /// a literal beside the single <c>RebuildAsync</c> call, and under <c>Corpus</c> scope
+    /// ingestion is structurally incapable of building a tree, so it reads 1 unconditionally and
+    /// cannot detect anything. The counters that can actually move are <c>LeafCount</c> (which
+    /// pins the corpus that was ingested), <c>SummaryCount</c> and <c>SummariserCalls</c>.
+    /// </para>
     /// </remarks>
     private static async Task<RaptorRun?> BuildCorpusRaptorRunAsync(
         IReadOnlyList<string> arms,
