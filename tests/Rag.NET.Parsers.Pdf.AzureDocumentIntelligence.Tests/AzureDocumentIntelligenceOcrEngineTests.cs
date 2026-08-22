@@ -245,6 +245,48 @@ public sealed class AzureDocumentIntelligenceOcrEngineTests
         pdf.Dispose();
     }
 
+    /// <summary>
+    /// The capture a contributor is asked to run, over the whole analyze-then-poll sequence and
+    /// through the same composition the live test uses — replaying cassettes, so it costs
+    /// nothing and needs no resource.
+    /// </summary>
+    /// <remarks>
+    /// The file names are asserted because they are what the instructions promise: one numbered
+    /// file per HTTP call, the last of which is the one carrying <c>analyzeResult</c> and the
+    /// only one worth pasting into a cassette.
+    /// </remarks>
+    [Fact]
+    public async Task ResponseCapture_WritesOneFilePerCall_AcrossTheWholeRecognition()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(), "ragnet-capture-" + Guid.NewGuid().ToString("N"));
+        var sut = CreateEngine(TwoPagesModel, policy: new ResponseCapturePolicy(directory));
+        using var pdf = CreatePdfStream();
+
+        try
+        {
+            await sut.RecognizeAsync(pdf, TestContext.Current.CancellationToken);
+
+            var paths = Directory.GetFiles(directory, "*.json");
+            Array.Sort(paths, StringComparer.Ordinal);
+            var names = new string[paths.Length];
+            for (var i = 0; i < paths.Length; i++)
+            {
+                names[i] = Path.GetFileName(paths[i]);
+            }
+
+            Assert.Equal(["01-202.json", "02-200.json"], names);
+            Assert.Contains("analyzeResult", File.ReadAllText(paths[1]), StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
     private AzureDocumentIntelligenceOcrEngine CreateEngine(
         string modelId,
         ICostLedger? costLedger = null,

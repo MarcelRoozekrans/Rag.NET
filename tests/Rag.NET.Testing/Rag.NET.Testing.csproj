@@ -5,6 +5,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- WireMockServerFixture's record path is only observable by driving it against a stub
+         upstream and reading what lands on disk; LoadCassettesFrom is the seam that allows it. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.DataProviders.IntegrationTests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Testcontainers" />
     <!-- Direct only to lift SSH.NET past GHSA-q939-rpr3-3284: Testcontainers 4.13.0 pins the vulnerable 2025.1.0 and has no newer release. Nothing in src/ pulls it, so no shipped package is affected. -->
     <PackageReference Include="SSH.NET" />
