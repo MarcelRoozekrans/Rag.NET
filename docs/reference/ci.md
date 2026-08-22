@@ -156,10 +156,35 @@ key=$(az cognitiveservices account keys list --name <name> --resource-group <rg>
 RAGNET_DOCINTEL_ENDPOINT="$endpoint" RAGNET_DOCINTEL_KEY="$key" \
   dotnet test tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests --no-build -c Release
 
+# The same run, keeping what the service actually sent: one numbered file per HTTP call in
+# $PWD/captured — 01-202.json for the analyze answer, then one per poll, the last of which
+# carries the whole analyzeResult.
+RAGNET_DOCINTEL_ENDPOINT="$endpoint" RAGNET_DOCINTEL_KEY="$key"   RAGNET_DOCINTEL_CAPTURE="$PWD/captured"   dotnet test tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests --no-build -c Release
+
 # Nightly coverage rides on the same two values as repository secrets:
 gh secret set RAGNET_DOCINTEL_ENDPOINT --body "$endpoint"
 gh secret set RAGNET_DOCINTEL_KEY --body "$key"
 ```
+
+**Why this connector captures instead of recording.** Every other cassette in the repository is
+re-recorded by pointing the WireMock proxy at the real service (`WIREMOCK_RECORD=true`). That
+cannot work here, and would fail in the way that looks like success. Analysis is a long-running
+operation: the real service answers the POST with an absolute `Operation-Location` on its own
+host, so the SDK polls Azure **directly** and the poll — which carries the entire `analyzeResult`
+— never crosses the proxy. A recording would capture the one response containing nothing and miss
+the one containing everything, and on replay would send the SDK to the live host.
+
+So the two halves come from different places on purpose. The mapping envelope stays hand-written,
+because the parts a recording supplies here (path, status, and an `Operation-Location` rewritten
+to `{{request.headers.Host}}` so the SDK polls back into the mock) are exactly the parts a
+recording gets wrong. The response **body** — the part that encodes what the service really
+returns, and the part a hand-written cassette can be wrong about — is pasted from `captured/`.
+
+Two limits worth knowing before spending the call. Only `prebuilt-read` is capturable: the other
+five cassettes are selected by synthetic model ids (`sparse-pages`, `words-only`, `no-pages`,
+`failing`, `running`) for edge cases the service will not produce on request, and they stay
+hand-written. And nothing of the caller's is in the capture — the document analysed is this
+repository's own `sample-scanned.pdf`, embedded in the test assembly.
 
 **`RAGNET_WHISPER_MODEL_DIR` is a cache directory, and the transcription it gates needs no
 credential at all.** This is worth stating plainly because the Milestone 6 ledger had the package

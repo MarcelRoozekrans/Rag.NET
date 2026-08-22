@@ -74,6 +74,17 @@ public sealed class WireMockServerFixture : IAsyncLifetime
     /// </item>
     /// </list>
     /// <para>
+    /// <b><c>Authorization</c> is not the only way a credential arrives.</b>
+    /// <c>Ocp-Apim-Subscription-Key</c> is what <c>AzureKeyCredential</c> puts on every Azure
+    /// Document Intelligence request, and <c>api-key</c> is Azure AI Search's and Qdrant's. A list
+    /// that covered only <c>Authorization</c> read as though it protected every connector while
+    /// recording those keys verbatim into the cassette as match conditions —
+    /// <c>WireMockRecordModeTests</c> demonstrates it against a stub upstream, and demonstrated it
+    /// failing before these two entries existed. That test also settles the question the spelling
+    /// raises: WireMock matches these names case-insensitively, so one casing per header is enough
+    /// and an SDK that sends <c>ocp-apim-subscription-key</c> is covered by the entry above.
+    /// </para>
+    /// <para>
     /// <c>Authorization</c> and <c>Cookie</c> are here for a different reason: the harness should not
     /// write a credential to disk at all. #283 asks contributors to open every recorded file and
     /// remove the token by hand, and notes that some will leak one anyway. Not recording it is a
@@ -92,6 +103,8 @@ public sealed class WireMockServerFixture : IAsyncLifetime
     [
         "Host",
         "User-Agent",
+        "Ocp-Apim-Subscription-Key",
+        "api-key",
         "Accept-Encoding",
         "Authorization",
         "Cookie",
@@ -120,12 +133,30 @@ public sealed class WireMockServerFixture : IAsyncLifetime
         return ValueTask.CompletedTask;
     }
 
-    public void LoadCassettes(string connectorName, string? proxyBaseUrl = null)
+    public void LoadCassettes(string connectorName, string? proxyBaseUrl = null) =>
+        LoadCassettesFrom(GetCassettePath(connectorName), proxyBaseUrl, RecordMode);
+
+    /// <summary>
+    /// The body of <see cref="LoadCassettes"/> with the two ambient inputs — the cassette
+    /// directory and whether <c>WIREMOCK_RECORD</c> is set — passed in rather than read from
+    /// the environment and the executing assembly's location.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="RecordMode"/> is a static read of an environment variable resolved once per
+    /// process, so record mode cannot be exercised by a test that sets the variable. This seam
+    /// exists so the harness's own tests can drive the recording path against a stub upstream
+    /// and assert on what lands on disk — which is the only way to know that
+    /// <see cref="VolatileRequestHeaders"/> actually keeps a credential out of a cassette,
+    /// rather than asserting that a string is present in a list of strings.
+    /// </remarks>
+    /// <param name="path">The cassette directory to replay from, or record into.</param>
+    /// <param name="proxyBaseUrl">The upstream to proxy to while recording.</param>
+    /// <param name="recordMode">Whether to record rather than replay.</param>
+    internal void LoadCassettesFrom(string path, string? proxyBaseUrl, bool recordMode)
     {
         Server.ResetMappings();          // clear all previous stubs before loading new ones
-        var path = GetCassettePath(connectorName);
 
-        if (RecordMode && proxyBaseUrl is not null)
+        if (recordMode && proxyBaseUrl is not null)
         {
             // Restart on the same port so BaseUrl remains valid for tests that captured it.
             var port = Server.Ports[0];
