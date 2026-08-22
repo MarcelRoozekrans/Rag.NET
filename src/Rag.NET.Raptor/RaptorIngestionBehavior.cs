@@ -18,6 +18,18 @@ public sealed class RaptorIngestionBehavior(
     RaptorOptions options,
     IRaptorLeafStore? leafStore = null) : IIngestionBehavior
 {
+    /// <summary>
+    /// The largest <c>k</c> BIC selection is allowed to search. Was an inline literal in
+    /// <see cref="SelectClusterCount"/>; named because the floor below is now compared against it.
+    /// </summary>
+    /// <remarks>
+    /// It cannot simply be raised: <c>GaussianMixtureModel.SelectK</c> fits every <c>k</c> from 1 to
+    /// this value, so the sweep's cost is linear in it and each fit is EM over the whole level. At
+    /// corpus scale a value large enough to bound cluster size would be orders of magnitude more
+    /// work than the single fit the derived path uses instead (#345).
+    /// </remarks>
+    private const int BicMaxK = 10;
+
     private readonly Lock _buildGate = new();
     private int _leavesAtLastBuild = -1;
 
@@ -329,15 +341,7 @@ public sealed class RaptorIngestionBehavior(
     /// <returns>The cluster count to fit with, or null when the level should not be built.</returns>
     private int? SelectClusterCount(float[][] reduced, int count, System.Diagnostics.Activity? activity)
     {
-        // Min(MaxClusters, count) alone caps every level at exactly MaxClusters once the tree has
-        // shrunk to that size, and a level whose k equals its own count is what the second check
-        // below rejects — so a fixed MaxClusters would build depth 1 and never recurse again,
-        // forever, regardless of #333. Min(..., count - 1) forces a strict decrease every level
-        // instead, which is what actually guarantees the loop can still terminate (count shrinks
-        // by at least one per level) without ever tripping the degenerate check.
-        var k = options.MaxClusters.HasValue
-            ? System.Math.Min(options.MaxClusters.Value, count - 1)
-            : GaussianMixtureModel.SelectK(reduced, maxK: System.Math.Min(count, 10));
+        var k = System.Math.Min(ComputeRawClusterCount(reduced, count, activity), count - 1);
 
         if (k <= 1)
         {
@@ -366,6 +370,56 @@ public sealed class RaptorIngestionBehavior(
         }
 
         return k;
+    }
+
+    /// <summary>
+    /// The four-branch decision behind <see cref="SelectClusterCount"/>'s candidate <c>k</c>,
+    /// before either rejection check runs. Split out purely for MA0051 — the branching belongs
+    /// with the doc comment above, but combined with the two checks the method ran over the
+    /// 60-line limit.
+    /// </summary>
+    /// <param name="reduced">The level's (possibly UMAP-reduced) embeddings, for auto-selected k.</param>
+    /// <param name="count">The level's chunk count.</param>
+    /// <param name="activity">The level's summarize span, tagged when the floor overrides <see cref="RaptorOptions.MaxClusters"/>.</param>
+    /// <returns>The candidate cluster count, not yet clamped to <c>count - 1</c>.</returns>
+    private int ComputeRawClusterCount(float[][] reduced, int count, System.Diagnostics.Activity? activity)
+    {
+        // The smallest k that keeps every cluster at or under the target size. This is a FLOOR,
+        // not a cap: below the target it is 1 and changes nothing, so BIC keeps choosing exactly
+        // as it did before this existed.
+        var sizeFloor = (int)System.Math.Ceiling(count / (double)options.TargetClusterSize);
+
+        if (options.MaxClusters.HasValue && options.MaxClusters.Value >= sizeFloor)
+        {
+            // Min(MaxClusters, count) alone caps every level at exactly MaxClusters once the tree
+            // has shrunk to that size, and a level whose k equals its own count is what the second
+            // check below rejects — so a fixed MaxClusters would build depth 1 and never recurse
+            // again, forever, regardless of #333. Min(..., count - 1) forces a strict decrease every
+            // level instead, which is what actually guarantees the loop can still terminate (count
+            // shrinks by at least one per level) without ever tripping the degenerate check.
+            return System.Math.Min(options.MaxClusters.Value, count - 1);
+        }
+
+        if (options.MaxClusters.HasValue)
+        {
+            // The cap cannot be honoured without producing a cluster above the target — an
+            // unsendable prompt. The floor is a correctness bound and the cap is a preference,
+            // so the floor wins and the span records that it did.
+            activity?.SetTag("raptor.cluster.maxclusters.overridden", true);
+            return sizeFloor;
+        }
+
+        if (sizeFloor <= BicMaxK)
+        {
+            // BIC still chooses; the floor can only raise its answer.
+            return System.Math.Max(
+                GaussianMixtureModel.SelectK(reduced, maxK: System.Math.Min(count, BicMaxK)),
+                sizeFloor);
+        }
+
+        // BIC is unaffordable at this scale — it would fit every k up to sizeFloor. Derive k and
+        // fit once.
+        return sizeFloor;
     }
 
     private static float[][] ExtractEmbeddings(List<EmbeddedChunk> chunks)

@@ -1,0 +1,112 @@
+using System.Diagnostics;
+using Rag.NET.Ingestion;
+using Rag.NET.Models;
+using Xunit;
+
+namespace Rag.NET.Raptor.Tests;
+
+/// <summary>
+/// Covers <c>RaptorIngestionBehavior.SelectClusterCount</c>'s size floor (#345): the smallest
+/// <c>k</c> that keeps every cluster at or under <see cref="RaptorOptions.TargetClusterSize"/>.
+/// </summary>
+[Collection("Telemetry")]
+public class RaptorClusterSizeFloorTests
+{
+    private readonly RaptorTestContext _helpers = new();
+
+    [Fact]
+    public async Task ALevelLargerThanTheTarget_ProducesNoClusterAboveIt()
+    {
+        // 600 leaves at a target of 100 needs at least 6 clusters. Before the floor, k was capped
+        // at 10 by BIC's maxK and could be as low as 2 — a 300-chunk cluster whose joined text has
+        // no bound at all (#345). The corpus case is 17,648 chunks against the same cap.
+        _helpers.SetupChatClient("a summary");
+        _helpers.SetupEmbedder(dims: 8);
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, TargetClusterSize = 100, MaxTreeDepth = 1 };
+        var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 600);
+
+        await behavior.HandleAsync(ctx, CancellationToken.None, static (_, _) => ValueTask.FromResult(
+            new IngestionResult { DocumentId = new DocumentId("test-doc"), ChunksStored = 0 }));
+
+        var summaries = ctx.EmbeddedChunks.Where(c => c.Chunk.Metadata.ContainsKey("raptor_level")).ToList();
+        Assert.True(summaries.Count >= 6,
+            $"600 leaves at a target of 100 needs at least 6 clusters; got {summaries.Count}");
+    }
+
+    [Fact]
+    public async Task MaxClustersYieldsToTheFloor_WhenHonouringItWouldExceedTheTarget()
+    {
+        // MaxClusters is a preference; the size floor is a correctness bound. A cap of 2 over 600
+        // leaves at a target of 100 would mean 300-chunk clusters and an unsendable prompt.
+        _helpers.SetupChatClient("a summary");
+        _helpers.SetupEmbedder(dims: 8);
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, TargetClusterSize = 100, MaxClusters = 2, MaxTreeDepth = 1 };
+        var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 600);
+
+        await behavior.HandleAsync(ctx, CancellationToken.None, static (_, _) => ValueTask.FromResult(
+            new IngestionResult { DocumentId = new DocumentId("test-doc"), ChunksStored = 0 }));
+
+        var summaries = ctx.EmbeddedChunks.Where(c => c.Chunk.Metadata.ContainsKey("raptor_level")).ToList();
+        Assert.True(summaries.Count >= 6,
+            $"MaxClusters = 2 must yield to the floor of 6; got {summaries.Count} clusters");
+    }
+
+    [Fact]
+    public async Task WhenMaxClustersYieldsToTheFloor_TheSummarizeSpanRecordsIt()
+    {
+        // A silently-exceeded cap is exactly what the doc comment promises not to do. The tag is how
+        // a user finds out why their configured cap did not hold.
+        var activities = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = s => string.Equals(s.Name, "Rag.NET", StringComparison.Ordinal),
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = activities.Add,
+        };
+        ActivitySource.AddActivityListener(listener);
+        using var parent = new Activity("test-parent").Start();
+
+        _helpers.SetupChatClient("a summary");
+        _helpers.SetupEmbedder(dims: 8);
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, TargetClusterSize = 100, MaxClusters = 2, MaxTreeDepth = 1 };
+        var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 600);
+
+        await behavior.HandleAsync(ctx, CancellationToken.None, static (_, _) => ValueTask.FromResult(
+            new IngestionResult { DocumentId = new DocumentId("test-doc"), ChunksStored = 0 }));
+
+        var ours = activities.Where(a => a.TraceId == parent.TraceId).ToList();
+        var summarize = ours.Single(a => string.Equals(a.OperationName, "ragnet.raptor.summarize", StringComparison.Ordinal));
+        Assert.Equal(true, summarize.GetTagItem("raptor.cluster.maxclusters.overridden"));
+    }
+
+    [Fact]
+    public async Task ALevelSmallerThanTheTarget_IsUnaffectedByTheFloor()
+    {
+        // The floor is 1 here, so Math.Max(bic, 1) == bic and BIC chooses alone. This is the regime
+        // every pre-existing test runs in, and it must be untouched.
+        var withFloor = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, TargetClusterSize = 100, MaxTreeDepth = 1 };
+        var wideTarget = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, TargetClusterSize = 10_000, MaxTreeDepth = 1 };
+
+        var a = await SummaryCountAsync(withFloor, chunkCount: 24);
+        var b = await SummaryCountAsync(wideTarget, chunkCount: 24);
+
+        Assert.Equal(a, b);
+        Assert.True(a > 0, "the fixture must actually build a level for this comparison to mean anything");
+    }
+
+    private async Task<int> SummaryCountAsync(RaptorOptions options, int chunkCount)
+    {
+        _helpers.SetupChatClient("a summary");
+        _helpers.SetupEmbedder(dims: 8);
+        var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: chunkCount);
+
+        await behavior.HandleAsync(ctx, CancellationToken.None, static (_, _) => ValueTask.FromResult(
+            new IngestionResult { DocumentId = new DocumentId("test-doc"), ChunksStored = 0 }));
+
+        return ctx.EmbeddedChunks.Count(c => c.Chunk.Metadata.ContainsKey("raptor_level"));
+    }
+}
