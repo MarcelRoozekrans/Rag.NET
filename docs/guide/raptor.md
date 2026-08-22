@@ -16,7 +16,7 @@ Avoid RAPTOR for short documents (< 5 chunks) or when latency at ingestion time 
 
 1. **Start with leaf chunks** — every chunk embedded so far, across the corpus (or one document's, under `PerDocument` scope — see [Tree Scope](#tree-scope))
 2. **UMAP reduction** — reduce embedding dimensions (e.g. 1536 → 10) for efficient clustering
-3. **GMM clustering** — soft-cluster chunks using Gaussian Mixture Models; BIC selects optimal cluster count
+3. **GMM clustering** — soft-cluster chunks using Gaussian Mixture Models; BIC selects the cluster count, floored by `TargetClusterSize` so a level's average cluster stays within budget regardless of corpus size — see [Cluster Size](#cluster-size)
 4. **Summarize each cluster** — concatenate chunk texts, call LLM to produce a summary
 5. **Embed summaries** — generate embeddings for each summary
 6. **Recurse** — repeat steps 2-5 on the summaries until a level can no longer be usefully split (or MaxTreeDepth reached). The top level always keeps at least two nodes — a level whose cluster count would not shrink the level below it is rejected rather than collapsed to a single cluster.
@@ -162,9 +162,17 @@ RAPTOR adds LLM calls at ingestion time:
 |---------------|-----------------|---------------------|---------------------|
 | 5-10 chunks | 2-3 | 2-3 | 3-4 |
 | 20-50 chunks | 3-6 | 3-6 | 6-9 |
-| 100+ chunks | 5-10 | 5-10 | 10-15 |
+| 100+ chunks | at least `ceil(count / TargetClusterSize)` | at least `ceil(count / TargetClusterSize)` | roughly double that |
+
+The last row used to read "5-10 clusters, 5-10 LLM calls" — that was the old `BicMaxK = 10` cap
+this package removed (#345), not a bound that still holds. Past `TargetClusterSize` (100 chunks by
+default), a level of *n* chunks makes at least `ceil(n / TargetClusterSize)` calls, growing with
+corpus size rather than capping at 10. Under the default `Corpus` scope, a 17,648-chunk corpus goes
+from the old ~10-40 total calls to roughly 190 — size your LLM budget from `TargetClusterSize`, not
+from this table's earlier rows. See [Cluster Size](#cluster-size).
 
 **Mitigation strategies:**
+- **Raise `TargetClusterSize`** — it is the primary cost lever past the default cluster count: doubling it roughly halves the number of LLM calls a large level makes, at the cost of a larger average cluster per summary
 - Use a cheaper/faster model via `SummaryChatClient` (e.g. GPT-4o-mini, Haiku)
 - Cap tree depth with `MaxTreeDepth = 1` for single-level summaries
 - Increase `MinChunksForRaptor` to skip small documents
@@ -251,13 +259,23 @@ summarisation prompt does not grow unboundedly with the corpus. Default: 100 chu
 
 **What it guarantees, precisely — a floor on the count, not a cap on the size.**
 `SelectClusterCount` computes `ceil(count / TargetClusterSize)` and never chooses a cluster count
-`k` below it, which guarantees at least that many clusters and therefore an *average* cluster size
-at or under the target. It does not guarantee every individual cluster is: GMM assignment is free
-to put a disproportionate share of a level's chunks into one component and spread the rest thinly,
-and nothing here stops that — an individual cluster may still exceed the target when assignment is
-unbalanced. A hard per-cluster bound would need clusters split after assignment, which this
-deliberately does not do. Whether that is needed in practice is a question for measurement on real
-corpora, not an assumption to make ahead of the data.
+`k` below it, which guarantees at least that many components are fitted and therefore an *average*
+cluster size at or under the target. It does not guarantee every individual cluster is: GMM
+assignment is free to put a disproportionate share of a level's chunks into one component and
+spread the rest thinly, and nothing here stops that — an individual cluster may still exceed the
+target when assignment is unbalanced. It also does not guarantee the delivered cluster *count*
+matches the floor exactly: a component no point was assigned to vanishes silently, so the delivered
+count can come in below the floor. A hard per-cluster bound would need clusters split after
+assignment, which this deliberately does not do. Whether that is needed in practice is a question
+for measurement on real corpora, not an assumption to make ahead of the data.
+
+**How the average-versus-maximum gap is observed in practice.** `raptor.cluster.count` alone cannot
+tell an even split from one lopsided cluster absorbing most of the level — both produce the same
+count. The `ragnet.raptor.summarize` span also carries `raptor.cluster.max.size`, the largest
+delivered cluster's chunk count, specifically so that gap is visible rather than assumed: if it
+tracks close to `count / raptor.cluster.count` across real corpora, the floor is sufficient on its
+own; if it runs far above that, that is evidence a hard per-cluster split is needed. See
+[OpenTelemetry Integration](../reference/opentelemetry.md#satellite-spans).
 
 **Why it exists.** Before it, `k` was capped at 10 per level regardless of the level's size, and
 the joined cluster text had no bound at all. On a 17,648-chunk corpus the smallest possible largest

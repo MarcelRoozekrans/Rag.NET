@@ -188,6 +188,8 @@ public async Task ALevelLargerThanTheTarget_ProducesNoClusterAboveIt()
 
 **The summary count is the observable proxy for cluster count** — one summary per cluster (`BuildLevelAsync` appends one per `ClusterGroup`), so `summaries.Count >= 6` means no cluster held more than 100 of the 600 leaves.
 
+> **Correction, 2026-08-22:** the claim above overstates what the assertion shows — `summaries.Count >= 6` guarantees an *average* cluster size at or under 100, not that no individual cluster exceeds it. See the design doc's "Correction, 2026-08-22 — what the floor actually guarantees" section (`docs/plans/2026-08-22-raptor-cluster-size-floor-design.md`) for the full retraction.
+
 - [ ] **Step 2: Run it to verify it fails**
 
 ```
