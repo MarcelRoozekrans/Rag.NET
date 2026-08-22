@@ -220,6 +220,35 @@ public class RaptorOptionsValidationTests
     }
 
     [Fact]
+    public void TargetClusterSize_DefaultsTo100()
+    {
+        Assert.Equal(100, new RaptorOptions().TargetClusterSize);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void TargetClusterSizeOfOneOrLess_IsRejected(int target)
+    {
+        // A target of 1 puts every chunk in its own cluster — #333's degenerate shape reached from
+        // the other direction, and a level that never reduces. Zero and negatives are nonsense that
+        // would make ceil(count / target) divide by zero or go negative.
+        var result = new RaptorOptionsValidator().Validate(new RaptorOptions { TargetClusterSize = target });
+
+        Assert.False(result.IsValid);
+
+        var failures = result.Failures;
+        var reported = new string[failures.Length];
+        for (var i = 0; i < failures.Length; i++)
+        {
+            reported[i] = failures[i].PropertyName;
+        }
+
+        Assert.Contains(nameof(RaptorOptions.TargetClusterSize), reported, StringComparer.Ordinal);
+    }
+
+    [Fact]
     public void Defaults_Register()
     {
         // TreeScope = PerDocument: see InvalidSummaryBoostFactor_ThrowsAtRegistration (#331). What
