@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-21 (phase 6.2.4 added)
+**Last updated:** 2026-08-22 (#345 merged; RAPTOR measurement Tasks 4-6 unblocked)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -56,15 +56,6 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Blockers
 
-- **#345 is fixed on `fix/345-raptor-cluster-size-floor`, not yet merged to `main`.** It blocked
-  Tasks 4-6 of the RAPTOR measurement plan — the corpus tree could not be built at
-  `Rag.NET.Raptor`'s shipped default because `MaxClusters = null` capped every level at
-  `SelectK(maxK: Min(count, 10))` regardless of corpus size; over MultiHop-RAG's 17,648 chunks the
-  largest level-1 cluster was at least 1,765 chunks, and `ConcatenateChunkTexts` has no length bound
-  — roughly 183k tokens against `gpt-4o-mini`'s 128k context. `RaptorOptions.TargetClusterSize` now
-  floors the cluster count so a level's *average* cluster stays within budget regardless of corpus
-  size; see `docs/guide/raptor.md`'s Cluster Size section for exactly what it guarantees (an
-  average bound, not a per-cluster maximum). Tasks 4-6 remain blocked until this branch merges.
 - **6.1 is blocked on accounts, not on work — and as of 2026-08-20 it gates v1.0.** The harness
   works as of #290; 1 of 19 cassettes is recorded (GitHub, unauthenticated, 17 KB). #283 carries
   the corrected instructions for the remaining 18 and is marked help-wanted. No amount of local
@@ -81,14 +72,16 @@ measurement, the first this technique has ever had. Six tasks; Tasks 1-3 are cod
 real money and Task 5 is an overnight run.
 
 **Tasks 1-3 are done, on `bench/raptor-measurement`: `RaptorRun`, the four RAPTOR answer arms
-(pinned empty, "NOT YET MEASURED"), and their wiring into `BeirGraphRagAnswerTests`. Tasks 4-6 were
-blocked on #345 and are not started.** `RaptorOptions.MaxClusters` defaults to `null`, so before
+(pinned empty, "NOT YET MEASURED"), and their wiring into `BeirGraphRagAnswerTests`. Tasks 4-6 are
+now unblocked and not yet started.** `RaptorOptions.MaxClusters` defaults to `null`, so before
 #345's fix `SelectClusterCount` capped every level at `SelectK(maxK: Min(count, 10))` regardless of
 corpus size — over MultiHop-RAG's 17,648 chunks the largest level-1 cluster held at least 1,765
 chunks (≈183k tokens, uncapped in `ConcatenateChunkTexts`) against `gpt-4o-mini`'s 128k context, so
-the corpus tree could not be built at the shipped default. **#345 is fixed on
-`fix/345-raptor-cluster-size-floor`** (`TargetClusterSize` floors the cluster count — see
-`docs/guide/raptor.md`'s Cluster Size section); Task 4's pilot can run once that branch merges.
+the corpus tree could not be built at the shipped default. **#345 merged to `main` 2026-08-22 in
+#351 (`bb4c11c7`), verified on `main` by content — `TargetClusterSize` is present in
+`RaptorOptions.cs` there — rather than by the PR's MERGED label.** `TargetClusterSize` floors the
+cluster count; see `docs/guide/raptor.md`'s Cluster Size section for what it guarantees (an average
+bound, not a per-cluster maximum). Task 4's pilot is the next thing to run.
 
 **6.2.4 completed 2026-08-21** (#344), so `raptorboost` now measures a `Boost` that works.
 
@@ -117,7 +110,7 @@ Three things govern the run, all in the plan:
 
 **Branch:** `bench/raptor-measurement`, cut from `main` after `c461475d` — 6.2.1's RAPTOR
 measurement (Tasks 1-3 of `docs/plans/2026-08-21-raptor-real-protocol-implementation.md`; Tasks 4-6
-blocked on #345, see Recommended Next Step). The earlier `chore/complete-phase-6-2-3` branch this
+unblocked as of #345's merge, see Recommended Next Step). The earlier `chore/complete-phase-6-2-3` branch this
 section used to name was the state-update-only branch for 6.2.3's merge and is gone; it is not
 this branch.
 
