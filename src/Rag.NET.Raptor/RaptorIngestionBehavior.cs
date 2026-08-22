@@ -310,6 +310,11 @@ public sealed class RaptorIngestionBehavior(
         var gmm = GaussianMixtureModel.Fit(reduced, k.Value);
         var clusters = GroupByClusters(currentLevel, gmm.Assignments);
         activity?.SetTag("raptor.cluster.count", clusters.Count);
+        // The floor (RaptorOptions.TargetClusterSize) bounds the average cluster size, not any
+        // individual cluster's — see its remarks. This is how that gap is observed in practice:
+        // raptor.cluster.count alone cannot distinguish an even split from one lopsided cluster
+        // absorbing most of the level.
+        activity?.SetTag("raptor.cluster.max.size", clusters.Max(c => c.Chunks.Count));
 
         var client = options.SummaryChatClient ?? chatClient;
         var emb = options.SummaryEmbedder ?? embedder;
@@ -412,9 +417,14 @@ public sealed class RaptorIngestionBehavior(
             return sizeFloor;
         }
 
-        if (sizeFloor <= BicMaxK)
+        if (sizeFloor < BicMaxK)
         {
-            // BIC still chooses; the floor can only raise its answer.
+            // BIC still chooses; the floor can only raise its answer. Strict: at sizeFloor ==
+            // BicMaxK exactly, the 10-fit sweep's result is always discarded by
+            // Max(bic, sizeFloor) anyway — sizeFloor == 10 implies count > 900, so
+            // SelectK(maxK: Min(count, 10)) <= 10 == sizeFloor, and Max(anything <= 10, 10) is
+            // always 10. Deriving k directly there is provably identical and skips the wasted
+            // 10-fit sweep.
             return System.Math.Max(
                 GaussianMixtureModel.SelectK(reduced, maxK: System.Math.Min(count, BicMaxK)),
                 sizeFloor);

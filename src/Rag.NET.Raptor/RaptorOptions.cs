@@ -35,6 +35,18 @@ public sealed class RaptorOptions
     /// lower builds no summary levels at all — RAPTOR silently disabled while
     /// <see cref="Enabled"/> still reads <see langword="true"/>.
     /// </para>
+    /// <para>
+    /// <b>This cap is not always honoured.</b> <see cref="TargetClusterSize"/> is a correctness
+    /// floor, not a preference, and it wins where the two conflict: where a cap this low would
+    /// keep a level's average cluster size at or under <see cref="TargetClusterSize"/>, the cap is
+    /// honoured as configured; where honouring it would push a level's average cluster above
+    /// <see cref="TargetClusterSize"/>, the floor's own count is used instead and the cap is
+    /// silently exceeded from the caller's point of view — silently to the caller, not to
+    /// telemetry: <c>RaptorIngestionBehavior.ComputeRawClusterCount</c> tags
+    /// <c>raptor.cluster.maxclusters.overridden = true</c> on the <c>ragnet.raptor.summarize</c>
+    /// span whenever this happens, so an operator can find out why their configured cap did not
+    /// hold. See <see cref="TargetClusterSize"/>'s remarks for what it guarantees.
+    /// </para>
     /// </summary>
     [GreaterThan(1, When = nameof(MaxClustersIsSet))]
     public int? MaxClusters { get; set; }
@@ -52,12 +64,16 @@ public sealed class RaptorOptions
     /// <b>This is a floor on the cluster count, not a cap — and it bounds the average cluster
     /// size, not the maximum.</b> <c>SelectClusterCount</c> computes
     /// <c>ceil(count / TargetClusterSize)</c> and never chooses a <c>k</c> below it, which
-    /// guarantees at least that many clusters and therefore an <i>average</i> cluster at or under
-    /// this size. It does not guarantee every individual cluster is: GMM assignment is free to put
-    /// most of a level's chunks into one component and spread the rest thinly, and nothing here
-    /// stops that. A hard per-cluster bound would need clusters split after assignment, which this
-    /// deliberately does not do — see below. Below the target the option does nothing: the floor is
-    /// 1, and BIC picks <c>k</c> exactly as it did before this option existed.
+    /// guarantees at least that many components are fitted, and therefore an <i>average</i>
+    /// cluster at or under this size. It does not guarantee every individual cluster is: GMM
+    /// assignment is free to put most of a level's chunks into one component and spread the rest
+    /// thinly, and nothing here stops that. It also does not guarantee the delivered cluster
+    /// <i>count</i> matches the floor exactly: <c>GroupByClusters</c> builds from a dictionary keyed on
+    /// assignments, so a component no point was assigned to vanishes silently and the delivered
+    /// count can be lower than the floor. A hard per-cluster bound would need clusters split after
+    /// assignment, which this deliberately does not do — see below. Below the target the option
+    /// does nothing: the floor is 1, and BIC picks <c>k</c> exactly as it did before this option
+    /// existed.
     /// </para>
     /// <para>
     /// <b>Why it exists.</b> Before it, <c>k</c> was capped at 10 per level regardless of the
@@ -90,10 +106,12 @@ public sealed class RaptorOptions
     /// Cap recursion depth. Null = recurse until a level can no longer be usefully split. Default:
     /// null.
     /// <para>
-    /// Not literally "until one cluster remains": <c>Min(MaxClusters, count - 1)</c> forces a
-    /// strict decrease every level, and the non-reducing-level guard rejects any level whose
-    /// cluster count would not shrink the count, so the smallest level that can still be built is
-    /// two nodes clustering to one — which is itself rejected (<c>k &lt;= 1</c> stops the tree). The
+    /// Not literally "until one cluster remains": <c>SelectClusterCount</c>'s unconditional
+    /// <c>Min(k, count - 1)</c> — applied to whichever of <c>ComputeRawClusterCount</c>'s four
+    /// branches produced <c>k</c>, <see cref="MaxClusters"/>'s among them — forces a strict
+    /// decrease every level, and the non-reducing-level guard rejects any level whose cluster
+    /// count would not shrink the count, so the smallest level that can still be built is two
+    /// nodes clustering to one — which is itself rejected (<c>k &lt;= 1</c> stops the tree). The
     /// top level therefore always has at least two nodes; recursion stops one level short of a
     /// single cluster, not at one.
     /// </para>
