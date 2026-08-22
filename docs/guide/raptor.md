@@ -300,6 +300,30 @@ Two more facets of the same root cause:
 
 Not fixed in this phase; #336 tracks it.
 
+### `Corpus` scope cannot build a tree over a corpus of more than roughly a thousand chunks, at the shipped default (#345)
+
+This is user-facing on the **default configuration** — nobody has to opt into anything to hit it.
+
+`MaxClusters` defaults to `null`, so `SelectClusterCount` falls back to
+`GaussianMixtureModel.SelectK(reduced, maxK: Min(count, 10))` — every level is capped at **10**
+clusters, regardless of how large the corpus is. `SummarizeClusterAsync` then hands the whole
+cluster's concatenated text to the LLM in one call: `ConcatenateChunkTexts` joins every child
+chunk's text with no length bound at all.
+
+Put a number on it. Chunks are at most 512 **characters** (`ChunkingOptions.MaxChunkSize`), so a
+typical chunk is roughly 407 characters — about 100 tokens. A corpus of 17,648 chunks (MultiHop-RAG's
+609 articles under the real chunker) split into 10 level-1 clusters puts at least
+⌈17,648 / 10⌉ = **1,765 chunks** in the largest one — **≈730,000 characters, ≈183,000 tokens** — in a
+single summarisation prompt. Against `openai/gpt-4o-mini`'s 128k-token context window, the floor
+case (the *smallest* the largest cluster can be, evenly split) already exceeds the limit by roughly
+1.4×. This is not a tail risk: it is the arithmetic of the default cap against any corpus above
+roughly a thousand chunks, and it gets worse as the corpus grows because the cap does not.
+
+There is currently no workaround that does not change what is being measured: a smaller corpus, a
+model with a longer context window, or setting `MaxClusters` **lower still** all sidestep the
+number without fixing the mechanism, and the last one makes it worse (see the corrected advice
+under [Troubleshooting](#troubleshooting) below). Not fixed in this phase; #345 tracks it.
+
 ## Troubleshooting
 
 **RAPTOR is not creating any summary chunks**
@@ -309,7 +333,11 @@ Not fixed in this phase; #336 tracks it.
 - Verify `IChatClient` is registered in DI (or `SummaryChatClient` is set)
 
 **Too many/few clusters**
-- Set `MaxClusters` to cap the number of clusters per level
+- `MaxClusters` caps how many clusters a level may split *into* — it does not cap how large any one
+  cluster is. A *lower* `MaxClusters` forces the same chunks into **fewer, larger** clusters, not
+  smaller ones; if clusters already feel too big, lowering it makes that worse, not better. See
+  [#345 above](#corpus-scope-cannot-build-a-tree-over-a-corpus-of-more-than-roughly-a-thousand-chunks-at-the-shipped-default-345)
+  for the case — the shipped default — where this is not a tuning nuisance but a hard failure.
 - Adjust `ReducedDimensionality` — lower values = coarser clustering
 
 **Summaries are too generic**

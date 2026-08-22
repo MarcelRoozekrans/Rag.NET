@@ -10,6 +10,7 @@ using Rag.NET.Benchmarks.Quality.GraphExtractions;
 using Rag.NET.Embeddings.Onnx;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Raptor;
 using Rag.NET.Storage;
 using Xunit;
 
@@ -62,11 +63,33 @@ public sealed class BeirGraphRagAnswerTests
     /// <summary>Bounds the run to N queries, stratified by type — the pilot. Absent means every query.</summary>
     public const string MaxQueriesVariable = "RAGNET_GRAPHRAG_ANSWERS_MAX_QUERIES";
 
-    /// <summary>Comma-separated arms to run: <c>dense</c>, <c>local</c>, <c>global</c>. Absent means all three.</summary>
+    /// <summary>
+    /// Comma-separated arms to run. Absent means <b>every arm that has a recorded figure</b> — not
+    /// every arm in <see cref="AnswerArm.All"/>.
+    /// </summary>
+    /// <remarks>
+    /// The default deliberately skips arms whose reproduction entry carries an empty figure array,
+    /// so a freshly added, unmeasured arm cannot break the replay run that re-verifies the pinned
+    /// figures. Naming an arm here overrides that: an unmeasured arm named explicitly still runs,
+    /// which is how it gets measured in the first place. The filter is data-driven, so an arm
+    /// rejoins the default set the moment a figure is pinned for it — no code change.
+    /// </remarks>
     public const string ArmsVariable = "RAGNET_GRAPHRAG_ANSWERS_ARMS";
 
     /// <summary>The paper's context depth: six chunks.</summary>
     private const int ContextChunks = 6;
+
+    /// <summary>
+    /// <c>raptorfiltered</c>'s over-fetch multiplier: pull <c>ContextChunks * 4</c> candidates from
+    /// the corpus store before dropping summaries and taking six — #247's option (c)
+    /// over-fetch-and-drop shape, reused here. This is a second, unrelated over-fetch factor from
+    /// <see cref="RaptorRun.SearchAsync"/>'s own <c>CandidateMultiplier = 3.0</c> pinned for the
+    /// <c>raptorboost</c> arm: one over-fetches to survive a drop after retrieval, the other
+    /// over-fetches so <c>Boost</c> can promote a summary into the truncated top-k. A reader
+    /// comparing the two pinned figures should not read the differing multipliers as a difference in
+    /// what was measured.
+    /// </summary>
+    private const int RaptorFilteredOverFetchMultiplier = 4;
 
     private const int ProgressEvery = 100;
 
@@ -118,7 +141,7 @@ public sealed class BeirGraphRagAnswerTests
             descriptor, cacheDirectory, BeirLoader.DefaultTitleTextSeparator, ct);
         var gold = MultiHopRagAnswers.Load(new BeirDatasetCache(cacheDirectory).DirectoryFor(descriptor));
         var selection = SelectQueries(dataset, gold);
-        var arms = SelectArms();
+        var arms = SelectArms(descriptor.Name, _output);
 
         using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
         var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
@@ -131,19 +154,18 @@ public sealed class BeirGraphRagAnswerTests
             dataset.Documents, generator, embeddings, OpenExtractions(cacheDirectory),
             OpenReports(cacheDirectory), ct);
         using var articles = await IndexArticlesAsync(dataset, generator, embeddings, ct);
-        _output.WriteLine(FormattableString.Invariant(
-            $"graph and article store built in {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s"));
+        await using var corpusRun = await BuildCorpusRaptorRunAsync(arms, dataset, generator, embeddings, answering, _output, ct);
+        await using var perDocumentRun = await BuildPerDocumentRaptorRunAsync(arms, dataset, generator, embeddings, answering, _output, ct);
+        LogRaptorSummarisationCostSoFar(_output, answering, corpusRun, perDocumentRun);
 
-        var tallies = await AnswerAllAsync(selection, arms, run, articles, generator, embeddings, answering, gold, ct);
+        _output.WriteLine(FormattableString.Invariant(
+            $"graph, article and RAPTOR stores built in {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s"));
+        var tallies = await AnswerAllAsync(
+            selection, arms, run, articles, corpusRun, perDocumentRun, generator, embeddings, answering, gold, ct);
         _output.WriteLine(DescribeResults(descriptor, selection, tallies, answering, Stopwatch.GetElapsedTime(startedAt)));
         _output.WriteLine("every scored answer: " + DumpAnswers(cacheDirectory, tallies, selection.IsPilot));
 
-        foreach (var (arm, tally) in tallies)
-        {
-            Assert.True(
-                tally.Answered == selection.Count,
-                $"The {arm} arm answered {tally.Answered} of {selection.Count} selected queries.");
-        }
+        AssertEveryArmAnsweredEveryQuery(tallies, selection);
 
         if (selection.IsPilot)
         {
@@ -156,6 +178,122 @@ public sealed class BeirGraphRagAnswerTests
             MultiHopRagAnswerReproduction.AssertReproduces(
                 descriptor.Name, arm, tally.Accuracy(selection.JudgedCount, Rule.Paper), _output);
         }
+    }
+
+    /// <summary>Every arm must have answered every selected query — split out of the theory (MA0051).</summary>
+    private static void AssertEveryArmAnsweredEveryQuery(Dictionary<string, ArmTally> tallies, QuerySelection selection)
+    {
+        foreach (var (arm, tally) in tallies)
+        {
+            Assert.True(
+                tally.Answered == selection.Count,
+                $"The {arm} arm answered {tally.Answered} of {selection.Count} selected queries.");
+        }
+    }
+
+    /// <summary>
+    /// Builds the corpus-scope <see cref="RaptorRun"/> that <see cref="AnswerArm.RaptorCorpus"/>,
+    /// <see cref="AnswerArm.RaptorFiltered"/> and <see cref="AnswerArm.RaptorBoost"/> all read from
+    /// — one ingestion shared by three arms, not three — or <see langword="null"/> when none of
+    /// them was selected, so an unselected arm costs nothing, the same economy the local-search
+    /// pass above already gets. The leaf store is in-memory: it exists only to let
+    /// <c>RaptorTreeRebuilder</c> enumerate leaves for the single corpus-wide rebuild inside
+    /// <see cref="RaptorRun.BuildAsync"/>, and nothing outside that one call ever reads it, so a
+    /// file-backed store would only risk leaves accumulating across repeated runs for no benefit.
+    /// </summary>
+    /// <remarks>
+    /// Logs the run's counters to <paramref name="output"/> the moment the build finishes — the
+    /// only point they can be read from a <c>dotnet test</c> transcript, and a paid run should see
+    /// them before it spends anything on answers.
+    /// <para>
+    /// <b><see cref="RaptorRun.CorpusRebuildCount"/> is logged but is not a gate.</b> It is set to
+    /// a literal beside the single <c>RebuildAsync</c> call, and under <c>Corpus</c> scope
+    /// ingestion is structurally incapable of building a tree, so it reads 1 unconditionally and
+    /// cannot detect anything. The counters that can actually move are <c>LeafCount</c> (which
+    /// pins the corpus that was ingested), <c>SummaryCount</c> and <c>SummariserCalls</c>.
+    /// </para>
+    /// </remarks>
+    private static async Task<RaptorRun?> BuildCorpusRaptorRunAsync(
+        IReadOnlyList<string> arms,
+        BeirDataset dataset,
+        OnnxEmbeddingGenerator generator,
+        EmbeddingCache embeddings,
+        CachedGraphRagClient answering,
+        ITestOutputHelper output,
+        CancellationToken ct)
+    {
+        var needed = arms.Contains(AnswerArm.RaptorCorpus, StringComparer.Ordinal)
+            || arms.Contains(AnswerArm.RaptorFiltered, StringComparer.Ordinal)
+            || arms.Contains(AnswerArm.RaptorBoost, StringComparer.Ordinal);
+
+        if (!needed)
+        {
+            return null;
+        }
+
+        var run = await RaptorRun.BuildAsync(
+            dataset.Documents, RaptorTreeScope.Corpus, generator, embeddings, answering, ":memory:", ct);
+        LogRaptorRunCounters(output, "corpus (raptorcorpus / raptorfiltered / raptorboost)", run);
+        return run;
+    }
+
+    /// <summary>
+    /// Builds the per-document-scope <see cref="RaptorRun"/> <see cref="AnswerArm.Raptor"/> reads
+    /// from, the retired variant kept selectable as <see cref="AnswerArm.RaptorCorpus"/>'s control —
+    /// or <see langword="null"/> when that arm was not selected.
+    /// </summary>
+    /// <remarks>
+    /// Both <see cref="RaptorRun"/>s are finished before this method returns — RAPTOR summarisation
+    /// happens strictly before <c>AnswerAllAsync</c> ever calls <paramref name="answering"/> for an
+    /// answer — so the caller's token snapshot, taken right after this returns from the one client
+    /// every summariser and every answer call shares, is exactly the summarisation cost: nothing an
+    /// answer call adds can have landed in <paramref name="answering"/>'s counters yet. Logged only
+    /// when a <see cref="RaptorRun"/> was actually built (either scope), so a run with no RAPTOR arm
+    /// selected does not print zeroes into the transcript.
+    /// </remarks>
+    private static async Task<RaptorRun?> BuildPerDocumentRaptorRunAsync(
+        IReadOnlyList<string> arms,
+        BeirDataset dataset,
+        OnnxEmbeddingGenerator generator,
+        EmbeddingCache embeddings,
+        CachedGraphRagClient answering,
+        ITestOutputHelper output,
+        CancellationToken ct)
+    {
+        var needed = arms.Contains(AnswerArm.Raptor, StringComparer.Ordinal);
+        var run = needed
+            ? await RaptorRun.BuildAsync(
+                dataset.Documents, RaptorTreeScope.PerDocument, generator, embeddings, answering, ":memory:", ct)
+            : null;
+
+        if (run is not null)
+        {
+            LogRaptorRunCounters(output, "per-document (raptor)", run);
+        }
+
+        return run;
+    }
+
+    /// <summary>Writes one <see cref="RaptorRun"/>'s counters to <paramref name="output"/>, labelled.</summary>
+    private static void LogRaptorRunCounters(ITestOutputHelper output, string label, RaptorRun run) =>
+        output.WriteLine(FormattableString.Invariant(
+            $"RaptorRun[{label}]: LeafCount={run.LeafCount}, SummaryCount={run.SummaryCount}, CorpusRebuildCount={run.CorpusRebuildCount}, SummariserCalls={run.SummariserCalls}"));
+
+    /// <summary>
+    /// Logs the cumulative RAPTOR summarisation cost, but only when at least one
+    /// <see cref="RaptorRun"/> was actually built — otherwise a run with no RAPTOR arm selected
+    /// would print zeroes into every transcript for a cost nothing paid.
+    /// </summary>
+    private static void LogRaptorSummarisationCostSoFar(
+        ITestOutputHelper output, CachedGraphRagClient answering, RaptorRun? corpusRun, RaptorRun? perDocumentRun)
+    {
+        if (corpusRun is null && perDocumentRun is null)
+        {
+            return;
+        }
+
+        output.WriteLine(FormattableString.Invariant(
+            $"RAPTOR summarisation cost so far (every tree built, before any answer is generated): {answering.Calls} calls, {answering.InputTokens} input tokens, {answering.OutputTokens} output tokens"));
     }
 
     // ── Selection and gates ───────────────────────────────────────────────
@@ -199,12 +337,17 @@ public sealed class BeirGraphRagAnswerTests
         return new QuerySelection(selected, judged, max is not null);
     }
 
-    private static IReadOnlyList<string> SelectArms()
+    /// <summary>
+    /// The arms this run selects: every arm named explicitly through <see cref="ArmsVariable"/>, or
+    /// — when it is unset — <see cref="AnswerArm.All"/> filtered down to the arms
+    /// <see cref="SelectDefaultArms"/> says are actually measured.
+    /// </summary>
+    private static IReadOnlyList<string> SelectArms(string datasetName, ITestOutputHelper output)
     {
         var value = Environment.GetEnvironmentVariable(ArmsVariable);
         if (string.IsNullOrWhiteSpace(value))
         {
-            return AnswerArm.All;
+            return SelectDefaultArms(datasetName, output);
         }
 
         var arms = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -215,6 +358,140 @@ public sealed class BeirGraphRagAnswerTests
         }
 
         return arms;
+    }
+
+    /// <summary>
+    /// <see cref="AnswerArm.All"/>, minus whichever arms <see cref="MultiHopRagAnswerReproduction"/>
+    /// has never actually measured — an empty <c>Accuracy</c> array, the state the four RAPTOR arms
+    /// are in until Phase 6.2.1's sweep pins them.
+    /// </summary>
+    /// <remarks>
+    /// <b>Only the default selection is filtered here; a name given through <see cref="ArmsVariable"/>
+    /// is never touched by this method.</b> Without this, the canonical full run
+    /// <c>docs/reference/ci.md</c> documents — no <see cref="ArmsVariable"/> set — hits
+    /// <c>BuildCorpusRaptorRunAsync</c> for an unmeasured RAPTOR arm: in replay mode the answering
+    /// client is <c>inner: null</c> with refuse-on-miss and throws on the first summarisation, before
+    /// any of the arms this run could actually check ever gets there. Gating on whether the run is
+    /// generating would only fix that half — with <see cref="GenerateVariable"/> set the same default
+    /// run would instead pay to build the corpus tree and throw on #345's context-length error. This
+    /// self-heals the moment an arm's pin stops being empty, and an operator naming the arm through
+    /// <see cref="ArmsVariable"/> — Task 4's pilot, for one — still reaches it, unmeasured or not.
+    /// </remarks>
+    private static IReadOnlyList<string> SelectDefaultArms(string datasetName, ITestOutputHelper output)
+    {
+        var selected = new List<string>(AnswerArm.All.Count);
+        var skipped = new List<string>();
+        foreach (var arm in AnswerArm.All)
+        {
+            if (MultiHopRagAnswerReproduction.HasRecordedFigure(datasetName, arm))
+            {
+                selected.Add(arm);
+            }
+            else
+            {
+                skipped.Add(arm);
+            }
+        }
+
+        if (skipped.Count > 0)
+        {
+            output.WriteLine(FormattableString.Invariant(
+                $"skipping {skipped.Count} unmeasured arm(s) from the default selection: {string.Join(", ", skipped)} -- no recorded figure yet in {nameof(MultiHopRagAnswerReproduction)}. Name an arm explicitly via {ArmsVariable} to run it anyway."));
+        }
+
+        return selected;
+    }
+
+    /// <summary>
+    /// The four RAPTOR arms are selectable through <see cref="ArmsVariable"/> and are members of
+    /// <see cref="AnswerArm.All"/> — checked without a model, a corpus or an API key, so a missing
+    /// pin or a typo'd name fails here in milliseconds rather than at the end of a paid run.
+    /// </summary>
+    [Fact]
+    public void SelectArms_AcceptsEveryRaptorArmName()
+    {
+        foreach (var arm in new[] { AnswerArm.RaptorCorpus, AnswerArm.Raptor, AnswerArm.RaptorFiltered, AnswerArm.RaptorBoost })
+        {
+            Assert.Contains(arm, AnswerArm.All, StringComparer.Ordinal);
+
+            var previous = Environment.GetEnvironmentVariable(ArmsVariable);
+            try
+            {
+                Environment.SetEnvironmentVariable(ArmsVariable, arm);
+                Assert.Equal(new[] { arm }, SelectArms("multihop-rag", _output));
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(ArmsVariable, previous);
+            }
+        }
+    }
+
+    /// <summary>
+    /// C1's fix: the default selection (<see cref="ArmsVariable"/> unset) must skip every arm
+    /// <see cref="MultiHopRagAnswerReproduction"/> has not actually measured yet — today, the four
+    /// RAPTOR arms, each pinned with an empty figure array — while every measured arm stays in, and
+    /// the run says out loud what it skipped and why.
+    /// </summary>
+    [Fact]
+    public void SelectArms_DefaultSelection_SkipsArmsWithNoRecordedFigure()
+    {
+        var previous = Environment.GetEnvironmentVariable(ArmsVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(ArmsVariable, null);
+            var output = new CapturingTestOutputHelper();
+
+            var arms = SelectArms("multihop-rag", output);
+
+            foreach (var arm in arms)
+            {
+                Assert.True(
+                    MultiHopRagAnswerReproduction.HasRecordedFigure("multihop-rag", arm),
+                    $"the default selection included '{arm}', which has no recorded figure.");
+            }
+
+            var unmeasured = new[] { AnswerArm.RaptorCorpus, AnswerArm.Raptor, AnswerArm.RaptorFiltered, AnswerArm.RaptorBoost };
+            foreach (var raptorArm in unmeasured)
+            {
+                Assert.False(
+                    MultiHopRagAnswerReproduction.HasRecordedFigure("multihop-rag", raptorArm),
+                    $"{raptorArm} now has a recorded figure -- this test's premise is stale.");
+                Assert.DoesNotContain(raptorArm, arms, StringComparer.Ordinal);
+                Assert.Contains(output.Lines, line => line.Contains(raptorArm, StringComparison.Ordinal));
+            }
+
+            // A measured arm is never filtered out of the default.
+            Assert.Contains(AnswerArm.Dense, arms, StringComparer.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ArmsVariable, previous);
+        }
+    }
+
+    /// <summary>
+    /// C1's other half: naming an unmeasured arm explicitly through <see cref="ArmsVariable"/> must
+    /// still select it. The default filter in <see cref="SelectDefaultArms"/> must never reach an
+    /// explicit selection — this is how Task 4's pilot runs before anything is pinned.
+    /// </summary>
+    [Fact]
+    public void SelectArms_ExplicitSelection_StillRunsAnUnmeasuredArm()
+    {
+        var previous = Environment.GetEnvironmentVariable(ArmsVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(ArmsVariable, AnswerArm.RaptorCorpus);
+            var output = new CapturingTestOutputHelper();
+
+            var arms = SelectArms("multihop-rag", output);
+
+            Assert.Equal(new[] { AnswerArm.RaptorCorpus }, arms);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ArmsVariable, previous);
+        }
     }
 
     private static int? ReadPositiveInt(string variable)
@@ -313,6 +590,8 @@ public sealed class BeirGraphRagAnswerTests
         IReadOnlyList<string> arms,
         GraphRagRun run,
         InMemoryVectorStore articles,
+        RaptorRun? corpusRun,
+        RaptorRun? perDocumentRun,
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         CachedGraphRagClient answering,
@@ -356,7 +635,9 @@ public sealed class BeirGraphRagAnswerTests
                             AnswerArm.Local => localContexts[query.Id],
                             AnswerArm.Control => controlContexts[query.Id],
                             AnswerArm.Filtered => filteredContexts[query.Id],
-                            _ => await RetrieveContextAsync(arm, query.Text, run, articles, generator, embeddings, answering, token),
+                            _ => await RetrieveContextAsync(
+                                arm, query.Text, run, articles, corpusRun, perDocumentRun,
+                                generator, embeddings, answering, _output, token),
                         });
 
                     var prompt = PromptTemplate
@@ -396,15 +677,30 @@ public sealed class BeirGraphRagAnswerTests
         }
     }
 
-    /// <summary>The six chunks the dense and global arms hand the model, in the arm's own order.</summary>
+    /// <summary>
+    /// The six chunks the dense, global and RAPTOR arms hand the model, in the arm's own order.
+    /// </summary>
+    /// <remarks>
+    /// <c>raptorcorpus</c>, <c>raptor</c> and <c>raptorboost</c> each read straight from a
+    /// <see cref="RaptorRun"/> built once for every query that needs it — never per query. See the
+    /// <c>needsCorpus</c> / <c>needsPerDocument</c> gate and the single <see cref="RaptorRun.BuildAsync"/>
+    /// calls in <see cref="Accuracy_AgainstTheGoldAnswers_ThreeArms"/>.
+    /// <c>raptorfiltered</c> over-fetches four times the context depth from the same corpus store
+    /// and drops every summary chunk before taking six — #247's option (c) shape, reused so that
+    /// dropping from an already-truncated six does not under-fill and understate what filtering
+    /// buys.
+    /// </remarks>
     private static async Task<IReadOnlyList<SearchResult>> RetrieveContextAsync(
         string arm,
         string query,
         GraphRagRun run,
         InMemoryVectorStore articles,
+        RaptorRun? corpusRun,
+        RaptorRun? perDocumentRun,
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         CachedGraphRagClient answering,
+        ITestOutputHelper output,
         CancellationToken ct)
     {
         switch (arm)
@@ -415,11 +711,228 @@ public sealed class BeirGraphRagAnswerTests
             case AnswerArm.Global:
                 var global = await run.GlobalSearchAsync(query, answering, ct);
                 return Head(global, ContextChunks);
+            case AnswerArm.RaptorCorpus:
+                return await corpusRun!.SearchAsync(query, RaptorRetrievalMode.Blend, ContextChunks, ct);
+            case AnswerArm.Raptor:
+                return await perDocumentRun!.SearchAsync(query, RaptorRetrievalMode.Blend, ContextChunks, ct);
+            case AnswerArm.RaptorBoost:
+                return await corpusRun!.SearchAsync(query, RaptorRetrievalMode.Boost, ContextChunks, ct);
+            case AnswerArm.RaptorFiltered:
+                return await RetrieveRaptorFilteredAsync(query, corpusRun!, output, ct);
             default:
                 throw new ArgumentOutOfRangeException(nameof(arm), arm, "Not an arm retrieved here.");
         }
     }
 
+    /// <summary>
+    /// <c>raptorfiltered</c>'s retrieval: over-fetch four times the context depth from the corpus
+    /// store at <see cref="RaptorRetrievalMode.Blend"/>, drop every summary chunk, then take six —
+    /// #247's option (c) shape, reused so that dropping from an already-truncated six does not
+    /// under-fill and understate what filtering buys.
+    /// </summary>
+    /// <remarks>
+    /// Warns loudly, but does not throw, whenever fewer than <see cref="ContextChunks"/> chunks
+    /// survive — whatever the cause: a corpus too small to hold that many non-summary candidates
+    /// at all, or an over-fetch multiplier that turns out too small once summaries crowd the top
+    /// of the ranking for a given query. The check does not also require proving more candidates
+    /// existed somewhere — that would exclude the exact under-fill case it exists to catch. Task
+    /// 4's validation gate (<c>raptorfiltered − dense</c> ≈ 0) is only trustworthy if this would
+    /// have been seen firing were it going to fire.
+    /// </remarks>
+    private static async Task<IReadOnlyList<SearchResult>> RetrieveRaptorFilteredAsync(
+        string query, RaptorRun corpusRun, ITestOutputHelper output, CancellationToken ct)
+    {
+        var pool = await corpusRun.SearchAsync(
+            query, RaptorRetrievalMode.Blend, ContextChunks * RaptorFilteredOverFetchMultiplier, ct);
+        var survivors = pool.Where(r => !r.Chunk.Metadata.ContainsKey("raptor_level")).ToList();
+        var filtered = Head(survivors, ContextChunks);
+
+        if (filtered.Count < ContextChunks)
+        {
+            output.WriteLine(FormattableString.Invariant(
+                $"WARNING: raptorfiltered under-filled for query '{query}': only {filtered.Count} of {ContextChunks} chunks came back — {survivors.Count} non-summary candidates were available out of an over-fetched pool of {pool.Count} — check the over-fetch multiplier and the Head() wiring."));
+        }
+
+        return filtered;
+    }
+
+    /// <summary>
+    /// Proves the guard in <see cref="RetrieveRaptorFilteredAsync"/> can actually fire, rather than
+    /// resting on the claim that it can: a one-chunk corpus cannot possibly hand back six
+    /// non-summary candidates, so the guard must warn; a sixty-leaf corpus comfortably can, so it
+    /// must stay silent. No model, no downloaded corpus — a fake chat client and a fake embedder,
+    /// the same shape <c>RaptorRunTests</c> uses.
+    /// </summary>
+    [Fact]
+    public async Task RetrieveRaptorFilteredAsync_WarnsOnUnderFill_AndStaysSilentWhenFull()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var cacheRoot = Path.Combine(Path.GetTempPath(), "ragnet-raptorfiltered-guard-" + Guid.NewGuid().ToString("N"));
+        _ = Directory.CreateDirectory(cacheRoot);
+
+        try
+        {
+            var chatClient = new EchoRaptorSummaryChatClient();
+
+            var sparseCache = new EmbeddingCache(cacheRoot, "raptorfiltered-guard-sparse@fake");
+            await using (var sparse = await RaptorRun.BuildAsync(
+                FakeRaptorFilteredCorpus(documentCount: 1, chunksPerDocument: 1),
+                RaptorTreeScope.Corpus, new RandomVectorEmbedder(new Random(Seed: 4242)), sparseCache, chatClient,
+                ":memory:", ct))
+            {
+                var loud = new CapturingTestOutputHelper();
+                var filtered = await RetrieveRaptorFilteredAsync("does the guard fire", sparse, loud, ct);
+
+                Assert.True(filtered.Count < ContextChunks, "a one-chunk corpus must under-fill by construction");
+                Assert.Contains(
+                    loud.Lines, line => line.Contains("WARNING: raptorfiltered under-filled", StringComparison.Ordinal));
+            }
+
+            var ampleCache = new EmbeddingCache(cacheRoot, "raptorfiltered-guard-ample@fake");
+            await using (var ample = await RaptorRun.BuildAsync(
+                FakeRaptorFilteredCorpus(documentCount: 15, chunksPerDocument: 4),
+                RaptorTreeScope.Corpus, new RandomVectorEmbedder(new Random(Seed: 24242)), ampleCache, chatClient,
+                ":memory:", ct))
+            {
+                var silent = new CapturingTestOutputHelper();
+                var filtered = await RetrieveRaptorFilteredAsync("does the guard stay silent", ample, silent, ct);
+
+                Assert.Equal(ContextChunks, filtered.Count);
+                Assert.Empty(silent.Lines);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(cacheRoot))
+            {
+                Directory.Delete(cacheRoot, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="documentCount"/> fake documents of <paramref name="chunksPerDocument"/>
+    /// paragraphs apiece, padded so <c>RecursiveChunkingStrategy</c> yields exactly one chunk per
+    /// paragraph — the same padding reasoning <c>RaptorRunTests.FillerLength</c> documents.
+    /// </summary>
+    private static IReadOnlyList<BeirDocument> FakeRaptorFilteredCorpus(int documentCount, int chunksPerDocument)
+    {
+        var documents = new List<BeirDocument>(documentCount);
+        for (var i = 0; i < documentCount; i++)
+        {
+            var text = BuildFakeRaptorFilteredDocumentText(i, chunksPerDocument);
+            documents.Add(new BeirDocument(
+                Id: FormattableString.Invariant($"guard-doc-{i}"), Title: string.Empty, Text: text, RetrievalText: text));
+        }
+
+        return documents;
+    }
+
+    private static string BuildFakeRaptorFilteredDocumentText(int documentIndex, int chunksPerDocument)
+    {
+        var paragraphs = new string[chunksPerDocument];
+        var filler = new string('x', 400);
+        for (var i = 0; i < chunksPerDocument; i++)
+        {
+            paragraphs[i] = FormattableString.Invariant($"guard-doc{documentIndex} paragraph{i} {filler}");
+        }
+
+        return string.Join("\n\n", paragraphs);
+    }
+
+    /// <summary>
+    /// An embedder that returns an independent random vector per text, ignoring the text itself —
+    /// sufficient here because the guard test needs only "leaves vastly outnumber summaries in the
+    /// corpus", not any real semantic structure.
+    /// </summary>
+    private sealed class RandomVectorEmbedder(Random rng) : IEmbeddingGenerator<string, Embedding<float>>
+    {
+        private const int Dimensions = 8;
+
+        public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+            IEnumerable<string> values,
+            EmbeddingGenerationOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(values);
+
+            var generated = new GeneratedEmbeddings<Embedding<float>>();
+            foreach (var unusedText in values)
+            {
+                _ = unusedText;
+                generated.Add(new Embedding<float>(RandomVector(rng)));
+            }
+
+            return Task.FromResult(generated);
+        }
+
+        /// <summary>A fresh independent random vector, ignoring the text it stands in for.</summary>
+        private static float[] RandomVector(Random rng) =>
+            Enumerable.Range(0, Dimensions).Select(_ => (float)rng.NextDouble()).ToArray();
+
+        public object? GetService(Type serviceType, object? serviceKey = null)
+        {
+            ArgumentNullException.ThrowIfNull(serviceType);
+            return serviceType.IsInstanceOfType(this) ? this : null;
+        }
+
+        public void Dispose()
+        {
+            // Nothing to release.
+        }
+    }
+
+    /// <summary>A chat client that echoes its prompt back as the RAPTOR cluster "summary".</summary>
+    private sealed class EchoRaptorSummaryChatClient : IChatClient
+    {
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(messages);
+
+            var text = string.Join(" ", messages.Select(m => m.Text));
+            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, text)));
+        }
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("RaptorIngestionBehavior does not stream summaries.");
+
+        public object? GetService(Type serviceType, object? serviceKey = null)
+        {
+            ArgumentNullException.ThrowIfNull(serviceType);
+            return serviceType.IsInstanceOfType(this) ? this : null;
+        }
+
+        public void Dispose()
+        {
+            // Nothing to release.
+        }
+    }
+
+    /// <summary>Captures every line written to it, so a test can assert on what a guard logged.</summary>
+    private sealed class CapturingTestOutputHelper : ITestOutputHelper
+    {
+        private readonly List<string> _lines = [];
+
+        public IReadOnlyList<string> Lines => _lines;
+
+        public string Output => string.Join(Environment.NewLine, _lines);
+
+        public void Write(string message) => _lines.Add(message);
+
+        public void Write(string format, params object[] args) =>
+            _lines.Add(string.Format(CultureInfo.InvariantCulture, format, args));
+
+        public void WriteLine(string message) => _lines.Add(message);
+
+        public void WriteLine(string format, params object[] args) =>
+            _lines.Add(string.Format(CultureInfo.InvariantCulture, format, args));
+    }
 
     /// <summary>The first <paramref name="count"/> results, or all of them when there are fewer.</summary>
     /// <summary>

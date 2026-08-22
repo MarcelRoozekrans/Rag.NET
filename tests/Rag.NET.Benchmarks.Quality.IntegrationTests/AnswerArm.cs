@@ -67,5 +67,53 @@ internal static class AnswerArm
     /// </remarks>
     public const string LocalSpec = "localspec";
 
-    public static readonly IReadOnlyList<string> All = [Dense, Control, Local, Global, Filtered, LocalSpec];
+    /// <summary>
+    /// RAPTOR at its shipped defaults since #340: corpus-level tree, <c>Blend</c>, top-6.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the arm whose figure is RAPTOR's result on this corpus.</b> Not <see cref="Raptor"/>
+    /// — that is the retired per-document variant. Publishing the per-document number as RAPTOR's
+    /// would repeat 5.2's misattribution, where a variant's figure was presented as the technique's
+    /// and took #316, #323 and #326 to unpick.
+    /// </remarks>
+    public const string RaptorCorpus = "raptorcorpus";
+
+    /// <summary>
+    /// RAPTOR's per-document tree — <c>TreeScope = PerDocument</c>, <c>Blend</c>, top-6.
+    /// </summary>
+    /// <remarks>
+    /// The behaviour that shipped before #340, kept selectable rather than deleted precisely so
+    /// this comparison could be run. <c>raptorcorpus − raptor</c> is what the 6.2.3 breaking change
+    /// bought, on the corpus it was justified against — the number #331 was filed on and nobody has.
+    /// </remarks>
+    public const string Raptor = "raptor";
+
+    /// <summary>
+    /// The same corpus store as <see cref="RaptorCorpus"/>, with every summary chunk dropped
+    /// before the top-6 is taken.
+    /// </summary>
+    /// <remarks>
+    /// <b>A validation gate before it is a result.</b> Against <see cref="Dense"/> it should be
+    /// ≈ 0: both see the same article chunks, so a difference means the corpora diverged and no
+    /// other figure in the table means anything. Against <see cref="RaptorCorpus"/> it prices what
+    /// the summaries do to the answer — negative means displacement, the graph path's finding
+    /// (#247) reproduced for RAPTOR.
+    /// </remarks>
+    public const string RaptorFiltered = "raptorfiltered";
+
+    /// <summary>
+    /// The corpus store under <c>Boost</c> at the shipped 1.2, <b>after</b> Phase 6.2.4's
+    /// over-fetch fix.
+    /// </summary>
+    /// <remarks>
+    /// <b>Measures a working <c>Boost</c>, not the broken one.</b> Before 6.2.4 the behaviour saw
+    /// only the truncated top-k, so it could reorder summaries within the result set but never
+    /// promote one into it — provable from the code, and therefore not worth an answer arm.
+    /// <c>raptorboost − raptorcorpus</c> is the question reading cannot answer: does promoting
+    /// summaries into the context actually help?
+    /// </remarks>
+    public const string RaptorBoost = "raptorboost";
+
+    public static readonly IReadOnlyList<string> All =
+        [Dense, Control, Local, Global, Filtered, LocalSpec, RaptorCorpus, Raptor, RaptorFiltered, RaptorBoost];
 }

@@ -434,10 +434,15 @@ refuse-on-miss by default; the variables below exist so filling that cache is an
 `RAGNET_GRAPHRAG_ANSWERS_GENERATE` switches the cache to fill mode and requires `OPENROUTER_API_KEY`;
 `RAGNET_GRAPHRAG_ANSWERS_MAX_QUERIES` bounds the run to N queries stratified by type — the pilot the
 design calls for before the full run — and `RAGNET_GRAPHRAG_ANSWERS_ARMS` restricts the arms
-(`dense`, `local`, `global`). All three read only by that class; none is set by any workflow, and the
-nightly never spends. The pilot, then the full run, on a machine holding the extraction and report
-caches (the case is opt-in through the `multihop-rag` / `GraphRag` budget cell like the rest of the
-graph work):
+(`dense`, `control`, `local`, `global`, `filtered`, `localspec`, `raptorcorpus`, `raptor`,
+`raptorfiltered`, `raptorboost` — the full, current list is `AnswerArm.All`). Leaving it unset does
+**not** mean every one of those ten runs: the default selection also drops any arm
+`MultiHopRagAnswerReproduction` has no recorded figure for yet — the four RAPTOR arms, until Phase
+6.2.1's sweep pins them — and says on the transcript what it skipped and why. Naming an arm
+explicitly here always runs it, pinned or not. All three variables are read only by that class; none
+is set by any workflow, and the nightly never spends. The pilot, then the full run, on a machine
+holding the extraction and report caches (the case is opt-in through the `multihop-rag` / `GraphRag`
+budget cell like the rest of the graph work):
 
 ```bash
 # Pilot: 100 stratified queries, all three arms, generating what the cache lacks (~$1 derived).
