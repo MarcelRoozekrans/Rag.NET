@@ -44,6 +44,38 @@ public sealed class RaptorOptions
     internal bool MaxClustersIsSet() => MaxClusters is not null;
 
     /// <summary>
+    /// The largest number of chunks a cluster should hold, which bounds how much text one
+    /// summarisation prompt can contain. Default: 100.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is a floor on the cluster count, not a cap.</b> <c>SelectClusterCount</c> computes
+    /// <c>ceil(count / TargetClusterSize)</c> and never chooses a <c>k</c> below it, so no cluster
+    /// exceeds this size. Below the target the option does nothing: the floor is 1, and BIC picks
+    /// <c>k</c> exactly as it did before this option existed.
+    /// </para>
+    /// <para>
+    /// <b>Why it exists.</b> Before it, <c>k</c> was capped at 10 per level regardless of the
+    /// level's size, and the joined cluster text had no bound at all. On a 17,648-chunk corpus the
+    /// smallest possible largest cluster was 1,765 chunks — about 730,000 characters, roughly
+    /// 183,000 tokens against a 128,000-token context. The tree could not be built at any <c>k</c>
+    /// the cap allowed (#345).
+    /// </para>
+    /// <para>
+    /// <b>It counts chunks, not tokens.</b> At the stock <c>ChunkingOptions.MaxChunkSize</c> of 512
+    /// characters, 100 chunks is at most ~51,000 characters — comfortably inside a 128,000-token
+    /// context. A larger chunk size, or a model with a smaller context, wants a smaller target.
+    /// </para>
+    /// <para>
+    /// Must be greater than 1 — enforced by the validation attribute. A target of 1 would put every
+    /// chunk in its own cluster, which is #333's degenerate shape reached from the other direction
+    /// and a level that never reduces.
+    /// </para>
+    /// </remarks>
+    [GreaterThan(1)]
+    public int TargetClusterSize { get; set; } = 100;
+
+    /// <summary>
     /// Cap recursion depth. Null = recurse until a level can no longer be usefully split. Default:
     /// null.
     /// <para>
