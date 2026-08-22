@@ -118,7 +118,8 @@ rag.UseRaptor(
         options.Enabled = true;                  // Toggle RAPTOR on/off
         options.MinChunksForRaptor = 5;          // Skip for small documents
         options.ReducedDimensionality = 10;      // UMAP target dims — must be greater than 0
-        options.MaxClusters = null;              // null = BIC auto-selects; when set, must be greater than 1
+        options.MaxClusters = null;              // null = BIC auto-selects; when set, must be greater than 1 — yields to TargetClusterSize if honouring it would exceed the target
+        options.TargetClusterSize = 100;         // Floor on cluster count — bounds the average cluster size, not each cluster's max; must be greater than 1
         options.MaxTreeDepth = null;             // null = recurse until a level can no longer be usefully split; when set, must be greater than 0
         options.StoreLeafChunks = true;          // Keep originals alongside summaries — must stay true under Corpus scope
         options.SummaryChatClient = cheapModel;  // Optional: cheaper model for summaries
@@ -243,6 +244,40 @@ options.Mode = RaptorRetrievalMode.Filter;
 options.MaxRaptorLevel = 0;
 ```
 
+## Cluster Size
+
+`RaptorOptions.TargetClusterSize` is a floor on how many clusters a level splits into, so that a
+summarisation prompt does not grow unboundedly with the corpus. Default: 100 chunks.
+
+**What it guarantees, precisely — a floor on the count, not a cap on the size.**
+`SelectClusterCount` computes `ceil(count / TargetClusterSize)` and never chooses a cluster count
+`k` below it, which guarantees at least that many clusters and therefore an *average* cluster size
+at or under the target. It does not guarantee every individual cluster is: GMM assignment is free
+to put a disproportionate share of a level's chunks into one component and spread the rest thinly,
+and nothing here stops that — an individual cluster may still exceed the target when assignment is
+unbalanced. A hard per-cluster bound would need clusters split after assignment, which this
+deliberately does not do. Whether that is needed in practice is a question for measurement on real
+corpora, not an assumption to make ahead of the data.
+
+**Why it exists.** Before it, `k` was capped at 10 per level regardless of the level's size, and
+the joined cluster text had no bound at all. On a 17,648-chunk corpus the smallest possible largest
+cluster was 1,765 chunks — about 730,000 characters, roughly 183,000 tokens against a 128,000-token
+context. The tree could not be built at any `k` the cap allowed (#345). The floor materially
+reduces the expected maximum — on a balanced split, from ~1,765 chunks down to ~100 at this
+option's default — even though it cannot guarantee it.
+
+**It counts chunks, not tokens.** At the stock `ChunkingOptions.MaxChunkSize` of 512 characters,
+100 chunks is at most ~51,000 characters — comfortably inside a 128,000-token context, assuming a
+roughly balanced split. A larger chunk size, a model with a smaller context, or evidence of
+unbalanced clustering all want a smaller target.
+
+**Below the target, nothing changes.** `SelectClusterCount`'s floor is 1 below
+`TargetClusterSize`'s threshold; BIC picks `k` exactly as it did before this option existed.
+
+```csharp
+options.TargetClusterSize = 100; // Floor on cluster count — must be greater than 1
+```
+
 ## Known Limitations
 
 These apply under `Corpus` scope. Both are open issues, not this guide's suggestion for how to
@@ -300,30 +335,6 @@ Two more facets of the same root cause:
 
 Not fixed in this phase; #336 tracks it.
 
-### `Corpus` scope cannot build a tree over a corpus of more than roughly a thousand chunks, at the shipped default (#345)
-
-This is user-facing on the **default configuration** — nobody has to opt into anything to hit it.
-
-`MaxClusters` defaults to `null`, so `SelectClusterCount` falls back to
-`GaussianMixtureModel.SelectK(reduced, maxK: Min(count, 10))` — every level is capped at **10**
-clusters, regardless of how large the corpus is. `SummarizeClusterAsync` then hands the whole
-cluster's concatenated text to the LLM in one call: `ConcatenateChunkTexts` joins every child
-chunk's text with no length bound at all.
-
-Put a number on it. Chunks are at most 512 **characters** (`ChunkingOptions.MaxChunkSize`), so a
-typical chunk is roughly 407 characters — about 100 tokens. A corpus of 17,648 chunks (MultiHop-RAG's
-609 articles under the real chunker) split into 10 level-1 clusters puts at least
-⌈17,648 / 10⌉ = **1,765 chunks** in the largest one — **≈730,000 characters, ≈183,000 tokens** — in a
-single summarisation prompt. Against `openai/gpt-4o-mini`'s 128k-token context window, the floor
-case (the *smallest* the largest cluster can be, evenly split) already exceeds the limit by roughly
-1.4×. This is not a tail risk: it is the arithmetic of the default cap against any corpus above
-roughly a thousand chunks, and it gets worse as the corpus grows because the cap does not.
-
-There is currently no workaround that does not change what is being measured: a smaller corpus, a
-model with a longer context window, or setting `MaxClusters` **lower still** all sidestep the
-number without fixing the mechanism, and the last one makes it worse (see the corrected advice
-under [Troubleshooting](#troubleshooting) below). Not fixed in this phase; #345 tracks it.
-
 ## Troubleshooting
 
 **RAPTOR is not creating any summary chunks**
@@ -335,9 +346,14 @@ under [Troubleshooting](#troubleshooting) below). Not fixed in this phase; #345 
 **Too many/few clusters**
 - `MaxClusters` caps how many clusters a level may split *into* — it does not cap how large any one
   cluster is. A *lower* `MaxClusters` forces the same chunks into **fewer, larger** clusters, not
-  smaller ones; if clusters already feel too big, lowering it makes that worse, not better. See
-  [#345 above](#corpus-scope-cannot-build-a-tree-over-a-corpus-of-more-than-roughly-a-thousand-chunks-at-the-shipped-default-345)
-  for the case — the shipped default — where this is not a tuning nuisance but a hard failure.
+  smaller ones; if clusters already feel too big, lowering it makes that worse, not better.
+- **The cap yields to `TargetClusterSize`.** Where honouring `MaxClusters` would produce a cluster
+  averaging above `TargetClusterSize`, RAPTOR uses the larger, `TargetClusterSize`-derived count
+  instead — a documented cap silently exceeded with no way to find out why would be worse than one
+  that is overridden visibly. When this happens, the `ragnet.raptor.summarize` span
+  carries `raptor.cluster.maxclusters.overridden = true` (see [OpenTelemetry
+  Integration](../reference/opentelemetry.md#satellite-spans)). See [Cluster Size](#cluster-size)
+  for what `TargetClusterSize` guarantees and does not.
 - Adjust `ReducedDimensionality` — lower values = coarser clustering
 
 **Summaries are too generic**
