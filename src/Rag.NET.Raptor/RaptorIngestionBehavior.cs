@@ -356,12 +356,13 @@ public sealed class RaptorIngestionBehavior(
         // k = n for distinct points because a singleton cluster's variance floors to 1e-6 and its
         // log-density then dwarfs the BIC penalty. This guard is deliberately written against the
         // symptom rather than that cause, so a future clustering regression of the same shape is
-        // bounded too. The MaxClusters branch above can no longer trigger this: Min(..., count - 1)
-        // keeps its k strictly below count, so only auto-selected k reaches here — and today even
-        // that path cannot: GaussianMixtureModel.SelectK's own IsDegenerateFit rejects a k = n fit
-        // before returning, so this guard is unreachable by construction as of #333's fix. Kept
-        // anyway, deliberately, as insurance against a future regression in that rejection rather
-        // than as a check expected to fire.
+        // bounded too. It is unreachable twice over today: the Min(k, count - 1) clamp just above
+        // keeps every branch's k strictly below count regardless of which one produced it — not
+        // only the MaxClusters branch in ComputeRawClusterCount below, which was already clamped
+        // to count - 1 on its own — and even without that clamp, GaussianMixtureModel.SelectK's
+        // own IsDegenerateFit rejects a k = n fit before returning, so auto-selected k could not
+        // reach here either as of #333's fix. Kept anyway, deliberately, as insurance against a
+        // future regression in either of those rather than as a check expected to fire.
         if (k >= count)
         {
             activity?.SetTag("raptor.cluster.degenerate", true);
@@ -384,9 +385,11 @@ public sealed class RaptorIngestionBehavior(
     /// <returns>The candidate cluster count, not yet clamped to <c>count - 1</c>.</returns>
     private int ComputeRawClusterCount(float[][] reduced, int count, System.Diagnostics.Activity? activity)
     {
-        // The smallest k that keeps every cluster at or under the target size. This is a FLOOR,
-        // not a cap: below the target it is 1 and changes nothing, so BIC keeps choosing exactly
-        // as it did before this existed.
+        // The smallest k that keeps the level's average cluster size at or under the target —
+        // not a per-cluster bound; GMM assignment can still put more than the target into one
+        // cluster and less into another (see RaptorOptions.TargetClusterSize's remarks). This is
+        // a FLOOR, not a cap: below the target it is 1 and changes nothing, so BIC keeps choosing
+        // exactly as it did before this existed.
         var sizeFloor = (int)System.Math.Ceiling(count / (double)options.TargetClusterSize);
 
         if (options.MaxClusters.HasValue && options.MaxClusters.Value >= sizeFloor)

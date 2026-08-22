@@ -130,6 +130,29 @@ Replacing BIC everywhere would impose a fan-out on levels small enough for BIC t
 honestly. The floor changes behaviour only where the current behaviour is broken, which is also what
 makes the blast radius reviewable.
 
+### Correction, 2026-08-22 — what the floor actually guarantees
+
+The Task 2 review found that this section, and the option's doc comment derived from it, claim more
+than the mechanism delivers. **`k >= ceil(count / TargetClusterSize)` bounds the *average* cluster
+size, not the maximum.** GMM assignment is free to put a disproportionate share of the points into
+one component; nothing in a floor on `k` prevents that.
+
+What is true:
+
+- The floor guarantees **at least** `ceil(count / target)` clusters.
+- It **materially reduces the expected maximum** — at the scale that motivated #345, from ~1,765
+  chunks on a balanced split to ~100.
+- An individual cluster **may still exceed the target** if the assignment is unbalanced.
+
+A hard bound would require splitting oversized clusters *after* assignment. This design deliberately
+does not, and whether it is needed is a question **the measurement can answer**: if real corpora
+cluster evenly the floor suffices, and if they do not, the evidence will say so. Adding the split
+speculatively would be a second mechanism justified by nothing.
+
+Recorded rather than quietly reworded, because the overclaim reached the shipped XML docs before it
+was caught, and a reader comparing the two should see that it was corrected rather than wonder which
+is current.
+
 ## §2 — The option
 
 ```csharp

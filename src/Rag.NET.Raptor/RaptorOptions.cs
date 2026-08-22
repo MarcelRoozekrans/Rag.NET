@@ -49,22 +49,33 @@ public sealed class RaptorOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>This is a floor on the cluster count, not a cap.</b> <c>SelectClusterCount</c> computes
-    /// <c>ceil(count / TargetClusterSize)</c> and never chooses a <c>k</c> below it, so no cluster
-    /// exceeds this size. Below the target the option does nothing: the floor is 1, and BIC picks
-    /// <c>k</c> exactly as it did before this option existed.
+    /// <b>This is a floor on the cluster count, not a cap — and it bounds the average cluster
+    /// size, not the maximum.</b> <c>SelectClusterCount</c> computes
+    /// <c>ceil(count / TargetClusterSize)</c> and never chooses a <c>k</c> below it, which
+    /// guarantees at least that many clusters and therefore an <i>average</i> cluster at or under
+    /// this size. It does not guarantee every individual cluster is: GMM assignment is free to put
+    /// most of a level's chunks into one component and spread the rest thinly, and nothing here
+    /// stops that. A hard per-cluster bound would need clusters split after assignment, which this
+    /// deliberately does not do — see below. Below the target the option does nothing: the floor is
+    /// 1, and BIC picks <c>k</c> exactly as it did before this option existed.
     /// </para>
     /// <para>
     /// <b>Why it exists.</b> Before it, <c>k</c> was capped at 10 per level regardless of the
     /// level's size, and the joined cluster text had no bound at all. On a 17,648-chunk corpus the
     /// smallest possible largest cluster was 1,765 chunks — about 730,000 characters, roughly
     /// 183,000 tokens against a 128,000-token context. The tree could not be built at any <c>k</c>
-    /// the cap allowed (#345).
+    /// the cap allowed (#345). The floor materially reduces the expected maximum — on a balanced
+    /// split, from ~1,765 chunks down to ~100 at this option's default — even though it cannot
+    /// guarantee it. Whether that reduction is enough in practice is a question for measurement on
+    /// real corpora: if clusters come out roughly even, the floor is sufficient on its own; if they
+    /// come out lopsided, that is evidence a hard split is needed, not an assumption to make ahead
+    /// of the data.
     /// </para>
     /// <para>
     /// <b>It counts chunks, not tokens.</b> At the stock <c>ChunkingOptions.MaxChunkSize</c> of 512
     /// characters, 100 chunks is at most ~51,000 characters — comfortably inside a 128,000-token
-    /// context. A larger chunk size, or a model with a smaller context, wants a smaller target.
+    /// context, assuming a roughly balanced split. A larger chunk size, a model with a smaller
+    /// context, or evidence of unbalanced clustering all want a smaller target.
     /// </para>
     /// <para>
     /// Must be greater than 1 — enforced by the validation attribute. A target of 1 would put every

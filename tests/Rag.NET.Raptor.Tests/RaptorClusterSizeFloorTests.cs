@@ -7,7 +7,12 @@ namespace Rag.NET.Raptor.Tests;
 
 /// <summary>
 /// Covers <c>RaptorIngestionBehavior.SelectClusterCount</c>'s size floor (#345): the smallest
-/// <c>k</c> that keeps every cluster at or under <see cref="RaptorOptions.TargetClusterSize"/>.
+/// <c>k</c> the floor allows never drops below
+/// <c>ceil(count / TargetClusterSize)</c>, so a level always produces at least that many
+/// clusters and its <i>average</i> cluster is at or under
+/// <see cref="RaptorOptions.TargetClusterSize"/>. This is not a hard per-cluster bound: GMM
+/// assignment can still put more than the target into one cluster and less into another. See
+/// <see cref="RaptorOptions.TargetClusterSize"/>'s remarks for the full guarantee.
 /// </summary>
 [Collection("Telemetry")]
 public class RaptorClusterSizeFloorTests
@@ -15,11 +20,14 @@ public class RaptorClusterSizeFloorTests
     private readonly RaptorTestContext _helpers = new();
 
     [Fact]
-    public async Task ALevelLargerThanTheTarget_ProducesNoClusterAboveIt()
+    public async Task ALevelLargerThanTheTarget_ProducesAtLeastTheFloorOfClusters()
     {
         // 600 leaves at a target of 100 needs at least 6 clusters. Before the floor, k was capped
-        // at 10 by BIC's maxK and could be as low as 2 — a 300-chunk cluster whose joined text has
-        // no bound at all (#345). The corpus case is 17,648 chunks against the same cap.
+        // at 10 by BIC's maxK and could be as low as 2 — a 300-chunk average cluster size with no
+        // bound on any individual cluster's size (#345). The corpus case is 17,648 chunks against
+        // the same cap. This asserts the cluster count the floor guarantees, not any individual
+        // cluster's size: the floor bounds the average, not the maximum (see
+        // RaptorOptions.TargetClusterSize's remarks).
         _helpers.SetupChatClient("a summary");
         _helpers.SetupEmbedder(dims: 8);
         var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, TargetClusterSize = 100, MaxTreeDepth = 1 };
