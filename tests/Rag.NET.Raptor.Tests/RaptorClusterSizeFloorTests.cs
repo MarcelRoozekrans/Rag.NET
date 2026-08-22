@@ -93,6 +93,44 @@ public class RaptorClusterSizeFloorTests
     }
 
     [Fact]
+    public async Task TheSummarizeSpanRecordsTheLargestClustersSize()
+    {
+        // The floor bounds the AVERAGE cluster size, not the maximum — GMM can still put a
+        // disproportionate share of the level into one component. This package deliberately does
+        // not split oversized clusters after assignment, on the grounds that whether it is needed
+        // is a question measurement answers. This tag is how it gets answered: without it, a run
+        // that succeeds says nothing about its margin and a run that fails says only that it did.
+        var activities = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = s => string.Equals(s.Name, "Rag.NET", StringComparison.Ordinal),
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = activities.Add,
+        };
+        ActivitySource.AddActivityListener(listener);
+        using var parent = new Activity("test-parent").Start();
+
+        _helpers.SetupChatClient("a summary");
+        _helpers.SetupEmbedder(dims: 8);
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, TargetClusterSize = 100, MaxTreeDepth = 1 };
+        var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 600);
+
+        await behavior.HandleAsync(ctx, CancellationToken.None, static (_, _) => ValueTask.FromResult(
+            new IngestionResult { DocumentId = new DocumentId("test-doc"), ChunksStored = 0 }));
+
+        var ours = activities.Where(a => a.TraceId == parent.TraceId).ToList();
+        var summarize = ours.Single(a => string.Equals(a.OperationName, "ragnet.raptor.summarize", StringComparison.Ordinal));
+
+        var largest = summarize.GetTagItem("raptor.cluster.max.size");
+        Assert.NotNull(largest);
+
+        // A real size, not a placeholder: at least one chunk, and never more than the level itself.
+        var size = Assert.IsType<int>(largest);
+        Assert.InRange(size, 1, 600);
+    }
+
+    [Fact]
     public async Task ALevelFarAboveBicMaxK_DerivesKDirectlyWithoutFitting()
     {
         // 600 leaves at a target of 50 gives sizeFloor = 12, which is above BicMaxK (10) — the

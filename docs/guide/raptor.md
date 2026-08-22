@@ -162,14 +162,29 @@ RAPTOR adds LLM calls at ingestion time:
 |---------------|-----------------|---------------------|---------------------|
 | 5-10 chunks | 2-3 | 2-3 | 3-4 |
 | 20-50 chunks | 3-6 | 3-6 | 6-9 |
-| 100+ chunks | at least `ceil(count / TargetClusterSize)` | at least `ceil(count / TargetClusterSize)` | roughly double that |
+| 100+ chunks | about `ceil(count / TargetClusterSize)` | about `ceil(count / TargetClusterSize)` | plus `ceil(level-1 count / TargetClusterSize)` |
 
 The last row used to read "5-10 clusters, 5-10 LLM calls" — that was the old `BicMaxK = 10` cap
 this package removed (#345), not a bound that still holds. Past `TargetClusterSize` (100 chunks by
-default), a level of *n* chunks makes at least `ceil(n / TargetClusterSize)` calls, growing with
-corpus size rather than capping at 10. Under the default `Corpus` scope, a 17,648-chunk corpus goes
-from the old ~10-40 total calls to roughly 190 — size your LLM budget from `TargetClusterSize`, not
-from this table's earlier rows. See [Cluster Size](#cluster-size).
+default) the cluster count grows with the level rather than capping at 10.
+
+**A second level costs far less than the first, not double it**, because it clusters the *summaries*
+the first level produced, not the chunks. Worked through at the default target of 100 over a
+17,648-chunk corpus:
+
+| Level | Input | Calls |
+|---|---|---|
+| 1 | 17,648 chunks | 177 |
+| 2 | 177 summaries | 2 |
+| **Total** | | **179** |
+
+So the old ~10-40 total calls become ~179 — an order of magnitude more, and worth budgeting for, but
+the growth is in level 1 alone. Size your LLM budget from `TargetClusterSize`, not from this table's
+earlier rows.
+
+*"About"* rather than *"at least"* is deliberate: past `BicMaxK` the cluster count is set to
+`ceil(count / TargetClusterSize)` exactly, and an empty GMM component can leave one fewer cluster
+than that. See [Cluster Size](#cluster-size) for what the floor does and does not guarantee.
 
 **Mitigation strategies:**
 - **Raise `TargetClusterSize`** — it is the primary cost lever past the default cluster count: doubling it roughly halves the number of LLM calls a large level makes, at the cost of a larger average cluster per summary
