@@ -39,6 +39,15 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Open Decisions
 
+- ~~Does #345's average-only cluster bound need a post-assignment split?~~ **Answered 2026-08-23 by
+  measurement: no.** The first corpus-scale RAPTOR tree (17,648 chunks, 183 summaries, depth 3,
+  1,368 s) puts 549 chunks in its largest level-1 cluster against a mean of 99.7 — **5.51x
+  imbalance**, so the floor demonstrably does not bound the maximum. It still fits: ~57k tokens
+  against 128k, 2.25x headroom, 44% of the imbalance budget consumed. The split stays unbuilt on
+  evidence. **The user-facing consequence is that raising `TargetClusterSize` has ~2.25x of room,
+  not the ~12.6x "average 100 against a 128k context" implies** — recorded in
+  `docs/guide/raptor.md`'s Cluster Size section.
+
 - ~~Does 6.1's live-service recording gate v1.0?~~ **Decided 2026-08-20: yes, it gates.** Against
   the re-plan's own recommendation, which had argued for `<VerifiedByReason>` on the grounds that a
   criterion satisfiable only by credentials that may never arrive is not falsifiable. 6.1's *work*
