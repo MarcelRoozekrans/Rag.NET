@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.AI;
 using Rag.NET.Benchmarks.Quality;
 using Rag.NET.Benchmarks.Quality.GraphExtractions;
@@ -68,6 +69,27 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// </summary>
 internal sealed class RaptorRun : IAsyncDisposable
 {
+    /// <summary>The telemetry source <c>Rag.NET.Raptor</c> writes its summarise spans to.</summary>
+    private const string RaptorTelemetrySourceName = "Rag.NET";
+
+    /// <summary>
+    /// Names the trace that scopes one build, so concurrent runs cannot cross-record.
+    /// </summary>
+    /// <remarks>
+    /// A <see langword="const"/> rather than <c>BuildScopeSource.Name</c>, and the listener below
+    /// compares against it directly. Constructing an <see cref="ActivitySource"/> notifies every
+    /// registered listener synchronously, so a <c>ShouldListenTo</c> that reads
+    /// <c>BuildScopeSource</c> re-enters this type's static constructor while that very field is
+    /// still being assigned — a <c>TypeInitializationException</c> on the first build.
+    /// </remarks>
+    private const string BuildScopeSourceName = "Rag.NET.Benchmarks.RaptorRun";
+
+    private static readonly ActivitySource BuildScopeSource = new(BuildScopeSourceName);
+
+    private readonly List<LevelShape> _levels = [];
+
+    private ActivityTraceId? _buildTraceId;
+
     private readonly RaptorTreeScope _scope;
     private readonly CachingEmbedder _embedder;
     private readonly CountingChatClient _summariser;
@@ -137,6 +159,28 @@ internal sealed class RaptorRun : IAsyncDisposable
     {
         var run = new RaptorRun(scope, generator, embeddings, summariser, leafStorePath);
 
+        // The cluster shape of every level, read off the `ragnet.raptor.summarize` span that
+        // already carries it. #345's floor bounds a level's AVERAGE cluster size and explicitly
+        // not its maximum, and that design deferred "is the average enough on a real corpus?" to
+        // measurement. This is that measurement. The tag has existed since #345 and nothing
+        // outside Rag.NET.Raptor.Tests had ever read it, so a corpus run could report that it
+        // succeeded while saying nothing about the margin it succeeded by.
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source =>
+                string.Equals(source.Name, RaptorTelemetrySourceName, StringComparison.Ordinal)
+                || string.Equals(source.Name, BuildScopeSourceName, StringComparison.Ordinal),
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = run.CaptureLevel,
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        // Scoped by trace, not by operation name: an ActivityListener is process-wide, so two
+        // RaptorRuns building at once would otherwise each record the other's levels — and the
+        // corpus and per-document arms of one sweep are exactly two such runs.
+        using var buildScope = BuildScopeSource.StartActivity("ragnet.benchmark.raptor.build");
+        run._buildTraceId = buildScope?.TraceId;
+
         try
         {
             if (run._leafStore is not null)
@@ -193,6 +237,85 @@ internal sealed class RaptorRun : IAsyncDisposable
 
     /// <summary>Gets how many requests <see cref="RaptorIngestionBehavior"/> sent the summariser.</summary>
     public long SummariserCalls => _summariser.Calls;
+
+    /// <summary>
+    /// Gets the cluster shape of every tree level this run built, newest level last.
+    /// </summary>
+    /// <remarks>
+    /// Empty when no tree was built. Under <see cref="RaptorTreeScope.Corpus"/> this has one entry
+    /// per level of the single rebuild; under <see cref="RaptorTreeScope.PerDocument"/> it
+    /// accumulates every document's levels, so <see cref="LevelShape.Level"/> repeats.
+    /// </remarks>
+    public IReadOnlyList<LevelShape> Levels
+    {
+        get
+        {
+            lock (_levels)
+            {
+                return [.. _levels];
+            }
+        }
+    }
+
+    /// <summary>The cluster shape of one tree level, read off its summarise span.</summary>
+    /// <param name="Level">The tree level, 1 for the first level above the leaves.</param>
+    /// <param name="ChunkCount">How many chunks entered this level.</param>
+    /// <param name="ClusterCount">How many clusters came out.</param>
+    /// <param name="MaxClusterSize">The largest cluster's chunk count.</param>
+    /// <param name="MaxClustersOverridden">Whether the size floor overrode a configured cap.</param>
+    /// <param name="Degenerate">Whether clustering collapsed and the level was not reduced.</param>
+    public sealed record LevelShape(
+        int Level,
+        int ChunkCount,
+        int ClusterCount,
+        int MaxClusterSize,
+        bool MaxClustersOverridden,
+        bool Degenerate)
+    {
+        /// <summary>
+        /// Gets how many times larger the biggest cluster is than this level's mean cluster.
+        /// </summary>
+        /// <remarks>
+        /// <c>1.0</c> is a perfectly even split. This is the number #345's design could not
+        /// predict: the floor guarantees the mean, so everything above <c>1.0</c> is the
+        /// assignment's own imbalance, and a level whose largest cluster runs far ahead of the
+        /// mean is the case that would need post-assignment splitting.
+        /// </remarks>
+        public double Imbalance =>
+            ClusterCount <= 0 || ChunkCount <= 0
+                ? 0
+                : MaxClusterSize / ((double)ChunkCount / ClusterCount);
+    }
+
+    /// <summary>Records one level's shape, if the span belongs to this run's build.</summary>
+    private void CaptureLevel(Activity stopped)
+    {
+        if (!string.Equals(stopped.OperationName, "ragnet.raptor.summarize", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (_buildTraceId is { } trace && stopped.TraceId != trace)
+        {
+            return;
+        }
+
+        var shape = new LevelShape(
+            ReadIntTag(stopped, "raptor.tree.level") ?? -1,
+            ReadIntTag(stopped, "raptor.chunk.count") ?? -1,
+            ReadIntTag(stopped, "raptor.cluster.count") ?? 0,
+            ReadIntTag(stopped, "raptor.cluster.max.size") ?? 0,
+            stopped.GetTagItem("raptor.cluster.maxclusters.overridden") is true,
+            stopped.GetTagItem("raptor.cluster.degenerate") is true);
+
+        lock (_levels)
+        {
+            _levels.Add(shape);
+        }
+    }
+
+    private static int? ReadIntTag(Activity activity, string name) =>
+        activity.GetTagItem(name) as int?;
 
     /// <summary>Runs RAPTOR retrieval for one query and returns what it found.</summary>
     /// <param name="query">The query text.</param>

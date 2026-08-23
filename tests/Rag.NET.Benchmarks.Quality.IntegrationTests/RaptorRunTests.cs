@@ -127,6 +127,37 @@ public sealed class RaptorRunTests : IDisposable
     }
 
     [Fact]
+    public async Task BuildAsync_CapturesEveryLevelsClusterShape_IncludingItsImbalance()
+    {
+        // The measurement #345's design deferred to measurement. The floor guarantees a level's
+        // MEAN cluster size and says outright that it does not bound the maximum, so the only
+        // thing that can answer "is the mean enough on a real corpus?" is the largest cluster
+        // against that mean. `raptor.cluster.max.size` has carried it since #345 and nothing
+        // outside Rag.NET.Raptor.Tests read it, which is why a corpus run could report success
+        // and reveal nothing about the margin. Asserted here at 120 leaves so a broken capture
+        // fails in seconds rather than 25 minutes into a corpus build.
+        var documents = FakeDocuments(count: 40, chunksEach: 3);
+
+        await using var run = await BuildRunAsync(documents, RaptorTreeScope.Corpus);
+
+        var levels = run.Levels;
+        Assert.NotEmpty(levels);
+
+        var first = levels[0];
+        Assert.Equal(120, first.ChunkCount);
+        Assert.True(first.ClusterCount > 0, $"level {first.Level} recorded {first.ClusterCount} clusters");
+
+        // A real size, not a default: at least one chunk, never more than the level itself.
+        Assert.InRange(first.MaxClusterSize, 1, first.ChunkCount);
+
+        // The largest cluster cannot be smaller than the mean, so anything below 1.0 means the
+        // figure was not read off the span at all.
+        Assert.True(
+            first.Imbalance >= 1.0,
+            $"imbalance {first.Imbalance:F2}x is below an even split, so the tag was not read");
+    }
+
+    [Fact]
     public async Task BuildAsync_PerDocumentScope_BuildsDuringIngestionAndNeverRebuilds()
     {
         var documents = FakeDocuments(count: 40, chunksEach: 8); // 8 clears MinChunksForRaptor's 5
