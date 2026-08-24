@@ -275,9 +275,39 @@ public sealed class BeirGraphRagAnswerTests
     }
 
     /// <summary>Writes one <see cref="RaptorRun"/>'s counters to <paramref name="output"/>, labelled.</summary>
-    private static void LogRaptorRunCounters(ITestOutputHelper output, string label, RaptorRun run) =>
+    private static void LogRaptorRunCounters(ITestOutputHelper output, string label, RaptorRun run)
+    {
         output.WriteLine(FormattableString.Invariant(
             $"RaptorRun[{label}]: LeafCount={run.LeafCount}, SummaryCount={run.SummaryCount}, CorpusRebuildCount={run.CorpusRebuildCount}, SummariserCalls={run.SummariserCalls}"));
+
+        // Without this the run reports that the tree built and nothing about how close it came to
+        // not building. #345's floor bounds the mean cluster size and not the maximum, so the
+        // margin is exactly the imbalance figure below; the design left "is the mean enough?" to
+        // this measurement.
+        var levels = run.Levels;
+        if (levels.Count == 0)
+        {
+            output.WriteLine(FormattableString.Invariant(
+                $"RaptorRun[{label}]: no summarise spans captured — no level was clustered."));
+            return;
+        }
+
+        foreach (var level in levels)
+        {
+            var flags = string.Concat(
+                level.MaxClustersOverridden ? " MAXCLUSTERS-OVERRIDDEN" : string.Empty,
+                level.Degenerate ? " DEGENERATE" : string.Empty);
+
+            var mean = level.ClusterCount <= 0 ? 0 : (double)level.ChunkCount / level.ClusterCount;
+
+            output.WriteLine(FormattableString.Invariant(
+                $"RaptorRun[{label}]: level {level.Level}: {level.ChunkCount} chunks -> {level.ClusterCount} clusters, largest {level.MaxClusterSize}, mean {mean:F1}, imbalance {level.Imbalance:F2}x{flags}"));
+        }
+
+        var worst = levels.MaxBy(l => l.Imbalance)!;
+        output.WriteLine(FormattableString.Invariant(
+            $"RaptorRun[{label}]: worst imbalance {worst.Imbalance:F2}x at level {worst.Level} (largest cluster {worst.MaxClusterSize} chunks)"));
+    }
 
     /// <summary>
     /// Logs the cumulative RAPTOR summarisation cost, but only when at least one

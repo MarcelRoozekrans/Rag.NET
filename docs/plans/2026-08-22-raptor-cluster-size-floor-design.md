@@ -149,6 +149,35 @@ does not, and whether it is needed is a question **the measurement can answer**:
 cluster evenly the floor suffices, and if they do not, the evidence will say so. Adding the split
 speculatively would be a second mechanism justified by nothing.
 
+### Answered, 2026-08-23 — the measurement ran
+
+Over MultiHop-RAG's 17,648 chunks at `TargetClusterSize = 100`, the first corpus-scale tree this
+package has built:
+
+| level | chunks in | clusters out | mean | largest | imbalance |
+|---|---|---|---|---|---|
+| 1 | 17,648 | 177 | 99.7 | **549** | **5.51x** |
+| 2 | 177 | 4 | 44.2 | 61 | 1.38x |
+| 3 | 4 | 2 | 2.0 | 2 | 1.00x |
+
+183 summaries, depth 3, one rebuild, built in 1,368 s. Reproduced across two runs with an identical
+cluster structure and 183/183 summariser cache hits, so the split is deterministic.
+
+**Both halves of the prediction were wrong in opposite directions, and the conclusion survives.**
+Real corpora do *not* cluster evenly — the largest level-1 cluster is 5.5x the mean, so the section
+above is right that the floor bounds the average and not the maximum, and right to have said so.
+But the overflow threshold at this chunk size is a largest cluster of ~1,259 chunks, and 549 is 44%
+of it: **the floor suffices on its own, with 2.25x headroom.** The post-assignment split stays
+unbuilt, now on evidence rather than on the argument that evidence would decide it.
+
+What the number *does* change is the guidance for raising `TargetClusterSize`: the headroom is
+~2.25x, not the ~12.6x that "average 100 against a 128k context" implies. That is recorded in
+`docs/guide/raptor.md`'s Cluster Size section, since it is a user-facing consequence rather than a
+design note.
+
+The instrument is `RaptorRun.Levels`, which reads the `raptor.cluster.max.size` tag this design
+added and nothing outside `Rag.NET.Raptor.Tests` had ever read.
+
 Recorded rather than quietly reworded, because the overclaim reached the shipped XML docs before it
 was caught, and a reader comparing the two should see that it was corrected rather than wonder which
 is current.
