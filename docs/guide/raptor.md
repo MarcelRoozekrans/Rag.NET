@@ -292,6 +292,28 @@ tracks close to `count / raptor.cluster.count` across real corpora, the floor is
 own; if it runs far above that, that is evidence a hard per-cluster split is needed. See
 [OpenTelemetry Integration](../reference/opentelemetry.md#satellite-spans).
 
+**What that measurement found — the gap is real, and the floor still holds.** Measured 2026-08-23
+over MultiHop-RAG's 17,648 chunks at the default `TargetClusterSize = 100`, the first corpus-scale
+RAPTOR tree this package has built:
+
+| level | chunks in | clusters out | mean | largest | imbalance |
+|---|---|---|---|---|---|
+| 1 | 17,648 | 177 | 99.7 | **549** | **5.51x** |
+| 2 | 177 | 4 | 44.2 | 61 | 1.38x |
+| 3 | 4 | 2 | 2.0 | 2 | 1.00x |
+
+The largest level-1 cluster holds **5.5x the mean**, so the average bound is emphatically not a
+maximum — real corpora do not cluster evenly. It nonetheless fits: 549 chunks is roughly 227,000
+characters, about **57,000 tokens against a 128,000-token context**, leaving 2.25x headroom. **No
+post-assignment split is needed at the default**, which is why one is still not implemented.
+
+**Read this before raising `TargetClusterSize`.** The overflow point at this corpus's chunk size is
+a largest cluster of roughly 1,259 chunks, so the measured 5.51x consumes about **44% of the
+available imbalance budget** — not the ~12.6x a reader would infer from "the average is 100
+against a 128k context". Budget for the largest cluster at several times the target, not for the
+target itself. The figure is one corpus at one chunk size; a corpus that clusters more lopsidedly,
+or larger chunks, moves it.
+
 **Why it exists.** Before it, `k` was capped at 10 per level regardless of the level's size, and
 the joined cluster text had no bound at all. On a 17,648-chunk corpus the smallest possible largest
 cluster was 1,765 chunks — about 730,000 characters, roughly 183,000 tokens against a 128,000-token
