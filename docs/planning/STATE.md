@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-22 (#345 merged; RAPTOR measurement Tasks 4-6 unblocked)
+**Last updated:** 2026-08-24 (cluster imbalance measured at 5.51x and the split settled; branch field corrected)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -117,11 +117,17 @@ Three things govern the run, all in the plan:
 
 ## Working State
 
-**Branch:** `bench/raptor-measurement`, cut from `main` after `c461475d` — 6.2.1's RAPTOR
-measurement (Tasks 1-3 of `docs/plans/2026-08-21-raptor-real-protocol-implementation.md`; Tasks 4-6
-unblocked as of #345's merge, see Recommended Next Step). The earlier `chore/complete-phase-6-2-3` branch this
-section used to name was the state-update-only branch for 6.2.3's merge and is gone; it is not
-this branch.
+**Branch:** `bench/raptor-cluster-shape`, cut from `main` — the cluster-imbalance measurement
+that answered the post-assignment-split question above. **Tasks 1-3 of
+`docs/plans/2026-08-21-raptor-real-protocol-implementation.md` are on `main`**, merged 2026-08-22
+in #347 (`c2d83075`) off the now-superseded `bench/raptor-measurement`; verified on `main` by
+content, not by the PR's MERGED label. Tasks 4-6 are unblocked and not yet started — see
+Recommended Next Step.
+
+**This field has now named a stale branch twice** (`chore/complete-phase-6-2-3`, then
+`bench/raptor-measurement`, each still named here after its PR merged). It goes stale at exactly
+the moment its branch merges, which is the moment nobody is editing this file. Re-read it against
+`git branch --show-current` before trusting it.
 
 **Issues from the 6.2.3 work:** #331, #332, #333 fixed and auto-closed on merge. **#336, #337 and
 #338 remain open by decision**, each documented in `docs/guide/raptor.md`'s Known Limitations:
