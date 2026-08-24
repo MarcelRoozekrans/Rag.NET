@@ -334,7 +334,22 @@ git commit -m "test(benchmarks): dispatch the RAPTOR arms, two ingestions not fo
 
 ### Task 4: The pilot — the gate before spending
 
-**This task spends money.** Roughly 50 queries × 4 new arms, most of which will hit the existing answer cache. Its purpose is to catch setup errors before the full sweep, not to produce a figure.
+**This task spends money.** Its purpose is to catch setup errors before the full sweep, not to produce a figure.
+
+> **COST MODEL CORRECTED 2026-08-24, after an attempt ran 5 hours and was stopped.** This paragraph
+> used to read *"roughly 50 queries × 4 new arms, most of which will hit the existing answer
+> cache"*. **That counted only answer generations (~250 calls) and omitted tree construction, which
+> is where essentially all of the cost is.**
+>
+> The `raptor` arm is the **per-document** control, so evaluating it builds **609 separate trees**,
+> every level of every one an LLM summarisation. Measured: 4,739 calls in 5 hours at a steady
+> 21/min, with an estimated 15-20 hours and order $10-20 still to run. Details in
+> [`2026-08-21-raptor-pilot-notes.md`](./2026-08-21-raptor-pilot-notes.md).
+>
+> **The gate does not need that arm.** `raptorfiltered - dense` uses corpus-scope arms only, and the
+> corpus tree is already built and cached -- so the gate is cheap, and it is the one thing that must
+> hold before any other figure means anything. `raptor` is therefore **dropped from the arm list
+> below**; schedule the per-document build as its own ~15-20 hour job once the gate has held.
 
 **Note for whoever runs this: `Umap.Fit`'s allocation profile may fail before #345's context-length error does.** `Umap.BuildKnnGraph` allocates `new (float, int)[n]` per row — at the corpus's 17,648 leaves that is 141,184 bytes per allocation (over the 85 KB large-object-heap threshold) repeated 17,648 times, roughly 2.5 GB of LOH traffic, on top of ~311M distance evaluations over 384 dimensions and 17,648 delegate-comparison `Array.Sort`s for level 1 alone. This is more likely to surface as gen2 GC thrash or an OOM on the pilot machine than as a clean "context length exceeded" response from the model — expect it, and do not read an OOM here as an unrelated environment problem. Whoever designs #345's fix should see this too: raising `k` so clusters are smaller does not make level 1's UMAP pass any cheaper — the leaf count going into `BuildKnnGraph` is unchanged either way.
 
@@ -361,10 +376,29 @@ Check, and record each in the notes file:
 ```
 RAGNET_BEIR_LONG_RUNS=1 \
 RAGNET_GRAPHRAG_ANSWERS_GENERATE=1 \
-RAGNET_GRAPHRAG_ANSWERS_ARMS=dense,raptorcorpus,raptor,raptorfiltered,raptorboost \
+RAGNET_GRAPHRAG_ANSWERS_ARMS=dense,raptorcorpus,raptorfiltered,raptorboost \
 RAGNET_GRAPHRAG_ANSWERS_MAX_QUERIES=50 \
-dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --filter "FullyQualifiedName~BeirGraphRagAnswerTests"
+tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+  -class '*BeirGraphRagAnswerTests*'
 ```
+
+> **DO NOT use `dotnet test --filter` here. It is silently ignored and runs the whole project.**
+> This project sets `TestingPlatformDotnetTestSupport` with `xunit.v3`, so `dotnet test` routes
+> through xunit's in-process runner, which does not honour the VSTest filter. It emits
+> `warning MTP0001: ... VSTestTestCaseFilter` into the build output and then executes **all 25
+> test classes** -- with `RAGNET_BEIR_LONG_RUNS=1` and `RAGNET_GRAPHRAG_ANSWERS_GENERATE=1` set,
+> exactly the combination that unlocks every expensive test in the project. Observed 2026-08-24: a
+> run launched this way was executing library-comparison sweeps (`arguana-semantic-kernel`,
+> `scifact-ragnet-control`) unrelated to RAPTOR. Nothing failed; the tell was that the process was
+> nearly idle where a RAPTOR tree should saturate a core.
+>
+> Verify the filter narrows before running -- `<exe> -list methods -class '*BeirGraphRagAnswerTests*'`
+> must list **5 methods**, not the whole project.
+>
+> **When stopping a run, kill by assembly name.** The process is
+> `Rag.NET.Benchmarks.Quality.IntegrationTests.exe`, not `dotnet` or `testhost`. On 2026-08-24 two
+> "stopped" runs survived that mistake and were found 90 minutes later at 5.6 CPU-hours and 6.2 GB
+> each, starving their replacement.
 
 **All four variables are load-bearing.** `RAGNET_GRAPHRAG_ANSWERS_GENERATE` is what permits the run to call the model at all — without it the harness replays from cache and generates nothing, so a new arm produces no answers and no figure. `MAX_QUERIES` bounds the run to N queries stratified by type; absent, it runs every query, which is the full sweep rather than the pilot.
 
@@ -413,8 +447,27 @@ git commit -m "docs(plans): RAPTOR pilot — validation gate and derived sweep c
 RAGNET_BEIR_LONG_RUNS=1 \
 RAGNET_GRAPHRAG_ANSWERS_GENERATE=1 \
 RAGNET_GRAPHRAG_ANSWERS_ARMS=raptorcorpus,raptor,raptorfiltered,raptorboost \
-dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --filter "FullyQualifiedName~BeirGraphRagAnswerTests"
+tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+  -class '*BeirGraphRagAnswerTests*'
 ```
+
+> **DO NOT use `dotnet test --filter` here. It is silently ignored and runs the whole project.**
+> This project sets `TestingPlatformDotnetTestSupport` with `xunit.v3`, so `dotnet test` routes
+> through xunit's in-process runner, which does not honour the VSTest filter. It emits
+> `warning MTP0001: ... VSTestTestCaseFilter` into the build output and then executes **all 25
+> test classes** -- with `RAGNET_BEIR_LONG_RUNS=1` and `RAGNET_GRAPHRAG_ANSWERS_GENERATE=1` set,
+> exactly the combination that unlocks every expensive test in the project. Observed 2026-08-24: a
+> run launched this way was executing library-comparison sweeps (`arguana-semantic-kernel`,
+> `scifact-ragnet-control`) unrelated to RAPTOR. Nothing failed; the tell was that the process was
+> nearly idle where a RAPTOR tree should saturate a core.
+>
+> Verify the filter narrows before running -- `<exe> -list methods -class '*BeirGraphRagAnswerTests*'`
+> must list **5 methods**, not the whole project.
+>
+> **When stopping a run, kill by assembly name.** The process is
+> `Rag.NET.Benchmarks.Quality.IntegrationTests.exe`, not `dotnet` or `testhost`. On 2026-08-24 two
+> "stopped" runs survived that mistake and were found 90 minutes later at 5.6 CPU-hours and 6.2 GB
+> each, starving their replacement.
 
 `MAX_QUERIES` is deliberately absent — its absence is what makes this the full sweep. `dense` is omitted deliberately too — it is already pinned at 0.3499 and re-running it spends money to reproduce a known number. The reproduction test in Step 3 checks it instead.
 
