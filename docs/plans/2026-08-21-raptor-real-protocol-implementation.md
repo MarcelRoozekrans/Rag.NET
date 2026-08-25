@@ -393,7 +393,12 @@ tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Be
 > nearly idle where a RAPTOR tree should saturate a core.
 >
 > Verify the filter narrows before running -- `<exe> -list methods -class '*BeirGraphRagAnswerTests*'`
-> must list **5 methods**, not the whole project.
+> must list only this class's methods, not the whole project's 25 classes.
+>
+> **The count is 8, not the 5 this said when written** (checked 2026-08-25). #345 and #360 added
+> guard tests to the class since. Only `Accuracy_AgainstTheGoldAnswers_ThreeArms` spends money;
+> the rest are fast. Read the class names in the listing rather than the count -- a stale number
+> here would either abort a correct run or, worse, be "fixed" by loosening the filter.
 >
 > **When stopping a run, kill by assembly name.** The process is
 > `Rag.NET.Benchmarks.Quality.IntegrationTests.exe`, not `dotnet` or `testhost`. On 2026-08-24 two

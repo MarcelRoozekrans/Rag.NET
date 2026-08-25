@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-25 (6.2.5-6.2.10 built; #381/#382/#383 open or merged; issue sweep done; 6.2.11 added)
+**Last updated:** 2026-08-25 (6.2.5-6.2.11 merged; RAPTOR Task 5 ran and reversed the pilot's headline)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -115,17 +115,20 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Recommended Next Step
 
-**Run Task 5 of `docs/plans/2026-08-21-raptor-real-protocol-implementation.md`** — the full
-2,556-query sweep, ~10,000 generations, roughly 8 hours, and the only thing standing between
-6.2.1 and a publishable RAPTOR figure. **Tasks 1-4 are on `main` and the validation gate held**, so
-the setup is proven and the remaining cost is answer generation alone: zero tree construction, both
-trees cached. It wants an overnight window and a machine nobody else is using — check for orphaned
-runners by the *assembly* name before starting, not by `dotnet`.
+**Decide what to do about the corpus-scope default** — see OPEN DECISION below. Task 5 measured it
+and the answer was not the one #331 assumed; the decision is a design call, not a measurement one,
+and nothing has been changed on the strength of a single corpus.
 
-The alternative, if an overnight window is not available, is **phase 6.2.10** (#353, vector-store
-auto-initialisation), which is small and self-contained.
+**The measurement work still open in 6.2.1** is #176 (78.8% singleton communities, worse than
+filed) and the 17 Done sections that need a pinned figure with a control.
 
-Historical context for the arms, retained: `RaptorOptions.MaxClusters` defaults to `null`, so before
+**The #300 follow-up measurement is still outstanding and still needs an idle machine** — the split
+of `BeirRunBudget`'s 22 m 18 s graph construction between LLM extraction, the `O(occurrences²)`
+description rewriting, and the recompute #302 debounced. It is short; it wants a quiet window, not
+an overnight one. Do not run it beside anything else: three runs on 2026-08-17 disagreed by 6× on
+identical inputs.
+
+Historical context for the arms, retained: Historical context for the arms, retained: `RaptorOptions.MaxClusters` defaults to `null`, so before
 #345's fix `SelectClusterCount` capped every level at `SelectK(maxK: Min(count, 10))` regardless of
 corpus size — over MultiHop-RAG's 17,648 chunks the largest level-1 cluster held at least 1,765
 chunks (≈183k tokens, uncapped in `ConcatenateChunkTexts`) against `gpt-4o-mini`'s 128k context, so
@@ -158,7 +161,7 @@ Three things govern the run, all in the plan:
 
 **Also unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`.
 
-### Task 4 completed 2026-08-24 23:49 and the gate HELD. Task 5 is the outstanding one.
+### Task 4 completed 2026-08-24 23:49 and the gate HELD.
 
 **`raptorfiltered − dense = +0.0000` on all three scoring rules**, confirmed twice — the gate-only
 run at 17:59 and the full five-arm run at 23:49. The corpora did not diverge, so the pilot's figures
@@ -209,6 +212,54 @@ is correct; there is simply far more legitimate work than the plan priced.
 **Next step is the gate, and it is cheap:** run Task 4 with
 `dense,raptorcorpus,raptorfiltered,raptorboost` and check `raptorfiltered − dense ≈ 0`. Only after
 it holds does the ~15-20 hour per-document `raptor` build earn its place as a scheduled job.
+
+### Task 5 ran 2026-08-25 and reversed the pilot's headline.
+
+**The validation gate held exactly at full scale.** `raptorfiltered` reproduced the dense arm to
+four decimals on all three rules — 0.3499 / 0.2603 / 0.3242, the figures pinned 2026-08-15 — so the
+corpora did not diverge and the numbers below measure RAPTOR rather than a setup fault.
+
+| arm | paper | raw | strict | inference |
+| --- | --- | --- | --- | --- |
+| `raptor` (per-document control) | **0.3734** | **0.2860** | **0.3348** | **0.8309** |
+| `raptorcorpus` (shipped default) | 0.3588 | 0.2656 | 0.3322 | 0.7831 |
+| `raptorfiltered` (the gate) | 0.3499 | 0.2603 | 0.3242 | 0.7721 |
+| `raptorboost` | 0.3450 | 0.2634 | 0.3086 | 0.7757 |
+
+Over the **2,255 judged queries** — the denominator every other pin uses; the 301 nulls are scored
+separately as abstention.
+
+**`raptorcorpus − raptor = −0.0146 paper, −0.0204 raw, −0.0027 strict.` Corpus-level clustering is
+worse than the per-document tree it replaced.** McNemar over the paired judged queries: paper
+p=0.0247 (85 corpus wins against 118 per-document), raw p=0.0006 (62 against 108), strict p=0.7372.
+Two of three rules significant, all three signed the same way.
+
+**The 50-query pilot put this at +0.0000 and was underpowered** — which is exactly what Task 5
+existed to find out, and the reason the plan insisted on the full sweep rather than trusting the
+pilot's headline.
+
+**The gap is inference queries**: 0.7831 against the control's 0.8309, while comparison and temporal
+are flat. That is the *opposite* of #331's rationale — corpus-spanning summaries were meant to help
+the multi-hop case they measurably hurt.
+
+**`raptorboost − raptorcorpus` = −0.0137 paper (p=0.0073), −0.0235 strict (p=0.0000).** 6.2.4 fixed
+`Boost` so it could promote summaries at all; this is the first measurement of what it does once it
+works, and it trades accuracy for abstention (51.8% correct null-abstention, the best of the four).
+
+**Cost and shape:** 58 m of generation after a 28 m I/O-bound load, ~5,600 new answers. The plan's
+~8 h estimate came from a rate observed during *tree summarisation*, whose prompts are much larger;
+the pilot notes flagged that uncertainty explicitly and it was right to.
+
+## OPEN DECISION — what to do about the corpus-scope default
+
+`RaptorTreeScope.Corpus` is the shipped default and a breaking change (#331, phase 6.2.3). It does
+not buy accuracy on this corpus; it costs a little. **Nothing has been changed on the strength of
+this** — it is one corpus, and the strict rule is a wash. The options, none taken:
+
+1. Revert the default to `PerDocument` and keep `Corpus` opt-in.
+2. Keep the default and document the measured cost.
+3. Measure a second corpus before deciding, since a single dataset reversing a design decision is
+   thin evidence — MultiHop-RAG rewards per-document locality by construction.
 
 ## Working State
 
