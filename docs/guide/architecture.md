@@ -266,3 +266,66 @@ See [Getting Started](getting-started.md) for the call sequence. Internally, `Se
 6. Assembles the `IIngestor` behavior chain via `IngestionPipelineBuilder` and the `IRetriever` behavior chain via `RetrievalPipelineBuilder`, registering the resulting `PipelineIngestor` and `PipelineRetriever`.
 7. Registers `IRagPipeline` (`RagPipeline`).
 8. Runs the user-supplied `Action<RagBuilder>` for additional configuration.
+
+### Named pipelines
+
+One container can hold several isolated pipelines, each with its own stores:
+
+```csharp
+services.AddRagNetShared(rag => rag.UseOnnxEmbeddings(o => { ... }));   // one model, shared
+services.AddRagNet("docs",    rag => rag.UseAzureAISearch(endpoint, "docs-index",    credential));
+services.AddRagNet("support", rag => rag.UseAzureAISearch(endpoint, "support-index", credential));
+
+var docs = provider.GetRequiredService<IRagPipelineFactory>().Get("docs");
+```
+
+Each name gets its own vector store, BM25 index, caches and behaviours, built lazily on first
+`Get(name)` — a misconfigured named pipeline surfaces there, not when the container is built.
+Services declared in `AddRagNetShared` stay singular across every name: four types hold an ONNX
+`InferenceSession` — the embedding generator, the token embedding generator, the SPLADE encoder
+and the reranker — and MiniLM alone is roughly 90 MB, so one instance per pipeline would load the
+same model repeatedly.
+
+**The shared side is built eagerly, even though children are not.** Resolving
+`IRagPipelineFactory` — including just to call `Contains(name)` — constructs every service
+`AddRagNetShared` declared, because forwarding resolves each one from the root provider before any
+child is built. A container with `AddRagNetShared(rag => rag.UseOnnxEmbeddings(...))` loads the
+ONNX model on the first `IRagPipelineFactory` resolution, not on the first `Get(name)` that would
+actually use it.
+
+**Named pipelines run with logging off.** Each child's `ServiceCollection` is built from scratch
+and never receives the host's `ILoggerFactory` or any other host-registered service beyond what
+`AddRagNetShared` explicitly forwards. Every Rag.NET component resolves logging optionally
+(`sp.GetService<ILogger<T>>()`), so this fails silently rather than throwing: a named pipeline logs
+nothing, where the unnamed `AddRagNet` pipeline logs normally through the host's own
+`ILoggerFactory`. There is currently no way to forward logging into a named pipeline.
+
+**Only singleton, non-keyed, closed-generic registrations forward.** Anything else declared inside
+an `AddRagNetShared` block — a transient, a scoped registration, a keyed one, or an open generic
+like `IOptions<>` — stays in the root and is never reachable from a named pipeline's provider. A
+named pipeline that needs one of those must register it in its own block instead. Forwarding also
+resolves *every* root registration for a shared type, not just the last one: declare a
+multi-registered type such as `IDocumentParser` shared, and a child sees the root's instances in
+place of its own rather than adding to them. Not everything a shared block touches is a shared-block
+registration, either — `UseMediator()` registers `IngestCommandHandler`, `RetrieveQueryHandler` and
+`DeleteCommandHandler` as transients (`MediatorBuilderExtensions`), so calling it inside
+`AddRagNetShared` still leaves those three in the root, unforwarded, same as if it had been called
+inside `AddRagNet` directly.
+
+**`AddRagNet(rag => ...)` is unchanged.** It still registers into the root container and its
+pipeline is still resolved with `GetRequiredService<IRagPipeline>()`, exactly as described above
+and in [Getting Started](../getting-started.md). Named pipelines are additive; the two forms
+coexist in one container, and a caller who never wants a second pipeline never has to meet
+`IRagPipelineFactory` at all.
+
+**Why not a metadata filter?** `RetrievalOptions.MetadataFilter` is caller-supplied per query, so
+forgetting it once is a cross-read between indexes. An index binding on a named pipeline cannot be
+forgotten the same way — isolation lives in the registration instead of in every call site.
+
+This is isolation by registration, not a security boundary: both pipelines still run in the same
+process and the same root container.
+
+Referencing `Rag.NET` now brings in the concrete `Microsoft.Extensions.DependencyInjection`
+package transitively, not just `.Abstractions` — building a named pipeline's child provider
+requires the implementation, not just the interfaces. Consumers wiring `Rag.NET` into a
+third-party DI container should be aware their dependency graph now includes it.

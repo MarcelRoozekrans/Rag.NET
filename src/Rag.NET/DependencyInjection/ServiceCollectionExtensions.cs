@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -396,4 +397,253 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IRetriever>(sp => sp.GetRequiredService<TagRetriever>());
     }
+
+    /// <summary>
+    /// Declares services shared by every named pipeline — an embedding model, an
+    /// <see cref="Microsoft.Extensions.AI.IChatClient"/>, anything expensive enough that one per
+    /// pipeline would be wrong.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Uses the same <see cref="RagBuilder"/> and the same <c>Use*</c> methods as <c>AddRagNet</c>,
+    /// because <see cref="RagBuilder"/> is a wrapper over an <see cref="IServiceCollection"/> and
+    /// nothing about those methods is tied to a pipeline being registered.
+    /// </para>
+    /// <para>
+    /// <b>It deliberately does not register a pipeline.</b> Sharing a model is not the same as
+    /// running a pipeline in the root container: one that did would build its own stores alongside
+    /// every child's.
+    /// </para>
+    /// <para>
+    /// Four types hold an ONNX <c>InferenceSession</c> — the embedding generator, the token
+    /// embedding generator, the SPLADE encoder and the reranker — and MiniLM alone is roughly 90 MB.
+    /// Five named pipelines each calling <c>UseOnnxEmbeddings</c> would load it five times, which is
+    /// the concrete reason this exists (#342).
+    /// </para>
+    /// <para>
+    /// <b>Only singleton, non-keyed, closed-generic registrations declared here are forwarded</b> to
+    /// each named pipeline's provider. Anything else declared inside <paramref name="configure"/> —
+    /// a transient, a scoped registration, a keyed one, or an open generic such as
+    /// <c>IOptions&lt;&gt;</c> — stays in the root and is never reachable from a named pipeline's
+    /// provider; a named pipeline that needs it must register it in its own <c>AddRagNet(name, …)</c>
+    /// block instead. See the "Named pipelines" section of the architecture guide for the full
+    /// contract, including how forwarding behaves for a type with more than one root registration.
+    /// </para>
+    /// </remarks>
+    /// <param name="services">The root service collection.</param>
+    /// <param name="configure">Registers the shared services, using the usual <c>Use*</c> methods.</param>
+    /// <returns>The same collection, for chaining.</returns>
+    public static IServiceCollection AddRagNetShared(
+        this IServiceCollection services, Action<RagBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        // Snapshot around the callback so only what it declared is forwarded. The root collection
+        // also holds the host's own logging, configuration and HttpClients; forwarding those would
+        // make every child depend on the host's container shape.
+        var before = services.Count;
+        configure(new RagBuilder(services));
+
+        var declared = new List<ServiceDescriptor>();
+        for (var i = before; i < services.Count; i++)
+        {
+            declared.Add(services[i]);
+        }
+
+        var shared = FindOrAddSharedServiceTypes(services);
+        shared.AddRange(declared);
+        return services;
+    }
+
+    /// <summary>
+    /// Gets the collection's <see cref="SharedServiceTypes"/>, adding it on first use.
+    /// </summary>
+    /// <remarks>
+    /// Held as a singleton <i>instance</i> so both <c>AddRagNetShared</c> and <c>AddRagNet(name, …)</c>
+    /// see the same object at registration time, before any provider exists — and so a named block
+    /// declared before the shared block still forwards correctly.
+    /// </remarks>
+    /// <param name="services">The root service collection.</param>
+    /// <returns>The single instance for this collection.</returns>
+    private static SharedServiceTypes FindOrAddSharedServiceTypes(IServiceCollection services)
+    {
+        foreach (var descriptor in services)
+        {
+            if (descriptor.ServiceType == typeof(SharedServiceTypes)
+                && descriptor.ImplementationInstance is SharedServiceTypes existing)
+            {
+                return existing;
+            }
+        }
+
+        var created = new SharedServiceTypes();
+        services.AddSingleton(created);
+        return created;
+    }
+
+    /// <summary>
+    /// Registers a named RAG pipeline with its own service provider, reached through
+    /// <see cref="IRagPipelineFactory"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The named block composes into its own <see cref="IServiceCollection"/>, so its vector store,
+    /// BM25 index, caches and behaviours are separate from every other name's. Every <c>Use*</c>
+    /// method works unchanged, because they all operate on a collection.
+    /// </para>
+    /// <para>
+    /// Service types declared through <see cref="AddRagNetShared"/> are forwarded to the root
+    /// provider rather than registered again, so one embedding model serves every pipeline.
+    /// </para>
+    /// <para>
+    /// The unnamed <c>AddRagNet</c> is unaffected and still registers into the root container (#342).
+    /// </para>
+    /// </remarks>
+    /// <param name="services">The root service collection.</param>
+    /// <param name="name">The pipeline's name, passed later to <see cref="IRagPipelineFactory.Get"/>.</param>
+    /// <param name="configure">Configures this pipeline, with the usual <c>Use*</c> methods.</param>
+    /// <returns>The same collection, for chaining.</returns>
+    public static IServiceCollection AddRagNet(
+        this IServiceCollection services, string name, Action<RagBuilder>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var shared = FindOrAddSharedServiceTypes(services);
+        var named = FindOrAddNamedCollections(services);
+        if (named.ContainsKey(name))
+        {
+            throw new ArgumentException(
+                $"A RAG pipeline named '{name}' is already registered.", nameof(name));
+        }
+
+        var inner = new ServiceCollection();
+        _ = inner.AddRagNet(configure);
+        named[name] = new NamedPipelineRegistration(inner, shared);
+
+        services.TryAddSingleton<IRagPipelineFactory>(sp => BuildFactory(named, sp));
+        return services;
+    }
+
+    /// <summary>
+    /// Gets the collection's name-to-registration map, adding it on first use. Mirrors
+    /// <see cref="FindOrAddSharedServiceTypes"/>: held as a singleton instance so every
+    /// <c>AddRagNet(name, …)</c> call sees the same map, regardless of call order.
+    /// </summary>
+    /// <param name="services">The root service collection.</param>
+    /// <returns>The single instance for this collection.</returns>
+    private static Dictionary<string, NamedPipelineRegistration> FindOrAddNamedCollections(
+        IServiceCollection services)
+    {
+        foreach (var descriptor in services)
+        {
+            if (descriptor.ServiceType == typeof(Dictionary<string, NamedPipelineRegistration>)
+                && descriptor.ImplementationInstance is Dictionary<string, NamedPipelineRegistration> existing)
+            {
+                return existing;
+            }
+        }
+
+        var created = new Dictionary<string, NamedPipelineRegistration>(StringComparer.Ordinal);
+        services.AddSingleton(created);
+        return created;
+    }
+
+    /// <summary>Applies shared-service forwarding and constructs the factory.</summary>
+    /// <remarks>
+    /// Forwarding happens here, not at registration: the descriptors close over the root provider,
+    /// which only exists once the container is built. See <see cref="ForwardSharedServices"/> for
+    /// how each entry is forwarded.
+    /// </remarks>
+    /// <param name="named">Each name's registration.</param>
+    /// <param name="rootProvider">The root provider forwarded services resolve from.</param>
+    /// <returns>The factory.</returns>
+    private static RagPipelineFactory BuildFactory(
+        Dictionary<string, NamedPipelineRegistration> named, IServiceProvider rootProvider)
+    {
+        var collections = new Dictionary<string, IServiceCollection>(StringComparer.Ordinal);
+        foreach (var (name, registration) in named)
+        {
+            ForwardSharedServices(registration, rootProvider);
+            collections[name] = registration.Services;
+        }
+
+        return new RagPipelineFactory(collections);
+    }
+
+    /// <summary>Forwards one named pipeline's declared-shared services from the root provider.</summary>
+    /// <remarks>
+    /// <para>
+    /// Skips any entry that is an open generic (<c>IOptions&lt;&gt;</c> can never be resolved by
+    /// <c>GetRequiredService(closedType)</c> — <c>AddHttpClient()</c> alone declares three), is
+    /// keyed, or whose lifetime is not <see cref="ServiceLifetime.Singleton"/>. The child never
+    /// needs <c>IOptions&lt;&gt;</c> itself, only the already-constructed <c>IHttpClientFactory</c>
+    /// instance it backs, so skipping is correct rather than a workaround. A non-singleton is
+    /// skipped for a different reason: forwarding it as a resolved instance would freeze what is
+    /// meant to vary (a transient <c>HttpClient</c>, a scoped snapshot) into one shared value for
+    /// every pipeline forever. <see cref="SharedServiceTypes.AddRange"/> already traced a warning
+    /// for these at declaration time.
+    /// </para>
+    /// <para>
+    /// For everything else, resolves <em>every</em> instance the root registered for that type —
+    /// not just one — and replaces the child's own registrations with all of them.
+    /// <c>ServiceCollectionDescriptorExtensions.Replace</c> removes only the first matching
+    /// descriptor, so a multi-registered type (<c>IDocumentParser</c>: <c>TextDocumentParser</c>
+    /// and <c>MarkdownDocumentParser</c> both claim it) would silently lose one of the child's own
+    /// registrations while forwarding only the last root one. <c>RemoveAll</c> plus one
+    /// <c>Add</c> per instance avoids both halves of that bug.
+    /// </para>
+    /// <para>
+    /// Registers each resolved value as an <b>instance</b> descriptor, not a factory delegate. A
+    /// factory-based descriptor — <c>ServiceDescriptor.Singleton(type, sp =>
+    /// sp.GetRequiredService(type))</c> — has the concrete <c>ServiceProvider</c> capture whatever
+    /// the factory call site returns for disposal in the container that ran it, because the
+    /// engine cannot know the instance is owned elsewhere. That would make the first child to be
+    /// disposed dispose the shared instance as a side effect, and a second child dispose it again
+    /// — exactly the failure <see cref="RagPipelineFactory"/>'s "a child never owns what it
+    /// forwards" guarantee exists to prevent. An instance descriptor has no factory call site, so
+    /// the engine excludes it from disposal capture entirely: ownership stays with the root, which
+    /// is the only container that resolved it through a real call site.
+    /// </para>
+    /// </remarks>
+    /// <param name="registration">The name's composed collection and its declared-shared types.</param>
+    /// <param name="rootProvider">The root provider forwarded services resolve from.</param>
+    private static void ForwardSharedServices(
+        NamedPipelineRegistration registration, IServiceProvider rootProvider)
+    {
+        foreach (var entry in registration.Shared.Entries)
+        {
+            if (entry.ServiceType.IsGenericTypeDefinition || entry.IsKeyed
+                || entry.Lifetime != ServiceLifetime.Singleton)
+            {
+                continue;
+            }
+
+            List<object>? instances = null;
+            foreach (var instance in rootProvider.GetServices(entry.ServiceType))
+            {
+                if (instance is not null)
+                {
+                    (instances ??= []).Add(instance);
+                }
+            }
+
+            if (instances is null)
+            {
+                continue;
+            }
+
+            registration.Services.RemoveAll(entry.ServiceType);
+            foreach (ref readonly var instance in CollectionsMarshal.AsSpan(instances))
+            {
+                registration.Services.Add(ServiceDescriptor.Singleton(entry.ServiceType, instance));
+            }
+        }
+    }
+
+    /// <summary>One named pipeline's composed collection and the shared types it forwards.</summary>
+    /// <param name="Services">The inner collection this name composed into.</param>
+    /// <param name="Shared">The shared-type registry, read at build time so call order does not matter.</param>
+    private sealed record NamedPipelineRegistration(IServiceCollection Services, SharedServiceTypes Shared);
 }
