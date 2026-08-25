@@ -73,41 +73,143 @@ internal static class Umap
     internal static (int[][] Indices, float[][] Distances) BuildKnnGraph(float[][] data, int k)
     {
         int n = data.Length;
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(k, n - 1);
+
         var indices = new int[n][];
         var distances = new float[n][];
 
         for (int i = 0; i < n; i++)
         {
-            var dists = new (float Distance, int Index)[n];
-            for (int j = 0; j < n; j++)
-            {
-                dists[j] = (i == j ? float.MaxValue : EuclideanDistance(data[i], data[j]), j);
-            }
-
-            Array.Sort(dists, (a, b) => a.Distance.CompareTo(b.Distance));
-
-            indices[i] = new int[k];
-            distances[i] = new float[k];
-            for (int j = 0; j < k; j++)
-            {
-                indices[i][j] = dists[j].Index;
-                distances[i][j] = dists[j].Distance;
-            }
+            (indices[i], distances[i]) = NearestNeighborsOf(data, i, k);
         }
 
         return (indices, distances);
     }
 
-    private static float EuclideanDistance(float[] a, float[] b)
+    /// <summary>
+    /// The <paramref name="k"/> rows nearest <paramref name="i"/>, ascending, excluding itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Selection, not a sort. The previous implementation materialised every distance from row
+    /// <paramref name="i"/> into a <c>(float, int)[n]</c> and sorted the whole thing to read the
+    /// first <paramref name="k"/> entries. At MultiHop-RAG's corpus scale that buffer is 141,184
+    /// bytes — over the 85,000-byte large-object-heap threshold — allocated once per row, which is
+    /// roughly 2.5 GB of LOH traffic for a single corpus-level reduction (#348). A bounded heap
+    /// needs <paramref name="k"/> slots regardless of <c>n</c>, so the scratch buffer disappears
+    /// rather than being pooled: the arrays below are the returned result, not a temporary.
+    /// </para>
+    /// <para>
+    /// Comparison is on the <em>squared</em> distance, and <see cref="MathF.Sqrt"/> runs only on the
+    /// <paramref name="k"/> survivors. Square root is monotonic over non-negative values, so the
+    /// ordering is unchanged and each returned distance is bit-identical to the previous
+    /// implementation's — it is the same <c>MathF.Sqrt</c> of the same accumulated sum.
+    /// </para>
+    /// <para>
+    /// Exact ties — duplicate chunks embed identically — may resolve to different neighbours than
+    /// before. That was never fixed: <see cref="Array.Sort{T}(T[], Comparison{T})"/> is an unstable
+    /// introsort whose tie order depends on <c>n</c>. The set of distances is identical either way.
+    /// </para>
+    /// </remarks>
+    private static (int[] Indices, float[] Distances) NearestNeighborsOf(float[][] data, int i, int k)
     {
-        float sum = 0;
-        for (int i = 0; i < a.Length; i++)
+        // Max-heap keyed on distance: the worst of the current best-k sits at the root, so a
+        // candidate is rejected or accepted in a single comparison against it.
+        var heapDistances = new float[k];
+        var heapIndices = new int[k];
+        int count = 0;
+        var origin = data[i];
+
+        for (int j = 0; j < data.Length; j++)
         {
-            float diff = a[i] - b[i];
-            sum += diff * diff;
+            if (j == i)
+            {
+                continue;
+            }
+
+            float squared = SquaredEuclideanDistance(origin, data[j]);
+            if (count < k)
+            {
+                heapDistances[count] = squared;
+                heapIndices[count] = j;
+                count++;
+                if (count == k)
+                {
+                    Heapify(heapDistances, heapIndices, k);
+                }
+            }
+            else if (squared < heapDistances[0])
+            {
+                heapDistances[0] = squared;
+                heapIndices[0] = j;
+                SiftDown(heapDistances, heapIndices, start: 0, end: k);
+            }
         }
 
-        return MathF.Sqrt(sum);
+        // k <= n - 1 is enforced above, so every slot is filled and the heap was built.
+        return SortHeapAscending(heapDistances, heapIndices, k);
+    }
+
+    /// <summary>Heap-sorts in place, then converts the squared distances to real ones.</summary>
+    private static (int[] Indices, float[] Distances) SortHeapAscending(
+        float[] heapDistances, int[] heapIndices, int count)
+    {
+        for (int end = count - 1; end > 0; end--)
+        {
+            // Repeatedly moving the largest to the back leaves the array ascending, which
+            // BuildDirectedEdges depends on: it reads element 0 as rho, the nearest distance.
+            Swap(heapDistances, heapIndices, 0, end);
+            SiftDown(heapDistances, heapIndices, start: 0, end: end);
+        }
+
+        // Span, and foreach by ref: Span's enumerator yields ref float, so the in-place rewrite is
+        // expressible as a foreach — which is what HLQ013 asks for over an index loop.
+        foreach (ref float distance in heapDistances.AsSpan(0, count))
+        {
+            distance = MathF.Sqrt(distance);
+        }
+
+        return (heapIndices, heapDistances);
+    }
+
+    private static void Heapify(float[] distances, int[] indices, int count)
+    {
+        for (int start = (count / 2) - 1; start >= 0; start--)
+        {
+            SiftDown(distances, indices, start, count);
+        }
+    }
+
+    private static void SiftDown(float[] distances, int[] indices, int start, int end)
+    {
+        int root = start;
+        while (true)
+        {
+            int child = (2 * root) + 1;
+            if (child >= end)
+            {
+                return;
+            }
+
+            if (child + 1 < end && distances[child + 1] > distances[child])
+            {
+                child++;
+            }
+
+            if (distances[root] >= distances[child])
+            {
+                return;
+            }
+
+            Swap(distances, indices, root, child);
+            root = child;
+        }
+    }
+
+    private static void Swap(float[] distances, int[] indices, int a, int b)
+    {
+        (distances[a], distances[b]) = (distances[b], distances[a]);
+        (indices[a], indices[b]) = (indices[b], indices[a]);
     }
 
     private static List<(int Row, int Col, float Weight)> BuildFuzzyGraph(
