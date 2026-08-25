@@ -392,6 +392,44 @@ services.AddRagNet(rag => rag
         vectorDimensions: 1536));
 ```
 
+### Vector recall: `KNearestNeighborsCount`
+
+The vector arm's `k` — how many nearest neighbours Azure retrieves before ranking — is configurable
+and **defaults to unset**:
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseAzureAISearch(
+        endpoint:         new Uri("https://my-search.search.windows.net"),
+        indexName:        "my-rag-index",
+        credential:       new AzureKeyCredential("your-api-key"),
+        vectorDimensions: 1536,
+        configure:        o => o.KNearestNeighborsCount = 50));
+```
+
+**Unset is a value, not an absence.** Microsoft's [Create a Vector
+Query](https://learn.microsoft.com/en-us/azure/search/vector-search-how-to-query) states that
+"both `k` and `top` are optional. When unspecified, the default number of results in a response is
+50." Omitting the parameter therefore asks for 50 and leaves the number where the platform can
+change it.
+
+**Before v1.0 this store sent `k = TopK`**, which was worse than sending nothing: at a typical
+top-5 it narrowed vector recall to a tenth of Azure's own default, starving RRF fusion of
+candidates to fuse and starving any reranker that followed. It now sends nothing unless you ask
+(#328).
+
+**Set it to 50 if you enable semantic ranking on the index yourself.** The same page is explicit:
+"Whenever you use semantic ranking with vectors, set `k` to 50. Semantic ranker uses up to 50
+matches as input. Specifying less than 50 deprives the semantic ranking models of necessary
+inputs." Rag.NET does not configure semantic ranking yet — #328 remains open for it, pending a
+decision about which score surfaces, since the reranker's 0–4 scale is neither cosine's nor RRF's
+and `MinScore` is applied to whatever comes back.
+
+Note the asymmetry with `TopK`: Microsoft documents `k` as governing "results for vector-only
+queries" and `top` as governing "results for hybrid queries that include a `search` parameter", so
+on the hybrid path this widens the candidate set fusion draws from rather than the number of
+results returned.
+
 ### Index schema
 
 `InitializeAsync` creates or updates the index with these fields:
