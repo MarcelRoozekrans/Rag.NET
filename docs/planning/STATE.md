@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-24 (#364 merged; RAPTOR pilot attempted, stopped, and the plan re-costed)
+**Last updated:** 2026-08-25 (five phases moved: 6.2.5, 6.2.6, 6.2.8 and 6.2.9 shipped; 6.2.7 open as PR #381)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -8,11 +8,41 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.1 — Retrieval & Answer Sweep (active). **6.2.3 completed 2026-08-21**, merged in
-#340 and verified on `main` by content rather than by the PR's MERGED label.
+**Phase:** 6.2.1 — Retrieval & Answer Sweep (active; its RAPTOR measurement is at Task 5).
 
-**Last completed:** **Phase 6.2.3 — Corpus-Level RAPTOR**, merged 2026-08-21 in #340 (squash
-`c461475d`). Seven tasks, each independently reviewed, plus a whole-branch review and one fix wave.
+**2026-08-25 moved five phases.** All verified on `main` by content rather than by a PR's MERGED
+label:
+
+| Phase | State |
+| --- | --- |
+| 6.2.5 — contract defects | complete, #372 / #373 / #374 |
+| 6.2.6 — package boundaries | complete, #376 |
+| 6.2.7 — named pipelines | **PR #381 open**, all checks green, awaiting merge |
+| 6.2.8 — requested DX | complete, #378 (three of four items; #353 split into 6.2.10) |
+| 6.2.9 — `Umap.Fit` at corpus scale | complete, branch `perf/348-umap-knn` |
+| 6.2.10 — vector-store initialisation | pending |
+
+**The roadmap had all of 6.2.5, 6.2.6 and 6.2.8 still marked `pending` while their code was already
+on `main`** — corrected 2026-08-25. Statuses are written when a phase is planned and nobody is
+editing this file at the moment its PR merges, which is the same failure the Working State branch
+field has now had three times.
+
+**Last completed:** **Phase 6.2.9 — `Umap.Fit` at Corpus Scale** (#348), built 2026-08-25.
+Measured before changing anything, which is what makes the rest of it quotable: the kNN graph is
+**92% of `Umap.Fit`'s time and 98% of its allocation**, so #348 named the right target. Bounded
+k-selection replaced the full sort and the row loop parallelises above 512 rows —
+**5.2× faster, ~729× less allocated, Gen0/1/2 all to zero**. Two runs per state on an idle machine;
+the table is in `ROADMAP.md`'s 6.2.9 entry.
+
+**It also corrected two claims in its own issue.** #348 argued from the ~1,368 s corpus tree build
+that this was "real time rather than a micro-optimisation" — the level-1 reduction is ~82 s of that,
+about **6%**, since the tree build is dominated by LLM summarisation. And the sort-to-selection
+change everyone would call the headline bought **21%** on its own; the distance loop it does not
+touch is the real cost, and parallelising *that* bought the 4×.
+
+**Earlier in Milestone 6.2:** **Phase 6.2.3 — Corpus-Level RAPTOR**, merged 2026-08-21 in #340
+(squash `c461475d`). Seven tasks, each independently reviewed, plus a whole-branch review and one
+fix wave.
 
 `Rag.NET.Raptor` built its tree **per document**, which is not the RAPTOR paper's mechanism — a
 per-document tree cannot contain a node spanning two documents. It now clusters over the corpus by
@@ -76,13 +106,17 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Recommended Next Step
 
-**Execute `docs/plans/2026-08-21-raptor-real-protocol-implementation.md`** — 6.2.1's RAPTOR
-measurement, the first this technique has ever had. Six tasks; Tasks 1-3 are code, Tasks 4-5 spend
-real money and Task 5 is an overnight run.
+**Run Task 5 of `docs/plans/2026-08-21-raptor-real-protocol-implementation.md`** — the full
+2,556-query sweep, ~10,000 generations, roughly 8 hours, and the only thing standing between
+6.2.1 and a publishable RAPTOR figure. **Tasks 1-4 are on `main` and the validation gate held**, so
+the setup is proven and the remaining cost is answer generation alone: zero tree construction, both
+trees cached. It wants an overnight window and a machine nobody else is using — check for orphaned
+runners by the *assembly* name before starting, not by `dotnet`.
 
-**Tasks 1-3 are done, on `bench/raptor-measurement`: `RaptorRun`, the four RAPTOR answer arms
-(pinned empty, "NOT YET MEASURED"), and their wiring into `BeirGraphRagAnswerTests`. Tasks 4-6 are
-now unblocked and not yet started.** `RaptorOptions.MaxClusters` defaults to `null`, so before
+The alternative, if an overnight window is not available, is **phase 6.2.10** (#353, vector-store
+auto-initialisation), which is small and self-contained.
+
+Historical context for the arms, retained: `RaptorOptions.MaxClusters` defaults to `null`, so before
 #345's fix `SelectClusterCount` capped every level at `SelectK(maxK: Min(count, 10))` regardless of
 corpus size — over MultiHop-RAG's 17,648 chunks the largest level-1 cluster held at least 1,765
 chunks (≈183k tokens, uncapped in `ConcatenateChunkTexts`) against `gpt-4o-mini`'s 128k context, so
@@ -115,11 +149,26 @@ Three things govern the run, all in the plan:
 
 **Also unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`.
 
-### Task 4 was attempted on 2026-08-24, stopped, and the plan re-costed. The gate has never run.
+### Task 4 completed 2026-08-24 23:49 and the gate HELD. Task 5 is the outstanding one.
 
-**Nothing is pinned and no figure was produced.** Three runs were started and stopped; full account
-in `docs/plans/2026-08-21-raptor-pilot-notes.md`. What it cost: roughly $2-4 of summarisation, all
-of it cached and reusable.
+**`raptorfiltered − dense = +0.0000` on all three scoring rules**, confirmed twice — the gate-only
+run at 17:59 and the full five-arm run at 23:49. The corpora did not diverge, so the pilot's figures
+measure RAPTOR rather than a setup fault. Merged 2026-08-25 in **#370**; full account in
+`docs/plans/2026-08-21-raptor-pilot-notes.md`.
+
+**The finding to carry into Task 5: `raptorcorpus − raptor = +0.0000`.** 6.2.3 shipped corpus-level
+clustering as a *breaking* change, and at 50 queries it bought exactly nothing over the per-document
+tree. Task 5's 2,556 queries is what decides whether that survives — the pilot's type mix is skewed
+(11 temporal questions scoring 0.0000 in every arm, 6 nulls).
+
+**Task 5 is costed from Step 4's counters rather than extrapolated: ~10,000 new generations, zero
+tree-construction cost — both trees are cached — and roughly 8 hours.** That 8 hours is an estimate
+built on a rate observed during *tree summarisation*, whose prompts are much larger than answer
+generation's; it is not a throughput measurement of the work Task 5 actually does.
+
+**No wall-clock figure from the pilot is quotable.** Two orphaned runners contaminated it — the real
+pilot got 139 CPU-seconds in 58 minutes while they held 5.6 CPU-hours each. The gate is an accuracy
+difference and Step 4's deliverables are counts, so both survive; the timing does not.
 
 **Three defects were found, two of them in the plan itself:**
 
@@ -154,18 +203,20 @@ it holds does the ~15-20 hour per-document `raptor` build earn its place as a sc
 
 ## Working State
 
-**Branch:** `bench/raptor-real-protocol-measurement`, cut from `main` after #364. The
-cluster-imbalance work merged 2026-08-24 in **#364** (`1ff3c758`), verified on `main` by content;
-`bench/raptor-cluster-shape` is deleted. **Tasks 1-3 of
-`docs/plans/2026-08-21-raptor-real-protocol-implementation.md` are on `main`**, merged 2026-08-22
-in #347 (`c2d83075`) off the now-superseded `bench/raptor-measurement`; verified on `main` by
-content, not by the PR's MERGED label. Tasks 4-6 are unblocked and not yet started — see
-Recommended Next Step.
+**Branch:** `perf/348-umap-knn`, cut from `main` at `f7ca397b`. Carries phase 6.2.9 — the
+corpus-scale benchmark, the bounded k-selection, the parallel row loop, and these planning updates.
+**`feat/342-named-pipelines` is also live as PR #381**, all five checks green, awaiting merge.
 
-**This field has now named a stale branch twice** (`chore/complete-phase-6-2-3`, then
-`bench/raptor-measurement`, each still named here after its PR merged). It goes stale at exactly
-the moment its branch merges, which is the moment nobody is editing this file. Re-read it against
-`git branch --show-current` before trusting it.
+**Tasks 1-4 of `docs/plans/2026-08-21-raptor-real-protocol-implementation.md` are on `main`** —
+Tasks 1-3 in #347 (`c2d83075`), Task 4 in #370 (`2de9c5c9`); verified by content, not by a MERGED
+label. **Task 5 is unblocked and not started.**
+
+**This field has now named a stale branch three times** (`chore/complete-phase-6-2-3`,
+`bench/raptor-measurement`, `bench/raptor-real-protocol-measurement` — each still named here after
+its PR merged). It goes stale at exactly the moment its branch merges, which is the moment nobody is
+editing this file. **Re-read it against `git branch --show-current` before trusting it**, and treat
+a mismatch as evidence the rest of this file may also predate the last merge — on 2026-08-25 it did,
+by five phases.
 
 **Issues from the 6.2.3 work:** #331, #332, #333 fixed and auto-closed on merge. **#336, #337 and
 #338 remain open by decision**, each documented in `docs/guide/raptor.md`'s Known Limitations:
