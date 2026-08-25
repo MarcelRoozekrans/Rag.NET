@@ -714,7 +714,7 @@ public sealed class BeirGraphRagAnswerTests
     /// the run says out loud what it skipped and why.
     /// </summary>
     [Fact]
-    public void SelectArms_DefaultSelection_SkipsArmsWithNoRecordedFigure()
+    public void SelectArms_DefaultSelection_ContainsOnlyArmsWithARecordedFigure()
     {
         var previous = Environment.GetEnvironmentVariable(ArmsVariable);
         try
@@ -731,14 +731,21 @@ public sealed class BeirGraphRagAnswerTests
                     $"the default selection included '{arm}', which has no recorded figure.");
             }
 
-            var unmeasured = new[] { AnswerArm.RaptorCorpus, AnswerArm.Raptor, AnswerArm.RaptorFiltered, AnswerArm.RaptorBoost };
-            foreach (var raptorArm in unmeasured)
+            // Every arm is measured as of Task 5 (2026-08-25), so the filter has nothing to remove
+            // and the default selection is all of them. This assertion is what makes the state
+            // explicit rather than incidental: adding an arm without pinning a figure — or with an
+            // empty one — drops it out of the default silently, and this fails when that happens.
+            Assert.Equal(AnswerArm.All.OrderBy(a => a, StringComparer.Ordinal),
+                arms.OrderBy(a => a, StringComparer.Ordinal));
+
+            // The four RAPTOR arms were the unmeasured ones this test was written around; they are
+            // pinned now, and are asserted here so their removal from the default would be caught.
+            foreach (var raptorArm in new[] { AnswerArm.RaptorCorpus, AnswerArm.Raptor, AnswerArm.RaptorFiltered, AnswerArm.RaptorBoost })
             {
-                Assert.False(
+                Assert.True(
                     MultiHopRagAnswerReproduction.HasRecordedFigure("multihop-rag", raptorArm),
-                    $"{raptorArm} now has a recorded figure -- this test's premise is stale.");
-                Assert.DoesNotContain(raptorArm, arms, StringComparer.Ordinal);
-                Assert.Contains(output.Lines, line => line.Contains(raptorArm, StringComparison.Ordinal));
+                    $"{raptorArm} lost its recorded figure; Task 5 pinned all four.");
+                Assert.Contains(raptorArm, arms, StringComparer.Ordinal);
             }
 
             // A measured arm is never filtered out of the default.
@@ -756,11 +763,14 @@ public sealed class BeirGraphRagAnswerTests
     /// explicit selection — this is how Task 4's pilot runs before anything is pinned.
     /// </summary>
     [Fact]
-    public void SelectArms_ExplicitSelection_StillRunsAnUnmeasuredArm()
+    public void SelectArms_ExplicitSelection_IsPassedThroughUntouched()
     {
         var previous = Environment.GetEnvironmentVariable(ArmsVariable);
         try
         {
+            // RaptorCorpus is measured now, so this no longer demonstrates "explicit beats the
+            // filter" the way it did before Task 5. It still pins the other half of the contract:
+            // an explicit selection is passed through untouched, one arm in and one arm out.
             Environment.SetEnvironmentVariable(ArmsVariable, AnswerArm.RaptorCorpus);
             var output = new CapturingTestOutputHelper();
 

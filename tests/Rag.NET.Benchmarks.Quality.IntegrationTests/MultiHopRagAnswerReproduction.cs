@@ -164,31 +164,81 @@ internal static class MultiHopRagAnswerReproduction
         new(
             "multihop-rag",
             AnswerArm.RaptorCorpus,
-            [],
-            "NOT YET MEASURED. Phase 6.2.1's RAPTOR sweep fills this. The entry exists so the " +
-            "unpinned-arm guard passes while the arm is wired up and before it is run; a figure " +
-            "without a run behind it would be worse than an empty array."),
+            [0.3588],
+            "MEASURED 2026-08-25 on Windows 11, .NET 10.0.11 -- Phase 6.2.1 Task 5, the full sweep: " +
+            "2,556 queries x 4 RAPTOR arms, 10,224 scored answers, 58 m after a 28 m I/O-bound " +
+            "load, openai/gpt-4o-mini at temperature 0, top-6 context. Both trees were already " +
+            "cached, so this run paid for answers only. Accuracy is over the **2,255 judged " +
+            "queries**, the denominator every other pin here uses -- the 301 null queries are " +
+            "scored separately as abstention. " +
+            "**The validation gate held exactly at full scale**: raptorfiltered reproduced the dense " +
+            "arm to four decimals on all three rules (0.3499 / 0.2603 / 0.3242), the figures pinned " +
+            "2026-08-15. The corpora did not diverge, so these numbers measure RAPTOR. " +
+            "**Paper-rule 0.3588** (raw 0.2656, strict 0.3322); inference 0.7831, comparison 0.1729, " +
+            "temporal 0.0377; abstains correctly on 48.2% of the 301 nulls. " +
+            "**raptorcorpus - raptor = -0.0146 paper, -0.0204 raw, -0.0027 strict.** Corpus-level " +
+            "clustering -- 6.2.3's breaking change, and the shipped default -- is *worse* than the " +
+            "per-document tree it replaced. McNemar over the paired judged queries: paper p=0.0247 " +
+            "(85 corpus wins against 118 per-document), raw p=0.0006 (62 against 108), strict p=0.7372 " +
+            "(a wash). Two of three rules significant, all three signed the same way. " +
+            "**The 50-query pilot put this at +0.0000 and was simply underpowered** -- which is what " +
+            "Task 5 existed to find out. " +
+            "**The gap is inference queries**: 0.7831 against the control's 0.8309, while comparison " +
+            "and temporal are flat. That is the opposite of the rationale for #331 -- corpus-spanning " +
+            "summaries were meant to help exactly the multi-hop case they measurably hurt here. " +
+            "**Read the yes/no types against their base rates**: comparison gold is 60% yes, so " +
+            "always-yes scores 0.598; this arm commits on 19.9% of comparisons and is right 82.4% of " +
+            "the time when it does. What to do about the default is a design decision, not a " +
+            "measurement one, and is deliberately left open here."),
         new(
             "multihop-rag",
             AnswerArm.Raptor,
-            [],
-            "NOT YET MEASURED. Phase 6.2.1's RAPTOR sweep fills this. The entry exists so the " +
-            "unpinned-arm guard passes while the arm is wired up and before it is run; a figure " +
-            "without a run behind it would be worse than an empty array."),
+            [0.3734],
+            "MEASURED 2026-08-25 on Windows 11, .NET 10.0.11 -- Phase 6.2.1 Task 5, the full sweep: " +
+            "2,556 queries x 4 RAPTOR arms, 10,224 scored answers, 58 m after a 28 m I/O-bound " +
+            "load, openai/gpt-4o-mini at temperature 0, top-6 context. Both trees were already " +
+            "cached, so this run paid for answers only. Accuracy is over the **2,255 judged " +
+            "queries**, the denominator every other pin here uses -- the 301 null queries are " +
+            "scored separately as abstention. " +
+            "**Paper-rule 0.3734** (raw 0.2860, strict 0.3348); inference 0.8309, comparison 0.1694, " +
+            "temporal 0.0326; abstains correctly on 47.5% of the nulls. " +
+            "This is the per-document control, and it is **the best of the four arms on every rule**. " +
+            "See the RaptorCorpus entry for the comparison and its significance: the breaking change " +
+            "that made corpus scope the default did not buy accuracy, it cost some."),
         new(
             "multihop-rag",
             AnswerArm.RaptorFiltered,
-            [],
-            "NOT YET MEASURED. Phase 6.2.1's RAPTOR sweep fills this. The entry exists so the " +
-            "unpinned-arm guard passes while the arm is wired up and before it is run; a figure " +
-            "without a run behind it would be worse than an empty array."),
+            [0.3499],
+            "MEASURED 2026-08-25 on Windows 11, .NET 10.0.11 -- Phase 6.2.1 Task 5, the full sweep: " +
+            "2,556 queries x 4 RAPTOR arms, 10,224 scored answers, 58 m after a 28 m I/O-bound " +
+            "load, openai/gpt-4o-mini at temperature 0, top-6 context. Both trees were already " +
+            "cached, so this run paid for answers only. Accuracy is over the **2,255 judged " +
+            "queries**, the denominator every other pin here uses -- the 301 null queries are " +
+            "scored separately as abstention. " +
+            "**Paper-rule 0.3499** (raw 0.2603, strict 0.3242) -- the dense arm's pinned figures to " +
+            "four decimals, which is what makes this the validation gate rather than a result. " +
+            "Summaries filtered out, so only the 17,648 leaf chunks are reachable; reproducing dense " +
+            "exactly is the evidence the RAPTOR corpus and the dense corpus are the same corpus. " +
+            "**raptorcorpus - raptorfiltered = +0.0089 paper** (McNemar p=0.0293), +0.0053 raw " +
+            "(p=0.1416), +0.0080 strict (p=0.0795): what the summaries add, significant on one rule " +
+            "of three and small on all of them."),
         new(
             "multihop-rag",
             AnswerArm.RaptorBoost,
-            [],
-            "NOT YET MEASURED. Phase 6.2.1's RAPTOR sweep fills this. The entry exists so the " +
-            "unpinned-arm guard passes while the arm is wired up and before it is run; a figure " +
-            "without a run behind it would be worse than an empty array."),
+            [0.3450],
+            "MEASURED 2026-08-25 on Windows 11, .NET 10.0.11 -- Phase 6.2.1 Task 5, the full sweep: " +
+            "2,556 queries x 4 RAPTOR arms, 10,224 scored answers, 58 m after a 28 m I/O-bound " +
+            "load, openai/gpt-4o-mini at temperature 0, top-6 context. Both trees were already " +
+            "cached, so this run paid for answers only. Accuracy is over the **2,255 judged " +
+            "queries**, the denominator every other pin here uses -- the 301 null queries are " +
+            "scored separately as abstention. " +
+            "**Paper-rule 0.3450** (raw 0.2634, strict 0.3086); inference 0.7757, comparison 0.1472, " +
+            "temporal 0.0326; abstains correctly on 51.8% of the nulls, the best abstention of the four. " +
+            "**raptorboost - raptorcorpus = -0.0137 paper** (McNemar p=0.0073), -0.0022 raw (p=0.7016), " +
+            "-0.0235 strict (p=0.0000). Promoting summaries into the result set makes the answer worse, " +
+            "significantly so on two rules. Phase 6.2.4 fixed Boost so it could promote at all (#344); " +
+            "this is the first measurement of what it does once it works, and the answer is that it " +
+            "trades accuracy for abstention."),
     ];
 
     /// <summary>Asserts one arm's paper-rule accuracy reproduced what was last recorded, or records what it measured.</summary>
