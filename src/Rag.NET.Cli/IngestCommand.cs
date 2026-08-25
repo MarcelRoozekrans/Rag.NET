@@ -28,7 +28,11 @@ internal static class IngestCommand
     /// Neither a file nor a directory exists at <paramref name="path"/>.
     /// </exception>
     public static async Task<Outcome> RunAsync(
-        IRagPipeline pipeline, string path, bool overwrite, CancellationToken cancellationToken)
+        IRagPipeline pipeline,
+        string path,
+        bool overwrite,
+        CancellationToken cancellationToken,
+        IGuidProvider? guidProvider = null)
     {
         ArgumentNullException.ThrowIfNull(pipeline);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -40,7 +44,7 @@ internal static class IngestCommand
 
         foreach (var file in files)
         {
-            await IngestOneAsync(pipeline, file, options, documents, errors, cancellationToken)
+            await IngestOneAsync(pipeline, file, options, documents, errors, guidProvider ?? SystemGuidProvider.Instance, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -49,12 +53,13 @@ internal static class IngestCommand
 
     private static async Task IngestOneAsync(
         IRagPipeline pipeline, string file, IngestionOptions options,
-        List<Document> documents, List<Error> errors, CancellationToken cancellationToken)
+        List<Document> documents, List<Error> errors, IGuidProvider guidProvider,
+        CancellationToken cancellationToken)
     {
         var fileName = Path.GetFileName(file);
         var metadata = new DocumentMetadata
         {
-            DocumentId = new DocumentId(Guid.NewGuid().ToString()),
+            DocumentId = new DocumentId(guidProvider.NewGuid().ToString()),
             FileName = fileName,
             ContentType = ContentTypeMap.FromFileName(fileName),
         };

@@ -16,8 +16,11 @@ public sealed partial class AuditAnswerEngineDecorator(
     IAuditLog auditLog,
     AuditCorrelationContext correlationContext,
     AuditLogOptions options,
-    ILogger<AuditAnswerEngineDecorator>? logger = null) : IAnswerEngine
+    ILogger<AuditAnswerEngineDecorator>? logger = null,
+    IGuidProvider? guidProvider = null) : IAnswerEngine
 {
+    private readonly IGuidProvider _guidProvider = guidProvider ?? SystemGuidProvider.Instance;
+
     private readonly ILogger<AuditAnswerEngineDecorator> _logger =
         logger ?? NullLogger<AuditAnswerEngineDecorator>.Instance;
 
@@ -41,7 +44,7 @@ public sealed partial class AuditAnswerEngineDecorator(
 
     private async ValueTask LogAnswerAsync(string? answer, CancellationToken ct)
     {
-        var requestId = correlationContext.RequestId ?? Guid.NewGuid().ToString("N");
+        var requestId = correlationContext.RequestId ?? _guidProvider.NewGuid().ToString("N");
         var ev = new AuditAnswerEvent
         {
             RequestId = requestId,

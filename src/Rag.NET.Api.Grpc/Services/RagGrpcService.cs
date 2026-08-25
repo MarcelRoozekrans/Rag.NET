@@ -7,12 +7,15 @@ using Rag.NET.Models.Options;
 
 namespace Rag.NET.Api.Grpc.Services;
 
-internal sealed class RagGrpcService(IRagPipeline pipeline) : RagService.RagServiceBase
+internal sealed class RagGrpcService(IRagPipeline pipeline, IGuidProvider? guidProvider = null)
+    : RagService.RagServiceBase
 {
+    private readonly IGuidProvider _guidProvider = guidProvider ?? SystemGuidProvider.Instance;
+
     public override async Task<IngestResponse> Ingest(IngestRequest request, ServerCallContext context)
     {
         var docId = string.IsNullOrEmpty(request.DocumentId)
-            ? Guid.NewGuid().ToString()
+            ? _guidProvider.NewGuid().ToString()
             : request.DocumentId;
 
         var metadata = new DocumentMetadata
