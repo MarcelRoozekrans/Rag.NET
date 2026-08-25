@@ -286,6 +286,20 @@ Services declared in `AddRagNetShared` stay singular across every name: four typ
 and the reranker — and MiniLM alone is roughly 90 MB, so one instance per pipeline would load the
 same model repeatedly.
 
+**The shared side is built eagerly, even though children are not.** Resolving
+`IRagPipelineFactory` — including just to call `Contains(name)` — constructs every service
+`AddRagNetShared` declared, because forwarding resolves each one from the root provider before any
+child is built. A container with `AddRagNetShared(rag => rag.UseOnnxEmbeddings(...))` loads the
+ONNX model on the first `IRagPipelineFactory` resolution, not on the first `Get(name)` that would
+actually use it.
+
+**Named pipelines run with logging off.** Each child's `ServiceCollection` is built from scratch
+and never receives the host's `ILoggerFactory` or any other host-registered service beyond what
+`AddRagNetShared` explicitly forwards. Every Rag.NET component resolves logging optionally
+(`sp.GetService<ILogger<T>>()`), so this fails silently rather than throwing: a named pipeline logs
+nothing, where the unnamed `AddRagNet` pipeline logs normally through the host's own
+`ILoggerFactory`. There is currently no way to forward logging into a named pipeline.
+
 **`AddRagNet(rag => ...)` is unchanged.** It still registers into the root container and its
 pipeline is still resolved with `GetRequiredService<IRagPipeline>()`, exactly as described above
 and in [Getting Started](../getting-started.md). Named pipelines are additive; the two forms
