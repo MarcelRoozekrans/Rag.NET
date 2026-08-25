@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-25 (six phases shipped: 6.2.5-6.2.9; #381 and #382 merged; issue sweep done; 6.2.11 added)
+**Last updated:** 2026-08-25 (6.2.5-6.2.10 built; #381/#382/#383 open or merged; issue sweep done; 6.2.11 added)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -20,7 +20,7 @@ label:
 | 6.2.7 — named pipelines | complete, #381 |
 | 6.2.8 — requested DX | complete, #378 (three of four items; #353 split into 6.2.10) |
 | 6.2.9 — `Umap.Fit` at corpus scale | complete, #382 |
-| 6.2.10 — vector-store initialisation | **pending — next** |
+| 6.2.10 — vector-store initialisation | complete, branch `feat/353-vector-store-init` |
 | 6.2.11 — HTML structure and a Guid seam | pending, added 2026-08-25 |
 
 **Issue sweep, 2026-08-25.** Every open issue checked against `main` by content. **#365** (Tool

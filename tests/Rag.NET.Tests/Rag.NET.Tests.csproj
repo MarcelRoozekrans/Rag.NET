@@ -57,4 +57,10 @@
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The gate is internal to each vector-store assembly that links it, so it is linked here too
+         rather than reached through InternalsVisibleTo from eight packages. -->
+    <Compile Include="..\..\src\Shared\VectorStoreInitialisationGate.cs" Link="VectorStores\VectorStoreInitialisationGate.cs" />
+  </ItemGroup>
+
 </Project>

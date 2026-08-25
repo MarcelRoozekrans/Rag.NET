@@ -102,6 +102,7 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
         activity?.SetTag("vector.store", GetType().Name);
@@ -124,6 +125,7 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
         activity?.SetTag("vector.store", GetType().Name);
@@ -147,6 +149,7 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(documentId);
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
         activity?.SetTag("vector.store", GetType().Name);
@@ -217,6 +220,11 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         await _api.DeleteClassAsync(name, cancellationToken).ConfigureAwait(false);
+
+        // Dropping the bound class makes "already initialised" false again; without this the next
+        // write would target a class that no longer exists (#353).
+        if (string.Equals(name, _options.ClassName, StringComparison.Ordinal))
+            _initialized = false;
     }
 
     public async Task<bool> CollectionExistsAsync(

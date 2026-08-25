@@ -4,6 +4,7 @@ using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Telemetry;
+using Rag.NET.VectorStores;
 using PineconeIndexModel = Pinecone.Index;
 using PineconeMetadataValue = Pinecone.MetadataValue;
 using RagMetadataValue = Rag.NET.Models.MetadataValue;
@@ -36,7 +37,7 @@ namespace Rag.NET.Pinecone;
 /// disposal interface, so there is nothing to release.
 /// </para>
 /// </summary>
-public class PineconeVectorStore : IVectorStore, ICollectionManageable
+public class PineconeVectorStore : IVectorStore, ICollectionManageable, IDisposable
 {
     /// <summary>
     /// Records per upsert request: 1536-dim embeddings weigh ~6 KB each, so 100 stays
@@ -56,6 +57,7 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
 
     private static readonly TimeSpan ReadyPollInterval = TimeSpan.FromMilliseconds(500);
 
+    private readonly VectorStoreInitialisationGate _initGate = new();
     private readonly PineconeClient _client;
     private readonly PineconeOptions _options;
     private IndexClient? _index;
@@ -98,11 +100,50 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
     private protected virtual CreateIndexRequestMetric IndexMetric => CreateIndexRequestMetric.Cosine;
 
     /// <inheritdoc />
+    /// <summary>
+    /// Creates the configured serverless index if it is not already there. <b>Optional</b> — every
+    /// operation below runs it once on first use (#353) — and idempotent in the sense that matters:
+    /// an existing index is left exactly as it is.
+    /// </summary>
+    /// <remarks>
+    /// Probe-then-create, like Weaviate's. The gate serialises this within one process; two
+    /// <i>processes</i> starting against the same absent index can still both probe before either
+    /// creates, and the loser sees Pinecone's conflict. Chroma avoids that class of race entirely
+    /// because its API offers a single <c>get_or_create</c> call; Pinecone's does not.
+    /// </remarks>
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        if (await CollectionExistsAsync(IndexName, cancellationToken).ConfigureAwait(false))
+            return;
+
+        // _options.VectorDimensions, not the VectorDimensions property: that property prefers a
+        // dimension resolved from an existing index, and there is no index yet.
+        await CreateCollectionAsync(IndexName, _options.VectorDimensions, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>Runs <see cref="InitializeAsync"/> once, on the first operation that needs the index.</summary>
+    private Task EnsureInitialisedAsync(CancellationToken cancellationToken) =>
+        _initGate.EnsureInitialisedAsync(InitializeAsync, cancellationToken);
+
+    public void Dispose()
+    {
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+            _initGate.Dispose();
+    }
+
     public async Task StoreAsync(
         IReadOnlyList<EmbeddedChunk> chunks,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chunks);
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.upsert");
         activity?.SetTag("vector.store", GetType().Name);
@@ -125,6 +166,7 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
         activity?.SetTag("vector.store", GetType().Name);
@@ -158,6 +200,7 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(documentId);
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
         activity?.SetTag("vector.store", GetType().Name);
@@ -219,6 +262,10 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
         }
 
         InvalidateCachedIndex(name);
+
+        // Dropping the bound index makes "already initialised" false again (#353).
+        if (string.Equals(name, IndexName, StringComparison.Ordinal))
+            _initGate.Reset();
     }
 
     /// <inheritdoc />

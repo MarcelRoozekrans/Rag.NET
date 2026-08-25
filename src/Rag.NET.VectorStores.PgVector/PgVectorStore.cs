@@ -5,6 +5,7 @@ using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Telemetry;
+using Rag.NET.VectorStores;
 
 namespace Rag.NET.PgVector;
 
@@ -30,6 +31,7 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
     private const int IterativeScanSupported = 1;
 
     private protected readonly NpgsqlDataSource _dataSource;
+    private readonly VectorStoreInitialisationGate _initGate = new();
     private readonly int _vectorDimensions;
 
     /// <summary>
@@ -147,6 +149,10 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
     /// nothing to conflict on — almost always because <see cref="InitializeAsync"/> was never
     /// called against it.
     /// </exception>
+    /// <summary>Runs <see cref="InitializeAsync"/> once, on the first operation that needs the table (#353).</summary>
+    private Task EnsureInitialisedAsync(CancellationToken cancellationToken) =>
+        _initGate.EnsureInitialisedAsync(InitializeAsync, cancellationToken);
+
     public async Task StoreAsync(
         IReadOnlyList<EmbeddedChunk> chunks,
         CancellationToken cancellationToken = default)
@@ -155,6 +161,8 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", "rag_chunks");
         activity?.SetTag("vectorstore.batch.size", chunks.Count);
+
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
@@ -234,6 +242,8 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", "rag_chunks");
+
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
@@ -423,6 +433,8 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", "rag_chunks");
+
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
@@ -803,6 +815,11 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
                 await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
         }
+
+        // Dropping the bound table makes "already initialised" false again (#353). The bound table
+        // is rag_chunks; DeleteCollectionAsync can be handed any name, so only that one resets.
+        if (string.Equals(name, "rag_chunks", StringComparison.Ordinal))
+            _initGate.Reset();
     }
 
     [System.Text.RegularExpressions.GeneratedRegex(
@@ -865,6 +882,9 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
     protected virtual void Dispose(bool disposing)
     {
         if (disposing)
+        {
             _dataSource.Dispose();
+            _initGate.Dispose();
+        }
     }
 }

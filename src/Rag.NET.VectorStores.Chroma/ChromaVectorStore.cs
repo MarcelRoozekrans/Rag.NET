@@ -67,6 +67,17 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
         _options = options;
     }
 
+    /// <summary>
+    /// Resolves — creating if absent — the configured collection. <b>Optional</b>: every operation
+    /// on this store already does the same thing on first use, and did so before #353 was filed.
+    /// It exists so a caller can pay that cost at a moment of their choosing rather than inside
+    /// the first request, and to re-provision after <see cref="DeleteCollectionAsync"/>.
+    /// </summary>
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        _ = await ResolveCollectionIdAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task StoreAsync(
         IReadOnlyList<EmbeddedChunk> chunks,
         CancellationToken cancellationToken = default)

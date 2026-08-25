@@ -20,10 +20,26 @@ public sealed class SqliteRaptorLeafStore : IRaptorLeafStore
 
         _connection = new SqliteConnection(connectionString);
         _connection.Open();
+
+        // Create the schema here, as SqliteCostLedger and SqliteEmbeddingVersionStore already do.
+        // The store is unusable without it, the statement is CREATE TABLE IF NOT EXISTS against a
+        // connection this constructor just opened, and doing it here is what lets the RAPTOR
+        // builder drop its InitializeAsync().GetAwaiter().GetResult() (#353).
+        EnsureSchema();
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Optional: the constructor has already done this. Kept because <see cref="IRaptorLeafStore"/>
+    /// declares it and it is idempotent, so calling it defensively costs one cheap statement.
+    /// </remarks>
     public Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        EnsureSchema();
+        return Task.CompletedTask;
+    }
+
+    private void EnsureSchema()
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
@@ -36,7 +52,6 @@ public sealed class SqliteRaptorLeafStore : IRaptorLeafStore
             );
             """;
         cmd.ExecuteNonQuery();
-        return Task.CompletedTask;
     }
 
     /// <inheritdoc />

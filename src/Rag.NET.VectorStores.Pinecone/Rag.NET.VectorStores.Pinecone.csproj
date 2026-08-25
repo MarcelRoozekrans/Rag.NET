@@ -48,4 +48,9 @@
     </AssemblyAttribute>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- One definition, linked rather than published, as RagTelemetrySource is. -->
+    <Compile Include="..\Shared\VectorStoreInitialisationGate.cs" Link="Internal\VectorStoreInitialisationGate.cs" />
+  </ItemGroup>
+
 </Project>

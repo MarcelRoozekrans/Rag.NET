@@ -4,6 +4,7 @@ using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Telemetry;
+using Rag.NET.VectorStores;
 using static Qdrant.Client.Grpc.Conditions;
 
 namespace Rag.NET.Qdrant;
@@ -18,6 +19,8 @@ namespace Rag.NET.Qdrant;
 /// </summary>
 public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposable
 {
+    private readonly VectorStoreInitialisationGate _initGate = new();
+
     private protected QdrantClient Client { get; }
     private protected string CollectionName { get; }
     private protected int VectorDimensions { get; }
@@ -41,6 +44,10 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
         }
     }
 
+    /// <summary>Runs <see cref="InitializeAsync"/> once, on the first operation that needs the collection (#353).</summary>
+    private Task EnsureInitialisedAsync(CancellationToken cancellationToken) =>
+        _initGate.EnsureInitialisedAsync(InitializeAsync, cancellationToken);
+
     public async Task StoreAsync(
         IReadOnlyList<EmbeddedChunk> chunks,
         CancellationToken cancellationToken = default)
@@ -49,6 +56,8 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", CollectionName);
         activity?.SetTag("vectorstore.batch.size", chunks.Count);
+
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         var points = new List<PointStruct>();
 
@@ -93,6 +102,8 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", CollectionName);
 
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
+
         var results = await Client.QueryAsync(
             CollectionName,
             query: queryEmbedding.ToArray(),
@@ -113,6 +124,8 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", CollectionName);
+
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         await Client.DeleteAsync(
             collectionName: CollectionName,
@@ -146,6 +159,10 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
             if (await Client.CollectionExistsAsync(name, cancellationToken).ConfigureAwait(false))
                 throw;
         }
+
+        // Dropping the bound collection makes "already initialised" false again.
+        if (string.Equals(name, CollectionName, StringComparison.Ordinal))
+            _initGate.Reset();
     }
 
     public async Task<bool> CollectionExistsAsync(
@@ -165,7 +182,10 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
     protected virtual void Dispose(bool disposing)
     {
         if (disposing)
+        {
             Client.Dispose();
+            _initGate.Dispose();
+        }
     }
 
     /// <summary>

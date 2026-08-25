@@ -7,6 +7,7 @@ using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Telemetry;
+using Rag.NET.VectorStores;
 using StackExchange.Redis;
 using SearchResult = Rag.NET.Models.SearchResult;
 
@@ -48,6 +49,7 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IDis
     private const string DocumentIdField = "document_id";
     private const string ChunkIndexField = "chunk_index";
 
+    private readonly VectorStoreInitialisationGate _initGate = new();
     private readonly IConnectionMultiplexer _redis;
     private readonly bool _ownsConnection;
     private readonly string _indexName;
@@ -148,6 +150,10 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IDis
         }
 
         _ = await Database.FT().DropIndexAsync(collectionName, dd: true).ConfigureAwait(false);
+
+        // Dropping the bound index makes "already initialised" false again.
+        if (string.Equals(collectionName, _indexName, StringComparison.Ordinal))
+            _initGate.Reset();
     }
 
     /// <inheritdoc />
@@ -175,12 +181,17 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IDis
     /// <returns>Its prefix.</returns>
     private static string PrefixFor(string collectionName) => collectionName + ":";
 
+    /// <summary>Runs <see cref="InitializeAsync"/> once, on the first operation that needs the index (#353).</summary>
+    private Task EnsureInitialisedAsync(CancellationToken cancellationToken) =>
+        _initGate.EnsureInitialisedAsync(InitializeAsync, cancellationToken);
+
     /// <inheritdoc />
     public async Task StoreAsync(
         IReadOnlyList<EmbeddedChunk> chunks, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chunks);
         cancellationToken.ThrowIfCancellationRequested();
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.upsert");
         activity?.SetTag("vector.store", nameof(RedisVectorStore));
@@ -211,6 +222,7 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IDis
     {
         ArgumentNullException.ThrowIfNull(options);
         cancellationToken.ThrowIfCancellationRequested();
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
         if (options.TopK <= 0)
         {
             return [];
@@ -260,6 +272,7 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IDis
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
         cancellationToken.ThrowIfCancellationRequested();
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         // Every chunk of one document, found through the tag index rather than by scanning keys:
         // KEYS blocks the server, and SCAN over a shared Redis walks keys this store did not write.
@@ -334,6 +347,7 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IDis
 
     public void Dispose()
     {
+        _initGate.Dispose();
         if (_ownsConnection)
         {
             _redis.Dispose();
