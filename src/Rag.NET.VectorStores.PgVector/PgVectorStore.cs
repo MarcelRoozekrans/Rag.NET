@@ -140,19 +140,20 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
             embedding = EXCLUDED.embedding
         """;
 
+    /// <summary>Runs <see cref="InitializeAsync"/> once, on the first operation that needs the table (#353).</summary>
+    private Task EnsureInitialisedAsync(CancellationToken cancellationToken) =>
+        _initGate.EnsureInitialisedAsync(InitializeAsync, cancellationToken);
+
     /// <summary>
     /// Inserts the chunks, replacing any chunk already stored under the same
     /// <c>(document_id, chunk_index)</c> rather than duplicating it.
     /// </summary>
     /// <exception cref="InvalidOperationException">
-    /// The table has no unique index on <c>(document_id, chunk_index)</c>, so the upsert has
-    /// nothing to conflict on — almost always because <see cref="InitializeAsync"/> was never
-    /// called against it.
+    /// The table cannot be keyed by <c>(document_id, chunk_index)</c> — most often because it
+    /// already holds duplicate rows under one key. First use initialises the table, so "the key was
+    /// never created" is no longer among the reasons; what reaches you here is a table that
+    /// <see cref="InitializeAsync"/> could not repair, carrying its explanation.
     /// </exception>
-    /// <summary>Runs <see cref="InitializeAsync"/> once, on the first operation that needs the table (#353).</summary>
-    private Task EnsureInitialisedAsync(CancellationToken cancellationToken) =>
-        _initGate.EnsureInitialisedAsync(InitializeAsync, cancellationToken);
-
     public async Task StoreAsync(
         IReadOnlyList<EmbeddedChunk> chunks,
         CancellationToken cancellationToken = default)
@@ -191,8 +192,9 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
                 throw new InvalidOperationException(
                     "PgVectorStore.StoreAsync upserts on (document_id, chunk_index), but table rag_chunks has no " +
                     "unique index on exactly those columns, so PostgreSQL rejected the ON CONFLICT clause " +
-                    $"(SQLSTATE {PostgresErrorCodes.InvalidColumnReference}). Call InitializeAsync() on this store " +
-                    "before storing — it creates the key — or create it by hand:\n\n" +
+                    $"(SQLSTATE {PostgresErrorCodes.InvalidColumnReference}). This store initialises the table on " +
+                    "first use, and that creates the key, so reaching this means the index was dropped or the table " +
+                    "replaced after this store had already initialised. Recreate it:\n\n" +
                     "CREATE UNIQUE INDEX idx_rag_chunks_doc_chunk ON rag_chunks (document_id, chunk_index)",
                     ex);
             }

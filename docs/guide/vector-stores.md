@@ -144,8 +144,10 @@ await store.InitializeAsync();
 
 Call it explicitly when you want to:
 
-- **provision at startup** rather than inside the first user-facing request — see the pgvector HNSW
-  note below, where the first run can be slow;
+- **provision at startup** rather than inside the first user-facing request. This matters most on
+  pgvector against a **large existing table**: initialisation is also the migration path, and it
+  builds the HNSW index inline while holding a `ShareLock` that blocks concurrent writes. Leave it
+  implicit and that cost lands inside whichever request happens to be first;
 - **fail fast on a misconfiguration** at a point you control;
 - **re-create a collection** you have just dropped with `DeleteCollectionAsync`.
 
@@ -157,6 +159,12 @@ Call it explicitly when you want to:
 
 Dropping the bound collection through `DeleteCollectionAsync` resets this: the next operation
 creates it again, rather than writing to something that no longer exists.
+
+**On pgvector, first use also migrates an older table** — adding the unique
+`(document_id, chunk_index)` key that upserts need. Where that is impossible, because the table
+already holds duplicate rows under one key, the first `StoreAsync` fails with the same explanation
+`InitializeAsync` would have given, naming the duplicate count and the query to inspect them. It
+deletes nothing.
 
 > **Implementing `IVectorStore` yourself?** `InitializeAsync` has a default no-op body, so an
 > existing implementation keeps compiling and behaving exactly as before. Override it if your store
@@ -268,7 +276,7 @@ A chunk is keyed by `(document_id, chunk_index)`, enforced by a unique index. `S
 Two consequences when pointing the store at a table created by one of those versions:
 
 - **`InitializeAsync` fails fast** if `rag_chunks` already contains duplicate `(document_id, chunk_index)` pairs, because the unique key cannot be created over them. It **deletes nothing** — the exception carries the duplicate count and the query to inspect them. Decide which row of each pair to keep, remove the rest, then initialize again.
-- **`StoreAsync` throws** an `InvalidOperationException` if the table has no unique index on exactly those two columns (the `ON CONFLICT` clause has nothing to infer). Almost always this means the table was created outside this library, since a table this store created — on first use or through `InitializeAsync` — always has that index.
+- **`StoreAsync` throws** an `InvalidOperationException` if the table has no unique index on exactly those two columns (the `ON CONFLICT` clause has nothing to infer). Since first use creates that key — and migrates an older table that lacks it — the reachable cause is now narrow: the index was dropped, or the table replaced, after this store had already initialised. A table that simply predates the key is migrated rather than rejected.
 
 ### Collection names
 

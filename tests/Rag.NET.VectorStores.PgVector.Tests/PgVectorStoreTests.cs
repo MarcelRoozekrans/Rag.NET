@@ -645,10 +645,46 @@ public class PgVectorStoreTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task StoreAsync_OnATableThatWasNeverInitialized_ThrowsNamingInitializeAsync()
+    public async Task StoreAsync_OnALegacyTable_MigratesItInsteadOfFailing()
     {
+        // Was StoreAsync_OnATableThatWasNeverInitialized_ThrowsNamingInitializeAsync, and it was
+        // right until #353. StoreAsync used to hit SQLSTATE 42P10 — ON CONFLICT with no unique
+        // index to infer — and the store turned that into "call InitializeAsync". Now first use
+        // runs InitializeAsync itself, which adds the missing key, so the advice has nothing left
+        // to advise: the table is repaired and the write lands.
         var connectionString = await CreateDatabaseAsync("uninitialized");
         await CreateLegacySchemaAsync(connectionString);
+
+        using var store = new PgVectorStore(connectionString, vectorDimensions: 3);
+
+        await store.StoreAsync(
+            [
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk { Text = "t", DocumentId = new DocumentId("d"), ChunkIndex = 0 },
+                    Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+                },
+            ],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1L, await ScalarAsync<long>(connectionString, "SELECT count(*) FROM rag_chunks"));
+
+        // The migration actually happened, rather than the write merely getting lucky: the unique
+        // key the legacy schema lacked is now there, which is what makes the upsert an upsert.
+        Assert.Equal(1L, await ScalarAsync<long>(
+            connectionString,
+            "SELECT count(*) FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid " +
+            "WHERE c.relname = 'idx_rag_chunks_doc_chunk' AND i.indisunique"));
+    }
+
+    [Fact]
+    public async Task StoreAsync_OnALegacyTableItCannotRepair_SurfacesTheReason()
+    {
+        // The other half of the same change, and the one that matters more. Initialising on first
+        // use must not turn an unfixable schema into a silent surprise: duplicate (document_id,
+        // chunk_index) rows make the unique key impossible, and that has to reach the caller of
+        // StoreAsync with the same message InitializeAsync would have given, not as a 42P10.
+        var connectionString = await CreateLegacyDuplicateDatabaseAsync("unrepairable");
 
         using var store = new PgVectorStore(connectionString, vectorDimensions: 3);
 
@@ -663,9 +699,10 @@ public class PgVectorStoreTests : IAsyncLifetime
                 ],
                 TestContext.Current.CancellationToken));
 
-        Assert.Contains("InitializeAsync", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("42P10", ex.Message, StringComparison.Ordinal);
-        Assert.IsType<PostgresException>(ex.InnerException);
+        Assert.Contains("1 duplicate key", ex.Message, StringComparison.Ordinal);
+
+        // Nothing was written and nothing was deleted: the two legacy rows, and only those.
+        Assert.Equal(2L, await ScalarAsync<long>(connectionString, "SELECT count(*) FROM rag_chunks"));
     }
 
     private async Task<string> CreateDatabaseAsync(string database)
