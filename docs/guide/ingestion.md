@@ -185,6 +185,20 @@ services.AddRagNet(rag => rag
     .AddPowerPointParser());
 ```
 
+Some parsers take options. `AddHtmlParser` accepts a callback for how links are handled — by
+default a link's URL is appended to its text, which for site-internal paths is noise in the
+embedding:
+
+```csharp
+services.AddRagNet(rag => rag
+    .AddHtmlParser(o => o.HrefHandling = HtmlHrefHandling.MakeAbsolute));
+```
+
+`Remove` drops the URL and keeps the link text; `MakeAbsolute` resolves it against the page's
+`<base href>`, failing that the document's `url` tag — which every web data provider here sets —
+and failing that `HtmlParserOptions.BaseUri`. With no base available the URL is left as it is
+rather than resolved against a guess.
+
 To register your own parser implementation directly:
 
 ```csharp
