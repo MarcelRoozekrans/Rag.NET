@@ -124,8 +124,10 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", CollectionName);
+        // Deliberately no first-use initialisation here: a delete has nothing to delete from a
+        // collection that does not exist, and provisioning one to satisfy it would be pure waste —
+        // on pgvector an inline HNSW build under a write-blocking lock, triggered by a delete (#353).
 
-        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         await Client.DeleteAsync(
             collectionName: CollectionName,

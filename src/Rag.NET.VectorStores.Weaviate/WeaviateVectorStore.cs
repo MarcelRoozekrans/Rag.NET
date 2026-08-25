@@ -148,8 +148,10 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         string documentId,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrEmpty(documentId);
-        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+        ArgumentException.ThrowIfNullOrEmpty(documentId);        // Deliberately no first-use initialisation here: a delete has nothing to delete from a
+        // collection that does not exist, and provisioning one to satisfy it would be pure waste —
+        // on pgvector an inline HNSW build under a write-blocking lock, triggered by a delete (#353).
+
 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
         activity?.SetTag("vector.store", GetType().Name);

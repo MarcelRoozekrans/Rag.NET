@@ -426,17 +426,33 @@ public class PineconeVectorStoreTests
     }
 
     [Fact]
-    public async Task Store_MissingIndex_FailsFastNamingTheFix()
+    public async Task Store_MissingIndex_CreatesItAndStores()
     {
-        var store = CreateStore(UniqueIndexName());
+        // Was Store_MissingIndex_FailsFastNamingTheFix, and it was right until #353: storing into
+        // an absent index used to fail naming CreateCollectionAsync. First use now creates the
+        // index, so there is no fix left to name.
+        var indexName = UniqueIndexName();
+        var store = CreateStore(indexName);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => store.StoreAsync(
+        try
+        {
+            await store.StoreAsync(
                 [Chunk("doc-x", 0, "no index", [1.0f, 0.0f, 0.0f])],
-                TestContext.Current.CancellationToken));
+                TestContext.Current.CancellationToken);
 
-        Assert.Contains("does not exist", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("CreateCollectionAsync", exception.Message, StringComparison.Ordinal);
+            // The index exists because the store made it, not because the fixture did.
+            Assert.True(await store.CollectionExistsAsync(indexName, TestContext.Current.CancellationToken));
+
+            var results = await store.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 10 },
+                TestContext.Current.CancellationToken);
+            Assert.Single(results);
+        }
+        finally
+        {
+            await store.DeleteCollectionAsync(indexName, TestContext.Current.CancellationToken);
+        }
     }
 
     [Fact(Skip = "Pinecone Local does not support sparse values on dense (dotproduct) indexes: "

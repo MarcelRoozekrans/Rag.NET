@@ -369,7 +369,16 @@ public class WeaviateVectorStoreTests
         var sentinelClassName = UniqueClassName();
         await store.CreateCollectionAsync(sentinelClassName, 3, TestContext.Current.CancellationToken);
 
-        await store.DeleteCollectionAsync(className, TestContext.Current.CancellationToken);
+        // Dropped through a *different* store, on purpose. Since #353 a store re-creates its class
+        // on first use after its own DeleteCollectionAsync resets it, so deleting through `store`
+        // would make the very next SearchAsync provision the class again and succeed — and this
+        // test is about mapping Weaviate's GraphQL error, not about initialisation. Deleting out of
+        // band leaves `store` believing it is initialised, which is also the realistic shape of
+        // this failure: something else dropped the class underneath a live store.
+        using (var otherStore = CreateStore(sentinelClassName))
+        {
+            await otherStore.DeleteCollectionAsync(className, TestContext.Current.CancellationToken);
+        }
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => store.SearchAsync(

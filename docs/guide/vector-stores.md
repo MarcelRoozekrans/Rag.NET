@@ -128,8 +128,12 @@ Filter values are kind-sensitive: filtering on the string `"3"` does not match a
 ## Initialisation
 
 **You do not have to call `InitializeAsync`.** Every store in this library creates its index or
-collection on first use — the first `StoreAsync`, `SearchAsync` or `DeleteByDocumentIdAsync` — so a
-first ingest against a backend that has never been provisioned works without any startup step.
+collection on first use — the first `StoreAsync` or `SearchAsync` — so a first ingest against a
+backend that has never been provisioned works without any startup step.
+
+`DeleteByDocumentIdAsync` deliberately does **not** initialise: a delete against a collection that
+does not exist has nothing to delete, so provisioning one to satisfy it would be waste — and on
+pgvector an inline HNSW build under a write-blocking lock, set off by a delete.
 
 It runs **once per store instance**, behind a lock, and only a *successful* run is remembered: a
 transient failure at startup does not leave the store permanently broken, the next call tries again.

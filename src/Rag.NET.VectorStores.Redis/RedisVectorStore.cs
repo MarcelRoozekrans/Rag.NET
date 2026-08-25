@@ -272,7 +272,9 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IDis
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
         cancellationToken.ThrowIfCancellationRequested();
-        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
+        // Deliberately no first-use initialisation here: a delete has nothing to delete from a
+        // collection that does not exist, and provisioning one to satisfy it would be pure waste —
+        // on pgvector an inline HNSW build under a write-blocking lock, triggered by a delete (#353).
 
         // Every chunk of one document, found through the tag index rather than by scanning keys:
         // KEYS blocks the server, and SCAN over a shared Redis walks keys this store did not write.

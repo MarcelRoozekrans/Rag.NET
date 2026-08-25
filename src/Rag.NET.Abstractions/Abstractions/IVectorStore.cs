@@ -32,6 +32,13 @@ public interface IVectorStore
     /// <see cref="ICollectionManageable.DeleteCollectionAsync"/>.
     /// </para>
     /// <para>
+    /// <b><see cref="StoreAsync"/> and <see cref="SearchAsync"/> initialise;
+    /// <see cref="DeleteByDocumentIdAsync"/> does not.</b> Those two cannot do their job without the
+    /// collection, whereas a delete against a collection that does not exist has nothing to delete —
+    /// provisioning one to satisfy it would be waste, and on pgvector an inline index build under a
+    /// write-blocking lock, set off by a delete.
+    /// </para>
+    /// <para>
     /// <b>The default implementation does nothing</b>, which is why adding this member is not a
     /// breaking change: an existing external <see cref="IVectorStore"/> that provisions its own
     /// backend keeps behaving exactly as it did. Implementations that create a collection should
