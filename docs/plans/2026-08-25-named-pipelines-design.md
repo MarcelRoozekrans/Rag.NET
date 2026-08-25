@@ -222,11 +222,26 @@ exists is possible later and is explicitly left open; it is not in this phase.
 the parent container disposes the factory, which disposes each child provider, which disposes that
 pipeline's stores.
 
-**Async is not a stylistic choice.** Seven types in the per-pipeline surface are `IAsyncDisposable` —
-`IBm25Index`, `IParentChunkStore`, `IRagDataManager`, `ITagIndex`, `IGraphStore`, `IRaptorLeafStore`
-and `SqliteAuditLog` — and `ServiceProvider.Dispose()` **throws** when it holds a service that
-implements only `IAsyncDisposable`, with a message telling you to use `DisposeAsync` instead.
-Getting this wrong is a crash at shutdown, not a leak.
+**Async is not a stylistic choice**, though the original reason given here was overstated and is
+corrected below.
+
+`ServiceProvider.Dispose()` **throws** when it holds a service implementing *only*
+`IAsyncDisposable`, with a message telling you to use `DisposeAsync`. Getting that wrong is a crash
+at shutdown, not a leak.
+
+**Corrected 2026-08-25.** An earlier draft said "seven types in the per-pipeline surface are
+`IAsyncDisposable`", counting *interfaces* that declare it — `IBm25Index`, `IParentChunkStore`,
+`IRagDataManager`, `ITagIndex`, `IGraphStore`, `IRaptorLeafStore`. That number is not the relevant
+one: those interfaces also extend `IDisposable`, so their implementations dispose synchronously
+without complaint.
+
+**Exactly two concrete types implement `IAsyncDisposable` without `IDisposable`** — `SqliteAuditLog`
+and `AzureServiceBusIngestionTrigger` — and they are the only ones that make synchronous disposal
+throw. Fewer than claimed, but still reachable: a named pipeline calling `UseSqliteAuditLog` hits it.
+
+Async disposal remains correct regardless — an async-disposable store should be closed
+asynchronously whether or not skipping it would throw — but the justification is the two types, not
+the seven interfaces.
 
 **Shared services are disposed by the parent and never by a child.** Ownership runs one way, so
 tearing down one named pipeline cannot pull the ONNX session out from under another.
