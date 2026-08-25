@@ -103,28 +103,32 @@ types:
 
 ```csharp
 foreach (var serviceType in sharedServiceTypes)
-    childServices.AddSingleton(serviceType, _ => rootProvider.GetRequiredService(serviceType));
+{
+    var instance = rootProvider.GetRequiredService(serviceType);
+    childServices.Replace(ServiceDescriptor.Singleton(serviceType, instance));
+}
 ```
 
-The lambda closes over the root provider, which exists by the time a child is built (§3). The set is
-known exactly, so there is no unknown-type problem, and sharing stays visible as a descriptor rather
-than as ambient provider behaviour.
+The set is known exactly, so there is no unknown-type problem, and sharing stays visible as a
+descriptor rather than as ambient provider behaviour.
+
+**The descriptor must be an *instance*, not a factory lambda — this is not a style choice.** An
+earlier draft of this section wrote
+`childServices.AddSingleton(serviceType, _ => rootProvider.GetRequiredService(serviceType))`, and it
+is wrong in a way that only shows at shutdown: `ServiceProvider` captures anything realised through a
+**factory call site** for disposal *in whichever container ran the factory*. Each child would
+therefore take ownership of the shared instance, so disposing one named pipeline would dispose the
+embedding model out from under every other one — and disposing a second would double-dispose it.
+Reproduced against `Microsoft.Extensions.DependencyInjection` 10.0.11 during implementation.
+
+A **constant** call site is excluded from that capture, so an instance descriptor leaves ownership
+with the root, which is what §4 requires. `Replace` rather than `Add` because the named block's own
+`configure` may already have registered the same service type.
 
 **This is also why `AddRagNetShared` is a distinct call rather than inferred from the outer
 collection.** The outer collection contains the host's own registrations — logging, configuration,
 `HttpClient`s, everything unrelated. Forwarding all of it would make every child depend on the
 host's container shape. Forwarding what one block deliberately declared is a bounded, reviewable set.
-
-### 1b. Verified before relying on it
-
-The design assumes parallel containers are safe. Checked rather than inherited:
-
-- **No mutable process-wide state.** Every `static` in `src/` is a method, `readonly`, or `const` —
-  there are no mutable static fields for two pipelines to contend over.
-- **`CompositionClaimRegistry(IServiceCollection services)` is per-collection**, holding an instance
-  `_claims` list, so claim tracking is already scoped the way named pipelines need.
-
-If either had been false, this design would not work at all.
 
 ### 1a. The unnamed form is untouched, and that is a hard constraint
 
@@ -156,6 +160,17 @@ services.AddRagNet("docs", rag => rag.UseAzureAISearch(…, "docs-index"));
 factory for everything rather than mixing `GetRequiredService<IRagPipeline>()` with `Get(name)`.
 Offering both is deliberate: the direct resolve is what every existing reader knows, and the factory
 is what makes a migration incremental rather than a rewrite.
+
+### 1b. Verified before relying on it
+
+The design assumes parallel containers are safe. Checked rather than inherited:
+
+- **No mutable process-wide state.** Every `static` in `src/` is a method, `readonly`, or `const` —
+  there are no mutable static fields for two pipelines to contend over.
+- **`CompositionClaimRegistry(IServiceCollection services)` is per-collection**, holding an instance
+  `_claims` list, so claim tracking is already scoped the way named pipelines need.
+
+If either had been false, this design would not work at all.
 
 ### 2. Why sharing is explicit rather than inferred
 
