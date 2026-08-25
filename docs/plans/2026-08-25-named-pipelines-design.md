@@ -92,6 +92,40 @@ var pipeline = provider.GetRequiredService<IRagPipelineFactory>().Get("docs");
 Resolution order is **child first, then the shared parent**. So the embedder, `IChatClient` and
 `HttpClient`s are singular; stores, indexes, caches and the pipelines themselves are per-name.
 
+**How the fallback actually works — forwarding descriptors, not a composite provider.** A composite
+`IServiceProvider` that tries child then parent does not work: services *inside* the child resolve
+their constructor dependencies from the child's own provider, not from the wrapper, so a child
+service needing `IEmbeddingGenerator` would still fail.
+
+Instead, `AddRagNetShared` records which `ServiceType`s it registered — by snapshotting the
+collection around the callback — and each named block adds a forwarding singleton for exactly those
+types:
+
+```csharp
+foreach (var serviceType in sharedServiceTypes)
+    childServices.AddSingleton(serviceType, _ => rootProvider.GetRequiredService(serviceType));
+```
+
+The lambda closes over the root provider, which exists by the time a child is built (§3). The set is
+known exactly, so there is no unknown-type problem, and sharing stays visible as a descriptor rather
+than as ambient provider behaviour.
+
+**This is also why `AddRagNetShared` is a distinct call rather than inferred from the outer
+collection.** The outer collection contains the host's own registrations — logging, configuration,
+`HttpClient`s, everything unrelated. Forwarding all of it would make every child depend on the
+host's container shape. Forwarding what one block deliberately declared is a bounded, reviewable set.
+
+### 1b. Verified before relying on it
+
+The design assumes parallel containers are safe. Checked rather than inherited:
+
+- **No mutable process-wide state.** Every `static` in `src/` is a method, `readonly`, or `const` —
+  there are no mutable static fields for two pipelines to contend over.
+- **`CompositionClaimRegistry(IServiceCollection services)` is per-collection**, holding an instance
+  `_claims` list, so claim tracking is already scoped the way named pipelines need.
+
+If either had been false, this design would not work at all.
+
 ### 1a. The unnamed form is untouched, and that is a hard constraint
 
 ```csharp
