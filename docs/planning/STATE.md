@@ -215,9 +215,17 @@ it holds does the ~15-20 hour per-document `raptor` build earn its place as a sc
 
 ### Task 5 ran 2026-08-25 and reversed the pilot's headline.
 
-**The validation gate held exactly at full scale.** `raptorfiltered` reproduced the dense arm to
-four decimals on all three rules — 0.3499 / 0.2603 / 0.3242, the figures pinned 2026-08-15 — so the
-corpora did not diverge and the numbers below measure RAPTOR rather than a setup fault.
+**The validation gate held exactly at full scale.** `raptorfiltered` matched the dense arm on all
+three rules — 0.3499 / 0.2603 / 0.3242, the figures pinned 2026-08-15 — so the corpora did not
+diverge and the numbers below measure RAPTOR rather than a setup fault.
+
+**Read that precisely: it is not two generations agreeing to four decimals.** `raptorfiltered`'s
+predictions are byte-identical to dense's on **2,556 of 2,556** queries, because filtering the
+summaries out leaves the same top-6 context, which is the same prompt, which the answer cache serves
+from the dense run. The gate is therefore a **retrieval-identity check** — had the corpora diverged,
+the context would differ, the prompt would miss the cache, and a freshly generated answer would have
+moved the figure. That is exactly what the gate is for, and it is weaker than an independent
+re-measurement of answer generation. It is also why this arm cost almost nothing.
 
 | arm | paper | raw | strict | inference |
 | --- | --- | --- | --- | --- |
@@ -238,6 +246,12 @@ Two of three rules significant, all three signed the same way.
 existed to find out, and the reason the plan insisted on the full sweep rather than trusting the
 pilot's headline.
 
+**How large is the evidence, really?** The two arms return *different predictions* on 560 of the
+2,255 judged queries (24.8%) and *score differently* on 203. Those 203 discordant pairs are what
+McNemar tests, and 85–118 within them is what produces p=0.0247 — so the test already accounts for
+the effective sample being far smaller than 2,255. The other 2,052 queries carry no information
+about the difference.
+
 **The gap is inference queries**: 0.7831 against the control's 0.8309, while comparison and temporal
 are flat. That is the *opposite* of #331's rationale — corpus-spanning summaries were meant to help
 the multi-hop case they measurably hurt.
@@ -246,9 +260,16 @@ the multi-hop case they measurably hurt.
 `Boost` so it could promote summaries at all; this is the first measurement of what it does once it
 works, and it trades accuracy for abstention (51.8% correct null-abstention, the best of the four).
 
-**Cost and shape:** 58 m of generation after a 28 m I/O-bound load, ~5,600 new answers. The plan's
-~8 h estimate came from a rate observed during *tree summarisation*, whose prompts are much larger;
-the pilot notes flagged that uncertainty explicitly and it was right to.
+**Cost and shape:** 58 m of generation after a 28 m I/O-bound load. **5,592 answers were newly
+generated of the 10,224 scored** — the rest were cache hits on identical prompts, all 2,556 of
+`raptorfiltered`'s among them.
+
+**The plan's ~8 h estimate was wrong twice over, and both are worth keeping.** It assumed ~10,000
+*new* generations, when nearly half the work was already paid for by earlier runs whose retrieved
+context happened to match. And its rate came from *tree summarisation*, whose prompts are far larger
+than an answer's — the pilot notes flagged that uncertainty explicitly and were right to. Neither
+error was in the direction that costs money, but an estimate that is 8× high is not obviously safer
+than one that is 8× low: it is what made an overnight window seem necessary.
 
 ## OPEN DECISION — what to do about the corpus-scope default
 

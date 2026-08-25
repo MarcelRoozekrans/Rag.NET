@@ -171,9 +171,15 @@ internal static class MultiHopRagAnswerReproduction
             "cached, so this run paid for answers only. Accuracy is over the **2,255 judged " +
             "queries**, the denominator every other pin here uses -- the 301 null queries are " +
             "scored separately as abstention. " +
-            "**The validation gate held exactly at full scale**: raptorfiltered reproduced the dense " +
-            "arm to four decimals on all three rules (0.3499 / 0.2603 / 0.3242), the figures pinned " +
-            "2026-08-15. The corpora did not diverge, so these numbers measure RAPTOR. " +
+            "**The validation gate held exactly at full scale**: raptorfiltered matched the dense arm " +
+            "on all three rules (0.3499 / 0.2603 / 0.3242), the figures pinned 2026-08-15. " +
+            "**Read that precisely -- it is not two generations agreeing to four decimals.** Its " +
+            "predictions are byte-identical to dense on 2,556 of 2,556 queries, because filtering the " +
+            "summaries out leaves the same top-6 context, which is the same prompt, which the answer " +
+            "cache serves from the dense run. That makes the gate a **retrieval-identity check**: had " +
+            "the corpora diverged, the context would differ, the prompt would miss the cache, and a " +
+            "freshly generated answer would have moved the figure. It is exactly what the gate is for, " +
+            "and it is weaker than an independent re-measurement of answer generation. " +
             "**Paper-rule 0.3588** (raw 0.2656, strict 0.3322); inference 0.7831, comparison 0.1729, " +
             "temporal 0.0377; abstains correctly on 48.2% of the 301 nulls. " +
             "**raptorcorpus - raptor = -0.0146 paper, -0.0204 raw, -0.0027 strict.** Corpus-level " +
@@ -215,10 +221,16 @@ internal static class MultiHopRagAnswerReproduction
             "cached, so this run paid for answers only. Accuracy is over the **2,255 judged " +
             "queries**, the denominator every other pin here uses -- the 301 null queries are " +
             "scored separately as abstention. " +
-            "**Paper-rule 0.3499** (raw 0.2603, strict 0.3242) -- the dense arm's pinned figures to " +
-            "four decimals, which is what makes this the validation gate rather than a result. " +
-            "Summaries filtered out, so only the 17,648 leaf chunks are reachable; reproducing dense " +
-            "exactly is the evidence the RAPTOR corpus and the dense corpus are the same corpus. " +
+            "**Paper-rule 0.3499** (raw 0.2603, strict 0.3242) -- the dense arm's pinned figures, which " +
+            "is what makes this the validation gate rather than a result. Summaries filtered out, so " +
+            "only the 17,648 leaf chunks are reachable. " +
+            "**The match is exact for a mechanical reason worth knowing**: predictions are identical to " +
+            "dense on 2,556 of 2,556 queries, because the same leaves give the same top-6 context, hence " +
+            "the same prompt, which the answer cache serves from the dense run. So this arm cost almost " +
+            "nothing to run, and the gate proves **retrieval identity** -- the RAPTOR corpus and the " +
+            "dense corpus retrieve the same thing -- rather than independently re-deriving dense's " +
+            "accuracy. A diverged corpus would have changed the context, missed the cache, and moved " +
+            "the figure, which is precisely the failure the gate exists to catch. " +
             "**raptorcorpus - raptorfiltered = +0.0089 paper** (McNemar p=0.0293), +0.0053 raw " +
             "(p=0.1416), +0.0080 strict (p=0.0795): what the summaries add, significant on one rule " +
             "of three and small on all of them."),
