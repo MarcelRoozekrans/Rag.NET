@@ -95,16 +95,16 @@ internal sealed class RagPipelineFactory(
         return $"""
             The RAG pipeline named '{name}' could not be resolved: {inner.Message}
 
-            A named pipeline resolves from its own container, which can see only:
-              - what its own AddRagNet("{name}", rag => ...) block registered, and
-              - what AddRagNetShared(rag => ...) declared, which is currently: {shared}.
+            A named pipeline resolves from its own container, which is built from:
+              - its own AddRagNet("{name}", rag => ...) block,
+              - anything AddRagNetShared(rag => ...) declared, currently: {shared}, and
+              - the host's own singleton registrations on IServiceCollection, which it inherits
+                unless its own block registers the same type.
 
-            Services registered directly on IServiceCollection outside those two places stay in the
-            root and are never visible to a named pipeline. That is deliberate — a child would
-            otherwise inherit the host's logging, configuration and HttpClients — but it means a
-            service can be plainly registered and still unreachable here. If the missing one comes
-            from another library's extension method, call it inside the shared block:
-            services.AddRagNetShared(rag => rag.Services.AddEmbeddingGenerator(...)).
+            So nothing anywhere provides this service. Register it in whichever of those three
+            places fits: the named block if only this pipeline needs it, AddRagNetShared if every
+            pipeline should share one instance, or the collection directly — for example
+            services.AddEmbeddingGenerator(...) — if the host owns it.
             """;
     }
 
