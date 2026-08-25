@@ -92,7 +92,36 @@ var pipeline = provider.GetRequiredService<IRagPipelineFactory>().Get("docs");
 Resolution order is **child first, then the shared parent**. So the embedder, `IChatClient` and
 `HttpClient`s are singular; stores, indexes, caches and the pipelines themselves are per-name.
 
-Unnamed `AddRagNet` is untouched and keeps working exactly as it does today.
+### 1a. The unnamed form is untouched, and that is a hard constraint
+
+```csharp
+services.AddRagNet(rag => rag.UseAzureAISearch(…).UseOnnxEmbeddings(…));
+var pipeline = provider.GetRequiredService<IRagPipeline>();
+```
+
+**This keeps working exactly as it does today, registering into the root container.** Nothing about
+the bootstrap a reader learns from `getting-started.md` changes, and a caller who never wants a
+second pipeline never meets `IRagPipelineFactory` or `AddRagNetShared` at all. Named pipelines are
+**purely additive**.
+
+That is a constraint rather than a courtesy. The guide documents resolving pipeline internals
+straight from the root provider — `docs/guide/vector-stores.md:211`, `:346` and `:544` all do
+`provider.GetRequiredService<IVectorStore>()`, and `getting-started.md:83` resolves `IRagPipeline`.
+Routing the unnamed form through a child provider would break every one of those documented lines.
+So it is not routed through one.
+
+**The two forms compose.** A caller can keep their default pipeline and add named ones beside it:
+
+```csharp
+services.AddRagNetShared(rag => rag.UseOnnxEmbeddings(…));            // one session, shared
+services.AddRagNet(rag => rag.UseAzureAISearch(…, "default-index"));  // the root pipeline, as today
+services.AddRagNet("docs", rag => rag.UseAzureAISearch(…, "docs-index"));
+```
+
+`IRagPipelineFactory` also exposes the root pipeline, so code that wants one mental model can ask the
+factory for everything rather than mixing `GetRequiredService<IRagPipeline>()` with `Get(name)`.
+Offering both is deliberate: the direct resolve is what every existing reader knows, and the factory
+is what makes a migration incremental rather than a rewrite.
 
 ### 2. Why sharing is explicit rather than inferred
 
@@ -180,7 +209,10 @@ tearing down one named pipeline cannot pull the ONNX session out from under anot
 - **Disposing the parent disposes every child's stores**, asserted on an `IAsyncDisposable` double,
   and **does not throw** — the `ServiceProvider.Dispose()` trap above.
 - **Disposing does not dispose shared services twice.**
-- **Unnamed `AddRagNet` is unchanged**, so the existing suite is itself the regression guard.
+- **Unnamed `AddRagNet` is unchanged**, so the existing suite is itself the regression guard —
+  including the documented root resolves (`IRagPipeline`, `IVectorStore`) that §1a protects.
+- **The two forms coexist**: a root pipeline and a named one in the same container, each
+  reaching its own store, with the shared embedder singular across both.
 
 ## Out of scope
 
