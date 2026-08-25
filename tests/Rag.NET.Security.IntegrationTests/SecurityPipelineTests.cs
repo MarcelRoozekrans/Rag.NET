@@ -276,7 +276,7 @@ public class SecurityPipelineTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task UseAuditLog_WritesToSqliteEndToEnd()
+    public async Task UseSqliteAuditLog_WritesToSqliteEndToEnd()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"rag-audit-{Guid.CreateVersion7():N}.db");
         var docId  = $"sec-audit-{Guid.CreateVersion7():N}";
@@ -289,7 +289,7 @@ public class SecurityPipelineTests : IAsyncLifetime
             services.AddSingleton<IChatClient>(new CapturingChatClient());
             services.AddRagNet(rag => rag
                 .UsePgVector(_fixture.ConnectionString, vectorDimensions: 3)
-                .UseAuditLog(o => o.DatabasePath = dbPath));
+                .UseSqliteAuditLog(o => o.DatabasePath = dbPath));
 
             await using var sp = services.BuildServiceProvider();
             var store = (PgVectorStore)sp.GetRequiredService<IVectorStore>();
@@ -332,7 +332,7 @@ public class SecurityPipelineTests : IAsyncLifetime
             services.AddRagNet(rag => rag
                 .UsePgVector(_fixture.ConnectionString, vectorDimensions: 3)
                 .UseRbac()
-                .UseAuditLog(o => o.DatabasePath = dbPath));
+                .UseSqliteAuditLog(o => o.DatabasePath = dbPath));
 
             await using var sp = services.BuildServiceProvider();
             var store = (PgVectorStore)sp.GetRequiredService<IVectorStore>();

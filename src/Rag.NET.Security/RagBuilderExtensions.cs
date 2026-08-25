@@ -144,19 +144,37 @@ public static class RagBuilderExtensions
         return builder;
     }
 
-    public static TBuilder UseAuditLog<TBuilder>(
-        this TBuilder builder, Action<AuditLogOptions>? configure = null)
+    /// <summary>
+    /// Registers everything auditing needs <b>except</b> the <see cref="IAuditLog"/> itself: the
+    /// options, the correlation context, the retrieval behaviour and the answer-engine decorator.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Internal on purpose.</b> There used to be a public <c>UseAuditLog()</c> here that also
+    /// registered <see cref="SqliteAuditLog"/>, which is why <c>Rag.NET.Security</c> carried
+    /// <c>Microsoft.Data.Sqlite</c> and a native SQLite binary for everyone using
+    /// <c>UseChunkSanitiser</c>, <c>UseRbac</c> or <c>UsePiiDetection</c> (#339).
+    /// </para>
+    /// <para>
+    /// It is not public because a public version would let a caller register the behaviour and the
+    /// decorator with no log behind them — auditing that appears configured and records nothing.
+    /// Keeping the wiring internal makes that state <b>unrepresentable</b> rather than merely
+    /// detectable: the only way to reach it is through a package that also supplies a log, so a
+    /// caller who forgets gets a compile error rather than a silent gap or a runtime surprise.
+    /// </para>
+    /// </remarks>
+    /// <typeparam name="TBuilder">The builder being configured.</typeparam>
+    /// <param name="builder">The builder being configured.</param>
+    /// <param name="opts">
+    /// The audit options, already configured by the caller and about to be shared with the
+    /// <see cref="IAuditLog"/> that caller registers.
+    /// </param>
+    /// <returns>The same builder, for chaining.</returns>
+    internal static TBuilder AddAuditWiring<TBuilder>(this TBuilder builder, AuditLogOptions opts)
         where TBuilder : IRagBuilder
     {
-        var opts = new AuditLogOptions();
-        configure?.Invoke(opts);
         builder.Services.AddSingleton(opts);
         builder.Services.AddSingleton<AuditCorrelationContext>();
-        builder.Services.AddSingleton<IAuditLog>(sp =>
-            new SqliteAuditLog(
-                sp.GetRequiredService<AuditLogOptions>(),
-                sp.GetService<ILogger<SqliteAuditLog>>()));
-
         // Register AuditRetrievalBehavior as a singleton so the pipeline builder can resolve it.
         builder.Services.AddSingleton<AuditRetrievalBehavior>(sp =>
             new AuditRetrievalBehavior(
@@ -167,8 +185,8 @@ public static class RagBuilderExtensions
                 sp.GetService<AuditCorrelationContext>()));
 
         // Add AuditRetrievalBehavior to the retrieval pipeline via the RetrievalPipelineBuilder in DI.
-        // UseAuditLog must be called after AddRagNet — the accessor throws clearly if it was not.
-        builder.Services.RagRetrievalPipeline(nameof(UseAuditLog)).AddFirst<AuditRetrievalBehavior>();
+        // The caller's Use* must run after AddRagNet — the accessor throws clearly if it was not.
+        builder.Services.RagRetrievalPipeline(nameof(AddAuditWiring)).AddFirst<AuditRetrievalBehavior>();
 
         // Wire the answer-engine decorator through the decoration seam rather than by registering
         // IAnswerEngine. Registering it is how an answer engine is *chosen* (UseMapReduceAnswerEngine,
@@ -178,8 +196,8 @@ public static class RagBuilderExtensions
         // (issue #195). Through the seam the decorator wraps whatever engine the pipeline composes,
         // in either order, and there is no circular resolution to avoid: the inner engine is handed
         // in rather than resolved.
-        builder.Services.RagAnswerEngineDecorations(nameof(UseAuditLog)).Add(
-            nameof(UseAuditLog),
+        builder.Services.RagAnswerEngineDecorations(nameof(AddAuditWiring)).Add(
+            nameof(AddAuditWiring),
             static (inner, sp) => new AuditAnswerEngineDecorator(
                 inner,
                 sp.GetRequiredService<IAuditLog>(),

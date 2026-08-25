@@ -48,8 +48,14 @@ public sealed class ProducedPackageTests
     /// an unknown period; more means something unshippable is packing, which is how the sample
     /// and benchmark projects inflated the count before Task 1b. Adding or removing a package is
     /// a deliberate act; update this constant in the same commit.
+    /// <para>
+    /// <b>71 → 72 on 2026-08-25</b>: <c>Rag.NET.Security.Audit.Sqlite</c>, split out of
+    /// <c>Rag.NET.Security</c> so that package stops shipping a native SQLite binary to
+    /// everyone using <c>UseChunkSanitiser</c>, <c>UseRbac</c> or <c>UsePiiDetection</c>
+    /// (#339). Verified by an actual <c>dotnet pack</c> of the solution, which produced 72.
+    /// </para>
     /// </summary>
-    private const int ExpectedPackageCount = 71;
+    private const int ExpectedPackageCount = 72;
 
     /// <summary>
     /// What NuGet ships when a project declares no <c>Description</c>. Not a warning, not an

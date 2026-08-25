@@ -2,18 +2,12 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <!-- Starts a Testcontainers container, via Rag.NET.Testing's PgVectorFixture rather than
-         a Testcontainers reference of its own. CI runs these in the Docker tier, which is
-         Linux-only: the Windows runners have no Linux Docker daemon. -->
-    <RequiresDocker>true</RequiresDocker>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Security.Audit.Sqlite\Rag.NET.Security.Audit.Sqlite.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Security\Rag.NET.Security.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.VectorStores.PgVector\Rag.NET.VectorStores.PgVector.csproj" />
-    <ProjectReference Include="..\Rag.NET.Testing\Rag.NET.Testing.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
@@ -21,6 +15,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="NSubstitute" />
   </ItemGroup>
 
 </Project>
