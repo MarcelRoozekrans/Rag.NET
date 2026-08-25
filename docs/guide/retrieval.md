@@ -885,6 +885,25 @@ The metadata filter implementation varies by vector store:
 - **Qdrant:** Must-match conditions on `meta_{key}` payload fields.
 - **Azure AI Search:** `search.ismatch` filter clauses on the serialised `metadata` field.
 
+### `MetadataFilter` and the BM25 arm
+
+`MetadataFilter` applies to every arm of hybrid search, including BM25.
+
+This was not true before v1.0: `IBm25Index.Search` had no filter parameter, so the BM25 arm of
+**client-side** hybrid search ranked and returned chunks the filter excluded, and those hits were
+merged into the result. It affected more than stores without native hybrid search — supplying
+`EnsembleOptions`, setting a non-zero `MinScore`, or running a sparse arm all fall back to the
+client-side path (see [How the hybrid path is selected](#how-the-hybrid-path-is-selected)), so a
+store with correct server-side filtering could still leak on those calls.
+
+**If you implement `IBm25Index` yourself**, `Search` now takes an optional
+`IDictionary<string, MetadataValue>? metadataFilter`. Apply it with
+`MetadataFilterMatcher.Matches` — public for exactly this reason, so implementers do not have to
+reimplement the typed-equality semantics described above — and apply it *before* truncating to
+`topK`, so callers receive the best eligible chunks rather than the best chunks minus the
+ineligible ones. See [Extending — Implementing `IVectorStore`](extending.md#optional-ihybridsearchable)
+for the rest of what a custom hybrid-search-capable store needs to honour.
+
 ## Specification-based filtering
 
 `RetrievalOptions.Filter` accepts any `ISpecification<SearchResult>` (from `ZeroAlloc.Specification`) and is applied in-process after the vector store returns results. Unlike `MetadataFilter`, which is pushed down to the database, `Filter` runs locally and can express arbitrary logic — score thresholds, tag checks, document ID restrictions, or combinations of all three.
