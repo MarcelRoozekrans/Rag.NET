@@ -109,8 +109,13 @@ named after the test assembly.
 
 ## The pilot was stopped, and the plan needs re-costing before it runs again
 
-**Status: Task 4 did not complete. The validation gate has never been evaluated.** The run was
-stopped deliberately after 5 hours at the operator's decision, with the machine confirmed quiet
+> **Superseded — this section records the aborted 2026-08-24 attempt, not the outcome.** Task 4
+> completed later the same day (Step 2 below) and the gate **held at +0.0000** on all three scoring
+> rules (Step 3). The status line immediately below was true when written and is kept for the
+> account of what went wrong; read Steps 2-5 for where Task 4 actually landed.
+
+**Status at the time: Task 4 did not complete. The validation gate had not been evaluated.** The run
+was stopped deliberately after 5 hours at the operator's decision, with the machine confirmed quiet
 afterwards.
 
 ### What it was actually doing

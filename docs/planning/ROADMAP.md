@@ -4426,7 +4426,7 @@ behaviour exactly, so anyone wanting the broken state pinned can still reach it.
 without it; `Filter` returns `TopK` results when enough non-summary candidates exist; `Blend` is
 unchanged; 1× reproduces the old behaviour; all three have tests that fail against today's code.
 
-### Phase 6.2.5: Contract Defects — shipped behaviour that contradicts its own documentation [status: pending — added 2026-08-25 from the GitHub backlog]
+### Phase 6.2.5: Contract Defects — shipped behaviour that contradicts its own documentation [status: complete 2026-08-25 — added and shipped the same day across three PRs: #350 in #372 (breaking: `IBm25Index.Search` takes the metadata filter, so the BM25 arm of client-side hybrid stops ignoring it), #360 in #373 (a benchmark run whose query selection is empty now fails instead of passing on zero queries), #328 in #374 (`KNearestNeighborsCount` no longer set below Azure's own default)]
 **Surface:** Backend
 **HelpWanted:** no
 
@@ -4460,7 +4460,7 @@ passes.**
 honoured on every path that claims to honour it or the contract is narrowed to say otherwise; an
 empty query selection fails rather than passes.
 
-### Phase 6.2.6: Package Boundaries — stop `Rag.NET.Security` dragging a native SQLite binary [status: pending — added 2026-08-25, from #339]
+### Phase 6.2.6: Package Boundaries — stop `Rag.NET.Security` dragging a native SQLite binary [status: complete 2026-08-25 — added and shipped the same day in #376. `SqliteAuditLog` moved to a new `Rag.NET.Security.Audit.Sqlite` package and `UseAuditLog()` was removed rather than kept as a runtime check, so "auditing configured, nothing recorded" cannot be expressed — forgetting the migration is a compile error. Package count 71 → 72]
 **Surface:** Refactor
 **HelpWanted:** no
 
@@ -4495,7 +4495,7 @@ expected to know. Isolation belongs in the registration, not in each query.
 filed against a published package has nowhere later to land. **Depends on 6.2.5**, because #350's
 fix determines how much of the isolation story the filter can honestly carry.
 
-### Phase 6.2.8: Requested DX and Chunking Quality [status: pending — added 2026-08-25]
+### Phase 6.2.8: Requested DX and Chunking Quality [status: complete 2026-08-25 — added and shipped the same day in #378, three of its four items: #366 (heading-only chunks skipped after the breadcrumb is recorded, so the hierarchy survives), #365 (`ChatAnswerEngine` sources move to a `Tool` message), #355 (`Failed` distinguished from `Skipped`). #353 was split out into 6.2.10 during design]
 **Surface:** Backend
 **HelpWanted:** no
 
@@ -4515,7 +4515,7 @@ architectural.
   of "skipped" and the caller must read `Errors` to discover why. Distinguish `Failed` from
   `Skipped`, and consider failing fast on the first error.
 
-### Phase 6.2.9: `Umap.Fit` at Corpus Scale [status: pending — added 2026-08-25, from #348]
+### Phase 6.2.9: `Umap.Fit` at Corpus Scale [status: complete 2026-08-25 — added and built the same day. Measured first, then changed: the kNN graph turned out to be 92% of `Umap.Fit`'s time and 98% of its allocation, so the issue named the right target. Bounded k-selection replaced the full sort, and the row loop parallelises above 512 rows]
 **Surface:** Backend
 **HelpWanted:** no
 
@@ -4528,12 +4528,46 @@ corpus scale, over the 85,000-byte large-object-heap threshold, 17,648 times —
 LOH traffic per corpus build**.
 
 **Split out of #345, and #345's fix does not help it**: `Umap.Fit` runs *before* clustering, so
-raising `k` changes nothing here. Measured context: the corpus tree builds in ~1,368 s and the whole
-per-document arm is 609 trees, so this is real time rather than a micro-optimisation.
+raising `k` changes nothing here.
 
 **Any figure from this phase needs two runs on a quiet machine.** Three timing runs on 2026-08-17
 disagreed by 6× on identical inputs, and 2026-08-24 lost an hour of measurement to an orphaned
 runner starving its replacement.
+
+#### What was measured
+
+`UmapKnnBenchmarks`, 17,648 rows × 384 dimensions, `RunStrategy.Monitoring`, two runs per state on
+an otherwise idle machine (i9-12900HK, 14 physical cores). Both runs are quoted rather than averaged
+— the spread is the point.
+
+| `Knn_BuildGraph` @ 17,648 | Time (run 1 / run 2) | Allocated | Gen0/1/2 per 1k ops |
+| --- | --- | --- | --- |
+| Baseline (sort every distance) | 74.8 s / 78.4 s | 2,379.86 MB | 111k / 111k / 111k |
+| Bounded k-selection | 60.2 s / 57.4 s | 3,309.05 KB | 0 / 0 / 0 |
+| ...and parallel rows | 14.7 s / 14.3 s | 3,343.81 KB | 0 / 0 / 0 |
+
+**5.2× faster and ~729× less allocated**, with the large-object-heap traffic gone rather than
+pooled: the scratch buffer no longer exists. `Umap_FitFull` moved 81.6/83.6 s → 21.0/21.3 s. The
+2.5 GB LOH estimate was confirmed almost exactly — 2,379.86 MiB is 2,495 MB against an analytic
+2,491 MB — and the flat Gen0=Gen1=Gen2 profile is the LOH signature.
+
+**Two claims in the original framing were wrong, and the measurement is why we know.**
+
+- *"This is real time rather than a micro-optimisation"* rested on the ~1,368 s corpus tree build.
+  `Umap.Fit`'s level-1 reduction is ~82 s of that, roughly **6%** — the tree build is dominated by
+  LLM summarisation. The case for the phase is the 2.4 GB of LOH churn, not the share of wall-clock.
+- Replacing an O(n log n) sort with an O(n log k) selection sounds like the headline, but on its own
+  it bought **21%**. The dominant cost is the distance computation — n² pairs × 384 dimensions —
+  which no amount of selection touches. Most of the 21% came from the delegate comparison and the GC
+  pressure, not from the complexity class. Parallelising that distance loop is what bought the 4×.
+
+**Parallelism gave 4.0×, not 14×**, because every row streams the whole 27 MB dataset: the loop is
+memory-bandwidth bound well before it is core bound.
+
+**Deliberately not done:** approximate nearest neighbours and sampling, both listed as options on
+#348. Each changes *which* neighbours are found, hence the tree, hence the RAPTOR comparison that
+6.2.1 has in flight. Everything above is exact — the differential test asserts bit-identical indices
+and distances against the pre-change implementation.
 
 ### Phase 6.2.10: Vector-Store Initialisation — create the collection without being asked twice [status: pending — added 2026-08-25, split out of 6.2.8 during design]
 **Surface:** Refactor
