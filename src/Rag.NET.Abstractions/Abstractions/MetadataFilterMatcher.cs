@@ -35,8 +35,18 @@ public static class MetadataFilterMatcher
     /// equality — typed, so a Number <c>3</c> does not match a String <c>"3"</c>, and ordinal for
     /// strings. AND semantics across pairs.
     /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="chunk"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// Keys are compared using <paramref name="chunk"/>'s own <c>Metadata</c> dictionary's
+    /// comparer — a caller-supplied dictionary (e.g. built with
+    /// <see cref="StringComparer.OrdinalIgnoreCase"/>) governs key lookup here too. Values are
+    /// compared by <see cref="MetadataValue"/> equality, which is typed and ordinal for strings
+    /// regardless of the dictionary's key comparer.
+    /// </remarks>
     public static bool Matches(TextChunk chunk, IDictionary<string, MetadataValue>? filter)
     {
+        ArgumentNullException.ThrowIfNull(chunk);
+
         if (filter is null || filter.Count == 0)
             return true;
 

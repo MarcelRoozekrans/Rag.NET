@@ -164,14 +164,24 @@ public class SqliteBm25IndexTests : IAsyncDisposable
             () => sut.InitializeAsync(TestContext.Current.CancellationToken));
     }
 
+    // Follows the Add_ThenRestart_SearchFindsChunk shape above (a fresh instance over the same
+    // db) rather than searching the instance that just added the chunks, which would exercise
+    // only the one-line delegation to InMemoryBm25Index.Search the compiler already forces.
+    // Restarting round-trips metadata through metadata_json and LoadIntoMemory (SqliteBm25Index.cs:202),
+    // which silently substitutes an empty metadata dictionary on a deserialize failure -- a real
+    // failure there would make every chunk fail every filter, and only a restart-based test can
+    // see that.
     [Fact]
-    public void Search_WithMetadataFilter_ExcludesNonMatchingChunks()
+    public async Task Add_ThenRestart_SearchWithMetadataFilter_ExcludesNonMatchingChunks()
     {
-        using var sut = CreateSut();
+        var sut = CreateSut();
         sut.Add(1, FilterChunk(1, "shared search term", "a"));
         sut.Add(2, FilterChunk(2, "shared search term", "b"));
+        await sut.DisposeAsync();
 
-        var results = sut.Search(
+        // Simulate restart: create new instance pointing to same db.
+        _sut = new SqliteBm25Index(_dbPath, "test-coll");
+        var results = _sut.Search(
             "shared search term",
             topK: 10,
             metadataFilter: new Dictionary<string, MetadataValue>(StringComparer.Ordinal)

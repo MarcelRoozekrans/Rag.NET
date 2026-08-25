@@ -77,10 +77,18 @@ public sealed class MetadataFilterMatcherTests
             Chunk(("page", 3)),
             new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["page"] = "3" }));
 
-    // Ordinal, not culture- or case-insensitive.
+    // Case-sensitive: "A" does not match "a".
     [Fact]
-    public void Matches_StringComparisonIsOrdinal() =>
+    public void Matches_StringComparisonIsCaseSensitive() =>
         Assert.False(MetadataFilterMatcher.Matches(
             Chunk(("tenant", "A")),
             new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["tenant"] = "a" }));
+
+    // Also not culture-sensitive: the Turkish "İ"/"i" pair, which a culture-aware comparison
+    // (Turkish "i" rules) would fold together, must not match under ordinal comparison.
+    [Fact]
+    public void Matches_StringComparisonIsNotCultureSensitive() =>
+        Assert.False(MetadataFilterMatcher.Matches(
+            Chunk(("tenant", "İ")), // İ (Turkish dotted capital I)
+            new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["tenant"] = "i" }));
 }

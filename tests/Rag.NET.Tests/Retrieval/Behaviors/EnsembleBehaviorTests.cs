@@ -8,6 +8,7 @@ using Rag.NET.Models.Options;
 using Rag.NET.Retrieval;
 using Rag.NET.Retrieval.Behaviors;
 using Rag.NET.Search;
+using Rag.NET.Storage;
 using Xunit;
 
 namespace Rag.NET.Tests.Retrieval.Behaviors;
@@ -830,54 +831,74 @@ public class EnsembleBehaviorTests
             Arg.Is<IDictionary<string, MetadataValue>?>(f => f != null && f["tenant"] == "a"));
     }
 
-    // Local fixture builder for the parity test below. InMemoryBm25IndexTests defines its own
-    // FilterChunk; duplicating this small helper here is the accepted cost of keeping the two
-    // test classes independent rather than introducing a shared test utility for it.
-    private static TextChunk FilterChunk(int index, string text, string tenant) =>
-        new()
+    // ── End-to-end: a filtered client-side hybrid query never leaks a filtered-out chunk ──────
+
+    // Design §Testing item 1: "a test that fails against today's code: a filtered hybrid query
+    // that returns a chunk the filter excludes." The four tests above only assert that the filter
+    // argument reaches Bm25Index.Search (NSubstitute interaction assertions) -- they say nothing
+    // about what RrfMerger does with the merged output. This test composes the real dense store,
+    // the real BM25 index, and the real merge, so it fails if a future refactor (e.g. an RrfMerger
+    // change, or a post-merge step that re-adds unfiltered hits) reintroduces the leak, where the
+    // interaction tests above would stay green.
+    // A chunk tagged with a tenant, for the end-to-end test below. Every chunk gets the same
+    // embedding so the dense arm alone would not obviously favour one over the others -- what
+    // decides whether "b" leaks is the filter, not the ranking.
+    private static (TextChunk Chunk, ReadOnlyMemory<float> Vector) MakeTenantChunk(string docId, string text, string tenant) =>
+        (new TextChunk
         {
-            DocumentId = new DocumentId("doc-" + index.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-            ChunkIndex = index,
+            DocumentId = new DocumentId(docId),
+            ChunkIndex = 0,
             Text = text,
-            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
-            {
-                ["tenant"] = tenant,
-            },
-        };
+            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["tenant"] = tenant },
+        },
+        new ReadOnlyMemory<float>([1f, 0f, 0f]));
 
-    // The dense arm and the BM25 arm must agree about what a filter matches. They are separate
-    // implementations reached by separate code paths; if they ever disagree, a filtered query
-    // returns different chunks depending on which arm found them.
     [Fact]
-    public void DenseAndBm25Arms_AgreeOnWhichChunksMatchAFilter()
+    public async Task HandleAsync_ClientSideHybrid_NeverReturnsAChunkTheFilterExcludes()
     {
-        var chunks = new[]
+        var ct = TestContext.Current.CancellationToken;
+
+        using var vectorStore = new InMemoryVectorStore();
+        using var bm25Index = new InMemoryBm25Index();
+
+        var a = MakeTenantChunk("doc-a", "irrelevant filler text", "a");
+        // Repeats the query term so BM25 favours this chunk over the others -- if the filter did
+        // not reach the BM25 arm, this is the chunk that would leak through.
+        var bExcluded = MakeTenantChunk("doc-b", "widget widget widget widget", "b");
+        var c = MakeTenantChunk("doc-c", "widget", "a");
+
+        await vectorStore.StoreAsync(
+            [
+                new EmbeddedChunk { Chunk = a.Chunk, Embedding = a.Vector },
+                new EmbeddedChunk { Chunk = bExcluded.Chunk, Embedding = bExcluded.Vector },
+                new EmbeddedChunk { Chunk = c.Chunk, Embedding = c.Vector },
+            ],
+            ct);
+
+        bm25Index.Add(1, a.Chunk);
+        bm25Index.Add(2, bExcluded.Chunk);
+        bm25Index.Add(3, c.Chunk);
+
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 1f, 0f, 0f })]));
+
+        var sut = new EnsembleBehavior
         {
-            FilterChunk(1, "alpha term", "a"),
-            FilterChunk(2, "beta term", "b"),
-            FilterChunk(3, "gamma term", "a"),
+            Embedder = embedder,
+            VectorStore = vectorStore,
+            Bm25Index = bm25Index,
         };
-
-        var filter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+        var ctx = MakeCtx(new RetrievalOptions
         {
-            ["tenant"] = "a",
-        };
+            UseHybridSearch = true,
+            TopK = 10,
+            MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["tenant"] = "a" },
+        }) with { Query = "widget" };
 
-        using var bm25 = new InMemoryBm25Index();
-        for (var i = 0; i < chunks.Length; i++)
-            bm25.Add(i + 1, chunks[i]);
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException("must not call next"));
 
-        var bm25Matched = bm25.Search("term", topK: 10, metadataFilter: filter)
-            .Select(static hit => hit.chunk.ChunkIndex)
-            .OrderBy(static index => index)
-            .ToArray();
-
-        var matcherMatched = chunks
-            .Where(chunk => MetadataFilterMatcher.Matches(chunk, filter))
-            .Select(static chunk => chunk.ChunkIndex)
-            .OrderBy(static index => index)
-            .ToArray();
-
-        Assert.Equal(matcherMatched, bm25Matched);
+        Assert.NotEmpty(output);
+        Assert.DoesNotContain(output, r => r.Chunk.Metadata.TryGetValue("tenant", out var tenant) && tenant == "b");
     }
 }
