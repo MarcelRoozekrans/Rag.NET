@@ -27,6 +27,9 @@ public class UmapKnnGraphTests
     [InlineData(257, 32, 15)]
     [InlineData(60, 384, 15)]
     [InlineData(20, 12, 19)]
+    // Above BuildKnnGraph's 512-row parallel threshold. Every case above it runs the sequential
+    // path, so without this one the parallel path ships with no test over it at all.
+    [InlineData(600, 16, 15)]
     public void BuildKnnGraph_OnDistinctPoints_MatchesBruteForceExactly(int n, int dims, int k)
     {
         var data = RandomData(n, dims, seed: 7);

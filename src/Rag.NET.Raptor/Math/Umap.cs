@@ -8,6 +8,17 @@ internal static class Umap
 {
     private const float RepulsionStrength = 1.0f;
 
+    /// <summary>Row count at or above which <see cref="BuildKnnGraph"/> parallelises across rows.</summary>
+    /// <remarks>
+    /// Deliberately well above the break-even point. The graph costs n squared distance
+    /// evaluations, so at this size it is already tens of milliseconds and partitioning overhead is
+    /// noise — but a per-document RAPTOR tree holds tens of chunks, and there are hundreds of those
+    /// per corpus. Setting the threshold high leaves every one of them on exactly the sequential
+    /// path they already took, so the only workload whose timing changes is the corpus-scale one
+    /// this is for (#348). The result is identical on both paths.
+    /// </remarks>
+    private const int ParallelRowThreshold = 512;
+
     /// <summary>
     /// Reduces high-dimensional data to <paramref name="targetDimensions"/> dimensions
     /// using a simplified UMAP algorithm.
@@ -78,9 +89,18 @@ internal static class Umap
         var indices = new int[n][];
         var distances = new float[n][];
 
-        for (int i = 0; i < n; i++)
+        if (n >= ParallelRowThreshold)
         {
-            (indices[i], distances[i]) = NearestNeighborsOf(data, i, k);
+            // Row i writes only indices[i] and distances[i] and reads nothing another row writes,
+            // so the result does not depend on scheduling: the same graph comes back either way.
+            Parallel.For(0, n, i => (indices[i], distances[i]) = NearestNeighborsOf(data, i, k));
+        }
+        else
+        {
+            for (int i = 0; i < n; i++)
+            {
+                (indices[i], distances[i]) = NearestNeighborsOf(data, i, k);
+            }
         }
 
         return (indices, distances);
