@@ -1,0 +1,25 @@
+{
+  "Guid": "6f1c2d40-0000-4000-8000-00000000000e",
+  "Title": "Terminal poll, RECORDED (#354) \u2014 the service's own analyzeResult, not a hand-written belief about it",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/prebuilt-read/analyzeResults/recorded",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [
+      "GET"
+    ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"status\":\"succeeded\",\"createdDateTime\":\"2026-08-22T10:40:59Z\",\"lastUpdatedDateTime\":\"2026-08-22T10:41:00Z\",\"analyzeResult\":{\"apiVersion\":\"2024-11-30\",\"modelId\":\"prebuilt-read\",\"stringIndexType\":\"utf16CodeUnit\",\"content\":\"Integration Test OCR Sample scanned page fixture\",\"pages\":[{\"pageNumber\":1,\"angle\":-0.10530000180006027,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"words\":[{\"content\":\"Integration\",\"polygon\":[1.08,4.2609,2.9037,4.2247,2.8969,4.5881,1.0673,4.6359],\"confidence\":0.994,\"span\":{\"offset\":0,\"length\":11}},{\"content\":\"Test\",\"polygon\":[3.0366,4.2234,3.8097,4.2199,3.8059,4.5814,3.0302,4.5862],\"confidence\":0.989,\"span\":{\"offset\":12,\"length\":4}},{\"content\":\"OCR\",\"polygon\":[3.9425,4.2197,4.8183,4.2248,4.8179,4.589,3.9392,4.5811],\"confidence\":0.995,\"span\":{\"offset\":17,\"length\":3}},{\"content\":\"Sample\",\"polygon\":[4.9451,4.2267,6.2652,4.2523,6.2652,4.6291,4.9451,4.5917],\"confidence\":0.997,\"span\":{\"offset\":21,\"length\":6}},{\"content\":\"scanned\",\"polygon\":[1.0588,4.8418,2.5478,4.8346,2.5488,5.1897,1.0546,5.1415],\"confidence\":0.997,\"span\":{\"offset\":28,\"length\":7}},{\"content\":\"page\",\"polygon\":[2.7064,4.8332,3.5443,4.8238,3.5487,5.1891,2.7079,5.1897],\"confidence\":0.992,\"span\":{\"offset\":36,\"length\":4}},{\"content\":\"fixture\",\"polygon\":[3.6575,4.8224,4.7323,4.8036,4.7323,5.1459,3.6623,5.1875],\"confidence\":0.995,\"span\":{\"offset\":41,\"length\":7}}],\"lines\":[{\"content\":\"Integration Test OCR Sample\",\"polygon\":[1.0649,4.2253,6.2604,4.2157,6.2604,4.6215,1.0649,4.6311],\"spans\":[{\"offset\":0,\"length\":27}]},{\"content\":\"scanned page fixture\",\"polygon\":[1.0506,4.8173,4.7275,4.803,4.7275,5.1801,1.0506,5.1897],\"spans\":[{\"offset\":28,\"length\":20}]}],\"spans\":[{\"offset\":0,\"length\":48}]}],\"paragraphs\":[{\"spans\":[{\"offset\":0,\"length\":48}],\"boundingRegions\":[{\"pageNumber\":1,\"polygon\":[1.0488,4.2253,6.2604,4.2157,6.2622,5.1801,1.0506,5.1897]}],\"content\":\"Integration Test OCR Sample scanned page fixture\"}],\"styles\":[],\"contentFormat\":\"text\"}}"
+  }
+}

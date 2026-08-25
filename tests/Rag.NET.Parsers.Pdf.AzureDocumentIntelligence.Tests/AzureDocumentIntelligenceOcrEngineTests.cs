@@ -32,6 +32,9 @@ public sealed class AzureDocumentIntelligenceOcrEngineTests
     private const string FailingModel = "failing";
     private const string RunningModel = "running";
 
+    /// <summary>The model id whose cassettes carry a real recorded response — see #354.</summary>
+    private const string RecordedModel = "recorded";
+
     private readonly WireMockServerFixture _fixture;
 
     public AzureDocumentIntelligenceOcrEngineTests(WireMockServerFixture fixture)
@@ -243,6 +246,46 @@ public sealed class AzureDocumentIntelligenceOcrEngineTests
         Assert.False(pdf.WasDisposed);
         Assert.True(pdf.CanRead);
         pdf.Dispose();
+    }
+
+    /// <summary>
+    /// Recognition against a cassette <b>recorded from a real Document Intelligence resource</b>
+    /// (contributed in #354) rather than hand-written from the API documentation.
+    /// </summary>
+    /// <remarks>
+    /// This is the distinction Phase 6.1 exists to make. Every other cassette in this directory
+    /// verifies the engine against <i>our belief about the service</i>; this one verifies it
+    /// against a response the service actually sent.
+    /// <para>
+    /// The recording is a strict superset of the hand-written fixtures. It carries
+    /// <c>analyzeResult.paragraphs</c> (with <c>boundingRegions</c> and <c>spans</c>),
+    /// <c>styles</c>, <c>contentFormat</c>, and a <c>polygon</c> on every word and line — none of
+    /// which appear in any hand-written cassette here. <b>No defect follows from that today</b>:
+    /// <c>BuildPageText</c> reads only <c>Pages</c> → <c>Lines</c>/<c>Words</c> → <c>Content</c>,
+    /// so the extra structure is inert. What the recording buys is proof that the SDK
+    /// deserialises the real payload — which a fixture that omits half of it cannot give.
+    /// </para>
+    /// <para>
+    /// One difference from the hand-written flow is worth keeping: the live service returned
+    /// <c>running</c> once before <c>succeeded</c>, so the contributor captured three files where
+    /// <see cref="ResponseCapture_WritesOneFilePerCall_AcrossTheWholeRecognition"/> expects two.
+    /// The terminal poll is the one modelled here, matching every other cassette; the
+    /// running-then-terminal sequence has its own scenario in <c>poll-running.json</c>.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task RecognizeAsync_AgainstARecordedResponse_ReadsTheServicesOwnText()
+    {
+        var sut = CreateEngine(RecordedModel);
+        using var pdf = CreatePdfStream();
+
+        var result = await sut.RecognizeAsync(pdf, TestContext.Current.CancellationToken);
+
+        // The two lines the service actually returned, joined as BuildPageText joins them.
+        var only = Assert.Single(result.PageText);
+        Assert.Equal(1, only.Key);
+        Assert.Equal("Integration Test OCR Sample\nscanned page fixture", only.Value);
+        Assert.Equal(1, result.BilledPages);
     }
 
     /// <summary>

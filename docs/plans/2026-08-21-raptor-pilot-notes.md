@@ -161,7 +161,81 @@ has held is spending on a run whose validity is unestablished.
 
 ## Step 2 — the pilot run
 
-_Not run to completion. See above._
+**Completed 2026-08-24 23:49**, after the gate-only run at 17:59 established the setup was sound.
+All five arms, 50 queries, 250 scored answers, 5 tests passing with 0 failed and 0 skipped.
+
+**1 h 56 m.** The estimate carried above — 15–20 hours remaining, worst case ~22 — was **far too
+pessimistic**, and the reason is worth keeping: it extrapolated a linear call rate without
+accounting for the 4,739 calls already cached from the aborted attempts, which had covered most of
+the per-document tree build. The algorithmic worst case (`BicMaxK = 10` and a strict decrease per
+level give at most `10+9+…+2 = 54` calls per document) is a true bound but a very loose one; BIC
+does not descend one-at-a-time in practice.
+
+Results: `graph-answers-results/pilot-20260824T214907Z.jsonl`.
+
+## Step 3 — the validation gate: **HELD**
+
+```
+raptorfiltered − dense (paper)  = +0.0000
+raptorfiltered − dense (raw)    = +0.0000
+raptorfiltered − dense (strict) = +0.0000
+```
+
+**Zero on all three scoring rules.** The plan set the bar at #274's precedent, which reproduced to
+four decimals on two rules; this matches exactly on three. The corpora did not diverge, so the
+figures below measure RAPTOR rather than a setup fault. The tolerance was not touched.
+
+Confirmed twice: the gate-only run at 17:59 (four corpus-scope arms) and the full five-arm run at
+23:49 both give +0.0000.
+
+### The arms
+
+| arm | n | paper | raw | strict |
+|---|---:|---:|---:|---:|
+| `dense` | 50 | 0.3200 | 0.2200 | 0.3000 |
+| `raptorcorpus` | 50 | 0.3000 | 0.2200 | 0.2800 |
+| `raptor` | 50 | 0.3000 | 0.2400 | 0.3000 |
+| `raptorfiltered` | 50 | 0.3200 | 0.2200 | 0.3000 |
+| `raptorboost` | 50 | 0.3200 | 0.2000 | 0.2800 |
+
+### The four differences the plan asks for (paper rule)
+
+| difference | value | what it prices |
+|---|---:|---|
+| `raptorcorpus − raptor` | **+0.0000** | what 6.2.3's breaking change bought |
+| `raptorcorpus − raptorfiltered` | **−0.0200** | what the summaries do to the answer |
+| `raptorboost − raptorcorpus` | **+0.0200** | what a working `Boost` buys |
+| `raptorfiltered − dense` | **+0.0000** | the gate |
+
+**None of this is a finding and none of it may be quoted.** n=50 against pins built on 2,255, and
+the type mix is skewed — 11 temporal questions scoring 0.0000 in *every* arm, and 6 nulls. At this
+size a ±0.0200 difference is **one question**. The previous pilot on this harness had its
+provisional readings marked not-to-be-quoted for exactly this reason.
+
+What is worth carrying into Task 5 as a hypothesis to test, not as a result:
+
+- **`raptorcorpus − raptor = +0.0000` is the one to watch.** 6.2.3 shipped corpus-level clustering
+  as a *breaking change* on the argument that a per-document tree is not the paper's mechanism. At
+  this scale it shows no answer-level difference at all. If that survives to 2,255 queries it is a
+  real finding, and a legitimate completion under Milestone 6's measured-not-good bar — but it is
+  also exactly the kind of null that n=50 is worst at detecting.
+- **The summaries look like they displace rather than help** (`−0.0200`), which is #247's mechanism
+  again, and **`Boost` looks like it buys back about what they cost** (`+0.0200`).
+- Per-type, `raptor` leads on inference (0.6250 against dense's 0.5625) while trailing on
+  comparison (0.1176) and nulls (0.5000). At n=16 and n=6 that is noise until it is not.
+
+### Per-type (paper rule)
+
+| type | n | `dense` | `raptorcorpus` | `raptor` | `raptorfiltered` | `raptorboost` |
+|---|---:|---:|---:|---:|---:|---:|
+| comparison | 17 | 0.1765 | 0.1765 | 0.1176 | 0.1765 | 0.2353 |
+| inference | 16 | 0.5625 | 0.5000 | 0.6250 | 0.5625 | 0.5000 |
+| null | 6 | 0.6667 | 0.6667 | 0.5000 | 0.6667 | 0.6667 |
+| temporal | 11 | 0.0000 | 0.0000 | 0.0000 | 0.0000 | 0.0000 |
+
+**Every arm scores 0.0000 on all 11 temporal questions.** Dense's pinned full-scale figure is
+0.0326, so this is consistent with the small sample rather than surprising — but a whole type
+scoring zero across five arms is worth confirming at full scale rather than assuming.
 
 ## Step 3 — the validation gate
 
@@ -180,9 +254,56 @@ _Pending._
 `RebuildAsync` call by construction, so a check against it can never fire. The counters that can
 actually move are the ones below.
 
-| Counter | Expected | Observed |
-|---|---|---|
-| `LeafCount` | **17,648** — anything else means documents were skipped or double-counted | _pending_ |
-| `SummaryCount` | positive — the rebuild must have produced a tree | _pending_ |
-| `SummariserCalls` | one rebuild's worth, not one per document | _pending_ |
-| `CorpusRebuildCount` | 1 (logged only) | _pending_ |
+**These were nearly lost.** `LogRaptorRunCounters` writes them to `ITestOutputHelper`, and this
+project runs xunit v3 through Microsoft.Testing.Platform, which does not surface a **passing**
+test's output — so on the run that succeeded, the deliverables were invisible. They are now also
+written to a `*.counters.json` sidecar beside the answers dump, the way the per-query rows already
+survived. Measured 2026-08-25 from `pilot-20260825T054049Z.counters.json`.
+
+| Counter | Expected | corpus | per-document |
+|---|---|---:|---:|
+| `LeafCount` | **17,648** — anything else means documents skipped or double-counted | **17,648** ✅ | **17,648** ✅ |
+| `SummaryCount` | positive — the rebuild must have produced a tree | 187 ✅ | 7,187 ✅ |
+| `SummariserCalls` | one rebuild's worth, not one per document | 187 ✅ | 7,187 |
+| `CorpusRebuildCount` | 1, logged only — cannot gate | 1 | 0 |
+
+### The corpus tree reproduces #364's measurement
+
+| level | chunks | clusters | largest | imbalance |
+|---:|---:|---:|---:|---:|
+| 1 | 17,648 | 177 | **549** | **5.51x** |
+| 2 | 177 | 5 | 47 | 1.33 |
+| 3 | 5 | 3 | 3 | 1.80 |
+| 4 | 3 | 2 | 2 | 1.33 |
+| 5 | 2 | — | — | terminates |
+
+Level 1 is identical to the figure recorded in #364 — 177 clusters, largest 549, 5.51x — so the
+tree is the same one, rebuilt from cache. It terminates cleanly when 2 chunks yield k ≤ 1.
+
+### The per-document arm, and how badly it was estimated
+
+**7,187 calls over 2,287 levels: 609 trees averaging 3.75 levels and 11.8 summariser calls each.**
+
+The estimate in this document's earlier sections — "worst case 54 calls per document, ~22 hours" —
+was a true algorithmic bound (`BicMaxK = 10` plus a strict per-level decrease) and **useless in
+practice**: the real figure is a fifth of it. BIC does not descend one level at a time. Recorded
+because the bound was used to advise on whether an overnight run would finish, and it would have
+been wrong by a factor of five in the cautious direction.
+
+## Step 5 — Task 5's cost, derived rather than extrapolated
+
+This is what Step 4's counters exist for.
+
+| | |
+|---|---|
+| Tree construction | **0 new calls** — both trees cached, `SummariserCalls` already paid |
+| Task 5 scope | 2,556 queries × 4 arms = 10,224 |
+| Less the pilot's overlap | ~200 |
+| **New generations** | **~10,000** |
+
+At the ~21/min observed yesterday that is roughly **8 hours**.
+
+**Stated as an estimate, not a throughput measurement.** That rate was observed during *tree
+summarisation*, whose prompts are large; answer generation has a different prompt shape and may run
+at a different rate. Task 5 is also a different cost shape from Task 4 — pure answer generation, with
+no cached head start to absorb an overrun the way yesterday's 4,739 calls did.
