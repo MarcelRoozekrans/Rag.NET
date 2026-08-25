@@ -164,6 +164,8 @@ public sealed class BeirGraphRagAnswerTests
             selection, arms, run, articles, corpusRun, perDocumentRun, generator, embeddings, answering, gold, ct);
         _output.WriteLine(DescribeResults(descriptor, selection, tallies, answering, Stopwatch.GetElapsedTime(startedAt)));
         _output.WriteLine("every scored answer: " + DumpAnswers(cacheDirectory, tallies, selection.IsPilot));
+        _output.WriteLine("RaptorRun counters: " + DumpRaptorCounters(
+            cacheDirectory, selection.IsPilot, ("corpus", corpusRun), ("per-document", perDocumentRun)));
 
         AssertEveryArmAnsweredEveryQuery(tallies, selection);
 
@@ -272,6 +274,75 @@ public sealed class BeirGraphRagAnswerTests
         }
 
         return run;
+    }
+
+    /// <summary>
+    /// Writes both <see cref="RaptorRun"/>s' counters to a JSON file beside the answers dump.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="LogRaptorRunCounters"/> already writes these to <see cref="ITestOutputHelper"/>,
+    /// and that is not enough. This project runs xunit v3 through Microsoft.Testing.Platform, which
+    /// does not surface a <b>passing</b> test's output — so on the run that matters, the run that
+    /// succeeded, the counters were invisible. Task 4 Step 4 of the RAPTOR plan asks for
+    /// <c>LeafCount</c>, <c>SummaryCount</c> and <c>SummariserCalls</c> as deliverables, and
+    /// Task 5 derives the full sweep's cost from <c>SummariserCalls</c>; neither could be done
+    /// from a green run. The per-query rows already survive this way — see <see cref="DumpAnswers"/>
+    /// — and the counters now do too.
+    /// <para>
+    /// The level shapes go in as well. <c>LeafCount</c> says the tree was built; only the per-level
+    /// largest-cluster and imbalance figures say how close it came to not building, which is what
+    /// #345's average-not-maximum floor left to measurement.
+    /// </para>
+    /// </remarks>
+    /// <param name="cacheDirectory">The answer cache's parent, receiving the <c>-results</c> subdirectory.</param>
+    /// <param name="pilot">Whether this was a bounded pilot, mirroring <see cref="DumpAnswers"/>'s naming.</param>
+    /// <param name="runs">Label/run pairs; a null run is skipped, so an unselected scope writes nothing.</param>
+    /// <returns>The path written.</returns>
+    private static string DumpRaptorCounters(
+        string cacheDirectory, bool pilot, params (string Label, RaptorRun? Run)[] runs)
+    {
+        var directory = Path.Combine(cacheDirectory, AnswersDirectoryName + "-results");
+        _ = Directory.CreateDirectory(directory);
+        var path = Path.Combine(
+            directory,
+            (pilot ? "pilot-" : "full-") + DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture) + ".counters.json");
+
+        using var stream = File.Create(path);
+        using var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true });
+        writer.WriteStartArray();
+        foreach (var (label, run) in runs)
+        {
+            if (run is null)
+            {
+                continue;
+            }
+
+            writer.WriteStartObject();
+            writer.WriteString("scope", label);
+            writer.WriteNumber("leafCount", run.LeafCount);
+            writer.WriteNumber("summaryCount", run.SummaryCount);
+            writer.WriteNumber("corpusRebuildCount", run.CorpusRebuildCount);
+            writer.WriteNumber("summariserCalls", run.SummariserCalls);
+            writer.WriteStartArray("levels");
+            foreach (var level in run.Levels)
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("level", level.Level);
+                writer.WriteNumber("chunks", level.ChunkCount);
+                writer.WriteNumber("clusters", level.ClusterCount);
+                writer.WriteNumber("largestCluster", level.MaxClusterSize);
+                writer.WriteBoolean("maxClustersOverridden", level.MaxClustersOverridden);
+                writer.WriteBoolean("degenerate", level.Degenerate);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+        writer.Flush();
+        return path;
     }
 
     /// <summary>Writes one <see cref="RaptorRun"/>'s counters to <paramref name="output"/>, labelled.</summary>
