@@ -4472,7 +4472,7 @@ using `UseChunkSanitiser`, `UseRbac` or `UsePiiDetection` pays for a native bina
 is far cheaper before the tag than after. The precedent exists: 0.1.0 already extracted
 `Rag.NET.Storage.Sqlite` for the same reason.
 
-### Phase 6.2.7: Named Pipelines — isolate `IRagPipeline` and its services per configuration [status: pending — added 2026-08-25, from #342]
+### Phase 6.2.7: Named Pipelines — isolate `IRagPipeline` and its services per configuration [status: complete 2026-08-25 — added and shipped the same day in #381. `AddRagNet(name, configure)` gives each name its own child container; the unnamed form is unchanged, which was the hard constraint. Three Criticals found in review, and four tests in the plan itself could not have failed for what they claimed]
 **Surface:** Refactor
 **HelpWanted:** no
 
@@ -4610,6 +4610,48 @@ be revisited immediately.
 **Exit condition:** a caller who has not called `InitializeAsync` gets a working first ingest, or a
 failure that names what to call — never the current behaviour, where a missing index surfaces as N
 per-entry errors with no statement of the cause.
+
+### Phase 6.2.11: HTML Structure and a Guid Seam [status: pending — added 2026-08-25]
+**Surface:** Backend
+**HelpWanted:** no
+
+**Goal:** three issues filed 2026-08-25. Two are the same parser and the same walk; the third is a
+testability seam. Ordered by damage.
+
+- **#375 — `HtmlDocumentParser` loses content rather than misplacing it.** Reproduced against the
+  parser directly: the reporter's markup yields **one section whose text is only the heading**, with
+  both paragraphs dropped and emitted nowhere. `BuildHeadingSection` collects content by walking
+  `heading.NextElementSibling` (`HtmlDocumentParser.cs:99`); when the `<h1>` is wrapped in layout
+  divs it is its parent's only child, `NextElementSibling` is `null`, and the walk ends before it
+  starts. `ParseAsync` emits one section per heading, so anything outside a heading's own sibling
+  chain is never visited by any path. **A page shaped this way indexes as its headings and nothing
+  else** — a very common shape in component-framework markup.
+
+  **Note the interaction with #366, which shipped the same day.** For such a section
+  `Text.Trim() == Heading.Trim()`, so `IsNothingButItsHeading` now skips it and the page produces
+  **zero** chunks. #366 did not cause the loss — the paragraphs were already gone — but it removes
+  the last visible trace, turning "a useless heading-only chunk" into "this page silently ingested
+  nothing". Whichever fix lands must be checked against both, or one will mask the other.
+
+- **#371 — href handling needs an option.** `Keep` (today's behaviour), `Remove`, `MakeAbsolute`.
+  Same parser, same walk as #375, so they share a phase. `MakeAbsolute` needs a base URI, which the
+  parser does not currently receive — that is the design question, not the resolution itself.
+
+- **#380 — `Guid.NewGuid()` behind a seam.** **Scoped to 9 of the 23 call sites in `src/`**: only
+  those whose value reaches observable output — `ChatAnswerEngine`'s call id, both audit request
+  ids, `RagMcpTools`, `AzureAISearchVectorStore`, `RagGrpcService`, `IngestCommand`,
+  `EndpointRouteBuilderExtensions`, `QdrantVectorStore`. Temp-file names, prompt delimiters and
+  internal DI keys are left alone: injecting those adds ceremony and buys no test.
+
+  **Decided 2026-08-25: local, not in `ZeroAlloc.ValueObjects`, and modelled on `TimeProvider`.**
+  That library is already referenced by `Rag.NET.Abstractions` for `DocumentId`/`EntryId`, but those
+  are *values*; a Guid factory is an ambient service, the same family as a clock. The repo already
+  has that pattern in-box and documented — optional injection via `GetService<TimeProvider>()` with
+  a `?? TimeProvider.System` fallback, so nothing registers it in production and behaviour is
+  unchanged (`ResilienceBuilderExtensions.cs:162`) — and `QdrantVectorStore.CreatePointId` is
+  already a local seam over `Guid.NewGuid()`. An abstract class with a `.System` default, matching
+  `TimeProvider`, needs no DI registration to work. **Returns `Guid`, not the issue's `string`**:
+  formatting is the caller's business, and `string` bakes `"N"` into every call site.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
