@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
@@ -19,6 +20,9 @@ public sealed class ChatAnswerEngine(
     IContextualCompressor? compressor = null,
     IPromptObserver? promptObserver = null) : IAnswerEngine
 {
+    /// <summary>The tool name the sources are attributed to when SendSourcesAsToolResult is set.</summary>
+    private const string SourcesToolName = "SearchDocuments";
+
     private const string DefaultSystemPrompt =
         "Answer the user's question based only on the provided context. " +
         "If the context doesn't contain enough information, say so. " +
@@ -203,7 +207,14 @@ public sealed class ChatAnswerEngine(
             for (var i = historyStart; i < history.Count; i++)
                 messages.Add(history[i]);
 
-        messages.Add(new ChatMessage(ChatRole.User, $"Context:\n{context}\n\nQuestion: {query}"));
+        if (opts.SendSourcesAsToolResult)
+        {
+            AddSourcesAsToolResult(messages, context, query);
+        }
+        else
+        {
+            messages.Add(new ChatMessage(ChatRole.User, $"Context:\n{context}\n\nQuestion: {query}"));
+        }
 
         var chatOptions = new ChatOptions();
         if (opts.Temperature.HasValue)
@@ -218,6 +229,30 @@ public sealed class ChatAnswerEngine(
         promptObserver?.OnPromptAssembled(messages);
 
         return (messages, chatOptions);
+    }
+
+    /// <summary>
+    /// Adds the query as a plain user turn and the sources as a tool result.
+    /// </summary>
+    /// <remarks>
+    /// The assistant tool-call message is not decoration: a <c>Tool</c> message with nothing having
+    /// requested it is a malformed exchange, and providers differ on whether they tolerate it. The
+    /// call id is generated per request and echoed by the result so the pair is well-formed.
+    /// </remarks>
+    /// <param name="messages">The message list being built.</param>
+    /// <param name="context">The assembled source text.</param>
+    /// <param name="query">The user's question, which becomes the user turn on its own.</param>
+    private static void AddSourcesAsToolResult(List<ChatMessage> messages, string context, string query)
+    {
+        var callId = "call_" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+
+        messages.Add(new ChatMessage(ChatRole.User, query));
+        messages.Add(new ChatMessage(ChatRole.Assistant, [
+            new FunctionCallContent(
+                callId,
+                SourcesToolName,
+                new Dictionary<string, object?>(StringComparer.Ordinal) { ["question"] = query })]));
+        messages.Add(new ChatMessage(ChatRole.Tool, [new FunctionResultContent(callId, context)]));
     }
 
     /// <summary>

@@ -86,7 +86,16 @@ public sealed class ParseBehavior : IIngestionBehavior
 
         await foreach (var section in parser.ParseAsync(ctx.Stream, ctx.Metadata, ct).ConfigureAwait(false))
         {
+            // Computed BEFORE the skip below, deliberately: it is what records this section's
+            // heading in the breadcrumb array. Skipping earlier would leave this level unset,
+            // and a child of "Section 2" would be labelled "Chapter 1 > Subsection".
             var headingMetadata = BuildHeadingMetadata(section, headingBreadcrumbs);
+
+            if (IsNothingButItsHeading(section))
+            {
+                ctx.Sections.Add(section);
+                continue;
+            }
 
             await foreach (var chunk in ChunkingStrategy.ChunkAsync(section, ChunkingOptions, ct).ConfigureAwait(false))
             {
@@ -108,6 +117,29 @@ public sealed class ParseBehavior : IIngestionBehavior
             ctx.Sections.Add(section);
         }
     }
+
+    /// <summary>
+    /// Whether a section carries no text beyond its own heading.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Parsers prepend the heading to the section body — <c>HtmlDocumentParser.BuildHeadingSection</c>
+    /// does it explicitly — so a heading with nothing under it before the next heading yields a
+    /// section whose text <i>is</i> the heading. The parser's own empty-section guard cannot catch
+    /// that, because a heading is not whitespace.
+    /// </para>
+    /// <para>
+    /// Chunking it produced entries like <c>"text": "Section 2"</c> in the index (#366): they score
+    /// on heading-shaped queries, occupy a retrieval slot, and give an answer nothing to work with —
+    /// while <c>heading</c>, <c>heading_level</c> and <c>heading_breadcrumb</c> already travel as
+    /// metadata on every chunk that does have content.
+    /// </para>
+    /// </remarks>
+    /// <param name="section">The section about to be chunked.</param>
+    /// <returns>Whether the section would only ever produce a copy of its own heading.</returns>
+    private static bool IsNothingButItsHeading(DocumentSection section) =>
+        section.Heading is { } heading
+        && string.Equals(section.Text.Trim(), heading.Trim(), StringComparison.Ordinal);
 
     private static Dictionary<string, string>? BuildHeadingMetadata(DocumentSection section, string?[] breadcrumbs)
     {

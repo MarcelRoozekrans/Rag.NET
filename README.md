@@ -266,6 +266,13 @@ var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 });
 ```
 
+A heading with no content of its own — one immediately followed by the next heading — produces **no
+chunk**. Parsers prepend the heading to the section body, so such a section's text is just the
+heading, and indexing it yielded entries like `"text": "Section 2"`: they scored on heading-shaped
+queries, took up a retrieval slot, and gave the model nothing to answer with
+([#366](https://github.com/MarcelRoozekrans/Rag.NET/issues/366)). The heading is still recorded in
+the breadcrumb, so chunks nested beneath it keep the full `Chapter 1 > Section 2 > Subsection` path.
+
 ### Evaluation
 
 Use `Rag.NET.Evaluation` to score answer quality by cosine similarity between embedded predicted and reference answers — no LLM call required:

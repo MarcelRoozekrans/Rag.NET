@@ -1002,6 +1002,28 @@ Context:
 Question: <the query>
 ```
 
+#### Sending sources as a tool result
+
+`RagOptions.SendSourcesAsToolResult` moves the context out of the user message:
+
+```csharp
+var response = await pipeline.AskAsync("query", new RagOptions { SendSourcesAsToolResult = true });
+```
+
+The messages become `System`, `User` (the query alone), `Assistant` (a tool call), `Tool` (the
+context as the tool's result). Requested in
+[#366's sibling #365](https://github.com/MarcelRoozekrans/Rag.NET/issues/365) so that PII detection
+and redaction can run over the user's own text without also scanning retrieved source content the
+caller already trusts.
+
+The assistant tool-call message is not decoration: a `Tool` message with nothing having requested it
+is a malformed exchange, and providers differ on whether they tolerate it.
+
+**It is off by default, deliberately.** The answer cache is keyed on a prompt embedding the context,
+so changing the message shape changes every cache key — cache misses, regeneration, and different
+numbers. Every figure pinned in `MultiHopRagAnswerReproduction` was measured against the default
+shape; defaulting this on would invalidate all of them silently.
+
 This shape does not change based on `SystemPrompt`. **A custom system prompt does not suppress citation behaviour** — the `[Source N]` labels are delimiters the model sees regardless of what the system prompt says, and a model that notices them will often cite them unprompted. If a caller does not want citations, they must say so explicitly in their prompt (e.g. "Do not reference source numbers in your answer").
 
 This also matters because of what a custom prompt *removes*. When `SystemPrompt` is left `null`, the engine falls back to a default that ends with an explicit citation instruction:

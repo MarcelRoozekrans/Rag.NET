@@ -225,4 +225,94 @@ public class ChatAnswerEngineTests
             await Task.CompletedTask;
         }
     }
+
+    /// <summary>
+    /// The default prompt shape is unchanged: sources ride in the user message (#365).
+    /// </summary>
+    /// <remarks>
+    /// <b>This is a pinning test, not a preference.</b> The answer cache is keyed on a prompt
+    /// embedding the context, so changing the message shape changes every cache key — cache misses,
+    /// regeneration, and different numbers. <c>MultiHopRagAnswerReproduction</c> pins <c>dense</c>
+    /// at 0.3499 and <c>global</c> at 0.5951 against this exact arrangement. Flipping the default
+    /// would invalidate every pinned answer figure in the project silently.
+    /// </remarks>
+    [Fact]
+    public async Task AskAsync_ByDefault_PutsSourcesInTheUserMessage()
+    {
+        var sources = new List<SearchResult>();
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "ok")));
+
+        await _sut.AskAsync("q", sources, new RagOptions(), TestContext.Current.CancellationToken);
+
+        await _chatClient.Received(1).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs =>
+                msgs!.Count == 2 &&
+                msgs[1].Role == ChatRole.User &&
+                msgs[1].Text!.StartsWith("Context:", StringComparison.Ordinal) &&
+                msgs[1].Text!.Contains("Question: q", StringComparison.Ordinal)),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Opting in moves the sources into a tool result, leaving the user message as the query alone.
+    /// </summary>
+    /// <remarks>
+    /// Requested in #365 so that PII detection and redaction can run over the user's own text
+    /// without also scanning retrieved source content, which the caller already trusts. The shape
+    /// is System, User(query), Assistant(tool call), Tool(context) — the sequence a chat model
+    /// expects for a tool result, rather than a bare Tool message with nothing requesting it.
+    /// </remarks>
+    [Fact]
+    public async Task AskAsync_WithSourcesAsToolResult_SeparatesQueryFromContext()
+    {
+        var sources = new List<SearchResult>();
+        var opts = new RagOptions { SendSourcesAsToolResult = true };
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "ok")));
+
+        await _sut.AskAsync("q", sources, opts, TestContext.Current.CancellationToken);
+
+        await _chatClient.Received(1).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs =>
+                msgs!.Count == 4 &&
+                msgs[1].Role == ChatRole.User &&
+                msgs[1].Text == "q" &&
+                msgs[2].Role == ChatRole.Assistant &&
+                msgs[3].Role == ChatRole.Tool),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The tool call and its result share a call id, and the result carries the context.
+    /// </summary>
+    /// <remarks>
+    /// A <c>FunctionResultContent</c> whose <c>CallId</c> does not match the preceding
+    /// <c>FunctionCallContent</c> is a malformed exchange that some providers reject outright, so
+    /// the pairing is asserted rather than assumed.
+    /// </remarks>
+    [Fact]
+    public async Task AskAsync_WithSourcesAsToolResult_PairsTheCallIdAndCarriesTheContext()
+    {
+        var sources = new List<SearchResult>
+        {
+            new() { Chunk = new TextChunk { DocumentId = new DocumentId("d"), ChunkIndex = 0, Text = "SOURCE BODY" }, Score = 1.0 },
+        };
+        var opts = new RagOptions { SendSourcesAsToolResult = true };
+
+        IList<ChatMessage>? captured = null;
+        _chatClient.GetResponseAsync(
+            Arg.Do<IList<ChatMessage>>(m => captured = m), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "ok")));
+
+        await _sut.AskAsync("q", sources, opts, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(captured);
+        var call = Assert.IsType<FunctionCallContent>(Assert.Single(captured[2].Contents));
+        var result = Assert.IsType<FunctionResultContent>(Assert.Single(captured[3].Contents));
+        Assert.Equal(call.CallId, result.CallId);
+        Assert.Contains("SOURCE BODY", result.Result?.ToString() ?? string.Empty, StringComparison.Ordinal);
+    }
 }

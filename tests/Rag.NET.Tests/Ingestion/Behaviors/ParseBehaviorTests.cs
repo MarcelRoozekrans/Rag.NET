@@ -319,4 +319,133 @@ public class ParseBehaviorTests
 
         Assert.True(nextCalled, "next delegate should be invoked after parsing");
     }
+
+    /// <summary>
+    /// A section whose whole body is its own heading produces <b>no chunk</b> (#366).
+    /// </summary>
+    /// <remarks>
+    /// <c>HtmlDocumentParser.BuildHeadingSection</c> prepends the heading to the section body, so a
+    /// heading with nothing under it before the next heading yields a section whose text <i>is</i>
+    /// the heading. Its <c>IsNullOrWhiteSpace</c> guard cannot catch that — a heading is not
+    /// whitespace. The reporter saw the result indexed as <c>"text": "Section 2"</c>: a chunk that
+    /// scores on heading-shaped queries, occupies a retrieval slot, and carries nothing an answer
+    /// can use, since <c>heading</c>, <c>heading_level</c> and <c>heading_breadcrumb</c> are already
+    /// on every sibling chunk as metadata.
+    /// </remarks>
+    [Fact]
+    public async Task SectionWhoseBodyIsOnlyItsHeading_ProducesNoChunk()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var section = new DocumentSection
+        {
+            Text = "Section 2",
+            DocumentId = new DocumentId("doc-1"),
+            HeadingLevel = 2,
+            Heading = "Section 2",
+        };
+
+        var parser = Substitute.For<IDocumentParser>();
+        parser.CanParse("text/plain").Returns(true);
+        parser.ParseAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<CancellationToken>())
+            .Returns(Yield(section));
+
+        var strategy = Substitute.For<IChunkingStrategy>();
+        strategy.ChunkAsync(Arg.Any<DocumentSection>(), Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Yield(MakeChunk()));
+
+        var sut = MakeSut(parser, strategy);
+        var ctx = MakeContext();
+
+        await sut.HandleAsync(ctx, ct, StubNext);
+
+        Assert.Empty(ctx.Chunks);
+    }
+
+    /// <summary>
+    /// The empty section is still <i>seen</i>, so the headings under it keep their breadcrumb.
+    /// </summary>
+    /// <remarks>
+    /// This is the trap in the obvious fix. Dropping the heading-only section at the parser, or
+    /// skipping it before <c>BuildHeadingMetadata</c> runs, would leave its level unset in the
+    /// breadcrumb array — and a child of "Section 2" would then be labelled
+    /// <c>Chapter 1 &gt; Subsection</c> rather than <c>Chapter 1 &gt; Section 2 &gt; Subsection</c>.
+    /// The chunk is what gets dropped; the section is still walked.
+    /// </remarks>
+    [Fact]
+    public async Task HeadingOnlySection_StillContributesItsBreadcrumbToChildren()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var h1 = new DocumentSection
+        {
+            Text = "Chapter 1\nIntro body",
+            DocumentId = new DocumentId("doc-1"),
+            HeadingLevel = 1,
+            Heading = "Chapter 1",
+        };
+        var emptyH2 = new DocumentSection
+        {
+            Text = "Section 2",
+            DocumentId = new DocumentId("doc-1"),
+            HeadingLevel = 2,
+            Heading = "Section 2",
+        };
+        var h3 = new DocumentSection
+        {
+            Text = "Subsection body",
+            DocumentId = new DocumentId("doc-1"),
+            HeadingLevel = 3,
+            Heading = "Subsection",
+        };
+
+        var h1Chunk = MakeChunk();
+        var h3Chunk = MakeChunk();
+
+        var parser = Substitute.For<IDocumentParser>();
+        parser.CanParse("text/plain").Returns(true);
+        parser.ParseAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<CancellationToken>())
+            .Returns(Yield(h1, emptyH2, h3));
+
+        var strategy = Substitute.For<IChunkingStrategy>();
+        strategy.ChunkAsync(h1, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>()).Returns(Yield(h1Chunk));
+        strategy.ChunkAsync(h3, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>()).Returns(Yield(h3Chunk));
+
+        var sut = MakeSut(parser, strategy);
+        var ctx = MakeContext();
+
+        await sut.HandleAsync(ctx, ct, StubNext);
+
+        Assert.Equal(2, ctx.Chunks.Count);
+        Assert.Equal<MetadataValue>(
+            "Chapter 1 > Section 2 > Subsection", h3Chunk.Metadata["heading_breadcrumb"]);
+    }
+
+    /// <summary>A section with real content under its heading is untouched.</summary>
+    [Fact]
+    public async Task SectionWithBodyBeyondItsHeading_StillProducesItsChunk()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var section = new DocumentSection
+        {
+            Text = "Section 2\nA sentence of actual content.",
+            DocumentId = new DocumentId("doc-1"),
+            HeadingLevel = 2,
+            Heading = "Section 2",
+        };
+
+        var parser = Substitute.For<IDocumentParser>();
+        parser.CanParse("text/plain").Returns(true);
+        parser.ParseAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<CancellationToken>())
+            .Returns(Yield(section));
+
+        var strategy = Substitute.For<IChunkingStrategy>();
+        strategy.ChunkAsync(Arg.Any<DocumentSection>(), Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Yield(MakeChunk()));
+
+        var sut = MakeSut(parser, strategy);
+        var ctx = MakeContext();
+
+        await sut.HandleAsync(ctx, ct, StubNext);
+
+        _ = Assert.Single(ctx.Chunks);
+    }
 }

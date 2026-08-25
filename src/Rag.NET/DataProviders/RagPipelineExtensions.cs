@@ -11,7 +11,7 @@ namespace Rag.NET.DataProviders;
 /// <summary>Extension methods for batch ingestion via <see cref="IFileContentProvider"/>.</summary>
 public static class RagPipelineExtensions
 {
-    private enum EntryOutcome { Ingested, Skipped }
+    private enum EntryOutcome { Ingested, Skipped, Failed }
 
     /// <summary>
     /// Ingests all files from <paramref name="provider"/>, skipping unchanged files when
@@ -77,10 +77,12 @@ public static class RagPipelineExtensions
     {
         var optionsError = ValidateOptions(options);
         if (optionsError is not null)
-            return new ProviderIngestionResult(0, 0, 0, [optionsError]);
+            // Nothing was attempted, so nothing failed either -- the error is the options themselves.
+            return new ProviderIngestionResult(0, 0, 0, 0, [optionsError]);
 
         var ingested = 0;
         var skipped = 0;
+        var failed = 0;
         var deleted = 0;
         var errors = new ConcurrentBag<RagError>();
 
@@ -110,10 +112,14 @@ public static class RagPipelineExtensions
             seenIds.TryAdd(entry.Id, 0);
             var outcome = await ProcessEntryAsync(pipeline, providerId, entry, hashStore, baseMetadata,
                 options, progress, errors, cancellationToken).ConfigureAwait(false);
-            if (outcome == EntryOutcome.Ingested)
-                Interlocked.Increment(ref ingested);
-            else
-                Interlocked.Increment(ref skipped);
+            // Explicit, not "Ingested else Skipped": that else-branch is what made a failure
+            // indistinguishable from an up-to-date entry (#355), and would swallow Failed too.
+            switch (outcome)
+            {
+                case EntryOutcome.Ingested: Interlocked.Increment(ref ingested); break;
+                case EntryOutcome.Failed: Interlocked.Increment(ref failed); break;
+                default: Interlocked.Increment(ref skipped); break;
+            }
         }).ConfigureAwait(false);
 
         if (cleanupMode == CleanupMode.Full && hashStore is not null)
@@ -122,7 +128,7 @@ public static class RagPipelineExtensions
                 errors, cancellationToken).ConfigureAwait(false);
         }
 
-        return new ProviderIngestionResult(ingested, skipped, deleted, errors.ToList());
+        return new ProviderIngestionResult(ingested, skipped, failed, deleted, errors.ToList());
     }
 
     /// <summary>
@@ -201,7 +207,10 @@ public static class RagPipelineExtensions
         catch (Exception ex) when (ex is not OperationCanceledException and not ReservedMetadataKeyException)
         {
             errors.Add(new RagError.StorageFailed(ex));
-            return EntryOutcome.Skipped;
+
+            // Failed, not Skipped. Skipped means the entry was already up to date; saying
+            // that about a throw reported a broken run as a quiet one (#355).
+            return EntryOutcome.Failed;
         }
     }
 
