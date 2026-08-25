@@ -44,6 +44,9 @@
     <ProjectReference Include="..\..\benchmarks\Rag.NET.Benchmarks.Quality.GraphExtractions\Rag.NET.Benchmarks.Quality.GraphExtractions.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Benchmarks.Quality\Rag.NET.Benchmarks.Quality.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.GraphRag\Rag.NET.GraphRag.csproj" />
+    <!-- SemanticChunkingStrategy, for the SemanticChunking ablation cell: it is the only cell
+         that changes what a unit is rather than how units are ranked. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Chunking\Rag.NET.Chunking.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Embeddings.Onnx\Rag.NET.Embeddings.Onnx.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Reranking.Onnx\Rag.NET.Reranking.Onnx.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Raptor\Rag.NET.Raptor.csproj" />

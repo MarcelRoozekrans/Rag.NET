@@ -643,7 +643,39 @@ public static class BeirReproduction
             "figure exists for this configuration, and its job is drift. A re-run that lands " +
             "away from the Real leg's figure has moved either the chunker or the pooling, " +
             "because this run holds everything else still."),
-    ];
+            new(
+            "scifact",
+            BeirProtocol.SemanticChunking,
+            [],
+            "NOT YET MEASURED. The arm exists and is runnable; the entry is here so the "
+            + "unpinned-protocol guard passes while it is wired up. A figure without a run "
+            + "behind it would be worse than an empty array — see the RAPTOR arms, which "
+            + "carried exactly this text until Task 5 filled them."),
+        new(
+            "fiqa",
+            BeirProtocol.SemanticChunking,
+            [],
+            "NOT YET MEASURED. The arm exists and is runnable; the entry is here so the "
+            + "unpinned-protocol guard passes while it is wired up. A figure without a run "
+            + "behind it would be worse than an empty array — see the RAPTOR arms, which "
+            + "carried exactly this text until Task 5 filled them."),
+        new(
+            "arguana",
+            BeirProtocol.SemanticChunking,
+            [],
+            "NOT YET MEASURED. The arm exists and is runnable; the entry is here so the "
+            + "unpinned-protocol guard passes while it is wired up. A figure without a run "
+            + "behind it would be worse than an empty array — see the RAPTOR arms, which "
+            + "carried exactly this text until Task 5 filled them."),
+        new(
+            "trec-covid",
+            BeirProtocol.SemanticChunking,
+            [],
+            "NOT YET MEASURED. The arm exists and is runnable; the entry is here so the "
+            + "unpinned-protocol guard passes while it is wired up. A figure without a run "
+            + "behind it would be worse than an empty array — see the RAPTOR arms, which "
+            + "carried exactly this text until Task 5 filled them."),
+];
 
     /// <summary>
     /// Asserts one measurement reproduced what this repository last recorded for that case.

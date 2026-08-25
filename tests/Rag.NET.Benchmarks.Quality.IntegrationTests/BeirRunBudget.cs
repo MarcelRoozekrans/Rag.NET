@@ -623,7 +623,47 @@ public static class BeirRunBudget
             "FitsTheNightly is false for the Real cell's reason: on a nightly whose cache is " +
             "fresh this costs the Real leg's cold embedding first, and that figure is not yet " +
             "clean. Revisit both together when #174 lands."),
-    ];
+            new(
+            "scifact",
+            BeirProtocol.SemanticChunking,
+            FitsTheNightly: false,
+            "NOT YET RUN. SciFact abstracts are short, so this cell is also the test of whether semantic chunking splits them at all — the arm asserts more units than documents before reporting, so a corpus it cannot split fails there rather than reporting the Real figure under another name. "
+            + "Cost is embedding-bound and pays no model: the chunker embeds each sentence to "
+            + "find boundaries, then the harness embeds the resulting units, so it is strictly "
+            + "more embedding work than the Real cell on the same dataset and no LLM calls at "
+            + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
+            + "new text and is not in any cache."),
+        new(
+            "fiqa",
+            BeirProtocol.SemanticChunking,
+            FitsTheNightly: false,
+            "NOT YET RUN. FiQA answers are longer than SciFact abstracts, so this is the cell most likely to show a real difference either way. "
+            + "Cost is embedding-bound and pays no model: the chunker embeds each sentence to "
+            + "find boundaries, then the harness embeds the resulting units, so it is strictly "
+            + "more embedding work than the Real cell on the same dataset and no LLM calls at "
+            + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
+            + "new text and is not in any cache."),
+        new(
+            "arguana",
+            BeirProtocol.SemanticChunking,
+            FitsTheNightly: false,
+            "NOT YET RUN. ArguAna documents are single arguments and among the shortest in the suite; expect few splits, and treat a no-split failure as the finding rather than as a broken cell. "
+            + "Cost is embedding-bound and pays no model: the chunker embeds each sentence to "
+            + "find boundaries, then the harness embeds the resulting units, so it is strictly "
+            + "more embedding work than the Real cell on the same dataset and no LLM calls at "
+            + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
+            + "new text and is not in any cache."),
+        new(
+            "trec-covid",
+            BeirProtocol.SemanticChunking,
+            FitsTheNightly: false,
+            "NOT YET RUN. NOT RUN, for the same reason the other TREC-COVID cells are not: the corpus is an order larger than the other three and no cell here has been budgeted for it. "
+            + "Cost is embedding-bound and pays no model: the chunker embeds each sentence to "
+            + "find boundaries, then the harness embeds the resulting units, so it is strictly "
+            + "more embedding work than the Real cell on the same dataset and no LLM calls at "
+            + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
+            + "new text and is not in any cache."),
+];
 
     /// <summary>
     /// Reports whether this case is one the nightly cannot afford and nobody asked for.

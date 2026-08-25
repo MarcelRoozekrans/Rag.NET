@@ -194,12 +194,20 @@ public sealed record BeirDatasetDescriptor(
     /// hold on to.
     /// </para>
     /// </remarks>
+    /// <remarks>
+    /// <see cref="BeirProtocol.SemanticChunking"/> is declared applicable to all four rather than
+    /// guessed at per dataset. Whether a corpus of short abstracts actually splits is a question the
+    /// run answers, not the descriptor: the cell asserts the chunker produced more units than
+    /// documents before it reports a figure, so a dataset where semantic chunking is a no-op fails
+    /// there, loudly, instead of silently reporting the control's number under another name.
+    /// </remarks>
     private static readonly BeirProtocolSet EveryProtocolExceptTheGraphPair = BeirProtocolSet.Of(
         BeirProtocol.Parity,
         BeirProtocol.Real,
         BeirProtocol.HybridBm25,
         BeirProtocol.Hyde,
         BeirProtocol.Reranked,
+        BeirProtocol.SemanticChunking,
         BeirProtocol.Comparison,
         BeirProtocol.SemanticKernel,
         BeirProtocol.LangChain,

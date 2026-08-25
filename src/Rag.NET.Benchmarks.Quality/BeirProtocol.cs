@@ -106,6 +106,28 @@ public enum BeirProtocol
     Haystack,
 
     /// <summary>
+    /// <see cref="Real"/>'s corpus, split by <c>SemanticChunkingStrategy</c> instead of indexed one
+    /// chunk per document — the embedding-based boundary detector measured against the chunker it
+    /// would replace.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A protocol rather than a variant inside <see cref="Real"/> because it changes what a unit
+    /// <i>is</i>: a document becomes several indexed units, and
+    /// <see cref="DocumentRanking.TopDocuments(System.Collections.Generic.IReadOnlyList{ScoredDocument}, int)"/>
+    /// max-pools them back to one document before the cut. That pooling is why the figure is
+    /// comparable to a one-chunk-per-document run at all.
+    /// </para>
+    /// <para>
+    /// <b>Its control is <see cref="Real"/> on the same dataset</b>, which is the same corpus, the
+    /// same embedder and the same retrieval — differing only in where the boundaries fall. Reported
+    /// without that difference the number says nothing: chunking cannot be better or worse in the
+    /// abstract, only against the chunking it replaces.
+    /// </para>
+    /// </remarks>
+    SemanticChunking,
+
+    /// <summary>
     /// The graph path: entities and relations extracted from the corpus into a graph, that graph
     /// partitioned into communities, and retrieval running over the result — local search out from
     /// the entities a query names, global search over the community summaries. <b>Applies to
