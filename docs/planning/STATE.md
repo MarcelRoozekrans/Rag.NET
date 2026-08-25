@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-25 (five phases moved: 6.2.5, 6.2.6, 6.2.8 and 6.2.9 shipped; 6.2.7 open as PR #381)
+**Last updated:** 2026-08-25 (six phases shipped: 6.2.5-6.2.9; #381 and #382 merged; issue sweep done; 6.2.11 added)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -17,10 +17,19 @@ label:
 | --- | --- |
 | 6.2.5 — contract defects | complete, #372 / #373 / #374 |
 | 6.2.6 — package boundaries | complete, #376 |
-| 6.2.7 — named pipelines | **PR #381 open**, all checks green, awaiting merge |
+| 6.2.7 — named pipelines | complete, #381 |
 | 6.2.8 — requested DX | complete, #378 (three of four items; #353 split into 6.2.10) |
-| 6.2.9 — `Umap.Fit` at corpus scale | complete, branch `perf/348-umap-knn` |
-| 6.2.10 — vector-store initialisation | pending |
+| 6.2.9 — `Umap.Fit` at corpus scale | complete, #382 |
+| 6.2.10 — vector-store initialisation | **pending — next** |
+| 6.2.11 — HTML structure and a Guid seam | pending, added 2026-08-25 |
+
+**Issue sweep, 2026-08-25.** Every open issue checked against `main` by content. **#365** (Tool
+message) and **#354** (Azure Document Intelligence cassette) were done and are now closed with the
+evidence. **#355** is half done — `Failed` shipped, fail-fast never implemented or answered, and the
+issue now carries a question rather than an assumption. **#328 is correctly open**: its commit title
+says `(#328)` but the merged fix was `KNearestNeighborsCount`, and the semantic ranker it actually
+asks for was deliberately split off pending the score-scale decision. A commit naming an issue is
+not evidence the issue is done.
 
 **The roadmap had all of 6.2.5, 6.2.6 and 6.2.8 still marked `pending` while their code was already
 on `main`** — corrected 2026-08-25. Statuses are written when a phase is planned and nobody is
@@ -203,9 +212,9 @@ it holds does the ~15-20 hour per-document `raptor` build earn its place as a sc
 
 ## Working State
 
-**Branch:** `perf/348-umap-knn`, cut from `main` at `f7ca397b`. Carries phase 6.2.9 — the
-corpus-scale benchmark, the bounded k-selection, the parallel row loop, and these planning updates.
-**`feat/342-named-pipelines` is also live as PR #381**, all five checks green, awaiting merge.
+**Branch:** `chore/roadmap-6-2-11`, cut from `main` at `685ca037`. Bookkeeping only. Both of the
+day's feature branches merged and were **verified on `main` by content**, not by their MERGED
+labels — `RagPipelineFactory.cs` exists (#381) and `Umap.NearestNeighborsOf` is present (#382).
 
 **Tasks 1-4 of `docs/plans/2026-08-21-raptor-real-protocol-implementation.md` are on `main`** —
 Tasks 1-3 in #347 (`c2d83075`), Task 4 in #370 (`2de9c5c9`); verified by content, not by a MERGED
