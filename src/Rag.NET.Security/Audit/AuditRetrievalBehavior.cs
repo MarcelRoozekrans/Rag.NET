@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Retrieval;
 
@@ -16,8 +17,11 @@ public sealed partial class AuditRetrievalBehavior(
     ICallerContext callerContext,
     AuditLogOptions options,
     ILogger<AuditRetrievalBehavior>? logger = null,
-    AuditCorrelationContext? correlationContext = null) : IRetrievalBehavior
+    AuditCorrelationContext? correlationContext = null,
+    IGuidProvider? guidProvider = null) : IRetrievalBehavior
 {
+    private readonly IGuidProvider _guidProvider = guidProvider ?? SystemGuidProvider.Instance;
+
     private readonly ILogger<AuditRetrievalBehavior> _logger =
         logger ?? NullLogger<AuditRetrievalBehavior>.Instance;
 
@@ -27,7 +31,7 @@ public sealed partial class AuditRetrievalBehavior(
     {
         var results = await next(ctx, ct).ConfigureAwait(false);
 
-        var requestId = Guid.NewGuid().ToString("N");
+        var requestId = _guidProvider.NewGuid().ToString("N");
         ctx.Extensions["audit_request_id"] = requestId;
         if (correlationContext != null) correlationContext.RequestId = requestId;
 

@@ -182,7 +182,10 @@ public static class RagBuilderExtensions
                 sp.GetService<ICallerContext>() ?? new AnonymousCallerContext(),
                 sp.GetRequiredService<AuditLogOptions>(),
                 sp.GetService<ILogger<AuditRetrievalBehavior>>(),
-                sp.GetService<AuditCorrelationContext>()));
+                sp.GetService<AuditCorrelationContext>(),
+                // GetService, not GetRequiredService: nothing registers one in production, so the
+                // default stands and behaviour is unchanged. A test registers its own (#380).
+                sp.GetService<IGuidProvider>()));
 
         // Add AuditRetrievalBehavior to the retrieval pipeline via the RetrievalPipelineBuilder in DI.
         // The caller's Use* must run after AddRagNet — the accessor throws clearly if it was not.
@@ -203,7 +206,8 @@ public static class RagBuilderExtensions
                 sp.GetRequiredService<IAuditLog>(),
                 sp.GetRequiredService<AuditCorrelationContext>(),
                 sp.GetRequiredService<AuditLogOptions>(),
-                sp.GetService<ILogger<AuditAnswerEngineDecorator>>()));
+                sp.GetService<ILogger<AuditAnswerEngineDecorator>>(),
+                sp.GetService<IGuidProvider>()));
 
         return builder;
     }

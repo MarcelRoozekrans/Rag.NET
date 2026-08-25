@@ -18,8 +18,11 @@ public sealed class ChatAnswerEngine(
     IChatClient chatClient,
     IConversationMemory? memory = null,
     IContextualCompressor? compressor = null,
-    IPromptObserver? promptObserver = null) : IAnswerEngine
+    IPromptObserver? promptObserver = null,
+    IGuidProvider? guidProvider = null) : IAnswerEngine
 {
+    private readonly IGuidProvider _guidProvider = guidProvider ?? SystemGuidProvider.Instance;
+
     /// <summary>The tool name the sources are attributed to when SendSourcesAsToolResult is set.</summary>
     private const string SourcesToolName = "SearchDocuments";
 
@@ -242,9 +245,9 @@ public sealed class ChatAnswerEngine(
     /// <param name="messages">The message list being built.</param>
     /// <param name="context">The assembled source text.</param>
     /// <param name="query">The user's question, which becomes the user turn on its own.</param>
-    private static void AddSourcesAsToolResult(List<ChatMessage> messages, string context, string query)
+    private void AddSourcesAsToolResult(List<ChatMessage> messages, string context, string query)
     {
-        var callId = "call_" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+        var callId = "call_" + _guidProvider.NewGuid().ToString("N", CultureInfo.InvariantCulture);
 
         messages.Add(new ChatMessage(ChatRole.User, query));
         messages.Add(new ChatMessage(ChatRole.Assistant, [

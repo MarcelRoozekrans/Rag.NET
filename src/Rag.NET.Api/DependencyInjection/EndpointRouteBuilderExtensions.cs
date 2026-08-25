@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.Mvc;
 using Rag.NET.Abstractions;
 using Rag.NET.Api.Authentication;
 using Rag.NET.Api.Contracts;
@@ -139,9 +140,14 @@ public static class EndpointRouteBuilderExtensions
     }
 
     private static async Task<IResult> HandleIngestAsync(
-        IngestRequest req, IRagMediator mediator, CancellationToken ct)
+        IngestRequest req,
+        IRagMediator mediator,
+        // Nullable and [FromServices]: nothing registers one in production, so the parameter must
+        // not be bound from the body, and the default has to stand when DI has none (#380).
+        [FromServices] IGuidProvider? guidProvider,
+        CancellationToken ct)
     {
-        var docId = req.DocumentId ?? Guid.NewGuid().ToString();
+        var docId = req.DocumentId ?? (guidProvider ?? SystemGuidProvider.Instance).NewGuid().ToString();
         var metadata = new DocumentMetadata
         {
             DocumentId = new DocumentId(docId),

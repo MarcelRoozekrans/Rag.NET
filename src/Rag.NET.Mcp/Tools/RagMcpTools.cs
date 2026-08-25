@@ -32,8 +32,10 @@ namespace Rag.NET.Mcp.Tools;
 /// </para>
 /// </remarks>
 [McpServerToolType]
-public sealed class RagMcpTools(IRagPipeline pipeline)
+public sealed class RagMcpTools(IRagPipeline pipeline, IGuidProvider? guidProvider = null)
 {
+    private readonly IGuidProvider _guidProvider = guidProvider ?? SystemGuidProvider.Instance;
+
     [McpServerTool(Name = "rag_retrieve")]
     [Description("Retrieve semantically relevant chunks from the RAG pipeline for a given query.")]
     public async Task<string> RetrieveAsync(
@@ -83,7 +85,7 @@ public sealed class RagMcpTools(IRagPipeline pipeline)
         [Description("Optional MIME content type (e.g. \"text/plain\").")] string? contentType,
         [Description("Optional metadata tags as key=value pairs (e.g. [\"author=Alice\", \"topic=AI\"]).")] string[]? tags)
     {
-        var resolvedId = documentId ?? Guid.NewGuid().ToString();
+        var resolvedId = documentId ?? _guidProvider.NewGuid().ToString();
         var resolvedFileName = fileName ?? $"{resolvedId}.txt";
 
         var tagDict = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);

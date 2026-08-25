@@ -4687,15 +4687,22 @@ testability seam. Ordered by damage.
   `EndpointRouteBuilderExtensions`, `QdrantVectorStore`. Temp-file names, prompt delimiters and
   internal DI keys are left alone: injecting those adds ceremony and buys no test.
 
-  **Decided 2026-08-25: local, not in `ZeroAlloc.ValueObjects`, and modelled on `TimeProvider`.**
-  That library is already referenced by `Rag.NET.Abstractions` for `DocumentId`/`EntryId`, but those
-  are *values*; a Guid factory is an ambient service, the same family as a clock. The repo already
-  has that pattern in-box and documented — optional injection via `GetService<TimeProvider>()` with
-  a `?? TimeProvider.System` fallback, so nothing registers it in production and behaviour is
-  unchanged (`ResilienceBuilderExtensions.cs:162`) — and `QdrantVectorStore.CreatePointId` is
-  already a local seam over `Guid.NewGuid()`. An abstract class with a `.System` default, matching
-  `TimeProvider`, needs no DI registration to work. **Returns `Guid`, not the issue's `string`**:
-  formatting is the caller's business, and `string` bakes `"N"` into every call site.
+  **Decided 2026-08-25: local, not in `ZeroAlloc.ValueObjects`.** That library is already referenced
+  by `Rag.NET.Abstractions` for `DocumentId`/`EntryId`, but those are *values*; a Guid factory is an
+  ambient service, the same family as a clock. A public contract in a shared package is also a
+  permanent versioning obligation for ten lines of code.
+
+  **Corrected while building it: an `IGuidProvider` interface, not a `TimeProvider`-style abstract
+  class.** The first decision argued from "the repo already uses `TimeProvider`" — but the repo uses
+  `TimeProvider` because Microsoft ships it in-box, which is a reason to *use* it, not a house
+  pattern to copy. Every abstraction this library authors is an interface (`IVectorStore`,
+  `IBm25Index`, `ICostLedger`, `IAuditLog`), it is what #380 asked for, and it substitutes with the
+  mocking library the tests already use. `SystemGuidProvider.Instance` keeps the property that
+  mattered about the abstract-class shape: nothing has to be registered for production behaviour,
+  because every component takes an optional `IGuidProvider` and falls back to it.
+
+  **Returns `Guid`, not the issue's `string`**: formatting is the caller's business, and `string`
+  bakes `"N"` into every call site.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
