@@ -100,35 +100,124 @@ public static class RagPipelineExtensions
             entries.Add(result.Value);
         }
 
-        var maxParallelism = options?.MaxDegreeOfParallelism ?? 1;
-        var parallelOptions = new ParallelOptions
-        {
-            MaxDegreeOfParallelism = maxParallelism,
-            CancellationToken = cancellationToken,
-        };
+        var tally = await ProcessAllEntriesAsync(pipeline, providerId, entries, hashStore, baseMetadata,
+            options, progress, errors, seenIds, cancellationToken).ConfigureAwait(false);
 
-        await Parallel.ForEachAsync(entries, parallelOptions, async (entry, _) =>
-        {
-            seenIds.TryAdd(entry.Id, 0);
-            var outcome = await ProcessEntryAsync(pipeline, providerId, entry, hashStore, baseMetadata,
-                options, progress, errors, cancellationToken).ConfigureAwait(false);
-            // Explicit, not "Ingested else Skipped": that else-branch is what made a failure
-            // indistinguishable from an up-to-date entry (#355), and would swallow Failed too.
-            switch (outcome)
-            {
-                case EntryOutcome.Ingested: Interlocked.Increment(ref ingested); break;
-                case EntryOutcome.Failed: Interlocked.Increment(ref failed); break;
-                default: Interlocked.Increment(ref skipped); break;
-            }
-        }).ConfigureAwait(false);
+        ingested = tally.Ingested;
+        skipped = tally.Skipped;
+        failed = tally.Failed;
+        var stoppedEarly = tally.StoppedEarly;
 
         if (cleanupMode == CleanupMode.Full && hashStore is not null)
         {
-            deleted = await CleanupDisappearedAsync(pipeline, providerId, hashStore, knownIds, seenIds,
-                errors, cancellationToken).ConfigureAwait(false);
+            deleted = await CleanupUnlessTheRunStoppedEarlyAsync(pipeline, providerId, hashStore,
+                knownIds, seenIds, errors, stoppedEarly, cancellationToken).ConfigureAwait(false);
         }
 
         return new ProviderIngestionResult(ingested, skipped, failed, deleted, errors.ToList());
+    }
+
+    /// <summary>What one pass over the provider's entries produced.</summary>
+    private sealed record EntryTally(int Ingested, int Skipped, int Failed, bool StoppedEarly);
+
+    /// <summary>
+    /// Processes every entry, stopping at the first failure when
+    /// <see cref="IngestionOptions.StopOnFirstError"/> asks for it (#355).
+    /// </summary>
+    private static async Task<EntryTally> ProcessAllEntriesAsync(
+        IRagPipeline pipeline,
+        ProviderId providerId,
+        List<FileEntry> entries,
+        IContentHashStore? hashStore,
+        DocumentMetadata? baseMetadata,
+        IngestionOptions? options,
+        IProgress<IngestionProgress>? progress,
+        ConcurrentBag<RagError> errors,
+        ConcurrentDictionary<EntryId, byte> seenIds,
+        CancellationToken cancellationToken)
+    {
+        var ingested = 0;
+        var skipped = 0;
+        var failed = 0;
+        var stopOnFirstError = options?.StopOnFirstError ?? false;
+
+        // Linked, so this method can stop the loop without that being mistaken for the caller
+        // cancelling — the catch below tells the two apart.
+        using var stopSignal = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var parallelOptions = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = options?.MaxDegreeOfParallelism ?? 1,
+            CancellationToken = stopSignal.Token,
+        };
+
+        try
+        {
+            await Parallel.ForEachAsync(entries, parallelOptions, async (entry, _) =>
+            {
+                seenIds.TryAdd(entry.Id, 0);
+                var outcome = await ProcessEntryAsync(pipeline, providerId, entry, hashStore, baseMetadata,
+                    options, progress, errors, cancellationToken).ConfigureAwait(false);
+                // Explicit, not "Ingested else Skipped": that else-branch is what made a failure
+                // indistinguishable from an up-to-date entry (#355), and would swallow Failed too.
+                switch (outcome)
+                {
+                    case EntryOutcome.Ingested: Interlocked.Increment(ref ingested); break;
+                    case EntryOutcome.Failed:
+                        Interlocked.Increment(ref failed);
+                        if (stopOnFirstError)
+                            await stopSignal.CancelAsync().ConfigureAwait(false);
+                        break;
+                    default: Interlocked.Increment(ref skipped); break;
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stopSignal.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            // This method's own stop, not the caller's. Everything counted so far is the result; a
+            // caller cancellation does not match this filter and still propagates.
+        }
+
+        return new EntryTally(ingested, skipped, failed,
+            stopSignal.IsCancellationRequested && !cancellationToken.IsCancellationRequested);
+    }
+
+    /// <summary>
+    /// Runs full cleanup, unless the run stopped at its first error — in which case it must not.
+    /// </summary>
+    /// <remarks>
+    /// Cleanup decides what disappeared by comparing what the store knows against what this run
+    /// saw. A run that stopped early never visited the rest of the provider's entries, so cleanup
+    /// would read every unvisited document as disappeared and delete it. Skipping is the only safe
+    /// answer, and it is reported rather than done quietly: a caller who asked for
+    /// <see cref="CleanupMode.Full"/> and got no deletions is owed the reason.
+    /// </remarks>
+    private static async Task<int> CleanupUnlessTheRunStoppedEarlyAsync(
+        IRagPipeline pipeline,
+        ProviderId providerId,
+        IContentHashStore hashStore,
+        IReadOnlySet<EntryId> knownIds,
+        ConcurrentDictionary<EntryId, byte> seenIds,
+        ConcurrentBag<RagError> errors,
+        bool stoppedEarly,
+        CancellationToken cancellationToken)
+    {
+        if (!stoppedEarly)
+        {
+            return await CleanupDisappearedAsync(pipeline, providerId, hashStore, knownIds, seenIds,
+                errors, cancellationToken).ConfigureAwait(false);
+        }
+
+        errors.Add(new RagError.ValidationFailed(
+        [
+            new ValidationFailure(
+                nameof(IngestionOptions.StopOnFirstError),
+                "Full cleanup was skipped because ingestion stopped at the first error. The entries " +
+                "after the failure were never visited, so deleting everything this run did not see " +
+                "would remove documents still present at the provider. Fix the failure and re-run " +
+                "to clean up."),
+        ]));
+
+        return 0;
     }
 
     /// <summary>
