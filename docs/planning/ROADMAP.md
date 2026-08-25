@@ -4377,6 +4377,21 @@ shipped state; keeping both scopes selectable is what gives it back.
 configuration; the debounce and the rebuilder exist and are tested; existing RAPTOR users have a
 stated migration path; #331 closes. The measurement itself belongs to 6.2.1 and runs after.
 
+#### Measured 2026-08-25 (Task 5): the change did not buy accuracy
+
+The full sweep — 2,556 queries, 4 arms, the validation gate holding to four decimals — puts
+**`raptorcorpus − raptor` at −0.0146 paper, −0.0204 raw, −0.0027 strict**. Corpus-level clustering
+is *worse* than the per-document tree it replaced, significantly so on two of three rules (McNemar
+paper p=0.0247, raw p=0.0006, strict p=0.7372).
+
+**The gap is inference queries** — 0.7831 against 0.8309 — which is the multi-hop case this phase's
+rationale said a per-document tree could not serve. It is the one place the change was expected to
+pay and the one place it costs.
+
+The 50-query pilot had this at +0.0000 and was underpowered. See `STATE.md`'s OPEN DECISION: the
+default has **not** been changed, because one corpus that rewards per-document locality is thin
+ground for reversing a shipped design, and the strict rule is a wash.
+
 ### Phase 6.2.4: RAPTOR Retrieval Over-Fetch — make `Boost` and `Filter` do what they document [status: complete 2026-08-21 — added and merged the same day in #344. Small, as expected: `Boost` and `Filter` now fetch `CandidateMultiplier` × `TopK` candidates and reduce afterwards, so `Boost` can promote a summary into the result set and `Filter` returns what the caller asked for. `Blend` is byte-identical. 1× reproduces the pre-fix behaviour exactly, so the control survives by configuration rather than as a shipped defect]
 **Completed:** 2026-08-21
 **Surface:** Backend
