@@ -156,10 +156,15 @@ services.AddRagNet(rag => rag.UseAzureAISearch(…, "default-index"));  // the r
 services.AddRagNet("docs", rag => rag.UseAzureAISearch(…, "docs-index"));
 ```
 
-`IRagPipelineFactory` also exposes the root pipeline, so code that wants one mental model can ask the
-factory for everything rather than mixing `GetRequiredService<IRagPipeline>()` with `Get(name)`.
-Offering both is deliberate: the direct resolve is what every existing reader knows, and the factory
-is what makes a migration incremental rather than a rewrite.
+**Corrected 2026-08-25.** An earlier draft of this paragraph claimed `IRagPipelineFactory` "also
+exposes the root pipeline". **It does not, and no version of this design ever specified it** — the
+interface is `Get(string)` and `Contains(string)`. The claim was never implemented because it was
+never planned; it was written here and nowhere else.
+
+The root pipeline is resolved the way it always was, with
+`GetRequiredService<IRagPipeline>()`. Mixing that with `Get(name)` in one application is the intended
+usage, not a shortcoming: the direct resolve is what every existing reader already knows, and named
+pipelines sit beside it rather than replacing it.
 
 ### 1b. Verified before relying on it
 
