@@ -63,12 +63,10 @@ public static class RagBuilderExtensions
 
         if (leafStorePath is not null)
         {
-            builder.Services.AddSingleton<IRaptorLeafStore>(_ =>
-            {
-                var store = new SqliteRaptorLeafStore(leafStorePath);
-                store.InitializeAsync().GetAwaiter().GetResult();
-                return store;
-            });
+            // No InitializeAsync().GetAwaiter().GetResult() here any more: the store creates its
+            // own schema in its constructor (#353), so there is no sync-over-async on the path
+            // that first resolves it.
+            builder.Services.AddSingleton<IRaptorLeafStore>(_ => new SqliteRaptorLeafStore(leafStorePath));
         }
 
         builder.Services.AddSingleton<RaptorIngestionBehavior>(sp =>

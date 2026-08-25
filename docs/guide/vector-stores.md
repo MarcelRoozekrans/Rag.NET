@@ -125,6 +125,55 @@ var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 
 Filter values are kind-sensitive: filtering on the string `"3"` does not match a stored number `3`. Metadata stored **before** values carried types reads back losslessly as string-kind values; see each store's section (and the Azure AI Search migration note) for what that means for filtering old documents.
 
+## Initialisation
+
+**You do not have to call `InitializeAsync`.** Every store in this library creates its index or
+collection on first use — the first `StoreAsync` or `SearchAsync` — so a first ingest against a
+backend that has never been provisioned works without any startup step.
+
+`DeleteByDocumentIdAsync` deliberately does **not** initialise: a delete against a collection that
+does not exist has nothing to delete, so provisioning one to satisfy it would be waste — and on
+pgvector an inline HNSW build under a write-blocking lock, set off by a delete.
+
+It runs **once per store instance**, behind a lock, and only a *successful* run is remembered: a
+transient failure at startup does not leave the store permanently broken, the next call tries again.
+
+`InitializeAsync` is on `IVectorStore`, so nothing needs casting to a concrete store type:
+
+```csharp
+// Optional. Pays the cost at a moment you choose, rather than inside the first request.
+var store = provider.GetRequiredService<IVectorStore>();
+await store.InitializeAsync();
+```
+
+Call it explicitly when you want to:
+
+- **provision at startup** rather than inside the first user-facing request. This matters most on
+  pgvector against a **large existing table**: initialisation is also the migration path, and it
+  builds the HNSW index inline while holding a `ShareLock` that blocks concurrent writes. Leave it
+  implicit and that cost lands inside whichever request happens to be first;
+- **fail fast on a misconfiguration** at a point you control;
+- **re-create a collection** you have just dropped with `DeleteCollectionAsync`.
+
+> **The trade-off, stated plainly.** Creating on first use means a **mistyped index or collection
+> name silently creates a new empty one** instead of failing. You get an empty search result rather
+> than an error naming the missing index. If you would rather have the error, provision your
+> backends out of band and treat any missing collection as a fault — the stores will still find the
+> existing one and not create anything.
+
+Dropping the bound collection through `DeleteCollectionAsync` resets this: the next operation
+creates it again, rather than writing to something that no longer exists.
+
+**On pgvector, first use also migrates an older table** — adding the unique
+`(document_id, chunk_index)` key that upserts need. Where that is impossible, because the table
+already holds duplicate rows under one key, the first `StoreAsync` fails with the same explanation
+`InitializeAsync` would have given, naming the duplicate count and the query to inspect them. It
+deletes nothing.
+
+> **Implementing `IVectorStore` yourself?** `InitializeAsync` has a default no-op body, so an
+> existing implementation keeps compiling and behaving exactly as before. Override it if your store
+> provisions a backend.
+
 ## Collection management
 
 All six also implement `ICollectionManageable`, registered alongside `IVectorStore` in the DI container:
@@ -198,18 +247,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_rag_chunks_doc_chunk ON rag_chunks (docume
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_embedding ON rag_chunks USING hnsw (embedding vector_cosine_ops);
 ```
 
-Call `InitializeAsync` once at application startup (e.g., in a hosted service or `Program.cs`) before any ingestion:
+These are created on first use, so no startup call is required — see
+[Initialisation](#initialisation). To pay the cost at startup instead, which the HNSW note below is
+a good reason to do:
 
 ```csharp
-var store = provider.GetRequiredService<ICollectionManageable>() as PgVectorStore;
-await store!.InitializeAsync();
-```
-
-Or resolve `PgVectorStore` directly:
-
-```csharp
-var store = provider.GetRequiredService<IVectorStore>() as PgVectorStore;
-await store!.InitializeAsync();
+var store = provider.GetRequiredService<IVectorStore>();
+await store.InitializeAsync();
 ```
 
 > **`InitializeAsync` is not always a quick startup step.** Building the HNSW index over a large
@@ -236,7 +280,7 @@ A chunk is keyed by `(document_id, chunk_index)`, enforced by a unique index. `S
 Two consequences when pointing the store at a table created by one of those versions:
 
 - **`InitializeAsync` fails fast** if `rag_chunks` already contains duplicate `(document_id, chunk_index)` pairs, because the unique key cannot be created over them. It **deletes nothing** — the exception carries the duplicate count and the query to inspect them. Decide which row of each pair to keep, remove the rest, then initialize again.
-- **`StoreAsync` throws** an `InvalidOperationException` if the table has no unique index on exactly those two columns (the `ON CONFLICT` clause has nothing to infer). Almost always this means `InitializeAsync` was never called against the table.
+- **`StoreAsync` throws** an `InvalidOperationException` if the table has no unique index on exactly those two columns (the `ON CONFLICT` clause has nothing to infer). Since first use creates that key — and migrates an older table that lacks it — the reachable cause is now narrow: the index was dropped, or the table replaced, after this store had already initialised. A table that simply predates the key is migrated rather than rejected.
 
 ### Collection names
 

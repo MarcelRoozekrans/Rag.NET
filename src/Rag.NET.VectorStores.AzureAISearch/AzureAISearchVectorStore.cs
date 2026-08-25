@@ -5,13 +5,15 @@ using Azure.Search.Documents.Indexes.Models;
 using Azure.Search.Documents.Models;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
+using Rag.NET.VectorStores;
 using Rag.NET.Telemetry;
 using RagSearchOptions = Rag.NET.Models.Options.SearchOptions;
 
 namespace Rag.NET.AzureAISearch;
 
-public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable
+public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable, IDisposable
 {
+    private readonly VectorStoreInitialisationGate _initGate = new();
     private readonly SearchIndexClient _indexClient;
     private readonly SearchClient _searchClient;
     private readonly string _indexName;
@@ -69,11 +71,26 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         _kNearestNeighborsCount = options?.KNearestNeighborsCount;
     }
 
+    /// <summary>
+    /// Creates or updates the bound index. Idempotent — <c>CreateOrUpdateIndex</c> is a PUT — and
+    /// <b>optional</b>: every entry point below calls <see cref="EnsureInitialisedAsync"/> first,
+    /// so a caller who never calls this still gets a working first ingest (#353). Deliberately
+    /// ungated, so calling it explicitly always reaches the service — that is what makes it usable
+    /// to re-create the index after <see cref="DeleteCollectionAsync"/>.
+    /// </summary>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await _indexClient.CreateOrUpdateIndexAsync(BuildIndex(_indexName, _vectorDimensions), cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Runs <see cref="InitializeAsync"/> once, on the first operation that needs the index.
+    /// </summary>
+    private Task EnsureInitialisedAsync(CancellationToken cancellationToken) =>
+        _initGate.EnsureInitialisedAsync(InitializeAsync, cancellationToken);
+
+    public void Dispose() => _initGate.Dispose();
 
     /// <summary>
     /// The index schema. Metadata lives in two fields:
@@ -137,6 +154,8 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         activity?.SetTag("vectorstore.collection", _indexName);
         activity?.SetTag("vectorstore.batch.size", chunks.Count);
 
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
+
         var documents = chunks.Select(chunk => new SearchDocument(new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["id"] = Guid.NewGuid().ToString("N"),
@@ -168,6 +187,8 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", _indexName);
 
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
+
         var searchOptions = new Azure.Search.Documents.SearchOptions
         {
             Size = options.TopK,
@@ -198,6 +219,8 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", _indexName);
         activity?.SetTag("vectorstore.hybrid", true);
+
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         var searchOptions = new Azure.Search.Documents.SearchOptions
         {
@@ -238,6 +261,10 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", _indexName);
+        // Deliberately no first-use initialisation here: a delete has nothing to delete from a
+        // collection that does not exist, and provisioning one to satisfy it would be pure waste —
+        // on pgvector an inline HNSW build under a write-blocking lock, triggered by a delete (#353).
+
 
         List<string> idsToDelete;
         do
@@ -292,6 +319,12 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
             // by the tests returns success instead, so this guard is verified against the
             // documented service behaviour rather than by the container suite.
         }
+
+        // Dropping the bound index makes "already initialised" false again; without this the
+        // next write would target an index that no longer exists. Matches Chroma, which nulls
+        // its cached collection id on exactly this condition.
+        if (string.Equals(name, _indexName, StringComparison.Ordinal))
+            _initGate.Reset();
     }
 
     public async Task<bool> CollectionExistsAsync(string name, CancellationToken cancellationToken = default)

@@ -5,6 +5,7 @@ using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Telemetry;
+using Rag.NET.VectorStores;
 
 namespace Rag.NET.PgVector;
 
@@ -30,6 +31,7 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
     private const int IterativeScanSupported = 1;
 
     private protected readonly NpgsqlDataSource _dataSource;
+    private readonly VectorStoreInitialisationGate _initGate = new();
     private readonly int _vectorDimensions;
 
     /// <summary>
@@ -138,14 +140,19 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
             embedding = EXCLUDED.embedding
         """;
 
+    /// <summary>Runs <see cref="InitializeAsync"/> once, on the first operation that needs the table (#353).</summary>
+    private Task EnsureInitialisedAsync(CancellationToken cancellationToken) =>
+        _initGate.EnsureInitialisedAsync(InitializeAsync, cancellationToken);
+
     /// <summary>
     /// Inserts the chunks, replacing any chunk already stored under the same
     /// <c>(document_id, chunk_index)</c> rather than duplicating it.
     /// </summary>
     /// <exception cref="InvalidOperationException">
-    /// The table has no unique index on <c>(document_id, chunk_index)</c>, so the upsert has
-    /// nothing to conflict on — almost always because <see cref="InitializeAsync"/> was never
-    /// called against it.
+    /// The table cannot be keyed by <c>(document_id, chunk_index)</c> — most often because it
+    /// already holds duplicate rows under one key. First use initialises the table, so "the key was
+    /// never created" is no longer among the reasons; what reaches you here is a table that
+    /// <see cref="InitializeAsync"/> could not repair, carrying its explanation.
     /// </exception>
     public async Task StoreAsync(
         IReadOnlyList<EmbeddedChunk> chunks,
@@ -155,6 +162,8 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", "rag_chunks");
         activity?.SetTag("vectorstore.batch.size", chunks.Count);
+
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
@@ -183,8 +192,9 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
                 throw new InvalidOperationException(
                     "PgVectorStore.StoreAsync upserts on (document_id, chunk_index), but table rag_chunks has no " +
                     "unique index on exactly those columns, so PostgreSQL rejected the ON CONFLICT clause " +
-                    $"(SQLSTATE {PostgresErrorCodes.InvalidColumnReference}). Call InitializeAsync() on this store " +
-                    "before storing — it creates the key — or create it by hand:\n\n" +
+                    $"(SQLSTATE {PostgresErrorCodes.InvalidColumnReference}). This store initialises the table on " +
+                    "first use, and that creates the key, so reaching this means the index was dropped or the table " +
+                    "replaced after this store had already initialised. Recreate it:\n\n" +
                     "CREATE UNIQUE INDEX idx_rag_chunks_doc_chunk ON rag_chunks (document_id, chunk_index)",
                     ex);
             }
@@ -234,6 +244,8 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", "rag_chunks");
+
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
 
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
@@ -423,6 +435,10 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", "rag_chunks");
+        // Deliberately no first-use initialisation here: a delete has nothing to delete from a
+        // collection that does not exist, and provisioning one to satisfy it would be pure waste —
+        // on pgvector an inline HNSW build under a write-blocking lock, triggered by a delete (#353).
+
 
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
@@ -803,6 +819,11 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
                 await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
         }
+
+        // Dropping the bound table makes "already initialised" false again (#353). The bound table
+        // is rag_chunks; DeleteCollectionAsync can be handed any name, so only that one resets.
+        if (string.Equals(name, "rag_chunks", StringComparison.Ordinal))
+            _initGate.Reset();
     }
 
     [System.Text.RegularExpressions.GeneratedRegex(
@@ -865,6 +886,9 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
     protected virtual void Dispose(bool disposing)
     {
         if (disposing)
+        {
             _dataSource.Dispose();
+            _initGate.Dispose();
+        }
     }
 }

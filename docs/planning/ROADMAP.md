@@ -4569,7 +4569,7 @@ memory-bandwidth bound well before it is core bound.
 6.2.1 has in flight. Everything above is exact — the differential test asserts bit-identical indices
 and distances against the pre-change implementation.
 
-### Phase 6.2.10: Vector-Store Initialisation — create the collection without being asked twice [status: pending — added 2026-08-25, split out of 6.2.8 during design]
+### Phase 6.2.10: Vector-Store Initialisation — create the collection without being asked twice [status: complete 2026-08-25 — added and built the same day. Neither of the two costs the design section priced had to be paid: its premise was wrong, and the pattern already existed in the codebase]
 **Surface:** Refactor
 **HelpWanted:** no
 
@@ -4610,6 +4610,50 @@ be revisited immediately.
 **Exit condition:** a caller who has not called `InitializeAsync` gets a working first ingest, or a
 failure that names what to call — never the current behaviour, where a missing index surfaces as N
 per-entry errors with no statement of the cause.
+
+#### What was built, and why the design section above is wrong
+
+**Its premise — "`InitializeAsync` is not on any interface" — is false.** It is declared on six:
+`IBm25Index`, `ICostLedger`, `IEmbeddingVersionStore`, `IParentChunkStore`, `IRagDataManager` and
+`IRaptorLeafStore`, all with the identical signature and the identical idempotence contract.
+`IVectorStore` was the only storage abstraction in the library *without* it. Option 1 was therefore
+never introducing a concept — it was removing an inconsistency.
+
+**Neither priced cost had to be paid.**
+
+- *"Breaking for external implementers"* — avoided with a **default no-op body** on the interface
+  member. An existing external `IVectorStore` keeps compiling and behaving identically.
+- *"Touches all eight in-repo stores"* — five of them (Azure AI Search, PgVector, Qdrant, Redis,
+  Weaviate) already declared `Task InitializeAsync(CancellationToken cancellationToken = default)`
+  byte-for-byte, so they satisfied the new member with no code change at all.
+
+**And the pattern was already in the repo, twice.** `ChromaVectorStore` had resolve-or-create on
+first use before #353 was filed — double-checked read, semaphore, cached after, invalidated when the
+collection is dropped — reached from read and write paths alike. `WeaviateVectorStore` had its own
+`_initLock`/`_initialized` gate, but wired **only into `StoreAsync`**, so it created on write and
+not on search. So this phase generalised an existing shape rather than inventing one, and Weaviate
+kept its own bespoke logic with the missing call sites added.
+
+**What shipped:** `VectorStoreInitialisationGate` in `src/Shared`, linked into each store exactly as
+`RagTelemetrySource` is — one definition, no new dependency, nothing on any package's surface. It
+caches **success only**; a `Lazy<Task>` would hold a faulted task forever, so one transient error at
+startup would break the store for the process's life. `DeleteCollectionAsync` resets it when the
+name matches the bound collection, so delete-then-use re-creates rather than writing into a hole.
+
+**The sync-over-async in `Rag.NET.Raptor`'s builder is retired.** `SqliteRaptorLeafStore` now creates
+its schema in its constructor — as `SqliteCostLedger` and `SqliteEmbeddingVersionStore` already did —
+so the builder's `InitializeAsync().GetAwaiter().GetResult()` is gone.
+
+**The audit that decided the scope.** Every component with an `InitializeAsync` was checked:
+the three in-memory ones are `Task.CompletedTask`; `SqliteBm25Index`, `SqliteDocumentStore` and
+`SqliteParentChunkStore` self-initialise on every call; `SqliteCostLedger` and
+`SqliteEmbeddingVersionStore` initialise in their constructors. **The vector stores were the only
+real gap** — which is worth recording, because the obvious guess was that this was a general defect
+needing a general framework.
+
+**The trade-off, documented in `docs/guide/vector-stores.md`:** creating on first use means a
+mistyped collection name silently creates a new empty one instead of failing. That is inherent to
+what #353 asks for; callers who want the error provision out of band.
 
 ### Phase 6.2.11: HTML Structure and a Guid Seam [status: pending — added 2026-08-25]
 **Surface:** Backend

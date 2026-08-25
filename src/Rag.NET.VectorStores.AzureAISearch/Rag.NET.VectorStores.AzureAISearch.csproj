@@ -38,4 +38,10 @@
     <PackageReference Include="Azure.Search.Documents" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- One definition, linked rather than published, exactly as RagTelemetrySource is: the gate
+         is an implementation detail of every vector store and belongs on no package's surface. -->
+    <Compile Include="..\Shared\VectorStoreInitialisationGate.cs" Link="Internal\VectorStoreInitialisationGate.cs" />
+  </ItemGroup>
+
 </Project>
