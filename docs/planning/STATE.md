@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-24 (cluster imbalance measured at 5.51x and the split settled; branch field corrected)
+**Last updated:** 2026-08-24 (#364 merged; RAPTOR pilot attempted, stopped, and the plan re-costed)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -115,10 +115,48 @@ Three things govern the run, all in the plan:
 
 **Also unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`.
 
+### Task 4 was attempted on 2026-08-24, stopped, and the plan re-costed. The gate has never run.
+
+**Nothing is pinned and no figure was produced.** Three runs were started and stopped; full account
+in `docs/plans/2026-08-21-raptor-pilot-notes.md`. What it cost: roughly $2-4 of summarisation, all
+of it cached and reusable.
+
+**Three defects were found, two of them in the plan itself:**
+
+1. **The plan's `dotnet test --filter` is silently ignored.** This project sets
+   `TestingPlatformDotnetTestSupport` with `xunit.v3`, so the VSTest filter is discarded and **all
+   25 test classes run** — with `RAGNET_BEIR_LONG_RUNS=1` and `RAGNET_GRAPHRAG_ANSWERS_GENERATE=1`
+   set, which unlocks every expensive test in the project. Nothing fails; a run was observed
+   executing library-comparison sweeps instead of RAPTOR. **Fixed in the plan** — both Task 4 and
+   Task 5 now invoke the runner directly with `-class '*BeirGraphRagAnswerTests*'`, and verify it
+   selects 5 methods before running.
+
+2. **The plan's cost model counted only answers.** It estimated "50 queries × 4 arms, most hitting
+   cache" (~250 calls) and **omitted tree construction entirely**. The `raptor` arm is the
+   per-document control, so it builds **609 trees**, every level an LLM summarisation: 4,739 calls
+   in 5 hours at a steady 21/min, with ~15-20 hours and order $10-20 still to go. **Fixed in the
+   plan**, and `raptor` is now dropped from Task 4's pilot — the gate needs corpus-scope arms only,
+   and the corpus tree is already cached.
+
+3. **Killing a run by `dotnet`/`testhost` does not stop it.** The process is named after the
+   assembly. Two "stopped" runs survived and were found 90 minutes later at 5.6 CPU-hours and
+   6.2 GB *each*, starving their replacement — which managed 139 CPU-seconds in 58 minutes. This
+   was already recorded in memory before it happened, and happened anyway.
+
+**This is not #333 recurring, and that was checked rather than assumed.** `SelectClusterCount`
+computes `k = Min(raw, count - 1)` and returns null at `k <= 1`, so every level shrinks strictly and
+the loop provably terminates. The `k >= count` degenerate guard remains unreachable. The clustering
+is correct; there is simply far more legitimate work than the plan priced.
+
+**Next step is the gate, and it is cheap:** run Task 4 with
+`dense,raptorcorpus,raptorfiltered,raptorboost` and check `raptorfiltered − dense ≈ 0`. Only after
+it holds does the ~15-20 hour per-document `raptor` build earn its place as a scheduled job.
+
 ## Working State
 
-**Branch:** `bench/raptor-cluster-shape`, cut from `main` — the cluster-imbalance measurement
-that answered the post-assignment-split question above. **Tasks 1-3 of
+**Branch:** `bench/raptor-real-protocol-measurement`, cut from `main` after #364. The
+cluster-imbalance work merged 2026-08-24 in **#364** (`1ff3c758`), verified on `main` by content;
+`bench/raptor-cluster-shape` is deleted. **Tasks 1-3 of
 `docs/plans/2026-08-21-raptor-real-protocol-implementation.md` are on `main`**, merged 2026-08-22
 in #347 (`c2d83075`) off the now-superseded `bench/raptor-measurement`; verified on `main` by
 content, not by the PR's MERGED label. Tasks 4-6 are unblocked and not yet started — see
