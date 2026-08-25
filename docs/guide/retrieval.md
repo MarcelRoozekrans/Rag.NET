@@ -901,12 +901,17 @@ store with correct server-side filtering could still leak on those calls.
 `MetadataFilterMatcher.Matches` — public for exactly this reason, so implementers do not have to
 reimplement the typed-equality semantics described above — and apply it *before* truncating to
 `topK`, so callers receive the best eligible chunks rather than the best chunks minus the
-ineligible ones. See [Extending — Implementing `IVectorStore`](extending.md#optional-ihybridsearchable)
+ineligible ones. See [Extending — Optional: `IHybridSearchable`](extending.md#optional-ihybridsearchable)
 for the rest of what a custom hybrid-search-capable store needs to honour.
+
+**Upgrading from a pre-fix build:** a persisted or distributed result cache written by a build
+before this fix can keep serving leaked (filter-violating) entries after you upgrade —
+`CacheKeyGenerator` keys carry no library-version component — so flush any such cache as part of
+the upgrade.
 
 ## Specification-based filtering
 
-`RetrievalOptions.Filter` accepts any `ISpecification<SearchResult>` (from `ZeroAlloc.Specification`) and is applied in-process after the vector store returns results. Unlike `MetadataFilter`, which is pushed down to the database, `Filter` runs locally and can express arbitrary logic — score thresholds, tag checks, document ID restrictions, or combinations of all three.
+`RetrievalOptions.Filter` accepts any `ISpecification<SearchResult>` (from `ZeroAlloc.Specification`) and is applied in-process after the vector store returns results. Unlike `MetadataFilter` — which stores with native filtering push down to the database, and which the in-memory BM25 arm above applies in-process — `Filter` always runs locally and can express arbitrary logic — score thresholds, tag checks, document ID restrictions, or combinations of all three.
 
 Three built-in specifications are provided in `Rag.NET`:
 

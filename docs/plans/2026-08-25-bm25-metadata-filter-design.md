@@ -143,11 +143,12 @@ The #299/#304 reasoning still stands as the rule for the day someone *does* add 
 it is recorded here for that reader rather than deleted, because the trap is real even though this
 change does not walk near it.
 
-### 4. `InMemoryBm25Index` filters before scoring
+### 4. `InMemoryBm25Index` filters after score accumulation, before the sort and truncation
 
-`_docs[docId] = (chunk, length)` already holds the whole `TextChunk`, so the filter is applied while
-accumulating candidates rather than after ranking. That is what makes `topK` come back full of
-eligible hits, and it is the entire advantage of this approach over post-filtering.
+`_docs[docId] = (chunk, length)` already holds the whole `TextChunk`, so the filter is applied
+while the per-candidate score is added to the result list — after BM25 has scored the candidate,
+but before the results are sorted and truncated to `topK`. That is what makes `topK` come back
+full of eligible hits, and it is the entire advantage of this approach over post-filtering.
 
 ## Testing
 
