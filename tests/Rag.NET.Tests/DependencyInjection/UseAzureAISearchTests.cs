@@ -66,4 +66,56 @@ public class UseAzureAISearchTests
         Assert.Same(vectorStore, hybridSearchable);
         Assert.Same(vectorStore, collectionManageable);
     }
+
+    /// <summary>
+    /// <c>KNearestNeighborsCount</c> is configurable and defaults to <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// Null means the parameter is omitted from the query, so Azure applies its own documented
+    /// default of 50. That matters: the store used to hard-code k to <c>TopK</c>, which at a
+    /// typical top-5 narrowed vector recall to a tenth of what Azure would have used unasked
+    /// (#328).
+    /// </remarks>
+    [Fact]
+    public void UseAzureAISearch_KNearestNeighborsCount_DefaultsToNull()
+    {
+        AzureAISearchOptions? captured = null;
+
+        _ = new ServiceCollection()
+            .AddRagNet(rag => rag.UseAzureAISearch(
+                s_endpoint, "index", s_credential, configure: o => captured = o))
+            .BuildServiceProvider();
+
+        Assert.NotNull(captured);
+        Assert.Null(captured.KNearestNeighborsCount);
+    }
+
+    [Fact]
+    public void UseAzureAISearch_KNearestNeighborsCount_RoundTripsThroughConfigure()
+    {
+        AzureAISearchOptions? captured = null;
+
+        _ = new ServiceCollection()
+            .AddRagNet(rag => rag.UseAzureAISearch(
+                s_endpoint, "index", s_credential, configure: o =>
+                {
+                    o.KNearestNeighborsCount = 50;
+                    captured = o;
+                }))
+            .BuildServiceProvider();
+
+        Assert.NotNull(captured);
+        Assert.Equal(50, captured.KNearestNeighborsCount);
+    }
+
+    /// <summary>A configured k below 1 is rejected eagerly, the way the sibling stores validate.</summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void UseAzureAISearch_KNearestNeighborsCountBelowOne_Throws(int invalid)
+    {
+        _ = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ServiceCollection().AddRagNet(rag => rag.UseAzureAISearch(
+                s_endpoint, "index", s_credential, configure: o => o.KNearestNeighborsCount = invalid)));
+    }
 }

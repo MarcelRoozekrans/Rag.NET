@@ -16,6 +16,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
     private readonly SearchClient _searchClient;
     private readonly string _indexName;
     private readonly int _vectorDimensions;
+    private readonly int? _kNearestNeighborsCount;
 
     public AzureAISearchVectorStore(
         Uri endpoint,
@@ -32,6 +33,30 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         AzureKeyCredential credential,
         int vectorDimensions,
         SearchClientOptions? clientOptions)
+        : this(endpoint, indexName, credential, vectorDimensions, clientOptions, options: null)
+    {
+    }
+
+    /// <summary>
+    /// Creates the store with <see cref="AzureAISearchOptions"/>, the overload <c>UseAzureAISearch</c>
+    /// calls once its <c>configure</c> callback has run.
+    /// </summary>
+    /// <param name="endpoint">The search service endpoint.</param>
+    /// <param name="indexName">The index this store reads and writes.</param>
+    /// <param name="credential">The admin or query key.</param>
+    /// <param name="vectorDimensions">The embedding width the index is created with.</param>
+    /// <param name="clientOptions">Optional SDK client options.</param>
+    /// <param name="options">
+    /// Store options, or <see langword="null"/> for their defaults. The other constructors pass
+    /// <see langword="null"/>, so they keep Azure's own <c>k</c> rather than any value of ours.
+    /// </param>
+    public AzureAISearchVectorStore(
+        Uri endpoint,
+        string indexName,
+        AzureKeyCredential credential,
+        int vectorDimensions,
+        SearchClientOptions? clientOptions,
+        AzureAISearchOptions? options)
     {
         _indexClient = clientOptions is null
             ? new SearchIndexClient(endpoint, credential)
@@ -41,6 +66,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
             : new SearchClient(endpoint, indexName, credential, clientOptions);
         _indexName = indexName;
         _vectorDimensions = vectorDimensions;
+        _kNearestNeighborsCount = options?.KNearestNeighborsCount;
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -149,11 +175,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
             {
                 Queries =
                 {
-                    new VectorizedQuery(queryEmbedding)
-                    {
-                        KNearestNeighborsCount = options.TopK,
-                        Fields = { "embedding" },
-                    },
+                    BuildVectorQuery(queryEmbedding, _kNearestNeighborsCount),
                 },
             },
         };
@@ -184,11 +206,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
             {
                 Queries =
                 {
-                    new VectorizedQuery(queryEmbedding)
-                    {
-                        KNearestNeighborsCount = options.TopK,
-                        Fields = { "embedding" },
-                    },
+                    BuildVectorQuery(queryEmbedding, _kNearestNeighborsCount),
                 },
             },
             QueryType = SearchQueryType.Simple,
@@ -301,6 +319,32 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
     /// <c>"3"</c>. Documents ingested before the complex collection existed have no
     /// <c>metadata_entries</c> rows and therefore do not match — re-ingest them to filter on them.
     /// </summary>
+    /// <summary>
+    /// Builds the vector arm's query, sending <c>k</c> only when the caller configured one.
+    /// </summary>
+    /// <remarks>
+    /// <b>Leaving <c>KNearestNeighborsCount</c> unset is a decision, not an omission.</b> Microsoft
+    /// documents the unspecified default as 50; this store previously sent <c>TopK</c>, which at a
+    /// typical top-5 asked for a tenth of that and starved RRF fusion of candidates to fuse.
+    /// Sending nothing restores the platform default and lets a caller widen it through
+    /// <see cref="AzureAISearchOptions.KNearestNeighborsCount"/> — notably to the 50 that semantic
+    /// ranking requires (#328).
+    /// </remarks>
+    /// <param name="queryEmbedding">The query vector.</param>
+    /// <param name="kNearestNeighborsCount">The configured <c>k</c>, or <see langword="null"/>.</param>
+    /// <returns>The query to add to <c>VectorSearchOptions.Queries</c>.</returns>
+    internal static VectorizedQuery BuildVectorQuery(
+        ReadOnlyMemory<float> queryEmbedding, int? kNearestNeighborsCount)
+    {
+        var query = new VectorizedQuery(queryEmbedding) { Fields = { "embedding" } };
+        if (kNearestNeighborsCount is { } k)
+        {
+            query.KNearestNeighborsCount = k;
+        }
+
+        return query;
+    }
+
     internal static string? BuildMetadataFilter(IDictionary<string, MetadataValue>? metadataFilter)
     {
         if (metadataFilter is not { Count: > 0 })
