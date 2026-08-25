@@ -152,4 +152,45 @@ public sealed class NamedPipelineTests
         Assert.NotNull(provider.GetRequiredService<IRagPipeline>());
         Assert.NotNull(provider.GetRequiredService<IRagPipelineFactory>().Get("docs"));
     }
+
+    private sealed class DisposableProbe : IDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
+    }
+
+    /// <summary>A child never owns what it merely forwards — disposing it must not dispose a
+    /// shared service.</summary>
+    /// <remarks>
+    /// Regression test for a factory-based forwarding descriptor —
+    /// <c>ServiceDescriptor.Singleton(type, sp =&gt; sp.GetRequiredService(type))</c> — which the
+    /// concrete <c>ServiceProvider</c> captures for disposal in whichever child resolved it,
+    /// because a factory call site gives the engine no way to know the instance is owned
+    /// elsewhere. Reproduced against real Microsoft.Extensions.DependencyInjection 10.0.11:
+    /// disposing either child alone disposed the shared instance as a side effect, and disposing
+    /// the second child disposed it again. The fix registers the resolved <b>instance</b> instead
+    /// of a factory, which the engine excludes from disposal capture entirely.
+    /// </remarks>
+    [Fact]
+    public void DisposingTheFactory_DoesNotDisposeASharedService()
+    {
+        var probe = new DisposableProbe();
+        var services = new ServiceCollection();
+        services.AddRagNetShared(rag => rag.Services.AddSingleton(probe));
+        services.AddRagNet("docs", rag => rag.Services.AddSingleton(Substitute.For<IVectorStore>()));
+        services.AddRagNet("support", rag => rag.Services.AddSingleton(Substitute.For<IVectorStore>()));
+
+        using var provider = services.BuildServiceProvider();
+        var factory = (RagPipelineFactory)provider.GetRequiredService<IRagPipelineFactory>();
+
+        // Resolve the shared probe through both children, forcing both child providers to build
+        // and both to have actually realised the forwarded instance.
+        Assert.Same(probe, factory.ProviderFor("docs").GetRequiredService<DisposableProbe>());
+        Assert.Same(probe, factory.ProviderFor("support").GetRequiredService<DisposableProbe>());
+
+        factory.Dispose();
+
+        Assert.False(probe.Disposed);
+    }
 }

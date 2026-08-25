@@ -542,8 +542,22 @@ public static class ServiceCollectionExtensions
 
     /// <summary>Applies shared-service forwarding and constructs the factory.</summary>
     /// <remarks>
+    /// <para>
     /// Forwarding happens here, not at registration: the descriptors close over the root provider,
     /// which only exists once the container is built.
+    /// </para>
+    /// <para>
+    /// Resolves each shared type eagerly and registers the resulting <b>instance</b>, not a
+    /// factory delegate. A factory-based descriptor — <c>ServiceDescriptor.Singleton(type, sp =>
+    /// sp.GetRequiredService(type))</c> — has the concrete <c>ServiceProvider</c> capture whatever
+    /// the factory call site returns for disposal in the container that ran it, because the
+    /// engine cannot know the instance is owned elsewhere. That would make the first child to be
+    /// disposed dispose the shared instance as a side effect, and a second child dispose it again
+    /// — exactly the failure <see cref="RagPipelineFactory"/>'s "a child never owns what it
+    /// forwards" guarantee exists to prevent. An instance descriptor has no factory call site, so
+    /// the engine excludes it from disposal capture entirely: ownership stays with the root, which
+    /// is the only container that resolved it through a real call site.
+    /// </para>
     /// </remarks>
     /// <param name="named">Each name's registration.</param>
     /// <param name="rootProvider">The root provider forwarded services resolve from.</param>
@@ -556,8 +570,8 @@ public static class ServiceCollectionExtensions
         {
             foreach (var serviceType in registration.Shared.Types)
             {
-                registration.Services.Replace(
-                    ServiceDescriptor.Singleton(serviceType, _ => rootProvider.GetRequiredService(serviceType)));
+                var instance = rootProvider.GetRequiredService(serviceType);
+                registration.Services.Replace(ServiceDescriptor.Singleton(serviceType, instance));
             }
 
             collections[name] = registration.Services;
