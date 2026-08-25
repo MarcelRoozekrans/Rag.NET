@@ -48,7 +48,8 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
       Floor, 6.2.1 Retrieval & Answer Sweep, 6.2.2 Requested Features, ~~6.2.3 Corpus-Level
       RAPTOR~~ (complete 2026-08-21), ~~6.2.4 RAPTOR Retrieval Over-Fetch~~ (complete 2026-08-21),
       6.2.5 Contract Defects, 6.2.6 Package Boundaries, 6.2.7 Named Pipelines, 6.2.8 Requested
-      DX and Chunking Quality, 6.2.9 `Umap.Fit` at Corpus Scale, 6.3 Release v1.0.
+      DX and Chunking Quality, 6.2.9 `Umap.Fit` at Corpus Scale, 6.2.10 Vector-Store
+      Initialisation, 6.3 Release v1.0.
       *(6.2.5–6.2.9 added 2026-08-25 from the GitHub backlog, pre-tag on the operator's
       decision. Consistent with 6.2.2's charter: this is the terminal milestone, so a
       request filed against a published package has nowhere later to land.)*
@@ -93,6 +94,7 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 | 6.2.7 | Named Pipelines | #342 | **pending** — added 2026-08-25. Everything `AddRagNet` registers is an unkeyed singleton, so one container is one pipeline is one index. Keyed/named registrations in `IHttpClientFactory`'s shape, proposed by the requester and agreed. The largest phase added here, pre-tag on the operator's 2026-08-25 decision. Depends on 6.2.5 |
 | 6.2.8 | Requested DX and Chunking Quality | #366, #365, #353, #355 | **pending** — added 2026-08-25. Header-aware chunking emits heading-only chunks such as `"Section 2"` (#366); sources belong in a `Tool` message so PII scanning can skip them (#365); `InitializeAsync` should create a missing index (#353); `IngestFromProviderAsync` reports failures as `Skipped` (#355) |
 | 6.2.9 | `Umap.Fit` at Corpus Scale | #348 | **pending** — added 2026-08-25. Brute-force O(n²) with ~2.5 GB of large-object-heap traffic per corpus build. Split from #345, whose fix does not help it — `Umap.Fit` runs before clustering. Needs two runs on a quiet machine |
+| 6.2.10 | Vector-Store Initialisation | #353 | **pending** — added 2026-08-25, split out of 6.2.8 during design. A caller should not have to call `InitializeAsync` by hand before the first ingest. Pulled out because it is not a papercut: `InitializeAsync` is **not on any interface** — it is a concrete method per store that creates the bound index with its vector schema — and `ICollectionManageable`'s `CreateCollectionAsync` makes a *named* collection, not that. So it needs either an `IVectorStore` addition (breaking, eight stores) or a sync-over-async call at registration, and the choice wants deciding before any code. Sequenced after 6.2.7, whose registration changes it would otherwise be designed against |
 | 6.3 | Release v1.0 | — | pending — **but its first work is already done**: 71 packages live on nuget.org at 0.1.0 since 2026-08-11 (verified 2026-08-16), so the account, key and every package ID are settled. Only the v1.0 tag remains. ~~Now gated on 6.2.3~~ — cleared 2026-08-21. Still gated on 6.1's recordings (the operator kept that gate) and 6.2.1's sweep |
 
 ## Known debt carried into this milestone

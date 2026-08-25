@@ -4535,6 +4535,48 @@ per-document arm is 609 trees, so this is real time rather than a micro-optimisa
 disagreed by 6× on identical inputs, and 2026-08-24 lost an hour of measurement to an orphaned
 runner starving its replacement.
 
+### Phase 6.2.10: Vector-Store Initialisation — create the collection without being asked twice [status: pending — added 2026-08-25, split out of 6.2.8 during design]
+**Surface:** Refactor
+**HelpWanted:** no
+
+**Goal:** a caller should not have to call `InitializeAsync` by hand before the first ingest.
+Reported as #353 — *"Is there a way to do this automatically when the code sees that the index does
+not exist?"* — and it is the same incident as #355: the reporter's index did not exist, every entry
+threw, and the run reported them as `Skipped`.
+
+**It was pulled out of 6.2.8 because it is not a papercut, and finding that out is the useful part.**
+The other three items in that phase were each one method or one field. This one is not:
+
+- **`InitializeAsync` is not on any interface.** It is a public method on each concrete store —
+  `AzureAISearchVectorStore.InitializeAsync` creates the bound index with its vector field, its HNSW
+  profile and its `metadata_entries` complex collection. There is no `IVectorStore.InitializeAsync`
+  to call.
+- **`ICollectionManageable` is not a substitute.** It carries `CreateCollectionAsync`,
+  `DeleteCollectionAsync` and `CollectionExistsAsync`, but those create a *named* collection, not
+  the bound index with the schema the store actually needs. Calling them instead would create
+  something the store cannot then read.
+
+**So the design question is which of two costs to pay**, and it wants deciding before any code:
+
+1. **Add `InitializeAsync` to `IVectorStore`.** The natural home — one hook, every store, and it
+   enables a real lazy first-use initialisation rather than a registration-time side effect.
+   Breaking for external implementers, and touches all eight in-repo stores.
+2. **A per-store opt-in that calls the concrete method at registration.** Small, and precedented:
+   `Rag.NET.Raptor`'s builder already does `store.InitializeAsync().GetAwaiter().GetResult()`. But
+   that blocks a thread during DI setup, and it has to be repeated for every store.
+
+**The precedent cuts both ways and should not settle it by itself.** That Raptor already blocks at
+registration makes (2) consistent, not correct; sync-over-async during container build is a thing
+this project does once, not a pattern it has endorsed.
+
+**Sequenced after 6.2.7** deliberately: named pipelines change how stores are registered, and an
+initialisation hook designed against the current single-unkeyed-singleton registration would have to
+be revisited immediately.
+
+**Exit condition:** a caller who has not called `InitializeAsync` gets a working first ingest, or a
+failure that names what to call — never the current behaviour, where a missing index surfaces as N
+per-entry errors with no statement of the cause.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
