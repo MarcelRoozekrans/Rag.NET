@@ -246,8 +246,10 @@ public sealed class IngestFromProviderTests : IDisposable
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(1, result.Ingested);                                     // id-2 ingested
-        Assert.Equal(2, result.Ingested + result.Skipped); // both entries were attempted
+        Assert.Equal(1, result.Ingested);   // id-2 ingested
+        Assert.Equal(1, result.Failed);     // id-1 threw
+        Assert.Equal(0, result.Skipped);    // nothing was up to date; #355
+        Assert.Equal(2, result.Ingested + result.Failed); // both entries were attempted
         Assert.Single(result.Errors);
         Assert.IsType<RagError.StorageFailed>(result.Errors[0]);
     }
@@ -1107,5 +1109,35 @@ public sealed class IngestFromProviderTests : IDisposable
 
         var metadata = Assert.Single(captured);
         Assert.Equal("application/pdf", metadata.ContentType);
+    }
+
+    /// <summary>
+    /// An entry that throws is counted as <c>Failed</c>, never as <c>Skipped</c> (#355).
+    /// </summary>
+    /// <remarks>
+    /// <c>Skipped</c> means "already up to date" — an ETag or content hash matched and there was
+    /// nothing to do. Reporting a failure the same way told the reporter their sitemap ingest had
+    /// skipped fifty entries when in fact the index did not exist and every one had thrown; the
+    /// only way to tell was to read <c>Errors</c>. Two different outcomes wearing one name.
+    /// </remarks>
+    [Fact]
+    public async Task IngestFromProviderAsync_EntryThrows_CountsFailedNotSkipped()
+    {
+        // A failure Result, not a thrown exception: the pipeline turns !IsSuccess into a throw
+        // inside the per-entry try, which is the path that used to report Skipped.
+        _pipeline.IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Failure(
+                new RagError.StorageFailed(new InvalidOperationException("index not found")))));
+
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(0, result.Skipped);
+        Assert.Equal(0, result.Ingested);
+        _ = Assert.Single(result.Errors);
     }
 }

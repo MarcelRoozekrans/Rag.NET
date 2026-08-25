@@ -82,6 +82,30 @@ public sealed class RagOptions
     /// Overrides the chat client's sampling temperature for this call.
     /// <see langword="null"/> leaves the chat client's own configured default in place.
     /// </summary>
+    /// <summary>
+    /// Sends retrieved sources as a tool result rather than inside the user message.
+    /// <see langword="false"/> by default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The default shape puts the context and the question in one user message. Setting this
+    /// produces System, User(query), Assistant(tool call), Tool(context) instead — so the user
+    /// message contains only what the user actually typed.
+    /// </para>
+    /// <para>
+    /// Requested in #365 to let PII detection and redaction run over the user's own text without
+    /// also scanning retrieved source content the caller already trusts.
+    /// </para>
+    /// <para>
+    /// <b>Off by default, and that is not timidity.</b> The answer cache is keyed on a prompt
+    /// embedding the context, so changing the message shape changes every cache key: cache misses,
+    /// regeneration, and different numbers. Every pinned figure in
+    /// <c>MultiHopRagAnswerReproduction</c> was measured against the default shape. Making this the
+    /// default would invalidate all of them without a word.
+    /// </para>
+    /// </remarks>
+    public bool SendSourcesAsToolResult { get; set; }
+
     public float? Temperature { get; set; }
 
     /// <summary>
