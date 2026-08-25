@@ -396,4 +396,79 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<IRetriever>(sp => sp.GetRequiredService<TagRetriever>());
     }
+
+    /// <summary>
+    /// Declares services shared by every named pipeline — an embedding model, an
+    /// <see cref="Microsoft.Extensions.AI.IChatClient"/>, anything expensive enough that one per
+    /// pipeline would be wrong.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Uses the same <see cref="RagBuilder"/> and the same <c>Use*</c> methods as <c>AddRagNet</c>,
+    /// because <see cref="RagBuilder"/> is a wrapper over an <see cref="IServiceCollection"/> and
+    /// nothing about those methods is tied to a pipeline being registered.
+    /// </para>
+    /// <para>
+    /// <b>It deliberately does not register a pipeline.</b> Sharing a model is not the same as
+    /// running a pipeline in the root container: one that did would build its own stores alongside
+    /// every child's.
+    /// </para>
+    /// <para>
+    /// Four types hold an ONNX <c>InferenceSession</c> — the embedding generator, the token
+    /// embedding generator, the SPLADE encoder and the reranker — and MiniLM alone is roughly 90 MB.
+    /// Five named pipelines each calling <c>UseOnnxEmbeddings</c> would load it five times, which is
+    /// the concrete reason this exists (#342).
+    /// </para>
+    /// </remarks>
+    /// <param name="services">The root service collection.</param>
+    /// <param name="configure">Registers the shared services, using the usual <c>Use*</c> methods.</param>
+    /// <returns>The same collection, for chaining.</returns>
+    public static IServiceCollection AddRagNetShared(
+        this IServiceCollection services, Action<RagBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        // Snapshot around the callback so only what it declared is forwarded. The root collection
+        // also holds the host's own logging, configuration and HttpClients; forwarding those would
+        // make every child depend on the host's container shape.
+        var before = services.Count;
+        configure(new RagBuilder(services));
+
+        var declared = new List<Type>();
+        for (var i = before; i < services.Count; i++)
+        {
+            declared.Add(services[i].ServiceType);
+        }
+
+        var shared = FindOrAddSharedServiceTypes(services);
+        shared.AddRange(declared);
+        return services;
+    }
+
+    /// <summary>
+    /// Gets the collection's <see cref="SharedServiceTypes"/>, adding it on first use.
+    /// </summary>
+    /// <remarks>
+    /// Held as a singleton <i>instance</i> so both <c>AddRagNetShared</c> and <c>AddRagNet(name, …)</c>
+    /// see the same object at registration time, before any provider exists — and so a named block
+    /// declared before the shared block still forwards correctly.
+    /// </remarks>
+    /// <param name="services">The root service collection.</param>
+    /// <returns>The single instance for this collection.</returns>
+    private static SharedServiceTypes FindOrAddSharedServiceTypes(IServiceCollection services)
+    {
+        foreach (var descriptor in services)
+        {
+            if (descriptor.ServiceType == typeof(SharedServiceTypes)
+                && descriptor.ImplementationInstance is SharedServiceTypes existing)
+            {
+                return existing;
+            }
+        }
+
+        var created = new SharedServiceTypes();
+        services.AddSingleton(created);
+        return created;
+    }
 }
