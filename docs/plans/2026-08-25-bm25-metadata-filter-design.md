@@ -114,20 +114,34 @@ divergence risk above, exported to people who cannot see the dense arm's impleme
 `InMemoryVectorStore.MatchesFilter` becomes a call to it and stops being a private duplicate. This is
 a targeted improvement to code the change already touches, not unrelated refactoring.
 
-### 3. `SqliteBm25Index` deserialises and uses the shared matcher
+### 3. `SqliteBm25Index` forwards the filter — there is no SQL path to push into
 
-It stores `metadata_json` per row and could filter in SQL. It will not.
+**Corrected 2026-08-25, after reading the implementation.** An earlier draft of this section weighed
+filtering in SQL over `metadata_json` against deserialising and using the shared matcher, and chose
+the matcher on the strength of #299/#304 — where SQLite's `COLLATE NOCASE` folded ASCII while the
+callers folded Unicode, so an index's comparison semantics and the predicate's disagreed.
 
-**This project has already paid for that mistake.** #299/#304: SQLite's `COLLATE NOCASE` folds ASCII
-only while the callers fold Unicode, so an index's comparison semantics and the predicate's
-disagreed, and non-English entity names became one entity in memory and two rows in the graph.
-JSON1 typed-equality against `MetadataValue` typed-equality is the same trap in different clothes.
-Correctness over speed, and one matching implementation rather than two that must be kept in
-agreement forever.
+**That trade-off does not exist here.** `SqliteBm25Index` is a *write-through wrapper* around
+`InMemoryBm25Index`:
 
-If BM25 filtering later shows up in a profile, a SQL prefilter can be added **behind** the shared
-matcher — prefilter for speed, matcher for truth. Not now: no measurement says it is needed, and
-this project does not add optimisations that no measurement asked for.
+```csharp
+private readonly InMemoryBm25Index _memory;
+...
+public IReadOnlyList<(TextChunk chunk, double score)> Search(string query, int topK)
+{
+    ObjectDisposedException.ThrowIf(_disposed, this);
+    EnsureInitialised();
+    return _memory.Search(query, topK);
+}
+```
+
+SQLite is persistence and rehydration only; **every search already runs in memory**. So this
+implementation gains one parameter and forwards it. The `metadata_json` column is how chunks are
+restored on load, not something `Search` ever queries.
+
+The #299/#304 reasoning still stands as the rule for the day someone *does* add a SQL search path —
+it is recorded here for that reader rather than deleted, because the trap is real even though this
+change does not walk near it.
 
 ### 4. `InMemoryBm25Index` filters before scoring
 
