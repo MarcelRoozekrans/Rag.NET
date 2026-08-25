@@ -34,6 +34,10 @@
          Microsoft.Extensions.Caching.Hybrid — that package carries the implementation and is
          referenced only by the Rag.NET.Caching satellite, whose UseCaching() registers it. -->
     <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" />
+    <!-- The concrete container, not just Abstractions: AddRagNet(name, …) builds a child
+         ServiceProvider per named pipeline (RagPipelineFactory), which only the implementation
+         package provides. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.ML.Tokenizers" />

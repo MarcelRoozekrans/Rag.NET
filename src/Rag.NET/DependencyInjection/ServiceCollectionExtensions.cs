@@ -471,4 +471,103 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(created);
         return created;
     }
+
+    /// <summary>
+    /// Registers a named RAG pipeline with its own service provider, reached through
+    /// <see cref="IRagPipelineFactory"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The named block composes into its own <see cref="IServiceCollection"/>, so its vector store,
+    /// BM25 index, caches and behaviours are separate from every other name's. Every <c>Use*</c>
+    /// method works unchanged, because they all operate on a collection.
+    /// </para>
+    /// <para>
+    /// Service types declared through <see cref="AddRagNetShared"/> are forwarded to the root
+    /// provider rather than registered again, so one embedding model serves every pipeline.
+    /// </para>
+    /// <para>
+    /// The unnamed <c>AddRagNet</c> is unaffected and still registers into the root container (#342).
+    /// </para>
+    /// </remarks>
+    /// <param name="services">The root service collection.</param>
+    /// <param name="name">The pipeline's name, passed later to <see cref="IRagPipelineFactory.Get"/>.</param>
+    /// <param name="configure">Configures this pipeline, with the usual <c>Use*</c> methods.</param>
+    /// <returns>The same collection, for chaining.</returns>
+    public static IServiceCollection AddRagNet(
+        this IServiceCollection services, string name, Action<RagBuilder>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        var shared = FindOrAddSharedServiceTypes(services);
+        var named = FindOrAddNamedCollections(services);
+        if (named.ContainsKey(name))
+        {
+            throw new ArgumentException(
+                $"A RAG pipeline named '{name}' is already registered.", nameof(name));
+        }
+
+        var inner = new ServiceCollection();
+        _ = inner.AddRagNet(configure);
+        named[name] = new NamedPipelineRegistration(inner, shared);
+
+        services.TryAddSingleton<IRagPipelineFactory>(sp => BuildFactory(named, sp));
+        return services;
+    }
+
+    /// <summary>
+    /// Gets the collection's name-to-registration map, adding it on first use. Mirrors
+    /// <see cref="FindOrAddSharedServiceTypes"/>: held as a singleton instance so every
+    /// <c>AddRagNet(name, …)</c> call sees the same map, regardless of call order.
+    /// </summary>
+    /// <param name="services">The root service collection.</param>
+    /// <returns>The single instance for this collection.</returns>
+    private static Dictionary<string, NamedPipelineRegistration> FindOrAddNamedCollections(
+        IServiceCollection services)
+    {
+        foreach (var descriptor in services)
+        {
+            if (descriptor.ServiceType == typeof(Dictionary<string, NamedPipelineRegistration>)
+                && descriptor.ImplementationInstance is Dictionary<string, NamedPipelineRegistration> existing)
+            {
+                return existing;
+            }
+        }
+
+        var created = new Dictionary<string, NamedPipelineRegistration>(StringComparer.Ordinal);
+        services.AddSingleton(created);
+        return created;
+    }
+
+    /// <summary>Applies shared-service forwarding and constructs the factory.</summary>
+    /// <remarks>
+    /// Forwarding happens here, not at registration: the descriptors close over the root provider,
+    /// which only exists once the container is built.
+    /// </remarks>
+    /// <param name="named">Each name's registration.</param>
+    /// <param name="rootProvider">The root provider forwarded services resolve from.</param>
+    /// <returns>The factory.</returns>
+    private static RagPipelineFactory BuildFactory(
+        Dictionary<string, NamedPipelineRegistration> named, IServiceProvider rootProvider)
+    {
+        var collections = new Dictionary<string, IServiceCollection>(StringComparer.Ordinal);
+        foreach (var (name, registration) in named)
+        {
+            foreach (var serviceType in registration.Shared.Types)
+            {
+                registration.Services.Replace(
+                    ServiceDescriptor.Singleton(serviceType, _ => rootProvider.GetRequiredService(serviceType)));
+            }
+
+            collections[name] = registration.Services;
+        }
+
+        return new RagPipelineFactory(collections, rootProvider);
+    }
+
+    /// <summary>One named pipeline's composed collection and the shared types it forwards.</summary>
+    /// <param name="Services">The inner collection this name composed into.</param>
+    /// <param name="Shared">The shared-type registry, read at build time so call order does not matter.</param>
+    private sealed record NamedPipelineRegistration(IServiceCollection Services, SharedServiceTypes Shared);
 }
