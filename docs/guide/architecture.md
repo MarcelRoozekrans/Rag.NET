@@ -286,24 +286,46 @@ Services declared in `AddRagNetShared` stay singular across every name: four typ
 and the reranker — and MiniLM alone is roughly 90 MB, so one instance per pipeline would load the
 same model repeatedly.
 
-**The shared side is built eagerly, even though children are not.** Resolving
+**The inherited and shared services are built eagerly, even though children are not.** Resolving
 `IRagPipelineFactory` — including just to call `Contains(name)` — constructs every service
-`AddRagNetShared` declared, because forwarding resolves each one from the root provider before any
-child is built. A container with `AddRagNetShared(rag => rag.UseOnnxEmbeddings(...))` loads the
+`AddRagNetShared` declared *and* every eligible host singleton a child inherits, because both are
+resolved from the root provider before any child is built. An instance is the only shape that keeps
+ownership with the root: a factory descriptor would have the first child disposed dispose something
+it does not own. A container with `AddRagNetShared(rag => rag.UseOnnxEmbeddings(...))` loads the
 ONNX model on the first `IRagPipelineFactory` resolution, not on the first `Get(name)` that would
 actually use it.
 
-**Named pipelines run with logging off.** Each child's `ServiceCollection` is built from scratch
-and never receives the host's `ILoggerFactory` or any other host-registered service beyond what
-`AddRagNetShared` explicitly forwards. Every Rag.NET component resolves logging optionally
-(`sp.GetService<ILogger<T>>()`), so this fails silently rather than throwing: a named pipeline logs
-nothing, where the unnamed `AddRagNet` pipeline logs normally through the host's own
-`ILoggerFactory`. There is currently no way to forward logging into a named pipeline.
+**What a named pipeline can see, in precedence order.** Its own block wins; a type declared in
+`AddRagNetShared` replaces that, because declaring a type shared says "one of these for every
+pipeline"; and the host's own **singleton** registrations on the `IServiceCollection` are inherited
+as a default wherever the pipeline registered nothing. That last rule is what makes the canonical
+registration work:
 
-**Only singleton, non-keyed, closed-generic registrations forward.** Anything else declared inside
-an `AddRagNetShared` block — a transient, a scoped registration, a keyed one, or an open generic
-like `IOptions<>` — stays in the root and is never reachable from a named pipeline's provider. A
-named pipeline that needs one of those must register it in its own block instead. Forwarding also
+```csharp
+services.AddChatClient(chatClient);              // on the collection, as Microsoft.Extensions.AI
+services.AddEmbeddingGenerator(embeddingGenerator); // documents it
+services.AddRagNet("abc", rag => rag.UseAzureAISearch(endpoint, "abc-index", credential));
+```
+
+Before this rule existed the named form saw *less* than `AddRagNet(rag => …)` for identical
+registrations, because the unnamed form registers into the caller's own collection while a named
+one builds a child container (#390).
+
+Isolation is unaffected: a child collection is built by `AddRagNet(configure)` and so already
+registers every service type this library owns, which means another pipeline's store, chunker or
+behaviours can never arrive this way.
+
+**Named pipelines still run with logging off, but not because nothing is inherited.**
+`ILoggerFactory` is a closed-type singleton and *is* inherited. `ILogger<T>` is not: it comes from
+the open generic `ILogger<>`, and open generics are skipped (see the next paragraph). Every Rag.NET
+component resolves logging optionally (`sp.GetService<ILogger<T>>()`), so this fails silently rather
+than throwing — a named pipeline logs nothing where the unnamed one logs normally.
+
+**Only singleton, non-keyed, closed-generic registrations cross into a child**, whether they come
+from `AddRagNetShared` or from the host's collection. A transient, a scoped registration, a keyed
+one, or an open generic like `IOptions<>` or `ILogger<>` stays in the root and is never reachable
+from a named pipeline's provider. A named pipeline that needs one of those must register it in its
+own block instead. Forwarding also
 resolves *every* root registration for a shared type, not just the last one: declare a
 multi-registered type such as `IDocumentParser` shared, and a child sees the root's instances in
 place of its own rather than adding to them. Not everything a shared block touches is a shared-block

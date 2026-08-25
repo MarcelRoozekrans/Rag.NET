@@ -30,8 +30,14 @@ namespace Rag.NET.DependencyInjection;
 /// </para>
 /// </remarks>
 /// <param name="collections">Each name's composed service collection.</param>
+/// <param name="sharedServiceTypes">
+/// The service types <c>AddRagNetShared</c> declared, used only to explain a resolution failure —
+/// see <see cref="Get"/>. Empty is a legitimate state and is the most informative thing the message
+/// can say when it happens (#390).
+/// </param>
 internal sealed class RagPipelineFactory(
-    IReadOnlyDictionary<string, IServiceCollection> collections) : IRagPipelineFactory, IDisposable, IAsyncDisposable
+    IReadOnlyDictionary<string, IServiceCollection> collections,
+    IReadOnlyList<Type> sharedServiceTypes) : IRagPipelineFactory, IDisposable, IAsyncDisposable
 {
     private readonly Dictionary<string, ServiceProvider> _providers = new(StringComparer.Ordinal);
     private readonly Lock _lock = new();
@@ -41,12 +47,65 @@ internal sealed class RagPipelineFactory(
     public bool Contains(string name) => collections.ContainsKey(name);
 
     /// <inheritdoc />
+    /// <exception cref="InvalidOperationException">
+    /// The pipeline could not be resolved from its own container — most often a service that is
+    /// registered on the root <see cref="IServiceCollection"/> but was never declared shared, so no
+    /// named pipeline can see it. The container's own message is the inner exception; this one adds
+    /// where the service has to be registered instead (#390).
+    /// </exception>
     public IRagPipeline Get(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        return ProviderFor(name).GetRequiredService<IRagPipeline>();
+        var provider = ProviderFor(name);
+        try
+        {
+            return provider.GetRequiredService<IRagPipeline>();
+        }
+        catch (InvalidOperationException ex)
+        {
+            // The container names the missing type and stops there, which sends the reader looking
+            // for a registration that is often already present — on the root collection, where a
+            // named pipeline cannot see it. Reported as #390 against a container that registered an
+            // IVectorStore, a chunker, caching and a parser, but no embedding generator anywhere.
+            throw new InvalidOperationException(ExplainResolutionFailure(name, ex), ex);
+        }
+    }
+
+    /// <summary>
+    /// Turns a container resolution failure into a message that says where to put the registration.
+    /// </summary>
+    /// <remarks>
+    /// The missing type is deliberately not parsed out of <paramref name="inner"/>. The container's
+    /// message already names it and is carried as the inner exception; recovering a
+    /// <see cref="Type"/> from that text would need an assembly-qualified name it does not contain,
+    /// so it would work for this library's own types and fail for the ones most likely to be
+    /// missing — an embedding generator or chat client from another package.
+    /// </remarks>
+    /// <param name="name">The pipeline being resolved.</param>
+    /// <param name="inner">The container's own failure.</param>
+    /// <returns>The explanatory message.</returns>
+    private string ExplainResolutionFailure(string name, InvalidOperationException inner)
+    {
+        var shared = sharedServiceTypes.Count == 0
+            ? "nothing — AddRagNetShared was never called, or declared no services"
+            : string.Join(", ", sharedServiceTypes.Select(t => t.Name));
+
+        return $"""
+            The RAG pipeline named '{name}' could not be resolved: {inner.Message}
+
+            A named pipeline resolves from its own container, which is built from:
+              - its own AddRagNet("{name}", rag => ...) block,
+              - anything AddRagNetShared(rag => ...) declared, currently: {shared}, and
+              - the host's own singleton registrations on IServiceCollection, which it inherits
+                unless its own block registers the same type.
+
+            So nothing anywhere provides this service. Register it in whichever of those three
+            places fits: the named block if only this pipeline needs it, AddRagNetShared if every
+            pipeline should share one instance, or the collection directly — for example
+            services.AddEmbeddingGenerator(...) — if the host owns it.
+            """;
     }
 
     /// <summary>The child provider for <paramref name="name"/>, building it on first use.</summary>
