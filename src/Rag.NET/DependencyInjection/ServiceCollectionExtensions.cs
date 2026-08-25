@@ -421,13 +421,20 @@ public static class ServiceCollectionExtensions
     /// the concrete reason this exists (#342).
     /// </para>
     /// <para>
-    /// <b>Only singleton, non-keyed, closed-generic registrations declared here are forwarded</b> to
-    /// each named pipeline's provider. Anything else declared inside <paramref name="configure"/> —
-    /// a transient, a scoped registration, a keyed one, or an open generic such as
-    /// <c>IOptions&lt;&gt;</c> — stays in the root and is never reachable from a named pipeline's
-    /// provider; a named pipeline that needs it must register it in its own <c>AddRagNet(name, …)</c>
-    /// block instead. See the "Named pipelines" section of the architecture guide for the full
-    /// contract, including how forwarding behaves for a type with more than one root registration.
+    /// <b>It is never required.</b> A named pipeline already inherits the host's own singleton
+    /// registrations on the collection, so <c>services.AddEmbeddingGenerator(…)</c> reaches it
+    /// without this. What declaring a type here adds is that it <i>replaces</i> whatever the named
+    /// block registered — "one of these for every pipeline" — which is the difference between
+    /// sharing a 90 MB model and letting each pipeline choose its own.
+    /// </para>
+    /// <para>
+    /// <b>Only singleton, non-keyed, closed-generic registrations cross into a child</b>, whether
+    /// declared here or inherited from the host. A transient, a scoped registration, a keyed one, or
+    /// an open generic such as <c>IOptions&lt;&gt;</c> or <c>ILogger&lt;&gt;</c> stays in the root
+    /// and is never reachable from a named pipeline's provider; a named pipeline that needs one must
+    /// register it in its own <c>AddRagNet(name, …)</c> block instead. See the "Named pipelines"
+    /// section of the architecture guide for the full contract, including precedence and how
+    /// forwarding behaves for a type with more than one root registration.
     /// </para>
     /// </remarks>
     /// <param name="services">The root service collection.</param>
