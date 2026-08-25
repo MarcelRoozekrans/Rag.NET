@@ -563,13 +563,21 @@ public static class ServiceCollectionExtensions
         Dictionary<string, NamedPipelineRegistration> named, IServiceProvider rootProvider)
     {
         var collections = new Dictionary<string, IServiceCollection>(StringComparer.Ordinal);
+        var shared = new List<Type>();
         foreach (var (name, registration) in named)
         {
             ForwardSharedServices(registration, rootProvider);
             collections[name] = registration.Services;
+
+            // Every registration points at the same SharedServiceTypes instance, so one pass fills
+            // this; it exists only so a resolution failure can say what the shared block declared.
+            if (shared.Count == 0)
+            {
+                shared.AddRange(registration.Shared.Entries.Select(e => e.ServiceType));
+            }
         }
 
-        return new RagPipelineFactory(collections);
+        return new RagPipelineFactory(collections, shared);
     }
 
     /// <summary>Forwards one named pipeline's declared-shared services from the root provider.</summary>
