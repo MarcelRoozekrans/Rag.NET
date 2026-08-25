@@ -107,7 +107,8 @@ public sealed class EnsembleBehavior : IRetrievalBehavior
         IReadOnlyList<(TextChunk chunk, double score)>? bm25Hits;
         try
         {
-            bm25Hits = Bm25Index.Search(ctx.Query, topK: searchOptions.TopK);
+            bm25Hits = Bm25Index.Search(
+                ctx.Query, topK: searchOptions.TopK, metadataFilter: searchOptions.MetadataFilter);
         }
         catch (OperationCanceledException)
         {

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Rag.NET.Models;
 using Rag.NET.Search;
 using Xunit;
@@ -171,5 +172,73 @@ public class InMemoryBm25IndexTests
 
         Assert.Equal(3, results.Count);
         Assert.All(results, r => Assert.True(r.score > 0, "Score must be positive even when df == N"));
+    }
+
+    private static TextChunk FilterChunk(int index, string text, string tenant)
+    {
+        return new TextChunk
+        {
+            DocumentId = new DocumentId("doc-" + index.ToString(CultureInfo.InvariantCulture)),
+            ChunkIndex = index,
+            Text = text,
+            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["tenant"] = tenant,
+            },
+        };
+    }
+
+    [Fact]
+    public void Search_WithMetadataFilter_ExcludesNonMatchingChunks()
+    {
+        using var sut = new InMemoryBm25Index();
+        sut.Add(1, FilterChunk(1, "shared search term", "a"));
+        sut.Add(2, FilterChunk(2, "shared search term", "b"));
+
+        var results = sut.Search(
+            "shared search term",
+            topK: 10,
+            metadataFilter: new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["tenant"] = "a",
+            });
+
+        var hit = Assert.Single(results);
+        Assert.True(hit.chunk.Metadata["tenant"] == "a");
+    }
+
+    // The advantage of filtering inside the index over filtering the results afterwards: topK
+    // comes back full of eligible hits rather than the best overall minus whatever was dropped.
+    // With post-filtering, asking for 1 here would return 0 whenever the "b" chunk outranked
+    // the "a" one.
+    [Fact]
+    public void Search_WithMetadataFilter_FillsTopKWithEligibleChunks()
+    {
+        using var sut = new InMemoryBm25Index();
+        sut.Add(1, FilterChunk(1, "term term term term", "b"));
+        sut.Add(2, FilterChunk(2, "term", "a"));
+
+        var results = sut.Search(
+            "term",
+            topK: 1,
+            metadataFilter: new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["tenant"] = "a",
+            });
+
+        var hit = Assert.Single(results);
+        Assert.True(hit.chunk.Metadata["tenant"] == "a");
+    }
+
+    [Fact]
+    public void Search_WithNullMetadataFilter_ReturnsEverything()
+    {
+        using var sut = new InMemoryBm25Index();
+        sut.Add(1, FilterChunk(1, "shared search term", "a"));
+        sut.Add(2, FilterChunk(2, "shared search term", "b"));
+
+        var results = sut.Search("shared search term", topK: 10, metadataFilter: null);
+
+        Assert.Equal(2, results.Count);
     }
 }

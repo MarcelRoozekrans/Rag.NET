@@ -78,7 +78,7 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IChun
 
             foreach (var entry in _dense.Values)
             {
-                if (!MatchesFilter(entry.Embedded.Chunk, options.MetadataFilter))
+                if (!MetadataFilterMatcher.Matches(entry.Embedded.Chunk, options.MetadataFilter))
                     continue;
 
                 // Shared cosine helper: a dimension mismatch scores 0 (excluded whenever
@@ -229,7 +229,7 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IChun
                     continue;
 
                 var entry = _slotEntries[slot];
-                if (!MatchesFilter(entry.Chunk.Chunk, options.MetadataFilter))
+                if (!MetadataFilterMatcher.Matches(entry.Chunk.Chunk, options.MetadataFilter))
                     continue;
 
                 scored.Add((score, entry.Chunk));
@@ -309,21 +309,6 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IChun
 
         foreach (ref readonly var key in CollectionsMarshal.AsSpan(toRemove))
             map.Remove(key);
-    }
-
-    private static bool MatchesFilter(TextChunk chunk, IDictionary<string, MetadataValue>? filter)
-    {
-        if (filter is null || filter.Count == 0)
-            return true;
-
-        foreach (var (key, value) in filter)
-        {
-            // Typed equality: a Number 3 filter does not match a String "3" value.
-            if (!chunk.Metadata.TryGetValue(key, out var actual) || actual != value)
-                return false;
-        }
-
-        return true;
     }
 
     /// <summary>

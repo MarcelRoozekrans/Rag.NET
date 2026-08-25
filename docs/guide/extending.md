@@ -184,6 +184,8 @@ public interface IHybridSearchable
 
 The pipeline prefers `HybridSearchAsync` over the in-memory BM25 fallback when both interfaces are implemented **and** the call configures nothing native fusion cannot express: no sparse (SPLADE) arm would run, no `EnsembleOptions` is supplied, and `MinScore` is `0.0`. Otherwise client-side RRF fusion runs so the configured weights and threshold semantics apply — see [Retrieval — How the hybrid path is selected](retrieval.md#how-the-hybrid-path-is-selected).
 
+If you also implement `IBm25Index` (the in-memory-BM25-fallback side of that client-side path, not this interface), its `Search` method takes a `metadataFilter` you must apply — see [Retrieval — `MetadataFilter` and the BM25 arm](retrieval.md#metadatafilter-and-the-bm25-arm).
+
 ### Optional: `IChunkLookup`
 
 Implement if your backend can return chunks by identity rather than by similarity:
