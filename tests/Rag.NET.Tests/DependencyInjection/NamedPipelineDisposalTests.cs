@@ -27,8 +27,11 @@ public sealed class NamedPipelineDisposalTests
     /// <remarks>
     /// <para>
     /// <c>ServiceProvider.Dispose()</c> throws when it holds a service implementing only
-    /// <see cref="IAsyncDisposable"/>. Seven types in the per-pipeline surface do, so getting this
-    /// wrong is a crash at shutdown rather than a leak.
+    /// <see cref="IAsyncDisposable"/>. Two concrete types in the per-pipeline surface do so without
+    /// also implementing <see cref="IDisposable"/> — <c>SqliteAuditLog</c> and
+    /// <c>AzureServiceBusIngestionTrigger</c> — so getting this wrong is a crash at shutdown rather
+    /// than a leak. (Seven <em>interfaces</em> in that surface also extend <see cref="IDisposable"/>,
+    /// which is not the same claim.)
     /// </para>
     /// <para>
     /// Registered by <b>type</b> (<c>AddSingleton&lt;AsyncOnlyDisposable&gt;()</c>), not by a
@@ -56,6 +59,8 @@ public sealed class NamedPipelineDisposalTests
         await factory.DisposeAsync();
 
         Assert.True(docsResource.Disposed);
+
+        await provider.DisposeAsync();
     }
 
     /// <summary>A shared service is not disposed by a child.</summary>
@@ -110,10 +115,40 @@ public sealed class NamedPipelineDisposalTests
     }
 
     /// <summary>
+    /// <c>Contains</c> keeps answering after disposal even though <c>Get</c> now throws — it
+    /// reports only whether a name was registered, not whether this factory is still usable. See
+    /// <see cref="IRagPipelineFactory.Contains"/> for why the two are documented to disagree here.
+    /// </summary>
+    [Fact]
+    public async Task Contains_AfterDispose_StillReturnsTrue()
+    {
+        var services = new ServiceCollection();
+        services.AddRagNet("docs", rag => rag.Services.AddSingleton(Substitute.For<IVectorStore>()));
+
+        var provider = services.BuildServiceProvider();
+        var factory = (RagPipelineFactory)provider.GetRequiredService<IRagPipelineFactory>();
+
+        await factory.DisposeAsync();
+
+        Assert.True(factory.Contains("docs"));
+        _ = Assert.Throws<ObjectDisposedException>(() => factory.Get("docs"));
+        await provider.DisposeAsync();
+    }
+
+    private sealed class DisposableProbe : IDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
+    }
+
+    /// <summary>
     /// Synchronously disposing a child that holds an async-only service throws — and that is the
     /// intended contract, not a bug. Disposing the same shape of child asynchronously does not.
+    /// A second, sync-disposable child is still disposed despite the first one throwing.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This matches plain <c>ServiceProvider</c>, which throws
     /// <see cref="InvalidOperationException"/> from <c>Dispose()</c> when it holds a service that
     /// implements only <see cref="IAsyncDisposable"/>, telling the caller to use
@@ -123,6 +158,13 @@ public sealed class NamedPipelineDisposalTests
     /// in practice — <c>SqliteAuditLog</c> (<c>Rag.NET.Security.Audit.Sqlite</c>) is declared
     /// <c>: IAuditLog, IAsyncDisposable</c> with no <c>IDisposable</c>, so a named pipeline
     /// configured with <c>UseSqliteAuditLog</c> hits exactly this path.
+    /// </para>
+    /// <para>
+    /// "support" pins the fix for the throwing child orphaning every other one: the old code set
+    /// <c>_disposed = true</c> and looped <c>provider.Dispose()</c> with nothing catching the first
+    /// child's exception, so the loop aborted there and "support" was never reached. Three named
+    /// pipelines with one using <c>UseSqliteAuditLog</c> leaked the other two's stores this way.
+    /// </para>
     /// </remarks>
     [Fact]
     public async Task Dispose_WithAnAsyncOnlyChildService_Throws()
@@ -133,12 +175,20 @@ public sealed class NamedPipelineDisposalTests
             rag.Services.AddSingleton(Substitute.For<IVectorStore>());
             rag.Services.AddSingleton<AsyncOnlyDisposable>();
         });
+        services.AddRagNet("support", rag =>
+        {
+            rag.Services.AddSingleton(Substitute.For<IVectorStore>());
+            rag.Services.AddSingleton<DisposableProbe>();
+        });
 
         var provider = services.BuildServiceProvider();
         var factory = (RagPipelineFactory)provider.GetRequiredService<IRagPipelineFactory>();
         _ = factory.ProviderFor("docs").GetRequiredService<AsyncOnlyDisposable>();
+        var supportProbe = factory.ProviderFor("support").GetRequiredService<DisposableProbe>();
 
         _ = Assert.Throws<InvalidOperationException>(factory.Dispose);
+
+        Assert.True(supportProbe.Disposed);
 
         await provider.DisposeAsync();
     }

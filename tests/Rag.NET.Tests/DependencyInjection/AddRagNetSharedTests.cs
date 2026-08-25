@@ -31,7 +31,7 @@ public sealed class AddRagNetSharedTests
 
         using var provider = services.BuildServiceProvider();
         var shared = provider.GetRequiredService<SharedServiceTypes>();
-        Assert.Contains(typeof(IThing), shared.Types);
+        Assert.Contains(shared.Entries, e => e.ServiceType == typeof(IThing));
     }
 
     /// <summary>
@@ -52,8 +52,8 @@ public sealed class AddRagNetSharedTests
 
         using var provider = services.BuildServiceProvider();
         var shared = provider.GetRequiredService<SharedServiceTypes>();
-        Assert.DoesNotContain(typeof(IThing), shared.Types);
-        Assert.Contains(typeof(Thing), shared.Types);
+        Assert.DoesNotContain(shared.Entries, e => e.ServiceType == typeof(IThing));
+        Assert.Contains(shared.Entries, e => e.ServiceType == typeof(Thing));
     }
 
     /// <summary>
