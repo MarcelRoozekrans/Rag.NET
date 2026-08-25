@@ -11,6 +11,17 @@ public sealed class HtmlDocumentParser : IDocumentParser, IDeclaresContentTypes
 {
     private const string HtmlContentType = "text/html";
 
+    /// <summary>The metadata key every web data provider here records the page URL under.</summary>
+    private const string UrlTagKey = "url";
+
+    private readonly HtmlParserOptions _options;
+
+    /// <summary>Creates the parser, optionally configured (#371).</summary>
+    /// <param name="options">
+    /// Null keeps the defaults, which are the behaviour this parser had before options existed.
+    /// </param>
+    public HtmlDocumentParser(HtmlParserOptions? options = null) => _options = options ?? new HtmlParserOptions();
+
     private static readonly HashSet<string> s_headingTags = new(StringComparer.OrdinalIgnoreCase)
     {
         "h1", "h2", "h3", "h4", "h5", "h6",
@@ -44,7 +55,7 @@ public sealed class HtmlDocumentParser : IDocumentParser, IDeclaresContentTypes
         var document = await parser.ParseDocumentAsync(stream, cancellationToken).ConfigureAwait(false);
 
         RemoveNonContentElements(document);
-        ConvertLinksToTextUrl(document);
+        RewriteLinks(document, metadata);
 
         var body = document.Body;
         if (body is null)
@@ -145,20 +156,72 @@ public sealed class HtmlDocumentParser : IDocumentParser, IDeclaresContentTypes
         }
     }
 
-    private static void ConvertLinksToTextUrl(IDocument document)
+    /// <summary>
+    /// Rewrites each link's text according to <see cref="HtmlParserOptions.HrefHandling"/> (#371).
+    /// </summary>
+    private void RewriteLinks(IDocument document, DocumentMetadata metadata)
     {
         var links = document.QuerySelectorAll("a[href]").ToList();
+        if (links.Count == 0)
+        {
+            return;
+        }
+
+        // Resolved once per document, not per link: it cannot change between links, and the
+        // <base> lookup and Uri parse are both wasted work repeated.
+        var baseUri = _options.HrefHandling == HtmlHrefHandling.MakeAbsolute
+            ? ResolveBaseUri(document, metadata)
+            : null;
+
         for (int i = 0; i < links.Count; i++)
         {
             var link = links[i];
             var href = link.GetAttribute("href");
             var text = link.TextContent.Trim();
-            if (!string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(href))
+            if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(href))
             {
-                link.TextContent = $"{text} ({href})";
+                continue;
             }
+
+            link.TextContent = _options.HrefHandling switch
+            {
+                HtmlHrefHandling.Remove => text,
+                HtmlHrefHandling.MakeAbsolute => $"{text} ({Absolutise(href, baseUri)})",
+                _ => $"{text} ({href})",
+            };
         }
     }
+
+    /// <summary>
+    /// Where the document says it came from, in the order given by
+    /// <see cref="HtmlParserOptions.BaseUri"/>. Null when nothing says.
+    /// </summary>
+    private Uri? ResolveBaseUri(IDocument document, DocumentMetadata metadata)
+    {
+        var declared = document.QuerySelector("base[href]")?.GetAttribute("href");
+        if (!string.IsNullOrWhiteSpace(declared)
+            && Uri.TryCreate(declared, UriKind.Absolute, out var fromBaseElement))
+        {
+            return fromBaseElement;
+        }
+
+        if (metadata.Tags.TryGetValue(UrlTagKey, out var url)
+            && Uri.TryCreate(url.ToString(), UriKind.Absolute, out var fromMetadata))
+        {
+            return fromMetadata;
+        }
+
+        return _options.BaseUri;
+    }
+
+    /// <summary>
+    /// The absolute form of <paramref name="href"/>, or <paramref name="href"/> unchanged when
+    /// there is no base to resolve against or it will not resolve.
+    /// </summary>
+    private static string Absolutise(string href, Uri? baseUri) =>
+        baseUri is not null && Uri.TryCreate(baseUri, href, out var absolute)
+            ? absolute.ToString()
+            : href;
 
     /// <summary>
     /// The section currently being accumulated. Its heading is null until the first heading is
