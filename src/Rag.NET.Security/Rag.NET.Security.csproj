@@ -14,6 +14,12 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>Rag.NET.Security.Tests</_Parameter1>
     </AssemblyAttribute>
+    <!-- AddAuditWiring is internal so that "auditing registered, no log behind it" cannot be
+         expressed by a caller. The SQLite audit package is the one caller allowed to compose it,
+         because it supplies the IAuditLog in the same call (#339). -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Security.Audit.Sqlite</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>
@@ -30,9 +36,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" />
-    <!-- Lifts transitive SQLitePCLRaw.lib.e_sqlite3 above 2.1.11 (GHSA-2m69-gcr7-jv3q). -->
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>

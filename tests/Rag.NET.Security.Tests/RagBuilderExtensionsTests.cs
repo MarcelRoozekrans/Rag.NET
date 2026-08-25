@@ -74,24 +74,24 @@ public class RagBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseAuditLog_WithoutAddRagNetFirst_ThrowsInvalidOperationException()
+    public void AddAuditWiring_WithoutAddRagNetFirst_ThrowsInvalidOperationException()
     {
         var services = new ServiceCollection();
         // Create a RagBuilder manually without calling AddRagNet (so no RetrievalPipelineBuilder registered)
         var builder = new RagBuilder(services);
 
-        var ex = Assert.Throws<InvalidOperationException>(() => builder.UseAuditLog());
+        var ex = Assert.Throws<InvalidOperationException>(() => builder.AddAuditWiring(new AuditLogOptions()));
         Assert.Contains("AddRagNet", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// Issue #195: <c>UseAuditLog</c> and every answer-engine <c>Use*</c> both registered
+    /// Issue #195: the audit wiring and every answer-engine <c>Use*</c> both registered
     /// <c>IAnswerEngine</c>, so whichever ran last won and calling them in this order dropped the
     /// audit decorator. Retrieval auditing kept working, which makes it a <i>partial</i> silent
     /// failure — an audit log that reads as complete and records no answers at all.
     /// </summary>
     [Fact]
-    public async Task UseAuditLog_ThenAnAnswerEngineRegistration_StillAuditsTheAnswer()
+    public async Task AddAuditWiring_ThenAnAnswerEngineRegistration_StillAuditsTheAnswer()
     {
         var auditLog = Substitute.For<IAuditLog>();
         var engine = Substitute.For<IAnswerEngine>();
@@ -110,7 +110,7 @@ public class RagBuilderExtensionsTests
         services.AddSingleton(vectorStore);
         services.AddRagNet(rag =>
         {
-            rag.UseAuditLog();
+            rag.AddAuditWiring(new AuditLogOptions());
 
             // What UseMapReduceAnswerEngine, UseRefineAnswerEngine, UseFlare and the rest all do.
             rag.Services.AddSingleton(engine);
@@ -127,13 +127,13 @@ public class RagBuilderExtensionsTests
     }
 
     /// <summary>
-    /// The compliance record must have one entry per retrieval, not one per <c>UseAuditLog</c> call.
+    /// The compliance record must have one entry per retrieval, not one per audit-wiring call.
     /// <c>AddFirst</c> used to insert unconditionally, so a layered composition root that reached
     /// this method twice put <c>AuditRetrievalBehavior</c> into the pipeline twice and every query
     /// was audited twice — a duplicated audit trail, with nothing about the container looking wrong.
     /// </summary>
     [Fact]
-    public async Task UseAuditLog_CalledTwice_AuditsEachRetrievalOnce()
+    public async Task AddAuditWiring_CalledTwice_AuditsEachRetrievalOnce()
     {
         var auditLog = Substitute.For<IAuditLog>();
         var vectorStore = Substitute.For<IVectorStore>();
@@ -146,12 +146,12 @@ public class RagBuilderExtensionsTests
         var services = new ServiceCollection();
         services.AddSingleton(vectorStore);
         services.AddSingleton(embedder);
-        // UseAuditLog also wraps the answer engine, whose ChatAnswerEngine fallback needs one.
+        // The audit wiring also wraps the answer engine, whose ChatAnswerEngine fallback needs one.
         services.AddSingleton(Substitute.For<IChatClient>());
         services.AddRagNet(rag =>
         {
-            rag.UseAuditLog();
-            rag.UseAuditLog();
+            rag.AddAuditWiring(new AuditLogOptions());
+            rag.AddAuditWiring(new AuditLogOptions());
 
             // Registered last so it wins over the SqliteAuditLog the extension registers — the
             // behaviour resolves IAuditLog, so this is what it will write through.
@@ -171,7 +171,7 @@ public class RagBuilderExtensionsTests
     /// first-wins key rather than a side effect of how the registration happened to work.
     /// </summary>
     [Fact]
-    public async Task UseAuditLog_CalledTwice_AuditsEachAnswerOnce()
+    public async Task AddAuditWiring_CalledTwice_AuditsEachAnswerOnce()
     {
         var auditLog = Substitute.For<IAuditLog>();
         var engine = Substitute.For<IAnswerEngine>();
@@ -191,8 +191,8 @@ public class RagBuilderExtensionsTests
         services.AddSingleton(engine);
         services.AddRagNet(rag =>
         {
-            rag.UseAuditLog();
-            rag.UseAuditLog();
+            rag.AddAuditWiring(new AuditLogOptions());
+            rag.AddAuditWiring(new AuditLogOptions());
             rag.Services.AddSingleton(auditLog);
         });
 

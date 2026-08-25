@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Security.Audit.Sqlite</RootNamespace>
+    <PackageId>Rag.NET.Security.Audit.Sqlite</PackageId>
+    <Description>SQLite-backed audit log for Rag.NET.Security: records retrieval and answer events to a local database file. Split out of Rag.NET.Security so that package no longer carries a native SQLite binary.</Description>
+    <PackageTags>$(PackageTags);audit;security;sqlite</PackageTags>
+    <!-- integration: SqliteAuditLog is exercised against a real SQLite database file in a temp
+         directory by Rag.NET.Security.Audit.Sqlite.Tests, reopened and read back. SQLite is
+         embedded, so no container is involved — the same reasoning Rag.NET.Storage.Sqlite carries. -->
+    <VerifiedBy>integration</VerifiedBy>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Security.Audit.Sqlite.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The "Rag.NET"-named ActivitySource core also links; see src/Shared/RagTelemetrySource.cs. -->
+    <Compile Include="..\Shared\RagTelemetrySource.cs" Link="Telemetry\RagTelemetrySource.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <!-- The direction that matters: security references this, never the reverse. Moving
+         SqliteAuditLog into Rag.NET.Storage.Sqlite instead would have pointed storage at
+         security and inverted it. -->
+    <ProjectReference Include="..\Rag.NET.Security\Rag.NET.Security.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- Lifts transitive SQLitePCLRaw.lib.e_sqlite3 above 2.1.11 (GHSA-2m69-gcr7-jv3q). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+</Project>

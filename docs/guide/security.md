@@ -208,7 +208,7 @@ Enable them explicitly when your compliance policy requires it:
 
 ```csharp
 services.AddRagNet(b => b
-    .UseAuditLog(o =>
+    .UseSqliteAuditLog(o =>
     {
         o.LogQueryText  = true;
         o.LogAnswerText = true;
@@ -226,7 +226,7 @@ If you call `RetrieveAsync` and `AskAsync` independently (e.g., streaming scenar
 
 ```csharp
 services.AddRagNet(b => b
-    .UseAuditLog(o =>
+    .UseSqliteAuditLog(o =>
     {
         o.LogQueryText = true;
         o.DatabasePath = "/var/data/audit.db";
@@ -290,7 +290,7 @@ services.AddRagNet(b => b
         o.Patterns.Remove(PiiPatterns.Ssn); // not applicable for this corpus
     })
     .UseLlmPiiDetection()
-    .UseAuditLog(o =>
+    .UseSqliteAuditLog(o =>
     {
         o.LogQueryText = true;
         o.DatabasePath = "/var/data/audit.db";
@@ -301,6 +301,20 @@ services.AddRagNetAspNetCoreSecurity(); // wires ClaimsPrincipalCallerContext fo
 
 The registration order within the builder determines sanitiser chain order (regex before LLM). RBAC filtering and audit logging are independent of registration order relative to PII.
 
-> **Note:** `UseAuditLog` must be called after `AddRagNet` so that `RetrievalPipelineBuilder` is already registered in DI. Calling it before `AddRagNet` throws `InvalidOperationException`.
+> **Migrating from 0.1.0 — `UseAuditLog` is gone.** SQLite-backed audit logging moved to its own
+> package so that `Rag.NET.Security` no longer carries `Microsoft.Data.Sqlite` and a native
+> `SQLitePCLRaw` binary for everyone using `UseChunkSanitiser`, `UseRbac` or `UsePiiDetection`
+> ([#339](https://github.com/MarcelRoozekrans/Rag.NET/issues/339)). Two steps, and no `using`
+> changes — the namespace is deliberately unchanged:
+>
+> 1. Add a package reference to `Rag.NET.Security.Audit.Sqlite`.
+> 2. Rename `UseAuditLog(…)` to `UseSqliteAuditLog(…)`.
+>
+> Forgetting step 2 is a **compile error**, not a silent gap. The wiring that registers the audit
+> behaviour and the answer decorator is internal to `Rag.NET.Security` and reachable only from a
+> package that also supplies an `IAuditLog`, so "auditing configured, nothing recorded" cannot be
+> expressed. An audit log that silently records nothing is worse than a build error.
 
-Answer auditing is independent of registration order relative to the answer engines. `UseAuditLog` adds its decorator to the answer-engine decorations `RagPipeline` applies when it composes its engine, so `rag.UseAuditLog().UseMapReduceAnswerEngine()` and the reverse both audit every answer. Both used to register `IAnswerEngine` directly, so last-wins dropped whichever ran first — while retrieval auditing kept working, leaving an audit log that read as complete and recorded no answers at all ([#195](https://github.com/MarcelRoozekrans/Rag.NET/issues/195)). Resolving `IAnswerEngine` yields the *registered* engine, undecorated; `ComposedAnswerEngine` is the audited one.
+> **Note:** `UseSqliteAuditLog` must be called after `AddRagNet` so that `RetrievalPipelineBuilder` is already registered in DI. Calling it before `AddRagNet` throws `InvalidOperationException`.
+
+Answer auditing is independent of registration order relative to the answer engines. `UseSqliteAuditLog` adds its decorator to the answer-engine decorations `RagPipeline` applies when it composes its engine, so `rag.UseSqliteAuditLog().UseMapReduceAnswerEngine()` and the reverse both audit every answer. Both used to register `IAnswerEngine` directly, so last-wins dropped whichever ran first — while retrieval auditing kept working, leaving an audit log that read as complete and recorded no answers at all ([#195](https://github.com/MarcelRoozekrans/Rag.NET/issues/195)). Resolving `IAnswerEngine` yields the *registered* engine, undecorated; `ComposedAnswerEngine` is the audited one.
