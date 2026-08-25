@@ -4426,6 +4426,115 @@ behaviour exactly, so anyone wanting the broken state pinned can still reach it.
 without it; `Filter` returns `TopK` results when enough non-summary candidates exist; `Blend` is
 unchanged; 1× reproduces the old behaviour; all three have tests that fail against today's code.
 
+### Phase 6.2.5: Contract Defects — shipped behaviour that contradicts its own documentation [status: pending — added 2026-08-25 from the GitHub backlog]
+**Surface:** Backend
+**HelpWanted:** no
+
+**Goal:** three places where a shipped API does something other than what it documents. All three
+were reported or found since 2026-08-22, and all three are cheap. They are grouped because they
+share a shape, not a subsystem: **the code is wrong against its own contract, and every test
+passes.**
+
+- **#350 — the BM25 arm of client-side hybrid ignores `MetadataFilter`.** `RetrievalOptions.MetadataFilter`
+  documents itself as restricting retrieval to chunks matching every pair. `EnsembleBehavior` passes
+  the filter to the dense and sparse arms, then calls `Bm25Index.Search(query, topK)` — and
+  `IBm25Index.Search` has no filter parameter at all, so there is nothing to pass. Those hits are
+  merged by `RrfMerger` and nothing downstream re-applies the filter. **A filtered query can return
+  chunks the filter excludes.** Worse than first reported: `CanDispatchNatively` also takes the
+  client-side path when `EnsembleOptions` is supplied, when `MinScore` is non-zero, or when a sparse
+  arm runs — so Azure AI Search with `MinScore = 0.2` leaks too, despite its native hybrid filtering
+  correctly server-side. **This is the one that matters most**, because callers reasonably read a
+  metadata filter as a boundary, and #342's requester was doing exactly that.
+- **#328 — `KNearestNeighborsCount` is hard-coded to `TopK`.** Wrong even without semantic ranking:
+  under RRF the vector arm should over-fetch so fusion has something to fuse, and more wrong when a
+  reranker follows. Same shape as 6.2.4's `Boost` defect. Azure AI Search semantic ranking is the
+  other half of the issue.
+- **#360 — the answer test passes on an empty selection.** `RAGNET_GRAPHRAG_ANSWERS_MAX_QUERIES=1`
+  selects **zero** queries: `SelectQueries` stratifies proportionally and every quota rounds to 0 at
+  `bound = 1`. The run scores nothing, prints `NaN` for every metric, writes a 0-byte sidecar, and
+  **passes with exit 0.** This is 6.2.1's own measurement tooling, and it is the fourth instance of
+  this milestone's recurring failure — a green run that is not checking. It does **not** block
+  Task 5, which omits `MAX_QUERIES` deliberately.
+
+**Exit condition:** each defect has a test that fails against today's code; `MetadataFilter` is
+honoured on every path that claims to honour it or the contract is narrowed to say otherwise; an
+empty query selection fails rather than passes.
+
+### Phase 6.2.6: Package Boundaries — stop `Rag.NET.Security` dragging a native SQLite binary [status: pending — added 2026-08-25, from #339]
+**Surface:** Refactor
+**HelpWanted:** no
+
+**Goal:** `Audit/SqliteAuditLog.cs` is the only file in `Rag.NET.Security` that touches SQLite, and
+it is why `Microsoft.Data.Sqlite` and `SQLitePCLRaw.bundle_e_sqlite3` are on the package. Everyone
+using `UseChunkSanitiser`, `UseRbac` or `UsePiiDetection` pays for a native binary they never load.
+
+**Sequenced before v1.0 deliberately.** Moving a type between packages is a breaking change, and it
+is far cheaper before the tag than after. The precedent exists: 0.1.0 already extracted
+`Rag.NET.Storage.Sqlite` for the same reason.
+
+### Phase 6.2.7: Named Pipelines — isolate `IRagPipeline` and its services per configuration [status: pending — added 2026-08-25, from #342]
+**Surface:** Refactor
+**HelpWanted:** no
+
+**Goal:** today everything `AddRagNet` registers is an **unkeyed singleton**, so one container is one
+pipeline is one index. `UseAzureAISearch` binds one store to one index and registers that instance
+as `IVectorStore`/`IHybridSearchable`/`ICollectionManageable`. A caller who wants per-tenant
+isolation has no way to express it.
+
+**The requester proposed the answer and it is the right one:** keyed/named registrations, in the
+shape `IHttpClientFactory` already established in .NET. The maintainer's analysis agreed, and the
+requester accepted the cheaper equivalent.
+
+**Why a metadata filter is not the same thing**, and why this phase exists rather than a docs note:
+a filter is *caller-supplied*, so isolation depends on every caller remembering it — and #350 proves
+the conditions under which it silently stops being a boundary are not something a caller can be
+expected to know. Isolation belongs in the registration, not in each query.
+
+**This is the largest phase added here**, and it is pre-tag on the operator's decision of
+2026-08-25. That is consistent with 6.2.2's charter: this is the terminal milestone, so a request
+filed against a published package has nowhere later to land. **Depends on 6.2.5**, because #350's
+fix determines how much of the isolation story the filter can honestly carry.
+
+### Phase 6.2.8: Requested DX and Chunking Quality [status: pending — added 2026-08-25]
+**Surface:** Backend
+**HelpWanted:** no
+
+**Goal:** four reported papercuts against shipped packages, all from the same reporter, none
+architectural.
+
+- **#366 — header-aware chunking emits chunks that are only a heading.** A real indexed example is
+  the single string `"Section 2"`. Those chunks carry no information, occupy retrieval slots, and
+  score well on heading-shaped queries. The header-aware metadata feature is documented in the
+  README, so this is a quality defect in a promoted feature.
+- **#365 — `ChatAnswerEngine` puts sources in a `User` message.** Wrapping them in a `Tool` message
+  lets a caller run PII detection on the user's text only and treat retrieved sources as already
+  trusted. Small, and it makes a real deployment pattern possible.
+- **#353 — `InitializeAsync` must be called by hand.** Create the index on first use when it is
+  absent.
+- **#355 — `IngestFromProviderAsync` reports failures as `Skipped`.** A missing index yields a pile
+  of "skipped" and the caller must read `Errors` to discover why. Distinguish `Failed` from
+  `Skipped`, and consider failing fast on the first error.
+
+### Phase 6.2.9: `Umap.Fit` at Corpus Scale [status: pending — added 2026-08-25, from #348]
+**Surface:** Backend
+**HelpWanted:** no
+
+**Goal:** `Umap.BuildKnnGraph` is brute force — for MultiHop-RAG's 17,648 rows over 384 dimensions
+that is ~311M distance evaluations and 17,648 sorts of 17,648 elements, single-threaded, via
+`Array.Sort` with a comparison **delegate** rather than a value comparer.
+
+**Memory is the part that bites first.** Each row allocates `new (float, int)[n]` = 141,184 bytes at
+corpus scale, over the 85,000-byte large-object-heap threshold, 17,648 times — roughly **2.5 GB of
+LOH traffic per corpus build**.
+
+**Split out of #345, and #345's fix does not help it**: `Umap.Fit` runs *before* clustering, so
+raising `k` changes nothing here. Measured context: the corpus tree builds in ~1,368 s and the whole
+per-document arm is 609 trees, so this is real time rather than a micro-optimisation.
+
+**Any figure from this phase needs two runs on a quiet machine.** Three timing runs on 2026-08-17
+disagreed by 6× on identical inputs, and 2026-08-24 lost an hour of measurement to an orphaned
+runner starving its replacement.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
