@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Rag.NET.DependencyInjection;
@@ -29,13 +28,14 @@ internal sealed class SharedServiceTypes
     /// <summary>Records <paramref name="descriptors"/>, ignoring any service type already recorded.</summary>
     /// <param name="descriptors">The descriptors <c>AddRagNetShared</c>'s callback registered.</param>
     /// <remarks>
-    /// A non-singleton, non-generic, non-keyed descriptor is recorded (so <c>BuildFactory</c> can
-    /// still skip it safely) and also traced as a warning here, at the call that declared it — this
-    /// repository's usual eager-validation style. It deliberately does not <em>throw</em>: a
+    /// A non-singleton, non-generic, non-keyed descriptor is recorded too, so <c>BuildFactory</c>
+    /// can still skip it safely rather than forward it. Nothing here diagnoses that case: a
     /// composite registration helper like <c>AddHttpClient()</c> bundles a transient
     /// <c>HttpClient</c> alongside the singleton <c>IHttpClientFactory</c> that forwarding actually
-    /// exists to share, and throwing here would make sharing that helper — the concrete scenario
-    /// this type exists to support — impossible rather than merely partial.
+    /// exists to share, so most of what would be flagged is exactly that shape, authored by code
+    /// the caller did not write. A named pipeline that actually needs a skipped type fails loudly
+    /// on first resolution — the usual "no service registered" — which is where
+    /// <see cref="ServiceCollectionExtensions.AddRagNetShared"/>'s remarks send the reader.
     /// </remarks>
     public void AddRange(IEnumerable<ServiceDescriptor> descriptors)
     {
@@ -50,34 +50,6 @@ internal sealed class SharedServiceTypes
             }
 
             _entries.Add(new SharedServiceEntry(serviceType, descriptor.Lifetime, descriptor.IsKeyedService));
-            WarnIfUnshareable(serviceType, descriptor);
         }
-    }
-
-    /// <summary>Traces a warning for a descriptor <c>BuildFactory</c> will skip forwarding.</summary>
-    /// <param name="serviceType">The declared service type.</param>
-    /// <param name="descriptor">Its registration.</param>
-    private static void WarnIfUnshareable(Type serviceType, ServiceDescriptor descriptor)
-    {
-        if (serviceType.IsGenericTypeDefinition || descriptor.IsKeyedService)
-        {
-            // Not diagnosed: an open generic or keyed registration is never what the caller meant
-            // to share directly (see BuildFactory's remarks) — only its closed, resolved consumer
-            // (e.g. IHttpClientFactory) is, and that is forwarded normally.
-            return;
-        }
-
-        if (descriptor.Lifetime == ServiceLifetime.Singleton)
-        {
-            return;
-        }
-
-        Trace.TraceWarning(
-            $"Rag.NET: AddRagNetShared declared '{serviceType}' shared, but it is registered with "
-            + $"{descriptor.Lifetime} lifetime. Only Singleton services are forwarded to named "
-            + "pipelines, so this type will not be reachable from any named pipeline's provider — "
-            + "resolving it there fails with the usual \"no service registered\" error. If a related "
-            + "singleton covers what you actually need (for example IHttpClientFactory alongside a "
-            + "transient HttpClient), no action is required.");
     }
 }

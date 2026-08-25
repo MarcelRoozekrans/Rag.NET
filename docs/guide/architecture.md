@@ -300,6 +300,18 @@ and never receives the host's `ILoggerFactory` or any other host-registered serv
 nothing, where the unnamed `AddRagNet` pipeline logs normally through the host's own
 `ILoggerFactory`. There is currently no way to forward logging into a named pipeline.
 
+**Only singleton, non-keyed, closed-generic registrations forward.** Anything else declared inside
+an `AddRagNetShared` block — a transient, a scoped registration, a keyed one, or an open generic
+like `IOptions<>` — stays in the root and is never reachable from a named pipeline's provider. A
+named pipeline that needs one of those must register it in its own block instead. Forwarding also
+resolves *every* root registration for a shared type, not just the last one: declare a
+multi-registered type such as `IDocumentParser` shared, and a child sees the root's instances in
+place of its own rather than adding to them. Not everything a shared block touches is a shared-block
+registration, either — `UseMediator()` registers `IngestCommandHandler`, `RetrieveQueryHandler` and
+`DeleteCommandHandler` as transients (`MediatorBuilderExtensions`), so calling it inside
+`AddRagNetShared` still leaves those three in the root, unforwarded, same as if it had been called
+inside `AddRagNet` directly.
+
 **`AddRagNet(rag => ...)` is unchanged.** It still registers into the root container and its
 pipeline is still resolved with `GetRequiredService<IRagPipeline>()`, exactly as described above
 and in [Getting Started](../getting-started.md). Named pipelines are additive; the two forms

@@ -27,11 +27,18 @@ public sealed class NamedPipelineDisposalTests
     /// <remarks>
     /// <para>
     /// <c>ServiceProvider.Dispose()</c> throws when it holds a service implementing only
-    /// <see cref="IAsyncDisposable"/>. Two concrete types in the per-pipeline surface do so without
-    /// also implementing <see cref="IDisposable"/> — <c>SqliteAuditLog</c> and
-    /// <c>AzureServiceBusIngestionTrigger</c> — so getting this wrong is a crash at shutdown rather
-    /// than a leak. (Seven <em>interfaces</em> in that surface also extend <see cref="IDisposable"/>,
-    /// which is not the same claim.)
+    /// <see cref="IAsyncDisposable"/>. Four concrete types in the per-pipeline surface do so without
+    /// also implementing <see cref="IDisposable"/>: <c>SqliteAuditLog</c> and
+    /// <c>AzureServiceBusIngestionTrigger</c> declare it directly, and <c>SqliteGraphStore</c> and
+    /// <c>SqliteRaptorLeafStore</c> inherit it from <c>IGraphStore</c> and <c>IRaptorLeafStore</c>,
+    /// which are <see cref="IAsyncDisposable"/>-only interfaces — so getting this wrong is a crash
+    /// at shutdown rather than a leak. (A grep for classes naming
+    /// <see cref="IAsyncDisposable"/> in their own declaration misses those last two entirely, which
+    /// is how earlier counts here went wrong. Five <em>interfaces</em> in that surface extend
+    /// <see cref="IDisposable"/> — <c>IBm25Index</c>, <c>IParentChunkStore</c>,
+    /// <c>IRagDataManager</c>, <c>IRateLimiter</c> and <c>ITagIndex</c> — while <c>IGraphStore</c>
+    /// and <c>IRaptorLeafStore</c> extend <see cref="IAsyncDisposable"/> only, which is exactly why
+    /// the concrete count above is four.)
     /// </para>
     /// <para>
     /// Registered by <b>type</b> (<c>AddSingleton&lt;AsyncOnlyDisposable&gt;()</c>), not by a
