@@ -108,10 +108,15 @@ singletons on the full corpus against the 65% the issue carries.
   works as of #290; 1 of 19 cassettes is recorded (GitHub, unauthenticated, 17 KB). #283 carries
   the corrected instructions for the remaining 18 and is marked help-wanted. No amount of local
   effort moves this, so it is the milestone's only blocker that engineering cannot clear.
-- **The #300 follow-up measurement needs an idle machine.** Three timing runs on 2026-08-17
-  disagreed by 6× on identical inputs, so no coefficient was claimed anywhere. It is still
-  outstanding: the split of `BeirRunBudget`'s 22 m 18 s graph construction between LLM extraction,
-  the `O(occurrences²)` description rewriting, and the recompute #302 debounced.
+- ~~**The #300 follow-up measurement needs an idle machine.**~~ **Done 2026-08-18; this entry was
+  stale for a week.** The split is recorded in `BeirRunBudget`'s `GraphRag` cell: measured over the
+  real corpus at 50/100/200/400/609 documents, **twice**, with the 609-document graph reproducing
+  exactly (62,392 entities, 147,021 relationships). **The recompute was not where the time went** —
+  Leiden + PageRank + the score write-back is **2.7 s**, at 0.044 ms per entity, a coefficient stable
+  within 6% across both runs and all five sizes. What #302's debounce removed, projected from that
+  coefficient, is **13.6 minutes** summed over 609 documents. Extraction and report generation are
+  I/O-bound cache replays and no figure is quoted for them, because 152.9 s cold against 18.7 s warm
+  is a page-cache artefact of reading 35,176 files rather than a property of extraction.
 
 ## Recommended Next Step
 
@@ -122,11 +127,11 @@ and nothing has been changed on the strength of a single corpus.
 **The measurement work still open in 6.2.1** is #176 (78.8% singleton communities, worse than
 filed) and the 17 Done sections that need a pinned figure with a control.
 
-**The #300 follow-up measurement is still outstanding and still needs an idle machine** — the split
-of `BeirRunBudget`'s 22 m 18 s graph construction between LLM extraction, the `O(occurrences²)`
-description rewriting, and the recompute #302 debounced. It is short; it wants a quiet window, not
-an overnight one. Do not run it beside anything else: three runs on 2026-08-17 disagreed by 6× on
-identical inputs.
+**There is no measurement run set up and waiting.** RAPTOR Task 5 is done, and the #300 follow-up
+was done on 2026-08-18 (see Blockers). The 17 Done sections that still need a pinned figure with a
+control mostly need a **new harness arm built first** — there is no `SemanticChunking` or
+`LateChunking` protocol in `BeirProtocol`, so those cannot be run, only written. The bottleneck for
+6.2.1 is engineering now, not compute.
 
 Historical context for the arms, retained: Historical context for the arms, retained: `RaptorOptions.MaxClusters` defaults to `null`, so before
 #345's fix `SelectClusterCount` capped every level at `SelectK(maxK: Min(count, 10))` regardless of
