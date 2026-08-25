@@ -141,6 +141,7 @@ public sealed class BeirGraphRagAnswerTests
             descriptor, cacheDirectory, BeirLoader.DefaultTitleTextSeparator, ct);
         var gold = MultiHopRagAnswers.Load(new BeirDatasetCache(cacheDirectory).DirectoryFor(descriptor));
         var selection = SelectQueries(dataset, gold);
+        AssertSelectionIsNotEmpty(selection, gold);
         var arms = SelectArms(descriptor.Name, _output);
 
         using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
@@ -439,6 +440,85 @@ public sealed class BeirGraphRagAnswerTests
     }
 
     /// <summary>
+    /// Fails a run whose query selection is empty, naming the smallest bound that would not be.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>An empty selection used to pass.</b> Nothing was scored, every metric printed
+    /// <c>NaN</c>, the answers sidecar was written at zero bytes, and
+    /// <see cref="AssertEveryArmAnsweredEveryQuery"/> is vacuously true over no queries — "every
+    /// arm answered every query" holds when there are none. Exit code 0. #360.
+    /// </para>
+    /// <para>
+    /// It is checked here, at the selection site, rather than after the arms run: everything
+    /// expensive — the generator, the graph store, both RAPTOR trees — is built below this line,
+    /// and a corpus tree costs hours and real money. A configuration error should cost seconds.
+    /// </para>
+    /// <para>
+    /// The advice is derived, not hardcoded. A stratum receives at least one query when
+    /// <c>round(bound × count / total) >= 1</c>, i.e. when <c>bound >= 0.5 × total / count</c>, so
+    /// the <b>rarest</b> type binds. On MultiHop-RAG that is <c>null_query</c> at 301 of 2,556,
+    /// giving 4.25 and therefore 5 — but computing it keeps the message true if the mix ever
+    /// changes, and a hardcoded 5 would quietly become wrong on another dataset.
+    /// </para>
+    /// <para>
+    /// <b>Flooring each stratum's quota at 1 was considered and rejected.</b> With four types it
+    /// would make <see cref="MaxQueriesVariable"/> select four queries when asked for one — a knob
+    /// named MAX returning more than its maximum. An option that does not do what it says is the
+    /// defect class this phase exists to close; fixing #360 by minting a smaller instance of it
+    /// would be a poor trade.
+    /// </para>
+    /// </remarks>
+    /// <param name="selection">The selection just computed by <see cref="SelectQueries"/>.</param>
+    /// <param name="gold">The gold answers, read for the type distribution the advice needs.</param>
+    private static void AssertSelectionIsNotEmpty(
+        QuerySelection selection, IReadOnlyDictionary<string, MultiHopRagAnswer> gold)
+    {
+        if (selection.Count > 0)
+        {
+            return;
+        }
+
+        var smallest = SmallestBoundCoveringEveryType(gold);
+        Assert.Fail(FormattableString.Invariant(
+            $"The query selection is empty, so this run would score nothing and report NaN for every metric while passing. Set {MaxQueriesVariable} to at least {smallest}, or unset it to run every query."));
+    }
+
+    /// <summary>
+    /// The smallest <see cref="MaxQueriesVariable"/> value whose proportional quotas give every
+    /// question type at least one query.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SelectQueries"/> rounds <c>bound × count / total</c> away from zero, so a type
+    /// clears 1 once that product reaches 0.5. Solving for the rarest type gives the bound below.
+    /// Returns 1 for an empty or single-type gold set, where no bound can round anything to zero.
+    /// </remarks>
+    /// <param name="gold">The gold answers whose type distribution sets the constraint.</param>
+    /// <returns>The smallest workable bound, never less than 1.</returns>
+    private static int SmallestBoundCoveringEveryType(IReadOnlyDictionary<string, MultiHopRagAnswer> gold)
+    {
+        if (gold.Count == 0)
+        {
+            return 1;
+        }
+
+        var byType = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var answer in gold.Values)
+        {
+            byType[answer.QuestionType] = byType.GetValueOrDefault(answer.QuestionType) + 1;
+        }
+
+        var rarest = int.MaxValue;
+        foreach (var count in byType.Values)
+        {
+            rarest = System.Math.Min(rarest, count);
+        }
+
+        var bound = (int)System.Math.Ceiling(0.5 * gold.Count / rarest);
+        return System.Math.Max(bound, 1);
+    }
+
+    /// <summary>
     /// The arms this run selects: every arm named explicitly through <see cref="ArmsVariable"/>, or
     /// — when it is unset — <see cref="AnswerArm.All"/> filtered down to the arms
     /// <see cref="SelectDefaultArms"/> says are actually measured.
@@ -501,6 +581,105 @@ public sealed class BeirGraphRagAnswerTests
         }
 
         return selected;
+    }
+
+    /// <summary>
+    /// The trap #360 reports: over MultiHop-RAG's type mix, a bound of 1 selects <b>nothing</b>.
+    /// </summary>
+    /// <remarks>
+    /// Proportional stratification rounds every quota to zero at <c>bound = 1</c> — 816 inference,
+    /// 856 comparison, 583 temporal and 301 null over 2,556 gold answers each round to 0 — so the
+    /// smallest value the knob accepts is the one value that produces no data. Pinned rather than
+    /// left as folklore, because the arithmetic is what makes the guard below necessary and a
+    /// future change to the mix should have to notice it.
+    /// </remarks>
+    [Fact]
+    public void SelectQueries_BoundTooSmallForEveryStratum_SelectsNothing()
+    {
+        var previous = Environment.GetEnvironmentVariable(MaxQueriesVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(MaxQueriesVariable, "1");
+            var (dataset, gold) = MultiHopRagShapedSelectionFixture();
+
+            var selection = SelectQueries(dataset, gold);
+
+            Assert.Empty(selection.Queries);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(MaxQueriesVariable, previous);
+        }
+    }
+
+    /// <summary>
+    /// An empty selection fails, and the failure names the smallest bound that would work.
+    /// </summary>
+    /// <remarks>
+    /// A pilot that selects nothing scores nothing, prints <c>NaN</c> for every metric, writes a
+    /// zero-byte sidecar and — before this guard — passed. A pilot is what decides whether the full
+    /// sweep is worth paying for, so one that reports success having measured nothing spends the
+    /// operator's confidence rather than their money. The bound is computed from the gold
+    /// distribution rather than hardcoded, so the advice stays true if the mix changes.
+    /// </remarks>
+    [Fact]
+    public void AssertSelectionIsNotEmpty_EmptySelection_FailsNamingTheSmallestWorkableBound()
+    {
+        var (_, gold) = MultiHopRagShapedSelectionFixture();
+        var empty = new QuerySelection([], JudgedCount: 0, IsPilot: true);
+
+        var error = Assert.ThrowsAny<Exception>(
+            () => AssertSelectionIsNotEmpty(empty, gold));
+
+        // The rarest type binds: round(bound * 301/2556) >= 1 needs bound >= 4.25, so 5.
+        Assert.Contains("5", error.Message, StringComparison.Ordinal);
+        Assert.Contains(MaxQueriesVariable, error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>A selection that found queries passes the guard untouched.</summary>
+    [Fact]
+    public void AssertSelectionIsNotEmpty_NonEmptySelection_DoesNotThrow()
+    {
+        var (dataset, gold) = MultiHopRagShapedSelectionFixture();
+        var selection = new QuerySelection(dataset.Queries, dataset.Queries.Count, IsPilot: true);
+
+        AssertSelectionIsNotEmpty(selection, gold);
+    }
+
+    /// <summary>
+    /// A dataset and gold set carrying MultiHop-RAG's real type proportions at 1/100th scale:
+    /// 8 inference, 9 comparison, 6 temporal, 3 null. The ratios are what the quota arithmetic
+    /// reads, so the scaled fixture reproduces the full corpus's rounding behaviour without
+    /// needing the corpus.
+    /// </summary>
+    private static (BeirDataset Dataset, IReadOnlyDictionary<string, MultiHopRagAnswer> Gold)
+        MultiHopRagShapedSelectionFixture()
+    {
+        var counts = new (string Type, int Count)[]
+        {
+            (MultiHopRagAnswers.InferenceType, 8),
+            (MultiHopRagAnswers.ComparisonType, 9),
+            (MultiHopRagAnswers.TemporalType, 6),
+            (MultiHopRagAnswers.NullType, 3),
+        };
+
+        var queries = new List<BeirQuery>();
+        var gold = new Dictionary<string, MultiHopRagAnswer>(StringComparer.Ordinal);
+        foreach (var (type, count) in counts)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var id = FormattableString.Invariant($"{type}-{i}");
+                queries.Add(new BeirQuery(id, "question " + id));
+                gold[id] = new MultiHopRagAnswer(id, "answer", type);
+            }
+        }
+
+        var dataset = new BeirDataset(
+            "multihop-rag", "test", [], queries,
+            new Dictionary<string, IReadOnlyDictionary<string, int>>(StringComparer.Ordinal));
+
+        return (dataset, gold);
     }
 
     /// <summary>
