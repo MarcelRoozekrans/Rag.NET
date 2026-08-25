@@ -79,6 +79,10 @@ var provider = services.BuildServiceProvider();
 var pipeline = provider.GetRequiredService<IRagPipeline>();
 ```
 
+Need more than one pipeline in the same container — separate indexes per tenant or document set,
+sharing one embedding model? See [Named pipelines](docs/guide/architecture.md#named-pipelines) in
+the architecture guide.
+
 ### Ingest a Document
 
 ```csharp
