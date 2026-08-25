@@ -1,3 +1,5 @@
+using System.Runtime.ExceptionServices;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 
@@ -20,22 +22,20 @@ namespace Rag.NET.DependencyInjection;
 /// <see cref="IAsyncDisposable"/> will still make synchronous disposal throw for that child, exactly
 /// as a plain <c>ServiceProvider</c> would.
 /// </para>
+/// <para>
+/// <b>One throwing child does not orphan the rest.</b> Every child is disposed even when an earlier
+/// one throws — failures are collected and re-raised only after every child has had its chance,
+/// so a named pipeline that hits the case above cannot prevent the others from releasing what they
+/// hold.
+/// </para>
 /// </remarks>
 /// <param name="collections">Each name's composed service collection.</param>
-/// <param name="rootProvider">The root provider, which forwarded services resolve from.</param>
 internal sealed class RagPipelineFactory(
-    IReadOnlyDictionary<string, IServiceCollection> collections,
-    IServiceProvider rootProvider) : IRagPipelineFactory, IDisposable, IAsyncDisposable
+    IReadOnlyDictionary<string, IServiceCollection> collections) : IRagPipelineFactory, IDisposable, IAsyncDisposable
 {
     private readonly Dictionary<string, ServiceProvider> _providers = new(StringComparer.Ordinal);
     private readonly Lock _lock = new();
     private bool _disposed;
-
-    /// <summary>
-    /// The root provider forwarded services resolve from. Exposed only as a test seam; forwarding
-    /// itself is wired into each child's descriptors before construction, not read from here.
-    /// </summary>
-    internal IServiceProvider RootProvider => rootProvider;
 
     /// <inheritdoc />
     public bool Contains(string name) => collections.ContainsKey(name);
@@ -77,36 +77,101 @@ internal sealed class RagPipelineFactory(
     }
 
     /// <inheritdoc />
+    /// <exception cref="Exception">
+    /// One child's disposal exception, or an <see cref="AggregateException"/> wrapping more than
+    /// one, re-raised only after every child was given the chance to dispose.
+    /// </exception>
     public void Dispose()
     {
-        if (_disposed)
+        var toDispose = TakeProvidersToDispose();
+        if (toDispose is null)
         {
             return;
         }
 
-        _disposed = true;
-        foreach (var provider in _providers.Values)
+        List<Exception>? failures = null;
+        foreach (ref readonly var provider in CollectionsMarshal.AsSpan(toDispose))
         {
-            provider.Dispose();
+            try
+            {
+                provider.Dispose();
+            }
+            catch (Exception ex)
+            {
+                (failures ??= []).Add(ex);
+            }
         }
 
-        _providers.Clear();
+        ThrowIfAny(failures);
     }
 
     /// <inheritdoc />
+    /// <exception cref="Exception">
+    /// One child's disposal exception, or an <see cref="AggregateException"/> wrapping more than
+    /// one, re-raised only after every child was given the chance to dispose.
+    /// </exception>
     public async ValueTask DisposeAsync()
     {
-        if (_disposed)
+        var toDispose = TakeProvidersToDispose();
+        if (toDispose is null)
         {
             return;
         }
 
-        _disposed = true;
-        foreach (var provider in _providers.Values)
+        // A Span (CollectionsMarshal.AsSpan, used by the synchronous Dispose above) is a ref
+        // struct and cannot be held across an await, so this path indexes the list instead.
+        List<Exception>? failures = null;
+        for (var i = 0; i < toDispose.Count; i++)
         {
-            await provider.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await toDispose[i].DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                (failures ??= []).Add(ex);
+            }
         }
 
-        _providers.Clear();
+        ThrowIfAny(failures);
+    }
+
+    /// <summary>
+    /// Marks this factory disposed and hands back the children to dispose, under the same lock
+    /// <see cref="ProviderFor"/> uses — both were previously read and mutated unlocked.
+    /// </summary>
+    /// <returns>
+    /// The children built so far, or <see langword="null"/> if this factory was already disposed.
+    /// </returns>
+    private List<ServiceProvider>? TakeProvidersToDispose()
+    {
+        lock (_lock)
+        {
+            if (_disposed)
+            {
+                return null;
+            }
+
+            _disposed = true;
+            var toDispose = new List<ServiceProvider>(_providers.Values);
+            _providers.Clear();
+            return toDispose;
+        }
+    }
+
+    /// <summary>Re-raises collected disposal failures, preserving a single exception's own stack.</summary>
+    /// <param name="failures">The exceptions collected while disposing each child, if any.</param>
+    private static void ThrowIfAny(List<Exception>? failures)
+    {
+        switch (failures)
+        {
+            case null or { Count: 0 }:
+                return;
+            case { Count: 1 }:
+                ExceptionDispatchInfo.Capture(failures[0]).Throw();
+                break;
+            default:
+                throw new AggregateException(failures);
+        }
     }
 }

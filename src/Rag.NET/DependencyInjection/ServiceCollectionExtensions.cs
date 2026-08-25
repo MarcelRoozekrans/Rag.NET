@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -435,10 +436,10 @@ public static class ServiceCollectionExtensions
         var before = services.Count;
         configure(new RagBuilder(services));
 
-        var declared = new List<Type>();
+        var declared = new List<ServiceDescriptor>();
         for (var i = before; i < services.Count; i++)
         {
-            declared.Add(services[i].ServiceType);
+            declared.Add(services[i]);
         }
 
         var shared = FindOrAddSharedServiceTypes(services);
@@ -542,22 +543,9 @@ public static class ServiceCollectionExtensions
 
     /// <summary>Applies shared-service forwarding and constructs the factory.</summary>
     /// <remarks>
-    /// <para>
     /// Forwarding happens here, not at registration: the descriptors close over the root provider,
-    /// which only exists once the container is built.
-    /// </para>
-    /// <para>
-    /// Resolves each shared type eagerly and registers the resulting <b>instance</b>, not a
-    /// factory delegate. A factory-based descriptor — <c>ServiceDescriptor.Singleton(type, sp =>
-    /// sp.GetRequiredService(type))</c> — has the concrete <c>ServiceProvider</c> capture whatever
-    /// the factory call site returns for disposal in the container that ran it, because the
-    /// engine cannot know the instance is owned elsewhere. That would make the first child to be
-    /// disposed dispose the shared instance as a side effect, and a second child dispose it again
-    /// — exactly the failure <see cref="RagPipelineFactory"/>'s "a child never owns what it
-    /// forwards" guarantee exists to prevent. An instance descriptor has no factory call site, so
-    /// the engine excludes it from disposal capture entirely: ownership stays with the root, which
-    /// is the only container that resolved it through a real call site.
-    /// </para>
+    /// which only exists once the container is built. See <see cref="ForwardSharedServices"/> for
+    /// how each entry is forwarded.
     /// </remarks>
     /// <param name="named">Each name's registration.</param>
     /// <param name="rootProvider">The root provider forwarded services resolve from.</param>
@@ -568,16 +556,81 @@ public static class ServiceCollectionExtensions
         var collections = new Dictionary<string, IServiceCollection>(StringComparer.Ordinal);
         foreach (var (name, registration) in named)
         {
-            foreach (var serviceType in registration.Shared.Types)
-            {
-                var instance = rootProvider.GetRequiredService(serviceType);
-                registration.Services.Replace(ServiceDescriptor.Singleton(serviceType, instance));
-            }
-
+            ForwardSharedServices(registration, rootProvider);
             collections[name] = registration.Services;
         }
 
-        return new RagPipelineFactory(collections, rootProvider);
+        return new RagPipelineFactory(collections);
+    }
+
+    /// <summary>Forwards one named pipeline's declared-shared services from the root provider.</summary>
+    /// <remarks>
+    /// <para>
+    /// Skips any entry that is an open generic (<c>IOptions&lt;&gt;</c> can never be resolved by
+    /// <c>GetRequiredService(closedType)</c> — <c>AddHttpClient()</c> alone declares three), is
+    /// keyed, or whose lifetime is not <see cref="ServiceLifetime.Singleton"/>. The child never
+    /// needs <c>IOptions&lt;&gt;</c> itself, only the already-constructed <c>IHttpClientFactory</c>
+    /// instance it backs, so skipping is correct rather than a workaround. A non-singleton is
+    /// skipped for a different reason: forwarding it as a resolved instance would freeze what is
+    /// meant to vary (a transient <c>HttpClient</c>, a scoped snapshot) into one shared value for
+    /// every pipeline forever. <see cref="SharedServiceTypes.AddRange"/> already traced a warning
+    /// for these at declaration time.
+    /// </para>
+    /// <para>
+    /// For everything else, resolves <em>every</em> instance the root registered for that type —
+    /// not just one — and replaces the child's own registrations with all of them.
+    /// <c>ServiceCollectionDescriptorExtensions.Replace</c> removes only the first matching
+    /// descriptor, so a multi-registered type (<c>IDocumentParser</c>: <c>TextDocumentParser</c>
+    /// and <c>MarkdownDocumentParser</c> both claim it) would silently lose one of the child's own
+    /// registrations while forwarding only the last root one. <c>RemoveAll</c> plus one
+    /// <c>Add</c> per instance avoids both halves of that bug.
+    /// </para>
+    /// <para>
+    /// Registers each resolved value as an <b>instance</b> descriptor, not a factory delegate. A
+    /// factory-based descriptor — <c>ServiceDescriptor.Singleton(type, sp =>
+    /// sp.GetRequiredService(type))</c> — has the concrete <c>ServiceProvider</c> capture whatever
+    /// the factory call site returns for disposal in the container that ran it, because the
+    /// engine cannot know the instance is owned elsewhere. That would make the first child to be
+    /// disposed dispose the shared instance as a side effect, and a second child dispose it again
+    /// — exactly the failure <see cref="RagPipelineFactory"/>'s "a child never owns what it
+    /// forwards" guarantee exists to prevent. An instance descriptor has no factory call site, so
+    /// the engine excludes it from disposal capture entirely: ownership stays with the root, which
+    /// is the only container that resolved it through a real call site.
+    /// </para>
+    /// </remarks>
+    /// <param name="registration">The name's composed collection and its declared-shared types.</param>
+    /// <param name="rootProvider">The root provider forwarded services resolve from.</param>
+    private static void ForwardSharedServices(
+        NamedPipelineRegistration registration, IServiceProvider rootProvider)
+    {
+        foreach (var entry in registration.Shared.Entries)
+        {
+            if (entry.ServiceType.IsGenericTypeDefinition || entry.IsKeyed
+                || entry.Lifetime != ServiceLifetime.Singleton)
+            {
+                continue;
+            }
+
+            List<object>? instances = null;
+            foreach (var instance in rootProvider.GetServices(entry.ServiceType))
+            {
+                if (instance is not null)
+                {
+                    (instances ??= []).Add(instance);
+                }
+            }
+
+            if (instances is null)
+            {
+                continue;
+            }
+
+            registration.Services.RemoveAll(entry.ServiceType);
+            foreach (ref readonly var instance in CollectionsMarshal.AsSpan(instances))
+            {
+                registration.Services.Add(ServiceDescriptor.Singleton(entry.ServiceType, instance));
+            }
+        }
     }
 
     /// <summary>One named pipeline's composed collection and the shared types it forwards.</summary>
