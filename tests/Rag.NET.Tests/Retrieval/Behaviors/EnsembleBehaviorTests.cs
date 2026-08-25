@@ -7,6 +7,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Retrieval;
 using Rag.NET.Retrieval.Behaviors;
+using Rag.NET.Search;
 using Xunit;
 
 namespace Rag.NET.Tests.Retrieval.Behaviors;
@@ -66,7 +67,7 @@ public class EnsembleBehaviorTests
             .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
         vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
             .Returns(denseResults);
-        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>())
+        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
             .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
 
         var sut = new EnsembleBehavior
@@ -100,7 +101,7 @@ public class EnsembleBehaviorTests
             .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
         vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
             .Returns(denseResults);
-        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>())
+        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
             .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
 
         var sut = new EnsembleBehavior
@@ -137,7 +138,7 @@ public class EnsembleBehaviorTests
             .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
         vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
             .Returns(denseResults);
-        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>())
+        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
             .Throws(new InvalidOperationException("BM25 failure"));
 
         var sut = new EnsembleBehavior
@@ -168,7 +169,7 @@ public class EnsembleBehaviorTests
             .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
         vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
             .Returns(new List<SearchResult> { MakeResult("doc-A", 0, 0.9) });
-        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>())
+        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
             .Returns(Array.Empty<(TextChunk, double)>());
 
         var sut = new EnsembleBehavior
@@ -198,7 +199,7 @@ public class EnsembleBehaviorTests
             .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
         vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
             .Returns(new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) });
-        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>())
+        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
             .Throws<OperationCanceledException>();
 
         var sut = new EnsembleBehavior
@@ -250,7 +251,7 @@ public class EnsembleBehaviorTests
             .Returns(denseResults);
         ((ISparseSearchable)store).SearchSparseAsync(Arg.Any<SparseVector>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
             .Returns(sparseResults);
-        bm25.Search(Arg.Any<string>(), Arg.Any<int>())
+        bm25.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
             .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
 
         return (store, embedder, bm25);
@@ -317,7 +318,7 @@ public class EnsembleBehaviorTests
             .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
         vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
             .Returns(new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) });
-        bm25.Search(Arg.Any<string>(), Arg.Any<int>())
+        bm25.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
             .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
 
         var sut = new EnsembleBehavior
@@ -452,7 +453,7 @@ public class EnsembleBehaviorTests
         ((IHybridSearchable)store).HybridSearchAsync(
                 Arg.Any<string>(), Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
             .Returns(nativeResults);
-        bm25.Search(Arg.Any<string>(), Arg.Any<int>())
+        bm25.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
             .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
 
         return (store, embedder, bm25);
@@ -475,7 +476,7 @@ public class EnsembleBehaviorTests
         await ((IHybridSearchable)store).Received(1).HybridSearchAsync(
             "test query", Arg.Any<ReadOnlyMemory<float>>(), Arg.Is<SearchOptions>(o => o!.TopK == 5), ct);
         await store.DidNotReceive().SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
-        bm25.DidNotReceive().Search(Arg.Any<string>(), Arg.Any<int>());
+        bm25.DidNotReceive().Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>());
     }
 
     [Fact]
@@ -490,7 +491,7 @@ public class EnsembleBehaviorTests
             .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
         store.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
             .Returns(new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) });
-        bm25.Search(Arg.Any<string>(), Arg.Any<int>())
+        bm25.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
             .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
 
         var sut = new EnsembleBehavior { Embedder = embedder, VectorStore = store, Bm25Index = bm25 };
@@ -500,7 +501,7 @@ public class EnsembleBehaviorTests
 
         // Client fusion ran: the dense search and the BM25 arm were both consulted.
         await store.Received(1).SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
-        bm25.Received(1).Search(Arg.Any<string>(), Arg.Any<int>());
+        bm25.Received(1).Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>());
         Assert.Contains(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-bm25", StringComparison.Ordinal));
     }
 
@@ -563,7 +564,7 @@ public class EnsembleBehaviorTests
             .Returns(new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) });
         ((ISparseSearchable)store).SearchSparseAsync(Arg.Any<SparseVector>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
             .Returns(new List<SearchResult> { MakeResult("doc-sparse", 0, 4.0) });
-        bm25.Search(Arg.Any<string>(), Arg.Any<int>())
+        bm25.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
             .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
 
         var sut = new EnsembleBehavior
@@ -632,7 +633,7 @@ public class EnsembleBehaviorTests
             .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
         vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
             .Returns(denseResults);
-        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>())
+        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
             .Returns(Array.Empty<(TextChunk, double)>());
 
         var sut = new EnsembleBehavior
@@ -647,5 +648,236 @@ public class EnsembleBehaviorTests
 
         Assert.NotEmpty(output);
         Assert.Contains(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-dense", StringComparison.Ordinal));
+    }
+
+    // ── MetadataFilter reaches the BM25 arm of client-side hybrid (#350) ─────
+
+    // #350: the BM25 arm never received MetadataFilter, and RrfMerger merged its hits alongside
+    // the filtered arms, so a filtered query could return a chunk the filter excluded.
+    [Fact]
+    public async Task HandleAsync_ClientSideHybrid_PassesMetadataFilterToTheBm25Arm()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25Index = Substitute.For<IBm25Index>();
+
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f, 0.2f })]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) });
+        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
+            .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = vectorStore,
+            Bm25Index = bm25Index,
+        };
+        var ctx = MakeCtx(new RetrievalOptions
+        {
+            UseHybridSearch = true,
+            TopK = 5,
+            MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["tenant"] = "a",
+            },
+        });
+
+        _ = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException("must not call next"));
+
+        // The third argument is the assertion. That Search was called at all was always true.
+        bm25Index.Received(1).Search(
+            Arg.Any<string>(),
+            Arg.Any<int>(),
+            Arg.Is<IDictionary<string, MetadataValue>?>(f => f != null && f["tenant"] == "a"));
+    }
+
+    // CanDispatchNatively returns false when MinScore is non-zero, so a store WITH native hybrid
+    // still takes the client-side path -- and still leaked before this fix.
+    [Fact]
+    public async Task HandleAsync_NativeStoreWithMinScore_StillPassesFilterToTheBm25Arm()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var vectorStore = Substitute.For<IVectorStore, IHybridSearchable>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25Index = Substitute.For<IBm25Index>();
+
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f, 0.2f })]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) });
+        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
+            .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = vectorStore,
+            Bm25Index = bm25Index,
+        };
+        var ctx = MakeCtx(new RetrievalOptions
+        {
+            UseHybridSearch = true,
+            TopK = 5,
+            MinScore = 0.2,
+            MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["tenant"] = "a",
+            },
+        });
+
+        _ = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException("must not call next"));
+
+        bm25Index.Received(1).Search(
+            Arg.Any<string>(),
+            Arg.Any<int>(),
+            Arg.Is<IDictionary<string, MetadataValue>?>(f => f != null && f["tenant"] == "a"));
+    }
+
+    // Same again for EnsembleOptions: supplying one at all expresses weighting intent, which the
+    // native path cannot honour, so the request falls back to client-side fusion.
+    [Fact]
+    public async Task HandleAsync_NativeStoreWithEnsembleOptions_StillPassesFilterToTheBm25Arm()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var vectorStore = Substitute.For<IVectorStore, IHybridSearchable>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25Index = Substitute.For<IBm25Index>();
+
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f, 0.2f })]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) });
+        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
+            .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = vectorStore,
+            Bm25Index = bm25Index,
+        };
+        var ctx = MakeCtx(new RetrievalOptions
+        {
+            UseHybridSearch = true,
+            TopK = 5,
+            EnsembleOptions = new EnsembleOptions(),
+            MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["tenant"] = "a",
+            },
+        });
+
+        _ = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException("must not call next"));
+
+        bm25Index.Received(1).Search(
+            Arg.Any<string>(),
+            Arg.Any<int>(),
+            Arg.Is<IDictionary<string, MetadataValue>?>(f => f != null && f["tenant"] == "a"));
+    }
+
+    // The third client-side trigger: native hybrid cannot run a sparse arm, so a sparse arm that
+    // would run keeps the client path even against a store that also implements IHybridSearchable
+    // -- see HandleAsync_SparseArmWouldRun_KeepsClientFusion above. The SparseGenerator and
+    // ISparseSearchable wiring this needs already exists in this file (MakeSparseCapableArms),
+    // so it costs nothing extra to cover it here rather than in InMemoryBm25IndexTests.
+    [Fact]
+    public async Task HandleAsync_SparseArmForcesClientPath_StillPassesFilterToTheBm25Arm()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var store = Substitute.For<IVectorStore, IHybridSearchable, ISparseSearchable>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25Index = Substitute.For<IBm25Index>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        store.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) });
+        ((ISparseSearchable)store).SearchSparseAsync(Arg.Any<SparseVector>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { MakeResult("doc-sparse", 0, 4.0) });
+        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
+            .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25Index,
+            SparseGenerator = new FakeSparseGenerator(_ => MakeSparse()),
+        };
+        var ctx = MakeCtx(new RetrievalOptions
+        {
+            UseHybridSearch = true,
+            TopK = 5,
+            MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["tenant"] = "a",
+            },
+        });
+
+        _ = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException("must not call next"));
+
+        await ((IHybridSearchable)store).DidNotReceive().HybridSearchAsync(
+            Arg.Any<string>(), Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+        bm25Index.Received(1).Search(
+            Arg.Any<string>(),
+            Arg.Any<int>(),
+            Arg.Is<IDictionary<string, MetadataValue>?>(f => f != null && f["tenant"] == "a"));
+    }
+
+    // Local fixture builder for the parity test below. InMemoryBm25IndexTests defines its own
+    // FilterChunk; duplicating this small helper here is the accepted cost of keeping the two
+    // test classes independent rather than introducing a shared test utility for it.
+    private static TextChunk FilterChunk(int index, string text, string tenant) =>
+        new()
+        {
+            DocumentId = new DocumentId("doc-" + index.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            ChunkIndex = index,
+            Text = text,
+            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["tenant"] = tenant,
+            },
+        };
+
+    // The dense arm and the BM25 arm must agree about what a filter matches. They are separate
+    // implementations reached by separate code paths; if they ever disagree, a filtered query
+    // returns different chunks depending on which arm found them.
+    [Fact]
+    public void DenseAndBm25Arms_AgreeOnWhichChunksMatchAFilter()
+    {
+        var chunks = new[]
+        {
+            FilterChunk(1, "alpha term", "a"),
+            FilterChunk(2, "beta term", "b"),
+            FilterChunk(3, "gamma term", "a"),
+        };
+
+        var filter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+        {
+            ["tenant"] = "a",
+        };
+
+        using var bm25 = new InMemoryBm25Index();
+        for (var i = 0; i < chunks.Length; i++)
+            bm25.Add(i + 1, chunks[i]);
+
+        var bm25Matched = bm25.Search("term", topK: 10, metadataFilter: filter)
+            .Select(static hit => hit.chunk.ChunkIndex)
+            .OrderBy(static index => index)
+            .ToArray();
+
+        var matcherMatched = chunks
+            .Where(chunk => MetadataFilterMatcher.Matches(chunk, filter))
+            .Select(static chunk => chunk.ChunkIndex)
+            .OrderBy(static index => index)
+            .ToArray();
+
+        Assert.Equal(matcherMatched, bm25Matched);
     }
 }
