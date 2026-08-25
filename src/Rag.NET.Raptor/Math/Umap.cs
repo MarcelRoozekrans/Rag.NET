@@ -60,7 +60,17 @@ internal static class Umap
         return result;
     }
 
-    private static (int[][] Indices, float[][] Distances) BuildKnnGraph(float[][] data, int k)
+    /// <summary>
+    /// Builds the k-nearest-neighbour graph: for each row, the <paramref name="k"/> closest other
+    /// rows in ascending distance order (<see cref="BuildDirectedEdges"/> reads element 0 as rho).
+    /// </summary>
+    /// <remarks>
+    /// <c>internal</c> rather than <c>private</c> so it can be measured and tested directly. It is
+    /// the quadratic step in <see cref="Fit"/>, and the tests around it compare its output against a
+    /// brute-force reference — neither is reachable through <see cref="Fit"/>, whose result passes
+    /// through a stochastic layout optimisation that would mask a wrong neighbour set entirely.
+    /// </remarks>
+    internal static (int[][] Indices, float[][] Distances) BuildKnnGraph(float[][] data, int k)
     {
         int n = data.Length;
         var indices = new int[n][];
