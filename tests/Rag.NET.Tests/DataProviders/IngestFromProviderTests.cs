@@ -255,6 +255,102 @@ public sealed class IngestFromProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task StopOnFirstError_StopsInsteadOfAttemptingEveryRemainingEntry()
+    {
+        // #355's case: the index is missing, so every entry fails for the same reason. Without
+        // this option a 5,000-URL sitemap does 5,000 doomed round trips.
+        FailEveryIngest();
+
+        var provider = MakeProvider(
+            ("id-1", "a.txt", "one",   null),
+            ("id-2", "b.txt", "two",   null),
+            ("id-3", "c.txt", "three", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(
+            provider,
+            new ProviderId("prov"),
+            options: new IngestionOptions { StopOnFirstError = true },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // One failure, and — the point of the option — the other two were never attempted, which
+        // the counts prove: three entries went in and only one outcome came back.
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(0, result.Ingested);
+        Assert.Equal(0, result.Skipped);
+        // Discarded: IngestAsync returns a Result, and the analyzer requires one be observed.
+        _ = await _pipeline.Received(1).IngestAsync(
+            Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
+            Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StopOnFirstError_Unset_KeepsTodaysBehaviourOfAttemptingEverything()
+    {
+        // The default has to be unchanged: one malformed document in a crawl of thousands must not
+        // abandon the rest.
+        FailEveryIngest();
+
+        var provider = MakeProvider(
+            ("id-1", "a.txt", "one",   null),
+            ("id-2", "b.txt", "two",   null),
+            ("id-3", "c.txt", "three", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, result.Failed);
+        Assert.Equal(0, result.Ingested);
+        _ = await _pipeline.Received(3).IngestAsync(
+            Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
+            Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StopOnFirstError_SuppressesFullCleanup_AndSaysSo()
+    {
+        // The hazard the option creates. Cleanup deletes what this run did not see, and a run that
+        // stopped early did not see most of the provider. Deleting on that basis would remove
+        // documents still present at the source — data loss caused by an error-handling option.
+        FailEveryIngest();
+
+        var hashStore = new SqliteContentHashStore(_dbPath);
+        // Present in the store, absent from the provider — exactly what Full cleanup deletes.
+        await hashStore.SetAsync(new ProviderId("prov"), new EntryId("gone"), null, "old-hash",
+            TestContext.Current.CancellationToken);
+
+        var provider = MakeProvider(
+            ("id-1", "a.txt", "one", null),
+            ("id-2", "b.txt", "two", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(
+            provider,
+            new ProviderId("prov"),
+            hashStore: hashStore,
+            options: new IngestionOptions { StopOnFirstError = true },
+            cleanupMode: CleanupMode.Full,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.Deleted);
+        await _pipeline.DidNotReceive().DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        // And it is still there: the whole point is that the unvisited document survives.
+        Assert.NotNull(await hashStore.GetHashAsync(new ProviderId("prov"), new EntryId("gone"),
+            TestContext.Current.CancellationToken));
+
+        // Not silent: a caller who asked for Full cleanup and got no deletions is owed the reason.
+        var validation = Assert.Single(result.Errors.OfType<RagError.ValidationFailed>());
+        Assert.Contains(validation.Failures, f =>
+            string.Equals(f.PropertyName, nameof(IngestionOptions.StopOnFirstError), StringComparison.Ordinal));
+    }
+
+    private void FailEveryIngest() =>
+        _pipeline.IngestAsync(
+                Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Failure(
+                new RagError.StorageFailed(new InvalidOperationException("index does not exist")))));
+
+    [Fact]
     public async Task IngestFromProviderAsync_CleanupModeNone_DoesNotDeleteDisappearedDocuments()
     {
         var hashStore = new SqliteContentHashStore(_dbPath);
