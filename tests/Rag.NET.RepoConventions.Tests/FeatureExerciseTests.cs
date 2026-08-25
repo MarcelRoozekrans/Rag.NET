@@ -76,15 +76,9 @@ public sealed partial class FeatureExerciseTests
 
         // ── 6.2 Raise the Floor: a real file / store / run ──────────────────────────────────
         ["Typed Chunk Metadata (Filterable Everywhere, No Per-Key Schema)"] = "6.2 — a filter through every store's container suite; the stores are container-verified, the claim across them is not",
-        ["Page-Attributed Chunks (Source-Page Citation)"] = "6.2 — a real PDF, page numbers asserted end to end",
         ["Multi-Language Code Splitting (Heuristic)"] = "6.2 — real source files in each language",
-        ["C# Semantic Chunking (Roslyn)"] = "6.2 — a real C# file through Roslyn",
         ["Content-Hash Record Manager"] = "6.2 — a real re-ingestion, records observed",
         ["Data Provider Abstraction"] = "6.2 — a real provider through the queue and processor",
-        ["PDF Table Extraction"] = "6.2 — a real PDF with tables",
-        ["EPUB Parser"] = "6.2 — a real EPUB",
-        ["Email File Parser (EML / MSG)"] = "6.2 — a real EML and MSG",
-        ["Archive Parser (ZIP)"] = "6.2 — a real ZIP",
         ["Prompt Injection Fortification"] = "6.2 — a real injection corpus through the real pipeline",
         ["Data Management API"] = "6.2 — the E2E suite against a host",
         ["RAGAS-Style Metrics"] = "6.2 — one real metric run",

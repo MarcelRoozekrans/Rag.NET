@@ -4,11 +4,18 @@
     <RootNamespace>Rag.NET.Parsers.Pdf.AzureDocumentIntelligence</RootNamespace>
     <PackageId>Rag.NET.Parsers.Pdf.AzureDocumentIntelligence</PackageId>
     <Description>Azure Document Intelligence document-level OCR engine for Rag.NET's PDF parser</Description>
-    <!-- unit, not recorded, deliberately: the WireMock cassettes were written by hand, not
-         recorded from the live service, and the live suite has never run anywhere because
-         its secrets were never configured (see TestGateTests). Nothing has ever confirmed
-         the cassettes describe the real service. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- recorded since #354: analyze-recorded.json carries response bodies captured from a real
+         Document Intelligence resource, and RecognizeAsync_AgainstARecordedResponse_ReadsTheServicesOwnText
+         asserts against the service's own text rather than text we invented. The premise of the
+         previous "unit, not recorded" note — that nothing had ever confirmed the cassettes describe
+         the real service — stopped being true then.
+
+         What is recorded is the response *bodies*. The mapping envelope stays hand-written, because
+         a proxy recording cannot capture this exchange: Document Intelligence is a long-running
+         operation whose Operation-Location the SDK polls (see ResponseCapturePolicy). The live
+         suite remains env-gated behind RAGNET_DOCINTEL_ENDPOINT/KEY and is skipped in CI, which is
+         why this is `recorded` and not `live`. -->
+    <VerifiedBy>recorded</VerifiedBy>
   </PropertyGroup>
 
   <!-- No <EnableOcr> gate on purpose. That gate exists for Tesseract's native binaries and

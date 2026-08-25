@@ -92,6 +92,8 @@ The reserved `page`/`page_end` metadata pair (always written together, as number
 
 **Status:** ✅ Done
 
+**Exercised by:** test — `PdfPageAttributionTests` builds a real two-page PDF, parses it with `PdfDocumentParser` and chunks it through the pipeline's own `ParseBehavior`, asserting each chunk's `page`/`page_end` metadata points at the page its text came from and arrives typed as a number rather than a literal. `DocumentParserTests` covers the read-a-file-this-library-did-not-write case, on committed `sample.pdf` and `sample-table.pdf` fixtures.
+
 ---
 
 ### Multi-Language Code Splitting (Heuristic)
@@ -113,6 +115,8 @@ Split C# source files into semantically meaningful chunks using Roslyn. Each chu
 **Why:** Generic text chunking splits code mid-method or mid-class, destroying semantic meaning.
 
 **Status:** ✅ Done
+
+**Exercised by:** test — `RealSourceFileChunkingTests` chunks this library's own `CSharpChunkingStrategy.cs` through Roslyn: production C# with file-scoped namespaces, primary constructors and raw string literals, none of which the inline-source cases in `CSharpChunkingStrategyTests` contain. It asserts the file splits into members and that no chunk is the whole file — the shape the strategy returns when a parse fails, which is the failure an inline-source test can never trip.
 
 ---
 
@@ -597,6 +601,8 @@ Transcribe WAV, MP3, FLAC, OGG, and other audio files using [Whisper.net](https:
 **Package:** `Rag.NET.Parsers.Pdf`
 **Status:** ✅ Done — pure-geometry heuristic over PdfPig word boxes (Y-band row clustering + persistent X-gap column detection), on by default (`PdfParserOptions.ExtractTables`); tables emit as pipe-delimited Markdown sections with `Heading = "table"`, prose interleaved in document order; conservative guards bail to prose (per-page only, tight-gutter/long-cell/2-3-column-layout runs degrade to prose — see the ingestion guide).
 
+**Exercised by:** test — `DocumentParserTests` parses a real `sample-table.pdf` and asserts the table's own rows survive as pipe-delimited text (`| Alice | 30 | Paris |`) in a section headed `table`, with the surrounding prose still emitted separately. Content from the file, not shape: a parser that found a table and lost its cells would fail this.
+
 Detect and extract tables from PDFs as structured text rather than flowing prose. Use heuristic line/column detection (via PdfPig's geometry primitives) to reconstruct table rows as pipe-delimited Markdown tables. Each table becomes its own `DocumentSection` with `Heading = "table"` so chunking and retrieval can treat them distinctly.
 
 **Why:** The current PDF parser treats all content as flowing text — tables become garbled sequences of cell values with no row/column structure. This is a known quality gap for financial reports, legal contracts, and technical specifications.
@@ -622,6 +628,8 @@ Parse EPUB files (e-books, exported docs from tools like Notion, Bear, Obsidian)
 
 **Status:** ✅ Done
 
+**Exercised by:** test — `DocumentParserTests` parses a real `sample.epub` through `VersOne.Epub` and the real `HtmlDocumentParser`, asserting chapter text from inside the archive (`Integration Test Document`, `Second Chapter`) rather than a section count.
+
 ---
 
 ### Email File Parser (EML / MSG)
@@ -636,6 +644,8 @@ An embedded or forwarded message is parsed in place and carries the parent's `Do
 > **Changed in 3.6 — embedded-attachment names may differ.** The composed stem now goes through the shared `FileNameSanitizer` instead of a private copy. Four things follow. Long subjects keep **128** characters instead of 64, so a name that used to truncate mid-word no longer does. A subject made entirely of invalid characters (`"///"`) now yields `embedded-message` instead of `___`. A subject ending in a non-breaking space followed by a dot no longer keeps that space — the old single-pass `TrimEnd('.', ' ')` stripped the dot and left whitespace it could not match. And the two sanitizers order their steps oppositely: the old copy trimmed before replacing invalid characters, the shared one replaces first. TAB, LF, VT, FF and CR are control characters *and* whitespace, so one at the start or end of a subject is now turned into `_` — which is not whitespace, so trimming cannot remove it. `"report\t"` yields `report_` where it used to yield `report`. Most visible via `.msg`, whose subject comes straight from MAPI with no header normalization. Only the stem changes; the `parent.eml#child.eml` composition, the `#` separator and the `embedded-message` fallback for a missing subject are unchanged. The composed name stays inside the parse: it is written to the embedded message's `DocumentMetadata.FileName` and read only as the prefix for the next level's name. `DocumentSection` has no file-name field, so the name reaches no section, tag, log message or stored chunk — nothing downstream is keyed on it.
 
 **Status:** ✅ Done (EML via MimeKit, MSG via MsgReader; embedded/forwarded messages followed since 2.1, bounded by depth and node caps — traversed depth-first over an explicit stack rather than by recursion since 3.9, so nesting depth costs heap and the emitted section order is unchanged)
+
+**Exercised by:** test — `DocumentParserTests` parses a real `.eml` and a real `.msg`, the two formats being separately parsed rather than one converted to the other, asserting body text out of each.
 
 ---
 
@@ -663,6 +673,8 @@ Three constraints, because an archive is the first parser to take an untrusted s
 - **Nested containers share one budget, and a refusal stops at the container above it.** `zip → .eml → zip` is the same unbounded-recursion shape the email parsers already bound, and it is bounded once. An archive that breaches a cap refuses *itself* — the exception leaves its `ParseAsync` — so a `.zip` ingested directly fails the ingestion, while a bomb attached to an `.eml` is contained by the email parser's dispatcher like any other failing attachment: the message keeps its subject, body and other attachments, and the bomb becomes a warning. That is the intended boundary, not a gap. The refusal has already stopped the read, and what the caller named was a message. A message made of nothing but such attachments is still bounded, because the byte total crosses the boundary even though the refusal does not. `ContainerContext` carries depth and entry budget through `DocumentMetadata.Tags` so the accounting survives a hop through `IDocumentParser`, and the archive parser rides that channel rather than inventing a second one — two separate budgets would leave an alternating chain bounded by neither. `ArchiveParserOptions.MaxNestingDepth` (default `3`) and `MaxNestedContainers` (default `50`) match `EmailParserOptions.MaxEmbeddedDepth` and `MaxEmbeddedMessages` deliberately, since the shared bound is only predictable while the two packages agree. Which content types count as containers lives in one place, `ContainerContentTypes`; a container format missing from that list is not bounded at all.
 
 **Status:** ✅ Done (Phase 3.10 — `ZipDocumentParser` on `System.IO.Compression` from the BCL, no new third-party dependency; the container machinery it shares with the email parsers was promoted out of `Rag.NET.Parsers.Email` into `Rag.NET.Abstractions` in the same phase, with no behaviour change). Other archive formats (7z, tar, rar) and encrypted archives are out of scope.
+
+**Exercised by:** test — `RealZipFixtureTests` reads a ZIP **written by CPython**, not by .NET's own `ZipArchive`, so the test cannot pass by round-tripping this library's own output; it asserts every entry's text survives, including entries under directory prefixes.
 
 ---
 
