@@ -1,3 +1,4 @@
+using System.Globalization;
 using Rag.NET.Models;
 using Rag.NET.Storage;
 using Xunit;
@@ -25,6 +26,20 @@ public class SqliteBm25IndexTests : IAsyncDisposable
     {
         Text = text, DocumentId = new DocumentId(docId), ChunkIndex = idx,
     };
+
+    private static TextChunk FilterChunk(int index, string text, string tenant)
+    {
+        return new TextChunk
+        {
+            DocumentId = new DocumentId("doc-" + index.ToString(CultureInfo.InvariantCulture)),
+            ChunkIndex = index,
+            Text = text,
+            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["tenant"] = tenant,
+            },
+        };
+    }
 
     [Fact]
     public async Task Add_ThenRestart_SearchFindsChunk()
@@ -147,5 +162,24 @@ public class SqliteBm25IndexTests : IAsyncDisposable
 
         await Assert.ThrowsAsync<ObjectDisposedException>(
             () => sut.InitializeAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public void Search_WithMetadataFilter_ExcludesNonMatchingChunks()
+    {
+        using var sut = CreateSut();
+        sut.Add(1, FilterChunk(1, "shared search term", "a"));
+        sut.Add(2, FilterChunk(2, "shared search term", "b"));
+
+        var results = sut.Search(
+            "shared search term",
+            topK: 10,
+            metadataFilter: new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["tenant"] = "a",
+            });
+
+        var hit = Assert.Single(results);
+        Assert.True(hit.chunk.Metadata["tenant"] == "a");
     }
 }

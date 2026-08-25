@@ -21,9 +21,21 @@ public interface IBm25Index : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// Returns up to <paramref name="topK"/> chunks ranked by BM25 score against
-    /// <paramref name="query"/>, best first.
+    /// <paramref name="query"/>, best first, restricted to chunks satisfying
+    /// <paramref name="metadataFilter"/>.
     /// </summary>
-    IReadOnlyList<(TextChunk chunk, double score)> Search(string query, int topK);
+    /// <param name="query">The search text.</param>
+    /// <param name="topK">The maximum number of chunks to return.</param>
+    /// <param name="metadataFilter">
+    /// Required metadata pairs, or <see langword="null"/> for no filtering. Implementations MUST
+    /// apply this via <see cref="MetadataFilterMatcher.Matches"/> (or semantics identical to it)
+    /// and MUST apply it <b>before</b> truncating to <paramref name="topK"/>, so the caller
+    /// receives the best <i>eligible</i> chunks rather than the best chunks minus the ineligible
+    /// ones.
+    /// </param>
+    /// <returns>Matching chunks with their BM25 scores, best first.</returns>
+    IReadOnlyList<(TextChunk chunk, double score)> Search(
+        string query, int topK, IDictionary<string, MetadataValue>? metadataFilter = null);
 
     /// <summary>Removes all documents and resets the index.</summary>
     Task ClearAsync(CancellationToken cancellationToken = default);

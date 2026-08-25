@@ -109,7 +109,9 @@ public sealed class InMemoryBm25Index : IBm25Index
         }
     }
 
-    public IReadOnlyList<(TextChunk chunk, double score)> Search(string query, int topK)
+    /// <inheritdoc />
+    public IReadOnlyList<(TextChunk chunk, double score)> Search(
+        string query, int topK, IDictionary<string, MetadataValue>? metadataFilter = null)
     {
         var queryTokens = Tokenize(query, _synonymMap);
         if (queryTokens.Count == 0) return [];
@@ -147,7 +149,17 @@ public sealed class InMemoryBm25Index : IBm25Index
 
             var result = new List<(TextChunk chunk, double score)>(Math.Min(scores.Count, topK));
             foreach (var kv in scores)
-                result.Add((_docs[kv.Key].chunk, kv.Value));
+            {
+                var chunk = _docs[kv.Key].chunk;
+
+                // Filtered before the sort and the topK truncation below, which is the whole
+                // advantage of filtering here rather than in the caller: topK comes back full of
+                // eligible chunks instead of the best overall with the ineligible ones removed.
+                if (!MetadataFilterMatcher.Matches(chunk, metadataFilter))
+                    continue;
+
+                result.Add((chunk, kv.Value));
+            }
 
             result.Sort(static (a, b) => b.score.CompareTo(a.score));
 

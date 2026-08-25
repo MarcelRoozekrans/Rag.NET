@@ -62,11 +62,18 @@ public sealed class SqliteBm25Index : IBm25Index
         cmd.ExecuteNonQuery();
     }
 
-    public IReadOnlyList<(TextChunk chunk, double score)> Search(string query, int topK)
+    /// <inheritdoc />
+    /// <remarks>
+    /// The filter is forwarded rather than pushed into SQL: this type is a write-through wrapper
+    /// over <see cref="InMemoryBm25Index"/> and every search already runs in memory. The
+    /// <c>metadata_json</c> column rehydrates chunks on load; it is not queried here.
+    /// </remarks>
+    public IReadOnlyList<(TextChunk chunk, double score)> Search(
+        string query, int topK, IDictionary<string, MetadataValue>? metadataFilter = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         EnsureInitialised();
-        return _memory.Search(query, topK);
+        return _memory.Search(query, topK, metadataFilter);
     }
 
     /// <summary>
