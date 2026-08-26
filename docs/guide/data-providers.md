@@ -24,6 +24,18 @@ foreach (var entry in result.Failed)
 
 The pipeline compares each file's ETag against the content hash store. Files whose ETag is unchanged since the last run are skipped automatically — no re-embedding, no re-storing.
 
+### When full cleanup refuses to run
+
+`CleanupMode.Full` deletes the documents the store knows about that **this run did not see**. That is only safe when "not seen" reliably means "no longer at the provider", so cleanup is skipped — and the reason reported in `Errors` as a `ValidationFailed` — whenever the run could not see the provider in full:
+
+| Condition | Why cleanup must not run |
+| --- | --- |
+| No `hashStore` | There is no record of earlier runs to compare against, so nothing could be deleted anyway (#394). |
+| `StopOnFirstError` ended the run early | The entries after the failure were never visited, so they would all look disappeared. |
+| The provider failed to list one or more entries | A failed listing carries **no entry id**, so the run cannot even name what it missed — and one failed page of a sitemap would otherwise delete every document behind it (#400). |
+
+The last one is worth stating plainly: a transient 500 while enumerating used to remove live documents from the index, and the run still reported success. It now deletes nothing and tells you why, so re-running after fixing the listing failure is the recovery.
+
 ### What the result tells you
 
 `ProviderIngestionResult` reports the run entry by entry, not just as tallies. Four lists account

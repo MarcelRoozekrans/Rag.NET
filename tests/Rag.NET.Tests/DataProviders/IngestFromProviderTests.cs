@@ -522,6 +522,52 @@ public sealed class IngestFromProviderTests : IDisposable
             p => Assert.Equal(typeof(ProviderEntryOutcome), p.PropertyType.GetGenericArguments()[0]));
     }
 
+    [Fact]
+    public async Task AProviderThatFailedToListSomething_DoesNotGetItsDocumentsDeleted()
+    {
+        // Data loss, reported as "I did not expect that many deletions" on #400. Cleanup removes
+        // what this run did not see. A listing failure means the run did not see an unknown number
+        // of entries — and crucially cannot name them, because a failed Result carries no id. So
+        // every document behind that failure looks disappeared and gets deleted, while still being
+        // present at the provider. One 500 on one sitemap page is enough.
+        var hashStore = new SqliteContentHashStore(_dbPath);
+        await hashStore.SetAsync(new ProviderId("prov"), new EntryId("listed-last-run"), null, "old-hash",
+            TestContext.Current.CancellationToken);
+
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-1"),
+                    FileName: "a.txt",
+                    OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hello"u8.ToArray())))),
+                Result<FileEntry, RagError>.Failure(
+                    new RagError.HttpFailed(System.Net.HttpStatusCode.InternalServerError, "boom")),
+            }.ToAsyncEnumerable());
+
+        var result = await _pipeline.IngestFromProviderAsync(
+            provider,
+            new ProviderId("prov"),
+            hashStore: hashStore,
+            cleanupMode: CleanupMode.Full,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.DeletedCount);
+        await _pipeline.DidNotReceive().DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+
+        // Still on disk: the whole point is that a document behind a listing failure survives.
+        Assert.NotNull(await hashStore.GetHashAsync(new ProviderId("prov"), new EntryId("listed-last-run"),
+            TestContext.Current.CancellationToken));
+
+        // And not silently: a caller who asked for Full cleanup and got none is owed the reason,
+        // separately from the HttpFailed that caused it.
+        var validation = Assert.Single(result.Errors.OfType<RagError.ValidationFailed>());
+        Assert.Contains(validation.Failures, f =>
+            f.PropertyName.Contains(nameof(IFileContentProvider.GetFilesAsync), StringComparison.Ordinal));
+        Assert.Contains(result.Errors, e => e is RagError.HttpFailed);
+    }
+
     private void FailEveryIngest() =>
         _pipeline.IngestAsync(
                 Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),

@@ -91,9 +91,12 @@ public static class RagPipelineExtensions
 
         // Collect entries first — IAsyncEnumerable cannot be iterated in parallel directly
         var entries = new List<FileEntry>();
+        var listingFailed = false;
         await foreach (var result in provider.GetFilesAsync(cancellationToken).ConfigureAwait(false))
         {
-            if (result.IsFailure) { errors.Add(result.Error); continue; }
+            // Remembered, not just collected: a failed listing means an unknown number of entries
+            // were never seen, which cleanup must not read as "they disappeared" (#400).
+            if (result.IsFailure) { errors.Add(result.Error); listingFailed = true; continue; }
             entries.Add(result.Value);
         }
 
@@ -101,11 +104,50 @@ public static class RagPipelineExtensions
             options, progress, errors, seenIds, cancellationToken).ConfigureAwait(false);
 
         var deleted = await CleanupIfRequestedAsync(pipeline, providerId, hashStore, cleanupMode,
-            knownIds, seenIds, errors, tally.StoppedEarly, cancellationToken).ConfigureAwait(false);
+            knownIds, seenIds, errors, BlockedBecause(tally.StoppedEarly, listingFailed),
+            cancellationToken).ConfigureAwait(false);
 
         return new ProviderIngestionResult(tally.Ingested, tally.Skipped, tally.Failed,
             EntriesNeverReached(entries, seenIds), deleted, errors.ToList());
     }
+
+    /// <summary>
+    /// Why full cleanup must not run, when it must not.
+    /// </summary>
+    /// <remarks>
+    /// Cleanup deletes what the run did not see. That is only safe when "not seen" reliably means
+    /// "no longer at the provider" — so every way a run can fail to see an entry for some other
+    /// reason has to be named here and block it.
+    /// </remarks>
+    private enum CleanupBlocked
+    {
+        /// <summary>The run saw the provider's entries in full; cleanup can proceed.</summary>
+        None,
+
+        /// <summary>
+        /// <see cref="IngestionOptions.StopOnFirstError"/> ended the run early, so the entries
+        /// after the failure were never visited.
+        /// </summary>
+        StoppedEarly,
+
+        /// <summary>
+        /// The provider failed to list one or more entries. Unlike <see cref="StoppedEarly"/>
+        /// this is not recoverable by inspection: a failed listing carries no
+        /// <see cref="EntryId"/>, so the run cannot even name what it missed.
+        /// </summary>
+        ListingFailed,
+    }
+
+    /// <summary>Picks the reason cleanup is blocked, if it is.</summary>
+    /// <remarks>
+    /// A listing failure outranks an early stop when both happened: it is the stronger statement,
+    /// because an early stop at least leaves the unvisited entries nameable from the provider's
+    /// own list, and a listing failure does not.
+    /// </remarks>
+    private static CleanupBlocked BlockedBecause(bool stoppedEarly, bool listingFailed) =>
+        listingFailed ? CleanupBlocked.ListingFailed
+        : stoppedEarly ? CleanupBlocked.StoppedEarly
+        : CleanupBlocked.None;
 
     /// <summary>What one pass over the provider's entries produced.</summary>
     private sealed record EntryTally(
@@ -228,7 +270,7 @@ public static class RagPipelineExtensions
         IReadOnlySet<EntryId> knownIds,
         ConcurrentDictionary<EntryId, byte> seenIds,
         ConcurrentBag<RagError> errors,
-        bool stoppedEarly,
+        CleanupBlocked blocked,
         CancellationToken cancellationToken)
     {
         if (cleanupMode != CleanupMode.Full)
@@ -251,8 +293,8 @@ public static class RagPipelineExtensions
             return [];
         }
 
-        return await CleanupUnlessTheRunStoppedEarlyAsync(pipeline, providerId, hashStore,
-            knownIds, seenIds, errors, stoppedEarly, cancellationToken).ConfigureAwait(false);
+        return await CleanupUnlessEntriesWereMissedAsync(pipeline, providerId, hashStore,
+            knownIds, seenIds, errors, blocked, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -265,34 +307,47 @@ public static class RagPipelineExtensions
     /// answer, and it is reported rather than done quietly: a caller who asked for
     /// <see cref="CleanupMode.Full"/> and got no deletions is owed the reason.
     /// </remarks>
-    private static async Task<List<ProviderEntryOutcome>> CleanupUnlessTheRunStoppedEarlyAsync(
+    private static async Task<List<ProviderEntryOutcome>> CleanupUnlessEntriesWereMissedAsync(
         IRagPipeline pipeline,
         ProviderId providerId,
         IContentHashStore hashStore,
         IReadOnlySet<EntryId> knownIds,
         ConcurrentDictionary<EntryId, byte> seenIds,
         ConcurrentBag<RagError> errors,
-        bool stoppedEarly,
+        CleanupBlocked blocked,
         CancellationToken cancellationToken)
     {
-        if (!stoppedEarly)
+        if (blocked == CleanupBlocked.None)
         {
             return await CleanupDisappearedAsync(pipeline, providerId, hashStore, knownIds, seenIds,
                 errors, cancellationToken).ConfigureAwait(false);
         }
 
-        errors.Add(new RagError.ValidationFailed(
-        [
-            new ValidationFailure(
-                nameof(IngestionOptions.StopOnFirstError),
-                "Full cleanup was skipped because ingestion stopped at the first error. The entries " +
-                "after the failure were never visited, so deleting everything this run did not see " +
-                "would remove documents still present at the provider. Fix the failure and re-run " +
-                "to clean up."),
-        ]));
-
+        errors.Add(new RagError.ValidationFailed([DescribeBlockedCleanup(blocked)]));
         return [];
     }
+
+    /// <summary>Says which entries the run failed to see, and why that stops cleanup.</summary>
+    private static ValidationFailure DescribeBlockedCleanup(CleanupBlocked blocked) => blocked switch
+    {
+        CleanupBlocked.StoppedEarly => new ValidationFailure(
+            nameof(IngestionOptions.StopOnFirstError),
+            "Full cleanup was skipped because ingestion stopped at the first error. The entries "
+            + "after the failure were never visited, so deleting everything this run did not see "
+            + "would remove documents still present at the provider. Fix the failure and re-run "
+            + "to clean up."),
+
+        CleanupBlocked.ListingFailed => new ValidationFailure(
+            nameof(IFileContentProvider.GetFilesAsync),
+            "Full cleanup was skipped because the provider failed to list one or more entries. A "
+            + "failed listing carries no entry id, so this run cannot tell which documents it did "
+            + "not see — and deleting everything unseen would remove documents that are still "
+            + "there. One failed page of a sitemap is enough to lose the rest. The listing errors "
+            + "are in Errors; fix them and re-run to clean up."),
+
+        _ => throw new ArgumentOutOfRangeException(nameof(blocked), blocked, "Unhandled reason."),
+    };
+
 
     /// <summary>
     /// Fail-fast validation of the caller-supplied options: one failure result up front
