@@ -4670,7 +4670,7 @@ needing a general framework.
 mistyped collection name silently creates a new empty one instead of failing. That is inherent to
 what #353 asks for; callers who want the error provision out of band.
 
-### Phase 6.2.11: HTML Structure and a Guid Seam [status: pending — added 2026-08-25]
+### Phase 6.2.11: HTML Structure and a Guid Seam [status: complete 2026-08-25 — added and shipped the same day across two PRs: #375 and #371 in #385 (the sibling walk replaced by a document-order traversal over text nodes, plus `HtmlHrefHandling`), #380 in #386 (`IGuidProvider`, an interface rather than the abstract class the issue proposed, returning `Guid` rather than `string`). Verified on `main` by content — `HtmlHrefHandling.cs` and `IGuidProvider.cs` are both present — rather than by either PR's MERGED label]
 **Surface:** Backend
 **HelpWanted:** no
 
@@ -4718,6 +4718,68 @@ testability seam. Ordered by damage.
 
   **Returns `Guid`, not the issue's `string`**: formatting is the caller's business, and `string`
   bakes `"N"` into every call site.
+
+### Phase 6.2.12: Dogfooding Defects — what the first external user found [status: complete 2026-08-26 — added and shipped the same day. Seven PRs from one reporter (@StefH) integrating the library into a real project, which is the dogfooding this project had not done. Two of the defects were introduced by fixes earlier in this same phase, and one was silent data loss]
+**Surface:** Backend
+**HelpWanted:** no
+
+**Goal:** close the defects found by the first person to use the library against a real corpus.
+Kept as its own phase because the pattern matters more than the individual fixes: **every one of
+these was reachable at shipped defaults, and none had a test.**
+
+- **#390 — a named pipeline could not see the host's `IEmbeddingGenerator`.** The canonical
+  `Microsoft.Extensions.AI` pattern registers on the root collection; a named pipeline built a
+  child container and saw only what `AddRagNetShared` declared, so the named form saw *less* than
+  the unnamed one for identical registrations. Fixed in #391 by forwarding the host's non-keyed
+  root singletons. **The first diagnosis was wrong and was posted publicly** — the reporter's
+  follow-up showed the registration was present, and reproducing it locally showed unnamed worked
+  while named failed. The correction is on the issue.
+
+- **#396 — that fix deadlocked Blazor.** Forwarding ran inside `BuildFactory`, which *is* the
+  factory delegate for `IRagPipelineFactory`, so resolving root singletons re-entered the container
+  for a service still under construction; a host singleton depending on `IRagPipelineFactory` hung
+  outright. Fixed in #397 by deferring forwarding to the first `Get(name)`.
+
+- **#400 — and that fix hung on unrelated host singletons.** Deferring made forwarding happen at
+  `Get(name)`, but it still resolved *every* eligible root registration to forward it as an
+  instance — the only descriptor shape a child does not dispose. A host singleton that blocks on
+  construction therefore stalled `Get` for a pipeline that never wanted it. Fixed in #403 by
+  forwarding through a factory descriptor per root registration, so nothing is constructed until
+  the pipeline asks. **The trade was measured, not assumed:** an instance descriptor is disposed 0
+  times by the child and a factory descriptor once, so laziness costs a second `Dispose` at
+  shutdown for services the pipeline actually used. A hang at startup is worse.
+
+- **#394 — `CleanupMode.Full` without a hash store did nothing, quietly.** Fixed in #398 by
+  reporting it. **Investigating #400 then found the same hazard through a door that guard did not
+  cover, and this one was live data loss:** a provider listing failure was collected into `Errors`
+  and dropped, so the entries behind it were never seen and cleanup deleted them as disappeared.
+  One 500 on one sitemap page removed every document behind it, and the run reported success.
+  Fixed in #402; the `stoppedEarly` bool became a `CleanupBlocked` reason so that every way a run
+  can fail to see an entry must be named rather than defaulting to "safe to delete".
+
+- **#395 — `ProviderIngestionResult` carried four counts.** Fixed in #399, but not as proposed:
+  the issue asked for `IReadOnlyList<FileEntry>`, and `FileEntry` carries an `OpenContentAsync`
+  delegate that a finished run has no business handing back — and cannot produce at all for a
+  deleted document, which by definition the provider no longer lists. The lists hold a
+  `ProviderEntryOutcome` instead. A `NotAttempted` list was added because counts could not express
+  the `StopOnFirstError` case at all: the entries after the failure appeared in no count, so a run
+  that stopped after 1 of 5,000 URLs read exactly like a run that only had one to do.
+
+- **#375, #371, #380** shipped in 6.2.11 above.
+
+**The unifying finding, and the reason this is a phase rather than a footnote.** The stall the
+reporter opened #400 for was an unconditional `await Task.Delay(1s)` at the end of
+`AzureAISearchVectorStore.StoreAsync` — once per document, so a 500-page sitemap spent over eight
+minutes asleep. It bought nothing: Azure gives no read-after-write guarantee at any fixed delay.
+Removed in #401, along with a sweep of every unconditional sleep in the solution; the ones that
+poll a real condition against a bounded timeout stayed, and nine `Task.Delay(2s)` calls in the
+Azure tests became polls that fail naming the condition that never came true.
+
+**What none of it had was a test.** The data loss, the two hangs and the sleep were all reachable
+at shipped defaults, and the suite was green throughout — the same shape as 6.2.3's RAPTOR finding,
+where no test had ever built a tree deeper than one level. Every fix here landed with a test that
+fails against the previous code, and each was mutation-checked with the mutation verified to
+compile first.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
