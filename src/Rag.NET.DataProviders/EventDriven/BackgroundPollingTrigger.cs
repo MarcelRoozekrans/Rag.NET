@@ -52,7 +52,8 @@ public sealed class BackgroundPollingTrigger(
                 provider, _providerId, hashStore, cleanupMode: options.CleanupMode,
                 cancellationToken: stoppingToken).ConfigureAwait(false);
             DataProvidersLog.PollingCycleCompleted(_logger, options.ProviderId,
-                result.Ingested, result.Skipped, result.Deleted, result.Errors.Count);
+                result.IngestedCount, result.SkippedCount, result.FailedCount, result.DeletedCount,
+                result.Errors.Count);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {

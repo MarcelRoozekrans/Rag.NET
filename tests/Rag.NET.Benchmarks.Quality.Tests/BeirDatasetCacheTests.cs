@@ -235,9 +235,12 @@ public sealed class BeirDatasetCacheTests : IDisposable
         // complete when its own extraction lands must accept the winner's directory, not replace
         // it. The winner here is simulated by the test while the caller is parked mid-download;
         // the pre-placed corpus differs from the downloaded one so that clobbering is observable.
-        var handler = new GatedArchiveHandler(BuildArchive(corpusPadding: "downloaded-not-preplaced"));
+        // One archive, served and hashed. Building it twice made the served bytes and the declared
+        // MD5 two independent things that only happened to agree -- see BuildArchive.
+        var archive = BuildArchive(corpusPadding: "downloaded-not-preplaced");
+        var handler = new GatedArchiveHandler(archive);
         var cache = new BeirDatasetCache(_cacheDirectory, new HttpClient(handler));
-        var descriptor = Descriptor(Md5Of(BuildArchive(corpusPadding: "downloaded-not-preplaced")));
+        var descriptor = Descriptor(Md5Of(archive));
 
         var ensure = cache.EnsureAsync(descriptor, TestContext.Current.CancellationToken);
         _ = await Task.WhenAny(handler.ArchiveBody.Started, ensure);
@@ -325,6 +328,25 @@ public sealed class BeirDatasetCacheTests : IDisposable
     /// Optional filler for the document's text. The concurrency test pads the corpus so that
     /// extracting it holds an exclusive file handle for a window wide enough to collide in.
     /// </param>
+    [Fact]
+    public void BuildArchive_ProducesTheSameBytesEveryTime_SoServingAndHashingCannotDisagree()
+    {
+        // Guards the pin, not the symptom. Comparing two archives built back to back would pass
+        // even unpinned nearly every time -- the bytes only diverge when the pair straddles a
+        // two-second MS-DOS tick, which is why this arrived as an intermittent CI failure rather
+        // than a broken test. Asserting the timestamp is on the entries catches removal of the pin
+        // immediately and deterministically.
+        using var archive = new ZipArchive(new MemoryStream(BuildArchive()), ZipArchiveMode.Read);
+
+        Assert.NotEmpty(archive.Entries);
+        // The wall-clock component, not the offset: a zip stores MS-DOS time with no timezone, so
+        // reading an entry back attaches whatever offset the reading machine happens to be in. The
+        // bytes on disk carry only the DateTime, which is what has to be pinned.
+        Assert.All(archive.Entries,
+            e => Assert.Equal(PinnedEntryTimestamp.DateTime, e.LastWriteTime.DateTime));
+        Assert.Equal(Md5Of(BuildArchive()), Md5Of(BuildArchive()), StringComparer.Ordinal);
+    }
+
     private static byte[] BuildArchive(string corpusPadding = "")
     {
         var corpus = corpusPadding.Length == 0
@@ -343,9 +365,25 @@ public sealed class BeirDatasetCacheTests : IDisposable
         return buffer.ToArray();
     }
 
+    /// <summary>
+    /// A fixed entry timestamp, so two archives built from the same content are byte-identical.
+    /// </summary>
+    /// <remarks>
+    /// <b>A zip entry's <c>LastWriteTime</c> defaults to now</b>, stored at MS-DOS two-second
+    /// granularity. Two archives built from identical content either side of a tick therefore
+    /// differ in bytes while matching exactly in length -- and to
+    /// <see cref="BeirArchiveSource"/>'s MD5 guard that is indistinguishable from a corrupt
+    /// download. It surfaced as a CI failure reporting "506 bytes, wrong MD5" on a test that built
+    /// its archive twice: once to serve and once to hash.
+    /// </remarks>
+    private static readonly DateTimeOffset PinnedEntryTimestamp =
+        new(2020, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
     private static void AddEntry(ZipArchive archive, string entryName, string content)
     {
-        using var stream = archive.CreateEntry(entryName).Open();
+        var entry = archive.CreateEntry(entryName);
+        entry.LastWriteTime = PinnedEntryTimestamp;
+        using var stream = entry.Open();
         stream.Write(Encoding.UTF8.GetBytes(content));
     }
 

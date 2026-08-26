@@ -15,10 +15,43 @@ var result = await pipeline.IngestFromProviderAsync(provider, new ProviderId("my
     hashStore: sp.GetRequiredService<IContentHashStore>(),
     cleanupMode: CleanupMode.Full);
 
-Console.WriteLine($"Ingested: {result.Ingested}, Skipped: {result.Skipped}, Deleted: {result.Deleted}");
+Console.WriteLine($"Ingested: {result.IngestedCount}, Skipped: {result.SkippedCount}, Failed: {result.FailedCount}, Deleted: {result.DeletedCount}");
+
+// The counts are derived from lists, so you can name the files rather than just tally them:
+foreach (var entry in result.Failed)
+    Console.WriteLine($"  failed: {entry.FileName} ({entry.Id.Value})");
 ```
 
 The pipeline compares each file's ETag against the content hash store. Files whose ETag is unchanged since the last run are skipped automatically — no re-embedding, no re-storing.
+
+### What the result tells you
+
+`ProviderIngestionResult` reports the run entry by entry, not just as tallies. Four lists account
+for **every** entry the provider listed, each entry in exactly one of them:
+
+| List | Meaning |
+| --- | --- |
+| `Ingested` | Parsed, chunked and stored. |
+| `Skipped` | Already up to date — an ETag or content hash matched. Not a failure. |
+| `Failed` | Threw. Each contributes one entry to `Errors`. |
+| `NotAttempted` | Listed but never reached, because `StopOnFirstError` stopped the run. Empty otherwise. |
+
+`Deleted` sits outside that total: those documents were removed by the cleanup pass precisely
+because the provider *stopped* listing them, so they were never entries of this run. Each carries
+only an `Id` — there is no filename to report, because nothing named them this time.
+
+Each list holds `ProviderEntryOutcome` (`Id`, `FileName`, `ETag`), deliberately **not** `FileEntry`.
+A `FileEntry` carries an `OpenContentAsync` delegate, and a finished run's report is the wrong place
+to hand one back: it would keep every entry's closure alive after the run and invite callers to open
+content from a source that may already be gone.
+
+Every list has a matching count — `IngestedCount`, `SkippedCount`, `FailedCount`,
+`NotAttemptedCount`, `DeletedCount` — plus `ListedCount` for the four-way total.
+
+> **`Errors` is not the same length as `Failed`.** It also collects failures belonging to no single
+> entry: invalid `IngestionOptions`, a provider that faulted while listing, a delete that threw
+> during cleanup. Read `Failed` for *which entries* failed; read `Errors` for *everything* that went
+> wrong.
 
 ### Writing your own provider
 

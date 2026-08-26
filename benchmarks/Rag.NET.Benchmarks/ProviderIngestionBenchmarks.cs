@@ -72,7 +72,7 @@ public class ProviderIngestionBenchmarks
     {
         var provider = new LocalFilesDataProvider(_tempDir);
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("bench")).ConfigureAwait(false);
-        return result.Ingested;
+        return result.IngestedCount;
     }
 
     /// <summary>Warm cache: all ETags match → every file skipped without reading content.</summary>
@@ -82,7 +82,7 @@ public class ProviderIngestionBenchmarks
         var provider = new LocalFilesDataProvider(_tempDir);
         var store = new SqliteContentHashStore(_warmDbPath);
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("bench"), hashStore: store).ConfigureAwait(false);
-        return result.Skipped;
+        return result.SkippedCount;
     }
 
     /// <summary>Cold store: every file is read, SHA-256 hashed, and ingested.</summary>
@@ -92,7 +92,7 @@ public class ProviderIngestionBenchmarks
         var provider = new LocalFilesDataProvider(_tempDir);
         var store = new SqliteContentHashStore(_coldDbPath);
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("bench"), hashStore: store).ConfigureAwait(false);
-        return result.Ingested;
+        return result.IngestedCount;
     }
 
     /// <summary>Sequential ingestion with a simulated 5 ms per-document processing delay.</summary>
@@ -102,7 +102,7 @@ public class ProviderIngestionBenchmarks
         var provider = new LocalFilesDataProvider(_tempDir);
         var result = await _pipeline5ms.IngestFromProviderAsync(provider, new ProviderId("bench"),
             options: new IngestionOptions { MaxDegreeOfParallelism = 1 }).ConfigureAwait(false);
-        return result.Ingested;
+        return result.IngestedCount;
     }
 
     /// <summary>Parallel ingestion (4 workers) with a simulated 5 ms per-document processing delay.</summary>
@@ -112,7 +112,7 @@ public class ProviderIngestionBenchmarks
         var provider = new LocalFilesDataProvider(_tempDir);
         var result = await _pipeline5ms.IngestFromProviderAsync(provider, new ProviderId("bench"),
             options: new IngestionOptions { MaxDegreeOfParallelism = 4 }).ConfigureAwait(false);
-        return result.Ingested;
+        return result.IngestedCount;
     }
 
     private sealed class NoOpRagPipeline : IRagPipeline
