@@ -634,13 +634,27 @@ public static class ServiceCollectionExtensions
     /// bookkeeping that no pipeline resolves.
     /// </para>
     /// <para>
-    /// <b>Forwarding is eager, and that is a real cost.</b> Each forwarded type is resolved from
-    /// the root now, because an instance descriptor is the only shape that keeps ownership with the
-    /// root — see <see cref="ForwardSharedServices"/> for why a factory descriptor would make a
-    /// child dispose what it does not own. So resolving <see cref="IRagPipelineFactory"/> now
-    /// constructs the host's eligible root singletons, not just the shared ones. Open generics,
-    /// keyed registrations and non-singletons are skipped, which excludes the bulk of a host's
-    /// container — <c>ILogger&lt;&gt;</c> and <c>IOptions&lt;&gt;</c> among them.
+    /// <b>Forwarding is lazy, and that is a correctness requirement (#400).</b> It used to resolve
+    /// every eligible root registration at <c>Get(name)</c>, because an instance descriptor is the
+    /// only shape that keeps ownership with the root. That constructed the host's singletons
+    /// whether or not the pipeline had any use for them — so a host service that is slow, that
+    /// blocks on construction, or that throws for reasons unrelated to RAG would stall or fail
+    /// <c>Get(name)</c> for a pipeline that never wanted it. A singleton whose factory blocks made
+    /// <c>Get</c> hang outright.
+    /// </para>
+    /// <para>
+    /// <b>The cost is disposal, and it is deliberate.</b> A factory descriptor is the only lazy
+    /// shape, and the container disposes what a factory returns — so a child now disposes the root
+    /// services it actually resolved, which the root then disposes again. That is accepted for
+    /// three reasons: <see cref="IDisposable.Dispose"/> is required to be idempotent; children are
+    /// only disposed when the factory itself is, which is process shutdown; and it applies solely
+    /// to services the pipeline genuinely used, whereas the eager form constructed everything.
+    /// Trading a possible second <c>Dispose</c> at shutdown for a hang at startup is not a close
+    /// call.
+    /// </para>
+    /// <para>
+    /// Open generics, keyed registrations and non-singletons are skipped, which excludes the bulk
+    /// of a host's container — <c>ILogger&lt;&gt;</c> and <c>IOptions&lt;&gt;</c> among them.
     /// </para>
     /// </remarks>
     /// <param name="registration">The name's composed collection.</param>
@@ -657,7 +671,36 @@ public static class ServiceCollectionExtensions
             childTypes.Add(descriptor.ServiceType);
         }
 
-        var forwarded = new HashSet<Type>();
+        foreach (ref readonly var forwardable in
+                 CollectionsMarshal.AsSpan(ForwardableRootRegistrations(rootServices, childTypes)))
+        {
+            // One child descriptor per root descriptor, so a multi-registered type arrives whole
+            // rather than truncated to its last registration. The index is captured, not resolved:
+            // nothing is constructed until this pipeline actually asks for the service.
+            var serviceType = forwardable.ServiceType;
+            for (var index = 0; index < forwardable.Count; index++)
+            {
+                var nth = index;
+                registration.Services.Add(ServiceDescriptor.Singleton(
+                    serviceType, _ => ResolveNthFromRoot(rootProvider, serviceType, nth)));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The root service types a named pipeline may inherit, with how many registrations each has.
+    /// </summary>
+    /// <remarks>
+    /// Counted from the descriptors alone — deliberately without resolving anything, which is the
+    /// whole point of the change that introduced this method (#400).
+    /// </remarks>
+    private static List<(Type ServiceType, int Count)> ForwardableRootRegistrations(
+        IServiceCollection rootServices,
+        HashSet<Type> childTypes)
+    {
+        var counts = new Dictionary<Type, int>();
+        var firstSeen = new List<Type>();
+
         foreach (var descriptor in rootServices)
         {
             var serviceType = descriptor.ServiceType;
@@ -667,33 +710,53 @@ public static class ServiceCollectionExtensions
                 || serviceType == typeof(IRagPipelineFactory)
                 || serviceType == typeof(SharedServiceTypes)
                 || serviceType == typeof(Dictionary<string, NamedPipelineRegistration>)
-                || childTypes.Contains(serviceType)
-                || !forwarded.Add(serviceType))
+                || childTypes.Contains(serviceType))
             {
                 continue;
             }
 
-            // Every instance for the type, for the same reason ForwardSharedServices takes them
-            // all: a multi-registered service type would otherwise arrive here truncated.
-            List<object>? instances = null;
-            foreach (var instance in rootProvider.GetServices(serviceType))
+            if (!counts.TryGetValue(serviceType, out var seen))
             {
-                if (instance is not null)
-                {
-                    (instances ??= []).Add(instance);
-                }
+                firstSeen.Add(serviceType);
             }
 
-            if (instances is null)
-            {
-                continue;
-            }
+            counts[serviceType] = seen + 1;
+        }
 
-            foreach (ref readonly var instance in CollectionsMarshal.AsSpan(instances))
+        var forwardable = new List<(Type, int)>(firstSeen.Count);
+        foreach (ref readonly var serviceType in CollectionsMarshal.AsSpan(firstSeen))
+        {
+            forwardable.Add((serviceType, counts[serviceType]));
+        }
+
+        return forwardable;
+    }
+
+    /// <summary>
+    /// Resolves one root registration of <paramref name="serviceType"/> by position.
+    /// </summary>
+    /// <remarks>
+    /// Always by position through <c>GetServices</c>, never <c>GetRequiredService</c> for the first
+    /// one: the container returns the <i>last</i> registration from <c>GetRequiredService</c> and
+    /// all of them in registration order from <c>GetServices</c>. Going through the indexed form
+    /// for every position keeps the child's ordering identical to the root's, so "last one wins"
+    /// resolves to the same instance in both.
+    /// </remarks>
+    private static object ResolveNthFromRoot(IServiceProvider rootProvider, Type serviceType, int index)
+    {
+        var position = 0;
+        foreach (var instance in rootProvider.GetServices(serviceType))
+        {
+            if (position++ == index)
             {
-                registration.Services.Add(ServiceDescriptor.Singleton(serviceType, instance));
+                return instance!;
             }
         }
+
+        throw new InvalidOperationException(
+            $"The root container no longer provides registration {index} of '{serviceType}'. "
+            + "Forwarding counted the registrations when the pipeline was first resolved; the "
+            + "collection must not be modified after that.");
     }
 
     /// <summary>Forwards one named pipeline's declared-shared services from the root provider.</summary>

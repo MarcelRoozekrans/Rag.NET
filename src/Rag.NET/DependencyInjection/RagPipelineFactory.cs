@@ -13,8 +13,14 @@ namespace Rag.NET.DependencyInjection;
 /// The cost is that a misconfigured named pipeline surfaces on first use rather than at startup.
 /// </para>
 /// <para>
-/// <b>Ownership runs one way.</b> Shared services live in the root and are disposed by it, never by
-/// a child — so tearing down one pipeline cannot pull the embedding model out from under another.
+/// <b>Ownership runs one way, with one deliberate exception.</b> Shared services live in the root
+/// and are disposed by it. The exception is ambient root services, which since #400 are forwarded
+/// through a factory descriptor so they are not constructed until a pipeline asks for one — and the
+/// container disposes what a factory returns, so a child does dispose the root services it actually
+/// resolved. That is accepted because <see cref="IDisposable.Dispose"/> is required to be
+/// idempotent, because children are only disposed when this factory is (process shutdown), and
+/// because the alternative was constructing every eligible host singleton on first
+/// <see cref="Get"/> — which hung outright on one that blocks.
 /// Both <see cref="Dispose"/> and <see cref="DisposeAsync"/> are supported because this factory is
 /// itself a root-container singleton: a host that disposes its root provider synchronously must be
 /// able to tear this down synchronously too. Each child is a concrete <c>ServiceProvider</c>, which
