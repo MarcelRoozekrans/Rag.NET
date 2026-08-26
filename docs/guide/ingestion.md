@@ -646,7 +646,11 @@ var result = await pipeline.IngestFromProviderAsync(provider, "my-corpus",
     hashStore: sp.GetRequiredService<IContentHashStore>(),
     cleanupMode: CleanupMode.Full);
 
-Console.WriteLine($"Ingested: {result.Ingested}, Skipped: {result.Skipped}, Deleted: {result.Deleted}");
+Console.WriteLine($"Ingested: {result.IngestedCount}, Skipped: {result.SkippedCount}, Failed: {result.FailedCount}, Deleted: {result.DeletedCount}");
+
+// The counts are derived from lists, so you can name the files rather than just tally them:
+foreach (var entry in result.Failed)
+    Console.WriteLine($"  failed: {entry.FileName} ({entry.Id.Value})");
 ```
 
 ### `SitemapDataProvider`
