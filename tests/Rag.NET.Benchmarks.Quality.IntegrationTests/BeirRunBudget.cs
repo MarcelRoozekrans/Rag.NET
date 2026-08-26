@@ -632,7 +632,13 @@ public static class BeirRunBudget
             + "find boundaries, then the harness embeds the resulting units, so it is strictly "
             + "more embedding work than the Real cell on the same dataset and no LLM calls at "
             + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
-            + "new text and is not in any cache."),
+            + "new text and is not in any cache, so a re-run costs the same as the first. "
+            + "**MEASURED 2026-08-26: all four datasets in 4 h 18 m, ~202,000 CPU-seconds.** That "
+            + "first run reported its figures through ITestOutputHelper, which this project's "
+            + "runner suppresses for passing tests, so it proved the mechanism and produced no "
+            + "number. Run this cell with -showLiveOutput. Not caching the sentence embeddings is "
+            + "worth revisiting for the same reason: at four hours a run, repeatability is worth "
+            + "more than the disk it would take."),
         new(
             "fiqa",
             BeirProtocol.SemanticChunking,

@@ -106,8 +106,8 @@ public enum BeirProtocol
     Haystack,
 
     /// <summary>
-    /// <see cref="Real"/>'s corpus, split by <c>SemanticChunkingStrategy</c> instead of indexed one
-    /// chunk per document — the embedding-based boundary detector measured against the chunker it
+    /// The ablation table's corpus, split by <c>SemanticChunkingStrategy</c> instead of indexed one
+    /// chunk per document — the embedding-based boundary detector measured against the chunking it
     /// would replace.
     /// </summary>
     /// <remarks>
@@ -119,10 +119,16 @@ public enum BeirProtocol
     /// comparable to a one-chunk-per-document run at all.
     /// </para>
     /// <para>
-    /// <b>Its control is <see cref="Real"/> on the same dataset</b>, which is the same corpus, the
-    /// same embedder and the same retrieval — differing only in where the boundaries fall. Reported
-    /// without that difference the number says nothing: chunking cannot be better or worse in the
-    /// abstract, only against the chunking it replaces.
+    /// <b>Its control is <see cref="Parity"/> on the same dataset, not <see cref="Real"/>.</b> Like
+    /// every other cell in the ablation table it runs under the parity protocol — one chunk per
+    /// document, truncated at 256 — because that is where the table's dense anchor is. Against the
+    /// <see cref="Real"/> figure instead, SciFact's 0.64551 reads as a 0.032 regression; against the
+    /// parity anchor it is 0.00042, a wash. The same number, two controls, opposite conclusions,
+    /// which is the whole reason the control is named here rather than left to the reader.
+    /// </para>
+    /// <para>
+    /// Reported without that difference the number says nothing at all: chunking cannot be better or
+    /// worse in the abstract, only against the chunking it replaces.
     /// </para>
     /// </remarks>
     SemanticChunking,

@@ -204,6 +204,13 @@ public sealed class BeirAblationTests
     /// the number is trusted, exactly as BM25 contribution and reranker reordering are.
     /// </para>
     /// </remarks>
+    /// <para>
+    /// <b>Run it with <c>-showLiveOutput</c>.</b> An unpinned protocol's figure is reported through
+    /// <c>ITestOutputHelper</c>, and the Microsoft.Testing.Platform runner this project uses
+    /// suppresses that channel for tests that pass — so the first full run of this cell measured
+    /// four datasets in 4 h 18 m and printed the numbers nowhere. The run proved the mechanism and
+    /// produced no figure, which is the worst of both.
+    /// </para>
     /// <param name="datasetName">The dataset to measure.</param>
     [Theory]
     [MemberData(nameof(Datasets))]
@@ -236,23 +243,7 @@ public sealed class BeirAblationTests
         var baseline = BeirHarness.OneChunkPerDocument(dataset.Documents);
         var units = await SemanticUnitsAsync(dataset.Documents, generator, ct);
 
-        // Before the number is trusted: did the chunker split anything at all. Stated as two
-        // separate facts because they fail for different reasons — no extra units means the
-        // breakpoint never fired anywhere, while extra units with no document holding more than one
-        // would mean the projection lost them.
-        Assert.True(
-            units.Count > baseline.Count,
-            $"Semantic chunking produced {units.Count} units for {baseline.Count} documents in " +
-            $"{descriptor.Name}, so it split nothing and this cell is the Real cell under another " +
-            "name. Treat that as the finding, not as a broken test: it says the corpus's documents " +
-            "are shorter than the chunker's minimum, or that the breakpoint percentile never fires.");
-
-        var maxPerDocument = units.GroupBy(static unit => unit.DocumentId.Value, StringComparer.Ordinal)
-            .Max(static group => group.Count());
-        Assert.True(
-            maxPerDocument > 1,
-            $"No document in {descriptor.Name} carries more than one unit, which contradicts the " +
-            "unit count above and means the units were built with the wrong document ids.");
+        var maxPerDocument = AssertTheChunkerSplit(descriptor, dataset, baseline, units);
 
         var run = await BeirHarness.MeasureAsync(
             descriptor, dataset, units, AblationRow.Dense, generator, embeddings, ct);
@@ -261,14 +252,67 @@ public sealed class BeirAblationTests
         // did to the ranking, and this cell's diagnostic is what the chunker did to the corpus.
         _output.WriteLine(FormattableString.Invariant($"""
             === {descriptor.Name} · semantic-chunking ===
-            Internal comparison ONLY: read against this dataset's Real cell, which is the same corpus,
-            embedder and retrieval, cut one chunk per document instead.
+            Internal comparison ONLY: read against this dataset's PARITY dense figure, which is this
+            same protocol cut one chunk per document — not against the Real cell, which indexes an
+            untruncated corpus and would make a wash look like a regression.
             {units.Count} units over {baseline.Count} documents, max {maxPerDocument} per document.
             {run.Describe()}
             """));
 
         BeirReproduction.AssertReproduces(
             datasetName, BeirProtocol.SemanticChunking, run.NdcgAt10, _output);
+    }
+
+    /// <summary>
+    /// The mechanism gate for the semantic-chunking cell: the chunker must have split, and must not
+    /// have lost a document while doing it.
+    /// </summary>
+    /// <remarks>
+    /// Three facts, separated because they fail for different reasons. No extra units means the
+    /// breakpoint never fired anywhere. Extra units with no document holding more than one means the
+    /// units were built with the wrong document ids. And a document that produced <i>nothing</i> is
+    /// absent from the index and unretrievable — the chunker yields nothing only for whitespace-only
+    /// text, so a dropped document with content is content loss rather than a property of the
+    /// corpus, and would otherwise surface only as an nDCG nobody could account for.
+    /// </remarks>
+    /// <param name="descriptor">The dataset, for its name in the failure messages.</param>
+    /// <param name="dataset">The loaded corpus, for the documents that produced nothing.</param>
+    /// <param name="baseline">One chunk per document, the shape being replaced.</param>
+    /// <param name="units">What the chunker produced.</param>
+    /// <returns>The largest number of units any one document contributed.</returns>
+    private static int AssertTheChunkerSplit(
+        BeirDatasetDescriptor descriptor,
+        BeirDataset dataset,
+        IReadOnlyList<TextChunk> baseline,
+        IReadOnlyList<TextChunk> units)
+    {
+        Assert.True(
+            units.Count > baseline.Count,
+            $"Semantic chunking produced {units.Count} units for {baseline.Count} documents in " +
+            $"{descriptor.Name}, so it split nothing and this cell is the parity dense cell under " +
+            "another name. Treat that as the finding, not as a broken test: it says the corpus's " +
+            "documents are shorter than the chunker's minimum, or that the breakpoint never fires.");
+
+        var perDocument = units.GroupBy(static unit => unit.DocumentId.Value, StringComparer.Ordinal)
+            .ToDictionary(static group => group.Key, static group => group.Count(), StringComparer.Ordinal);
+        var maxPerDocument = perDocument.Count == 0 ? 0 : perDocument.Values.Max();
+        Assert.True(
+            maxPerDocument > 1,
+            $"No document in {descriptor.Name} carries more than one unit, which contradicts the " +
+            "unit count above and means the units were built with the wrong document ids.");
+
+        var droppedWithText = dataset.Documents
+            .Where(document => !perDocument.ContainsKey(document.Id)
+                && !string.IsNullOrWhiteSpace(document.RetrievalText))
+            .ToList();
+        Assert.True(
+            droppedWithText.Count == 0,
+            $"{droppedWithText.Count} of {descriptor.Name}'s documents have text but produced no " +
+            "units, so they are absent from the index and unretrievable. That is content loss in " +
+            "the chunker, not a property of the corpus: " +
+            string.Join(", ", droppedWithText.Take(5).Select(static document => document.Id)));
+
+        return maxPerDocument;
     }
 
     /// <summary>Chunks every document with <c>SemanticChunkingStrategy</c>, in document order.</summary>
