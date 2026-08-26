@@ -145,6 +145,21 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         };
     }
 
+    /// <summary>Uploads the chunks, and returns as soon as the service has accepted them.</summary>
+    /// <remarks>
+    /// <b>This does not wait for the documents to become searchable.</b> It used to: every call
+    /// ended with an unconditional one-second sleep, commented "Azure AI Search indexing is near
+    /// real-time; brief wait for consistency". That sleep bought nothing. Azure gives no
+    /// read-after-write guarantee at any fixed delay, so one second was a guess that could be too
+    /// short and was usually pure waste — and because <c>StorageBehavior</c> calls this once per
+    /// document, a 500-page ingest spent over eight minutes asleep.
+    /// <para>
+    /// Read-after-write is a <i>read</i> concern and cannot be fixed on the write path. A caller
+    /// that must observe what it just wrote should poll for the condition it actually needs, the
+    /// way <c>PineconeVectorStore.WaitUntilReadyAsync</c> does — bounded, and failing loudly on
+    /// expiry rather than continuing on the assumption that a sleep was long enough.
+    /// </para>
+    /// </remarks>
     public async Task StoreAsync(
         IReadOnlyList<EmbeddedChunk> chunks,
         CancellationToken cancellationToken = default)
@@ -173,9 +188,6 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         var batch = IndexDocumentsBatch.Upload(documents);
         await _searchClient.IndexDocumentsAsync(batch, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
-
-        // Azure AI Search indexing is near real-time; brief wait for consistency
-        await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<SearchResult>> SearchAsync(

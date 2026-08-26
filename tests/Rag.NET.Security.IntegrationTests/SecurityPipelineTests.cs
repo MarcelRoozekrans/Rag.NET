@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -304,7 +305,7 @@ public class SecurityPipelineTests : IAsyncLifetime
             await pipeline.AskAsync("What does the audit log record?",
                 cancellationToken: TestContext.Current.CancellationToken);
 
-            await Task.Delay(100, TestContext.Current.CancellationToken);
+            await WaitForAuditRowsAsync(dbPath, TestContext.Current.CancellationToken);
             await AssertAuditRowsCorrelatedAsync(dbPath);
         }
         finally
@@ -351,7 +352,7 @@ public class SecurityPipelineTests : IAsyncLifetime
             await pipeline.AskAsync("What admin data is audited?",
                 cancellationToken: TestContext.Current.CancellationToken);
 
-            await Task.Delay(100, TestContext.Current.CancellationToken);
+            await WaitForAuditRowsAsync(dbPath, TestContext.Current.CancellationToken);
             await AssertAuditCallerRolesContainAsync(dbPath, "admin");
         }
         finally
@@ -488,5 +489,68 @@ public class SecurityPipelineTests : IAsyncLifetime
         public object? GetService(Type serviceType, object? key = null) => null;
 
         public void Dispose() { }
+    }
+
+    private static readonly TimeSpan AuditSettleTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan AuditPollInterval = TimeSpan.FromMilliseconds(25);
+
+    /// <summary>
+    /// Waits until the audit writes have actually landed.
+    /// </summary>
+    /// <remarks>
+    /// This was <c>await Task.Delay(100)</c> — a guess that the audit sink would have flushed by
+    /// then. Too short on a loaded machine and the assertion below fails as though the audit
+    /// pipeline were broken; long enough to be safe and every run pays for the worst case. Polling
+    /// returns as soon as the rows exist and, on expiry, says which table was still empty.
+    /// </remarks>
+    private static async Task WaitForAuditRowsAsync(string dbPath, CancellationToken cancellationToken)
+    {
+        var start = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            var (retrievals, answers) = await CountAuditRowsAsync(dbPath, cancellationToken);
+            if (retrievals >= 1 && answers >= 1)
+            {
+                return;
+            }
+
+            if (Stopwatch.GetElapsedTime(start) >= AuditSettleTimeout)
+            {
+                Assert.Fail(
+                    $"Audit rows never landed within {AuditSettleTimeout.TotalSeconds:0}s "
+                    + $"(retrieval_events={retrievals}, answer_events={answers}).");
+            }
+
+            await Task.Delay(AuditPollInterval, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Counts both audit tables, treating "not created yet" as zero rather than as a failure —
+    /// the sink creates them on its first write, so an early poll legitimately finds no table.
+    /// </summary>
+    private static async Task<(long Retrievals, long Answers)> CountAuditRowsAsync(
+        string dbPath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+            await conn.OpenAsync(cancellationToken);
+            return (
+                await CountAsync(conn, "SELECT COUNT(*) FROM retrieval_events", cancellationToken),
+                await CountAsync(conn, "SELECT COUNT(*) FROM answer_events", cancellationToken));
+        }
+        catch (Microsoft.Data.Sqlite.SqliteException)
+        {
+            return (0, 0);
+        }
+    }
+
+    private static async Task<long> CountAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection, string sql, CancellationToken cancellationToken)
+    {
+        var command = connection.CreateCommand();
+        command.CommandText = sql;
+        return (long)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 }

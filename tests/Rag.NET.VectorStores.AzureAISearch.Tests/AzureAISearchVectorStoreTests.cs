@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Azure;
 using Azure.Core.Pipeline;
 using AzureSearchClientOptions = Azure.Search.Documents.SearchClientOptions;
@@ -87,7 +88,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         try
         {
             await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
-            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId, 2, TestContext.Current.CancellationToken);
 
             var results = await _sut.SearchAsync(
                 new float[] { 1.0f, 0.0f, 0.0f },
@@ -135,7 +136,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         try
         {
             await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
-            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId, 3, TestContext.Current.CancellationToken);
 
             var results = await _sut.HybridSearchAsync(
                 "zebra",
@@ -169,10 +170,10 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         try
         {
             await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
-            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId, 1, TestContext.Current.CancellationToken);
 
             await _sut.DeleteByDocumentIdAsync(docId, TestContext.Current.CancellationToken);
-            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId, 0, TestContext.Current.CancellationToken);
 
             var results = await _sut.SearchAsync(
                 new float[] { 1.0f, 0.0f, 0.0f },
@@ -219,7 +220,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         try
         {
             await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
-            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId, 1, TestContext.Current.CancellationToken);
 
             var results = await _sut.SearchAsync(
                 new float[] { 1.0f, 0.0f, 0.0f },
@@ -272,7 +273,8 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         try
         {
             await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
-            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId1, 1, TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId2, 1, TestContext.Current.CancellationToken);
 
             var results = await _sut.SearchAsync(
                 new float[] { 1.0f, 0.0f, 0.0f },
@@ -303,7 +305,10 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         Assert.True(await manageable.CollectionExistsAsync(tempIndex, TestContext.Current.CancellationToken));
 
         await manageable.DeleteCollectionAsync(tempIndex, TestContext.Current.CancellationToken);
-        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        await WaitUntilAsync(
+            $"index '{tempIndex}' no longer exists",
+            async () => !await manageable.CollectionExistsAsync(tempIndex, TestContext.Current.CancellationToken),
+            TestContext.Current.CancellationToken);
         Assert.False(await manageable.CollectionExistsAsync(tempIndex, TestContext.Current.CancellationToken));
     }
 
@@ -366,11 +371,11 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         try
         {
             await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
-            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId, 5, TestContext.Current.CancellationToken);
 
             // Act: delete with pageSize=2 to exercise the pagination loop (3 fetches required for 5 chunks)
             await _sut.DeleteByDocumentIdAsync(docId, pageSize: 2, TestContext.Current.CancellationToken);
-            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId, 0, TestContext.Current.CancellationToken);
 
             // Assert: no chunks remain for the document
             var results = await _sut.SearchAsync(
@@ -385,4 +390,57 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
             await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
         }
     }
+
+    private static readonly TimeSpan SettleTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>Polls until <paramref name="what"/> holds, instead of sleeping a fixed guess.</summary>
+    /// <remarks>
+    /// Every write in this class used to be followed by <c>await Task.Delay(2s)</c>. That is the
+    /// same mistake the store itself made — its <c>StoreAsync</c> slept a second on every call —
+    /// and a fixed sleep is wrong in both directions: too short and the test flakes, too long and
+    /// every test pays the worst case whether or not it needs to. A poll returns as soon as the
+    /// service is actually ready, and on expiry fails naming the condition that never came true
+    /// rather than leaving an assertion to fail for a reason that reads like a product bug.
+    /// </remarks>
+    private static async Task WaitUntilAsync(
+        string what, Func<Task<bool>> condition, CancellationToken cancellationToken)
+    {
+        var start = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            if (await condition())
+            {
+                return;
+            }
+
+            if (Stopwatch.GetElapsedTime(start) >= SettleTimeout)
+            {
+                Assert.Fail($"'{what}' never became true within {SettleTimeout.TotalSeconds:0}s.");
+            }
+
+            await Task.Delay(PollInterval, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Waits until exactly <paramref name="expected"/> chunks of the document are searchable.
+    /// </summary>
+    /// <remarks>
+    /// Counts by document id rather than trusting the total: the index is shared by every test in
+    /// this class, so another test's leftovers would otherwise satisfy the wait.
+    /// </remarks>
+    private Task WaitForVisibleChunksAsync(
+        string documentId, int expected, CancellationToken cancellationToken) =>
+        WaitUntilAsync(
+            $"{expected} chunk(s) visible for document '{documentId}'",
+            async () =>
+            {
+                var results = await _sut.SearchAsync(
+                    new float[] { 1.0f, 0.0f, 0.0f },
+                    new SearchOptions { TopK = 100 },
+                    cancellationToken);
+                return results.Count(r => r.Chunk.DocumentId == new DocumentId(documentId)) == expected;
+            },
+            cancellationToken);
 }
