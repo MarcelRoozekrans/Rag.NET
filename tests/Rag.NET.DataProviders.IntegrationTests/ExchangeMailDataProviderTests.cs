@@ -88,7 +88,7 @@ public sealed class ExchangeMailDataProviderTests
             cancellationToken: ct);
 
         Assert.Empty(result.Errors);
-        Assert.Equal(2, result.Ingested);
+        Assert.Equal(2, result.IngestedCount);
 
         var stored = await store.SearchAsync(
             new float[] { 0.1f, 0.2f, 0.3f },

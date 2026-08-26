@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
 using Rag.NET.Abstractions;
@@ -78,12 +79,8 @@ public static class RagPipelineExtensions
         var optionsError = ValidateOptions(options);
         if (optionsError is not null)
             // Nothing was attempted, so nothing failed either -- the error is the options themselves.
-            return new ProviderIngestionResult(0, 0, 0, 0, [optionsError]);
+            return new ProviderIngestionResult([], [], [], [], [], [optionsError]);
 
-        var ingested = 0;
-        var skipped = 0;
-        var failed = 0;
-        var deleted = 0;
         var errors = new ConcurrentBag<RagError>();
 
         IReadOnlySet<EntryId> knownIds = hashStore is not null && cleanupMode == CleanupMode.Full
@@ -103,19 +100,52 @@ public static class RagPipelineExtensions
         var tally = await ProcessAllEntriesAsync(pipeline, providerId, entries, hashStore, baseMetadata,
             options, progress, errors, seenIds, cancellationToken).ConfigureAwait(false);
 
-        ingested = tally.Ingested;
-        skipped = tally.Skipped;
-        failed = tally.Failed;
-        var stoppedEarly = tally.StoppedEarly;
+        var deleted = await CleanupIfRequestedAsync(pipeline, providerId, hashStore, cleanupMode,
+            knownIds, seenIds, errors, tally.StoppedEarly, cancellationToken).ConfigureAwait(false);
 
-        deleted = await CleanupIfRequestedAsync(pipeline, providerId, hashStore, cleanupMode,
-            knownIds, seenIds, errors, stoppedEarly, cancellationToken).ConfigureAwait(false);
-
-        return new ProviderIngestionResult(ingested, skipped, failed, deleted, errors.ToList());
+        return new ProviderIngestionResult(tally.Ingested, tally.Skipped, tally.Failed,
+            EntriesNeverReached(entries, seenIds), deleted, errors.ToList());
     }
 
     /// <summary>What one pass over the provider's entries produced.</summary>
-    private sealed record EntryTally(int Ingested, int Skipped, int Failed, bool StoppedEarly);
+    private sealed record EntryTally(
+        IReadOnlyList<ProviderEntryOutcome> Ingested,
+        IReadOnlyList<ProviderEntryOutcome> Skipped,
+        IReadOnlyList<ProviderEntryOutcome> Failed,
+        bool StoppedEarly);
+
+    /// <summary>Reduces an entry to what a finished run can honestly say about it.</summary>
+    /// <remarks>
+    /// Drops <see cref="FileEntry.OpenContentAsync"/> deliberately: see
+    /// <see cref="ProviderEntryOutcome"/>.
+    /// </remarks>
+    private static ProviderEntryOutcome Describe(FileEntry entry) =>
+        new(entry.Id, entry.FileName, entry.ETag);
+
+    /// <summary>
+    /// The entries the loop never got to, when <see cref="IngestionOptions.StopOnFirstError"/>
+    /// stopped it early.
+    /// </summary>
+    /// <remarks>
+    /// Derived from <paramref name="seenIds"/> rather than counted during the loop: an entry is
+    /// recorded there before it is processed, so one missing from it is one the loop stopped short
+    /// of. Without this list a run that stopped early looks like a run that had less to do — the
+    /// entries after the failure are in no other list.
+    /// </remarks>
+    private static List<ProviderEntryOutcome> EntriesNeverReached(
+        List<FileEntry> entries,
+        ConcurrentDictionary<EntryId, byte> seenIds)
+    {
+        var neverReached = new List<ProviderEntryOutcome>();
+        foreach (ref readonly var entryRef in CollectionsMarshal.AsSpan(entries))
+        {
+            var entry = entryRef; // explicit copy: passing the 'ref readonly' along would hide one
+            if (!seenIds.ContainsKey(entry.Id))
+                neverReached.Add(Describe(entry));
+        }
+
+        return neverReached;
+    }
 
     /// <summary>
     /// Processes every entry, stopping at the first failure when
@@ -133,9 +163,11 @@ public static class RagPipelineExtensions
         ConcurrentDictionary<EntryId, byte> seenIds,
         CancellationToken cancellationToken)
     {
-        var ingested = 0;
-        var skipped = 0;
-        var failed = 0;
+        // Queues, not bags: under the default MaxDegreeOfParallelism of 1 this preserves the
+        // order the provider listed the entries, which a bag would scramble for no reason.
+        var ingested = new ConcurrentQueue<ProviderEntryOutcome>();
+        var skipped = new ConcurrentQueue<ProviderEntryOutcome>();
+        var failed = new ConcurrentQueue<ProviderEntryOutcome>();
         var stopOnFirstError = options?.StopOnFirstError ?? false;
 
         // Linked, so this method can stop the loop without that being mistaken for the caller
@@ -158,13 +190,13 @@ public static class RagPipelineExtensions
                 // indistinguishable from an up-to-date entry (#355), and would swallow Failed too.
                 switch (outcome)
                 {
-                    case EntryOutcome.Ingested: Interlocked.Increment(ref ingested); break;
+                    case EntryOutcome.Ingested: ingested.Enqueue(Describe(entry)); break;
                     case EntryOutcome.Failed:
-                        Interlocked.Increment(ref failed);
+                        failed.Enqueue(Describe(entry));
                         if (stopOnFirstError)
                             await stopSignal.CancelAsync().ConfigureAwait(false);
                         break;
-                    default: Interlocked.Increment(ref skipped); break;
+                    default: skipped.Enqueue(Describe(entry)); break;
                 }
             }).ConfigureAwait(false);
         }
@@ -174,7 +206,7 @@ public static class RagPipelineExtensions
             // caller cancellation does not match this filter and still propagates.
         }
 
-        return new EntryTally(ingested, skipped, failed,
+        return new EntryTally([.. ingested], [.. skipped], [.. failed],
             stopSignal.IsCancellationRequested && !cancellationToken.IsCancellationRequested);
     }
 
@@ -188,7 +220,7 @@ public static class RagPipelineExtensions
     /// and nothing is ever deleted. Reported as #394 — pages excluded from a sitemap after indexing
     /// stayed in the index and the run reported success.
     /// </remarks>
-    private static async Task<int> CleanupIfRequestedAsync(
+    private static async Task<List<ProviderEntryOutcome>> CleanupIfRequestedAsync(
         IRagPipeline pipeline,
         ProviderId providerId,
         IContentHashStore? hashStore,
@@ -201,7 +233,7 @@ public static class RagPipelineExtensions
     {
         if (cleanupMode != CleanupMode.Full)
         {
-            return 0;
+            return [];
         }
 
         if (hashStore is null)
@@ -216,7 +248,7 @@ public static class RagPipelineExtensions
                     "an IContentHashStore — the same one the earlier runs used, or cleanup has no " +
                     "history to work from."),
             ]));
-            return 0;
+            return [];
         }
 
         return await CleanupUnlessTheRunStoppedEarlyAsync(pipeline, providerId, hashStore,
@@ -233,7 +265,7 @@ public static class RagPipelineExtensions
     /// answer, and it is reported rather than done quietly: a caller who asked for
     /// <see cref="CleanupMode.Full"/> and got no deletions is owed the reason.
     /// </remarks>
-    private static async Task<int> CleanupUnlessTheRunStoppedEarlyAsync(
+    private static async Task<List<ProviderEntryOutcome>> CleanupUnlessTheRunStoppedEarlyAsync(
         IRagPipeline pipeline,
         ProviderId providerId,
         IContentHashStore hashStore,
@@ -259,7 +291,7 @@ public static class RagPipelineExtensions
                 "to clean up."),
         ]));
 
-        return 0;
+        return [];
     }
 
     /// <summary>
@@ -378,7 +410,7 @@ public static class RagPipelineExtensions
         return EntryOutcome.Ingested;
     }
 
-    private static async Task<int> CleanupDisappearedAsync(
+    private static async Task<List<ProviderEntryOutcome>> CleanupDisappearedAsync(
         IRagPipeline pipeline,
         ProviderId providerId,
         IContentHashStore hashStore,
@@ -387,7 +419,7 @@ public static class RagPipelineExtensions
         ConcurrentBag<RagError> errors,
         CancellationToken cancellationToken)
     {
-        var deleted = 0;
+        var deleted = new List<ProviderEntryOutcome>();
         foreach (var id in knownIds)
         {
             if (seenIds.ContainsKey(id)) continue;
@@ -396,7 +428,8 @@ public static class RagPipelineExtensions
             {
                 await pipeline.DeleteAsync(id.Value, cancellationToken).ConfigureAwait(false);
                 await hashStore.RemoveAsync(providerId, id, cancellationToken).ConfigureAwait(false);
-                deleted++;
+                // Id only: nothing listed this document this run, so there is no name to report.
+                deleted.Add(new ProviderEntryOutcome(id));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

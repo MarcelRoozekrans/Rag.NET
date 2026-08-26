@@ -61,8 +61,8 @@ public sealed class IngestFromProviderTests : IDisposable
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, result.Ingested);
-        Assert.Equal(0, result.Skipped);
+        Assert.Equal(2, result.IngestedCount);
+        Assert.Equal(0, result.SkippedCount);
         _ = await _pipeline.Received(2).IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
             Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
     }
@@ -77,8 +77,8 @@ public sealed class IngestFromProviderTests : IDisposable
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"), hashStore: hashStore,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(0, result.Ingested);
-        Assert.Equal(1, result.Skipped);
+        Assert.Equal(0, result.IngestedCount);
+        Assert.Equal(1, result.SkippedCount);
         _ = await _pipeline.DidNotReceive().IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
             Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
     }
@@ -95,8 +95,8 @@ public sealed class IngestFromProviderTests : IDisposable
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"), hashStore: hashStore,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(0, result.Ingested);
-        Assert.Equal(1, result.Skipped);
+        Assert.Equal(0, result.IngestedCount);
+        Assert.Equal(1, result.SkippedCount);
         // ETag should be refreshed
         Assert.Equal("new-etag", await hashStore.GetETagAsync(new ProviderId("prov"), new EntryId("id-1"), TestContext.Current.CancellationToken));
     }
@@ -127,7 +127,7 @@ public sealed class IngestFromProviderTests : IDisposable
             provider, new ProviderId("prov"), hashStore: hashStore, cleanupMode: CleanupMode.Full,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(1, result.Deleted);
+        Assert.Equal(1, result.DeletedCount);
         await _pipeline.Received(1).DeleteAsync("old-id", Arg.Any<CancellationToken>());
         Assert.Null(await hashStore.GetHashAsync(new ProviderId("prov"), new EntryId("old-id"), TestContext.Current.CancellationToken));
     }
@@ -246,10 +246,10 @@ public sealed class IngestFromProviderTests : IDisposable
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(1, result.Ingested);   // id-2 ingested
-        Assert.Equal(1, result.Failed);     // id-1 threw
-        Assert.Equal(0, result.Skipped);    // nothing was up to date; #355
-        Assert.Equal(2, result.Ingested + result.Failed); // both entries were attempted
+        Assert.Equal(1, result.IngestedCount);   // id-2 ingested
+        Assert.Equal(1, result.FailedCount);     // id-1 threw
+        Assert.Equal(0, result.SkippedCount);    // nothing was up to date; #355
+        Assert.Equal(2, result.IngestedCount + result.FailedCount); // both entries were attempted
         Assert.Single(result.Errors);
         Assert.IsType<RagError.StorageFailed>(result.Errors[0]);
     }
@@ -272,11 +272,13 @@ public sealed class IngestFromProviderTests : IDisposable
             options: new IngestionOptions { StopOnFirstError = true },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        // One failure, and — the point of the option — the other two were never attempted, which
-        // the counts prove: three entries went in and only one outcome came back.
-        Assert.Equal(1, result.Failed);
-        Assert.Equal(0, result.Ingested);
-        Assert.Equal(0, result.Skipped);
+        // One failure, and — the point of the option — the other two were never attempted. The
+        // counts alone cannot show that: three entries go in and one outcome comes back, which
+        // reads the same as a provider that only listed one. StopOnFirstError_ReportsTheEntries-
+        // ItNeverReached asserts the missing two by name.
+        Assert.Equal(1, result.FailedCount);
+        Assert.Equal(0, result.IngestedCount);
+        Assert.Equal(0, result.SkippedCount);
         // Discarded: IngestAsync returns a Result, and the analyzer requires one be observed.
         _ = await _pipeline.Received(1).IngestAsync(
             Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
@@ -298,8 +300,8 @@ public sealed class IngestFromProviderTests : IDisposable
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(3, result.Failed);
-        Assert.Equal(0, result.Ingested);
+        Assert.Equal(3, result.FailedCount);
+        Assert.Equal(0, result.IngestedCount);
         _ = await _pipeline.Received(3).IngestAsync(
             Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
             Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
@@ -330,7 +332,7 @@ public sealed class IngestFromProviderTests : IDisposable
             cleanupMode: CleanupMode.Full,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(0, result.Deleted);
+        Assert.Equal(0, result.DeletedCount);
         await _pipeline.DidNotReceive().DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
 
         // And it is still there: the whole point is that the unvisited document survives.
@@ -341,6 +343,183 @@ public sealed class IngestFromProviderTests : IDisposable
         var validation = Assert.Single(result.Errors.OfType<RagError.ValidationFailed>());
         Assert.Contains(validation.Failures, f =>
             string.Equals(f.PropertyName, nameof(IngestionOptions.StopOnFirstError), StringComparison.Ordinal));
+    }
+
+    // ---- #395: the result names the entries, not just how many there were ----
+
+    [Fact]
+    public async Task Ingested_NamesTheEntries_NotJustHowManyThereWere()
+    {
+        var provider = MakeProvider(
+            ("id-1", "a.txt", "hello", "etag-a"),
+            ("id-2", "b.txt", "world", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // The ask in #395: say which files, so a caller does not have to hook IProgress to find out.
+        Assert.Equal(["a.txt", "b.txt"], result.Ingested.Select(e => e.FileName), StringComparer.Ordinal);
+        Assert.Equal([new EntryId("id-1"), new EntryId("id-2")], result.Ingested.Select(e => e.Id));
+        Assert.Equal("etag-a", result.Ingested[0].ETag);
+        Assert.Null(result.Ingested[1].ETag);
+    }
+
+    [Fact]
+    public async Task Skipped_NamesTheEntryThatWasAlreadyUpToDate()
+    {
+        var hashStore = new SqliteContentHashStore(_dbPath);
+        await hashStore.SetAsync(new ProviderId("prov"), new EntryId("id-1"), etag: "etag-abc",
+            hash: "any", TestContext.Current.CancellationToken);
+
+        var provider = MakeProvider(
+            ("id-1", "unchanged.txt", "hello", "etag-abc"),
+            ("id-2", "fresh.txt", "world", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            hashStore: hashStore, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("unchanged.txt", Assert.Single(result.Skipped).FileName);
+        Assert.Equal("fresh.txt", Assert.Single(result.Ingested).FileName);
+    }
+
+    [Fact]
+    public async Task Failed_NamesTheEntryThatThrew()
+    {
+        FailEveryIngest();
+        var provider = MakeProvider(("id-1", "broken.txt", "hello", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var failed = Assert.Single(result.Failed);
+        Assert.Equal("broken.txt", failed.FileName);
+        Assert.Equal(new EntryId("id-1"), failed.Id);
+    }
+
+    [Fact]
+    public async Task StopOnFirstError_ReportsTheEntriesItNeverReached()
+    {
+        // The gap that made counts insufficient. Stopping at the first error leaves the remaining
+        // entries in no list at all, so a run that stopped after one of 5,000 URLs is
+        // indistinguishable from a run that only had one URL to do. NotAttempted is the difference.
+        FailEveryIngest();
+
+        var provider = MakeProvider(
+            ("id-1", "a.txt", "one",   null),
+            ("id-2", "b.txt", "two",   null),
+            ("id-3", "c.txt", "three", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(
+            provider,
+            new ProviderId("prov"),
+            options: new IngestionOptions { StopOnFirstError = true },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("a.txt", Assert.Single(result.Failed).FileName);
+        Assert.Equal(["b.txt", "c.txt"], result.NotAttempted.Select(e => e.FileName), StringComparer.Ordinal);
+        // And they really were never touched — named, not merely re-labelled.
+        _ = await _pipeline.Received(1).IngestAsync(
+            Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
+            Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunThatCompletes_LeavesNotAttemptedEmpty()
+    {
+        // The other half: NotAttempted must not become a dumping ground that is non-empty whenever
+        // anything failed. Every entry here was reached, one of them just failed.
+        _pipeline.IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
+                Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ci => Task.FromResult(
+                string.Equals(ci.ArgAt<DocumentMetadata>(1).DocumentId.Value, "id-2", StringComparison.Ordinal)
+                    ? Result<IngestionResult, RagError>.Failure(new RagError.StorageFailed(new InvalidOperationException("boom")))
+                    : Result<IngestionResult, RagError>.Success(
+                        new IngestionResult { DocumentId = ci.ArgAt<DocumentMetadata>(1).DocumentId, ChunksStored = 1 })));
+
+        var provider = MakeProvider(
+            ("id-1", "a.txt", "one",   null),
+            ("id-2", "b.txt", "two",   null),
+            ("id-3", "c.txt", "three", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Empty(result.NotAttempted);
+        Assert.Equal(["a.txt", "c.txt"], result.Ingested.Select(e => e.FileName), StringComparer.Ordinal);
+        Assert.Equal("b.txt", Assert.Single(result.Failed).FileName);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task EveryListedEntry_LandsInExactlyOneList(bool stopOnFirstError)
+    {
+        // The invariant that makes the result a statement about the whole run rather than a set of
+        // loosely related tallies: the four lists partition what the provider listed, whether or
+        // not the run went the distance.
+        FailEveryIngest();
+
+        var provider = MakeProvider(
+            ("id-1", "a.txt", "one",   null),
+            ("id-2", "b.txt", "two",   null),
+            ("id-3", "c.txt", "three", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(
+            provider,
+            new ProviderId("prov"),
+            options: new IngestionOptions { StopOnFirstError = stopOnFirstError },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var everywhere = result.Ingested
+            .Concat(result.Skipped)
+            .Concat(result.Failed)
+            .Concat(result.NotAttempted)
+            .Select(e => e.Id)
+            .ToList();
+
+        Assert.Equal(3, result.ListedCount);
+        Assert.Equal(3, everywhere.Count);            // nothing lost
+        Assert.Equal(3, everywhere.ToHashSet().Count); // and nothing double-counted
+    }
+
+    [Fact]
+    public async Task Deleted_NamesTheDocumentByIdAlone_BecauseNothingListedItThisRun()
+    {
+        var hashStore = new SqliteContentHashStore(_dbPath);
+        await hashStore.SetAsync(new ProviderId("prov"), new EntryId("gone"), null, "old-hash",
+            TestContext.Current.CancellationToken);
+
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            hashStore: hashStore, cleanupMode: CleanupMode.Full,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var deleted = Assert.Single(result.Deleted);
+        Assert.Equal(new EntryId("gone"), deleted.Id);
+        // No name, and that is the honest answer: the provider did not list this document, so this
+        // run never held a FileEntry for it. Anything else here would be invented.
+        Assert.Null(deleted.FileName);
+        // It is also not one of the listed entries.
+        Assert.Equal(1, result.ListedCount);
+    }
+
+    [Fact]
+    public void ProviderEntryOutcome_CarriesNoContentCallback()
+    {
+        // Guards #395's design decision against a well-meaning revert to FileEntry. A finished
+        // run's report must not hand back a delegate that opens content from a source that may
+        // already be gone — and for a deleted document there is no FileEntry to hand back at all.
+        var properties = typeof(ProviderEntryOutcome).GetProperties();
+
+        Assert.DoesNotContain(properties, p => typeof(Delegate).IsAssignableFrom(p.PropertyType));
+        Assert.All(
+            typeof(ProviderIngestionResult).GetProperties()
+                .Where(p => p.PropertyType.IsGenericType
+                    && p.PropertyType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>))
+                .Where(p => p.PropertyType.GetGenericArguments()[0] != typeof(RagError)),
+            p => Assert.Equal(typeof(ProviderEntryOutcome), p.PropertyType.GetGenericArguments()[0]));
     }
 
     private void FailEveryIngest() =>
@@ -366,8 +545,8 @@ public sealed class IngestFromProviderTests : IDisposable
             cleanupMode: CleanupMode.Full,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(1, result.Ingested);
-        Assert.Equal(0, result.Deleted);
+        Assert.Equal(1, result.IngestedCount);
+        Assert.Equal(0, result.DeletedCount);
 
         var validation = Assert.Single(result.Errors.OfType<RagError.ValidationFailed>());
         Assert.Contains(validation.Failures, f =>
@@ -396,7 +575,7 @@ public sealed class IngestFromProviderTests : IDisposable
             cleanupMode: CleanupMode.Full,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(1, result.Deleted);
+        Assert.Equal(1, result.DeletedCount);
         await _pipeline.Received(1).DeleteAsync("excluded-later", Arg.Any<CancellationToken>());
         Assert.Empty(result.Errors);
     }
@@ -415,7 +594,7 @@ public sealed class IngestFromProviderTests : IDisposable
             cleanupMode: CleanupMode.None,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(0, result.Deleted);
+        Assert.Equal(0, result.DeletedCount);
         await _pipeline.DidNotReceive().DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
         // "old-id" must still be in the store
         Assert.NotNull(await hashStore.GetHashAsync(new ProviderId("prov"), new EntryId("old-id"), TestContext.Current.CancellationToken));
@@ -486,8 +665,8 @@ public sealed class IngestFromProviderTests : IDisposable
             options: options,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(4, result.Ingested);
-        Assert.Equal(0, result.Skipped);
+        Assert.Equal(4, result.IngestedCount);
+        Assert.Equal(0, result.SkippedCount);
     }
 
     /// <summary>
@@ -560,7 +739,7 @@ public sealed class IngestFromProviderTests : IDisposable
 
         var result = await ingestTask;
 
-        Assert.Equal(3, result.Ingested);
+        Assert.Equal(3, result.IngestedCount);
         Assert.True(maxConcurrent > 1, $"Expected concurrent ingestion but maxConcurrent was {maxConcurrent}");
     }
 
@@ -980,7 +1159,7 @@ public sealed class IngestFromProviderTests : IDisposable
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov-42"),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(1, result.Ingested);
+        Assert.Equal(1, result.IngestedCount);
         Assert.Equal("prov-42", Assert.Single(captured).Tags[ReservedMetadataKeys.ProviderId]);
     }
 
@@ -994,7 +1173,7 @@ public sealed class IngestFromProviderTests : IDisposable
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov-42"),
             hashStore: hashStore, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(1, result.Ingested);
+        Assert.Equal(1, result.IngestedCount);
         Assert.Equal("prov-42", Assert.Single(captured).Tags[ReservedMetadataKeys.ProviderId]);
     }
 
@@ -1052,7 +1231,7 @@ public sealed class IngestFromProviderTests : IDisposable
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(0, result.Ingested);
+        Assert.Equal(0, result.IngestedCount);
         Assert.Single(result.Errors);
         var error = Assert.IsType<RagError.HttpFailed>(result.Errors[0]);
         Assert.Equal(System.Net.HttpStatusCode.Unauthorized, error.StatusCode);
@@ -1072,7 +1251,7 @@ public sealed class IngestFromProviderTests : IDisposable
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(0, result.Ingested);
+        Assert.Equal(0, result.IngestedCount);
         Assert.Equal(2, result.Errors.Count);
         Assert.All(result.Errors, e => Assert.IsType<RagError.HttpFailed>(e));
     }
@@ -1086,7 +1265,7 @@ public sealed class IngestFromProviderTests : IDisposable
             options: new IngestionOptions { MaxDegreeOfParallelism = 0 },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(0, result.Ingested);
+        Assert.Equal(0, result.IngestedCount);
         var error = Assert.IsType<RagError.ValidationFailed>(Assert.Single(result.Errors));
         Assert.Contains(error.Failures, f => f.PropertyName.Contains("MaxDegreeOfParallelism", StringComparison.OrdinalIgnoreCase));
         // Fail-fast: the provider is never enumerated.
@@ -1105,7 +1284,7 @@ public sealed class IngestFromProviderTests : IDisposable
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Empty(result.Errors);
-        Assert.Equal(2, result.Ingested);
+        Assert.Equal(2, result.IngestedCount);
     }
 
     [Fact]
@@ -1117,7 +1296,7 @@ public sealed class IngestFromProviderTests : IDisposable
             options: new IngestionOptions { EmbedBatchSize = 0 },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(0, result.Ingested);
+        Assert.Equal(0, result.IngestedCount);
         var error = Assert.IsType<RagError.ValidationFailed>(Assert.Single(result.Errors));
         Assert.Contains(error.Failures, f => f.PropertyName.Contains("EmbedBatchSize", StringComparison.OrdinalIgnoreCase));
         _ = provider.DidNotReceive().GetFilesAsync(Arg.Any<CancellationToken>());
@@ -1145,7 +1324,7 @@ public sealed class IngestFromProviderTests : IDisposable
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(1, result.Ingested);
+        Assert.Equal(1, result.IngestedCount);
         Assert.Single(result.Errors);
         Assert.IsType<RagError.HttpFailed>(result.Errors[0]);
     }
@@ -1282,9 +1461,9 @@ public sealed class IngestFromProviderTests : IDisposable
         var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(1, result.Failed);
-        Assert.Equal(0, result.Skipped);
-        Assert.Equal(0, result.Ingested);
+        Assert.Equal(1, result.FailedCount);
+        Assert.Equal(0, result.SkippedCount);
+        Assert.Equal(0, result.IngestedCount);
         _ = Assert.Single(result.Errors);
     }
 }
