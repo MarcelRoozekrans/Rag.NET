@@ -100,6 +100,26 @@ public sealed class GraphRagFunctionsTests
     /// 3.74%.
     /// </para>
     /// <para>
+    /// <b>#176 asked whether that is a defect worth fixing, and the answer is no — established by
+    /// looking at the dropped names rather than counting them (2026-08-26).</b> The 853 drops name
+    /// <b>565 distinct</b> unresolved endpoints, and they are not entities the extractor missed.
+    /// The most frequent are <c>content policies</c> (10), <c>tasks</c> (10), <c>smart plug</c>
+    /// (9), <c>handy tool</c> (8), <c>film</c> (7), <c>ceremony</c> (6), <c>death</c> (5),
+    /// <c>decisions</c> (5), <c>protagonist</c> (5), <c>regulations</c> (4) — common nouns — mixed
+    /// with descriptive paraphrases of things that <i>are</i> extracted: <c>Falun Gong
+    /// practitioners</c> beside the entity <c>Falun Gong</c>, <c>Rachel's husband</c>,
+    /// <c>Lars Mapstead's parents</c>, <c>second-gen Amazon Echo Buds</c>.
+    /// </para>
+    /// <para>
+    /// <b>So the obvious fix is the wrong one.</b> Promoting unresolved endpoints into entities
+    /// would drive the singleton share down while adding 565 junk nodes named after common nouns —
+    /// a better-looking number over a worse graph. The singletons are honest, and what produces
+    /// them is the model writing relationship endpoints as prose descriptions instead of the
+    /// canonical names it extracted. Any fix belongs in the extraction prompt, and would have to be
+    /// measured against retrieval rather than against the singleton count, which is exactly the
+    /// metric it would be easiest to move without helping. Nothing is changed on this finding.
+    /// </para>
+    /// <para>
     /// What cannot be legitimate is one community swallowing the graph: at 89.7% — where this slice
     /// sat while <c>Leiden.BuildAggregatedEdges</c> discarded intra-community weight — every
     /// assertion about clustering below is satisfied while nothing has been clustered. The margin
@@ -175,6 +195,7 @@ public sealed class GraphRagFunctionsTests
             ct);
 
         _output.WriteLine(Describe(documents, queries, run));
+        _output.WriteLine(DescribeDroppedEndpoints(run));
 
         AssertExtractionProducedEntitiesAndRelationships(run);
         AssertEntitiesRecurAcrossArticles(run);
@@ -182,6 +203,79 @@ public sealed class GraphRagFunctionsTests
         AssertEveryCommunityCarriesARealReport(run);
         await AssertLocalSearchFindsRelevantDocumentsAsync(run, queries, dataset, ct);
         await AssertGlobalSearchDiffersFromLocalAsync(run, queries[0], ct);
+    }
+
+    /// <summary>
+    /// Names a sample of the relationship endpoints Leiden drops, alongside the counts.
+    /// </summary>
+    /// <remarks>
+    /// <b>The names are the point, and they answered #176.</b> The counts alone invite the obvious
+    /// fix — promote an unresolved endpoint into an entity, and the singleton count falls. The
+    /// names show why that would make the graph worse rather than better: they are overwhelmingly
+    /// common nouns and descriptive paraphrases, not entities the extractor missed. Ten a sample
+    /// rather than forty, because the distribution is a long tail and the top of it is
+    /// representative.
+    /// </remarks>
+    private static string DescribeDroppedEndpoints(GraphRagRun run)
+    {
+        var known = new HashSet<string>(GraphNames.Comparer);
+        foreach (var entity in run.Graph.Entities)
+        {
+            known.Add(entity.Name);
+        }
+
+        var missing = new Dictionary<string, int>(GraphNames.Comparer);
+        var selfLoops = 0;
+        var dropped = 0;
+
+        foreach (var rel in run.Graph.Relationships)
+        {
+            var sourceKnown = known.Contains(rel.SourceEntity);
+            var targetKnown = known.Contains(rel.TargetEntity);
+
+            if (sourceKnown && targetKnown)
+            {
+                if (GraphNames.Comparer.Equals(rel.SourceEntity, rel.TargetEntity))
+                {
+                    selfLoops++;
+                    dropped++;
+                }
+
+                continue;
+            }
+
+            dropped++;
+            if (!sourceKnown)
+            {
+                missing[rel.SourceEntity] = missing.GetValueOrDefault(rel.SourceEntity) + 1;
+            }
+
+            if (!targetKnown)
+            {
+                missing[rel.TargetEntity] = missing.GetValueOrDefault(rel.TargetEntity) + 1;
+            }
+        }
+
+        var ranked = missing.OrderByDescending(e => e.Value).ThenBy(e => e.Key, StringComparer.Ordinal).ToList();
+        var lines = new System.Text.StringBuilder();
+        lines.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"""
+
+            #176 DROPPED ENDPOINTS
+              entities extracted    : {run.Graph.Entities.Count}
+              relationships         : {run.Graph.Relationships.Count}
+              relationships dropped : {dropped} ({(double)dropped / run.Graph.Relationships.Count:P2})
+                of which self-loops : {selfLoops}
+              distinct unknown names: {ranked.Count}
+              top 10 unknown endpoint names by frequency:
+            """);
+
+        for (var i = 0; i < ranked.Count && i < 10; i++)
+        {
+            lines.AppendLine(System.Globalization.CultureInfo.InvariantCulture,
+                $"    {ranked[i].Value,4}x  {ranked[i].Key}");
+        }
+
+        return lines.ToString();
     }
 
     /// <summary>Assertion 1: the extraction stage produced a graph at all.</summary>
