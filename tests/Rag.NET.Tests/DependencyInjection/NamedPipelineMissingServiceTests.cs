@@ -145,6 +145,62 @@ public class NamedPipelineMissingServiceTests
     }
 
     [Fact]
+    public async Task Get_WhenAHostSingletonDependsOnTheFactory_DoesNotDeadlock()
+    {
+        // #396: reported as a Blazor app that hangs at startup and works fine as a console app.
+        // Forwarding used to run inside IRagPipelineFactory's own factory delegate, so it resolved
+        // root singletons while that service was still being constructed — and a root singleton
+        // that depends on IRagPipelineFactory re-entered the container and deadlocked outright.
+        // A transient dependent never did, because transients are not forwarded, which is why this
+        // asserts the singleton case specifically.
+        var services = new ServiceCollection();
+        services.AddSingleton(Embedder());
+        services.AddSingleton<HostServiceNeedingTheFactory>();
+        services.AddRagNet("abc", rag => rag.Services.AddSingleton(Substitute.For<IVectorStore>()));
+
+        using var provider = services.BuildServiceProvider();
+
+        // Timed rather than called directly: the failure is a hang, so a plain call would take the
+        // whole test run down with it rather than reporting anything.
+        var resolve = Task.Run(() => provider.GetRequiredService<IRagPipelineFactory>().Get("abc"));
+        var completed = await Task.WhenAny(
+            resolve,
+            Task.Delay(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken)) == resolve;
+
+        Assert.True(completed, "Get('abc') did not return within 30 s — forwarding is resolving root services from inside the factory that is still being constructed.");
+        Assert.NotNull(await resolve);
+    }
+
+    [Fact]
+    public void Contains_DoesNotBuildAnything()
+    {
+        // The other half of deferring forwarding: asking whether a name exists must not construct
+        // the host's singletons. It used to, because forwarding ran when the factory was built.
+        // A type the child does NOT register itself, or it would never be forwarded and this would
+        // pass whatever forwarding does — which is exactly how it read before a mutation showed it.
+        var built = false;
+        var services = new ServiceCollection();
+        services.AddSingleton(Embedder());
+        services.AddSingleton(_ => { built = true; return new HostOnlyMarker(); });
+        services.AddRagNet("abc", rag => rag.Services.AddSingleton(Substitute.For<IVectorStore>()));
+
+        using var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IRagPipelineFactory>();
+
+        Assert.True(factory.Contains("abc"));
+        Assert.False(built, "Contains(name) constructed a host singleton; only Get(name) should.");
+    }
+
+    /// <summary>A type only the host registers, so forwarding is the only way it reaches a child.</summary>
+    private sealed class HostOnlyMarker;
+
+    /// <summary>A host service that takes the factory — the shape #396 deadlocked on.</summary>
+    private sealed class HostServiceNeedingTheFactory(IRagPipelineFactory factory)
+    {
+        public IRagPipelineFactory Factory { get; } = factory;
+    }
+
+    [Fact]
     public void Get_WithAnUnknownName_StillThrowsArgumentException()
     {
         // The guidance catch takes InvalidOperationException only; an unknown name must keep its

@@ -286,12 +286,17 @@ Services declared in `AddRagNetShared` stay singular across every name: four typ
 and the reranker — and MiniLM alone is roughly 90 MB, so one instance per pipeline would load the
 same model repeatedly.
 
-**The inherited and shared services are built eagerly, even though children are not.** Resolving
-`IRagPipelineFactory` — including just to call `Contains(name)` — constructs every service
-`AddRagNetShared` declared *and* every eligible host singleton a child inherits, because both are
-resolved from the root provider before any child is built. An instance is the only shape that keeps
-ownership with the root: a factory descriptor would have the first child disposed dispose something
-it does not own. A container with `AddRagNetShared(rag => rag.UseOnnxEmbeddings(...))` loads the
+**The inherited and shared services are built on the first `Get(name)`, not before.** Both are
+resolved from the root provider just before that name's child is built, so `Contains(name)` and
+resolving `IRagPipelineFactory` itself construct nothing. An instance is the only shape that keeps
+ownership with the root — a factory descriptor would have the first child disposed dispose something
+it does not own — and resolving to get that instance is why the timing matters.
+
+They were resolved earlier, while `IRagPipelineFactory` itself was being constructed, until #396.
+That re-entered the container for a service still under construction, and **a host singleton that
+depends on `IRagPipelineFactory` deadlocked outright** — reported as a Blazor app that hung at
+startup and worked as a console app. Deferring to `Get(name)` means the same registration resolves
+after this factory exists, which is both correct and cheaper. A container with `AddRagNetShared(rag => rag.UseOnnxEmbeddings(...))` loads the
 ONNX model on the first `IRagPipelineFactory` resolution, not on the first `Get(name)` that would
 actually use it.
 

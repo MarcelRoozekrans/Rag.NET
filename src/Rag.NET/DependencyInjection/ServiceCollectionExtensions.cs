@@ -575,19 +575,32 @@ public static class ServiceCollectionExtensions
         var shared = new List<Type>();
         foreach (var (name, registration) in named)
         {
-            ForwardSharedServices(registration, rootProvider);
-            ForwardAmbientRootServices(registration, rootServices, rootProvider);
             collections[name] = registration.Services;
 
             // Every registration points at the same SharedServiceTypes instance, so one pass fills
-            // this; it exists only so a resolution failure can say what the shared block declared.
+            // this; it needs no resolution, only the declared types, so it is safe here.
             if (shared.Count == 0)
             {
                 shared.AddRange(registration.Shared.Entries.Select(e => e.ServiceType));
             }
         }
 
-        return new RagPipelineFactory(collections, shared);
+        // Forwarding is deferred to the first Get(name) rather than done here, and that is a
+        // correctness requirement rather than a lazy-loading preference. This method IS the factory
+        // delegate for IRagPipelineFactory: resolving root singletons from inside it re-enters the
+        // container for a service that is still being constructed, and a root singleton that
+        // depends on IRagPipelineFactory then deadlocks outright (#396). Resolving at Get(name)
+        // happens after this factory is fully constructed, so the same registration resolves
+        // normally. It also means Contains(name) no longer constructs anything.
+        return new RagPipelineFactory(
+            collections,
+            name =>
+            {
+                var registration = named[name];
+                ForwardSharedServices(registration, rootProvider);
+                ForwardAmbientRootServices(registration, rootServices, rootProvider);
+            },
+            shared);
     }
 
     /// <summary>
