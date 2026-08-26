@@ -623,7 +623,53 @@ public static class BeirRunBudget
             "FitsTheNightly is false for the Real cell's reason: on a nightly whose cache is " +
             "fresh this costs the Real leg's cold embedding first, and that figure is not yet " +
             "clean. Revisit both together when #174 lands."),
-    ];
+            new(
+            "scifact",
+            BeirProtocol.SemanticChunking,
+            FitsTheNightly: false,
+            "NOT YET RUN. SciFact abstracts are short, so this cell is also the test of whether semantic chunking splits them at all — the arm asserts more units than documents before reporting, so a corpus it cannot split fails there rather than reporting the Real figure under another name. "
+            + "Cost is embedding-bound and pays no model: the chunker embeds each sentence to "
+            + "find boundaries, then the harness embeds the resulting units, so it is strictly "
+            + "more embedding work than the Real cell on the same dataset and no LLM calls at "
+            + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
+            + "new text and is not in any cache, so a re-run costs the same as the first. "
+            + "**MEASURED 2026-08-26: all four datasets in 4 h 18 m, ~202,000 CPU-seconds.** That "
+            + "first run reported its figures through ITestOutputHelper, which this project's "
+            + "runner suppresses for passing tests, so it proved the mechanism and produced no "
+            + "number. Run this cell with -showLiveOutput. Not caching the sentence embeddings is "
+            + "worth revisiting for the same reason: at four hours a run, repeatability is worth "
+            + "more than the disk it would take."),
+        new(
+            "fiqa",
+            BeirProtocol.SemanticChunking,
+            FitsTheNightly: false,
+            "NOT YET RUN. FiQA answers are longer than SciFact abstracts, so this is the cell most likely to show a real difference either way. "
+            + "Cost is embedding-bound and pays no model: the chunker embeds each sentence to "
+            + "find boundaries, then the harness embeds the resulting units, so it is strictly "
+            + "more embedding work than the Real cell on the same dataset and no LLM calls at "
+            + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
+            + "new text and is not in any cache."),
+        new(
+            "arguana",
+            BeirProtocol.SemanticChunking,
+            FitsTheNightly: false,
+            "NOT YET RUN. ArguAna documents are single arguments and among the shortest in the suite; expect few splits, and treat a no-split failure as the finding rather than as a broken cell. "
+            + "Cost is embedding-bound and pays no model: the chunker embeds each sentence to "
+            + "find boundaries, then the harness embeds the resulting units, so it is strictly "
+            + "more embedding work than the Real cell on the same dataset and no LLM calls at "
+            + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
+            + "new text and is not in any cache."),
+        new(
+            "trec-covid",
+            BeirProtocol.SemanticChunking,
+            FitsTheNightly: false,
+            "NOT YET RUN. NOT RUN, for the same reason the other TREC-COVID cells are not: the corpus is an order larger than the other three and no cell here has been budgeted for it. "
+            + "Cost is embedding-bound and pays no model: the chunker embeds each sentence to "
+            + "find boundaries, then the harness embeds the resulting units, so it is strictly "
+            + "more embedding work than the Real cell on the same dataset and no LLM calls at "
+            + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
+            + "new text and is not in any cache."),
+];
 
     /// <summary>
     /// Reports whether this case is one the nightly cannot afford and nobody asked for.
@@ -782,6 +828,10 @@ public static class BeirRunBudget
         BeirProtocol.Haystack =>
             "HAYSTACK entrant (DocumentSplitter defaults, InMemoryDocumentStore dot_product, " +
             "pinned embedder, scored from the Python harness's TREC run file)",
+        BeirProtocol.SemanticChunking =>
+            "SEMANTIC CHUNKING (documents split on embedding-based sentence boundaries instead of " +
+            "indexed one chunk per document, max-pooled back to documents, against the parity " +
+            "dense figure)",
         BeirProtocol.GraphRag =>
             "GRAPHRAG (entities and relations extracted into a graph, communities detected, " +
             "local and global search over the result)",
@@ -869,6 +919,7 @@ public static class BeirRunBudget
             BeirProtocol.HybridBm25 => "UnderBm25HybridRrf",
             BeirProtocol.Hyde => "UnderCachedHyde",
             BeirProtocol.Reranked => "UnderCrossEncoderRerank",
+            BeirProtocol.SemanticChunking => "UnderSemanticChunking",
             BeirProtocol.Comparison => nameof(BeirComparisonControlTests),
             BeirProtocol.SemanticKernel => nameof(BeirSemanticKernelDefaultsTests),
             BeirProtocol.LangChain => "ThroughLangChain",

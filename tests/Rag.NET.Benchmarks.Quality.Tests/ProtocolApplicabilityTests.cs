@@ -42,6 +42,14 @@ public sealed class ProtocolApplicabilityTests
             "multihop-rag/LangChain",
             "multihop-rag/LlamaIndex",
             "multihop-rag/Haystack",
+
+            // Phase 6.2.1: SemanticChunking applies to the four BEIR datasets and not to
+            // multihop-rag, which carries only the graph protocols. A new protocol necessarily adds
+            // a pair here for every descriptor that does not declare it — that is the set growing
+            // because the enum grew, not applicability being quietly narrowed, which is what the
+            // remarks above warn against.
+            "multihop-rag/SemanticChunking",
+
             "scifact/GraphRag",
             "fiqa/GraphRag",
             "arguana/GraphRag",

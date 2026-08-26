@@ -643,7 +643,99 @@ public static class BeirReproduction
             "figure exists for this configuration, and its job is drift. A re-run that lands " +
             "away from the Real leg's figure has moved either the chunker or the pooling, " +
             "because this run holds everything else still."),
-    ];
+            new(
+            "scifact",
+            BeirProtocol.SemanticChunking,
+            [0.64551],
+            "MEASURED 2026-08-26 on Windows 11, .NET 10.0.11, CPU ONNX Runtime — Phase 6.2.1. "
+            + "SemanticChunkingStrategy at its defaults (breakpoint percentile 0.25, minimum 100 "
+            + "characters), same corpus, embedder and retrieval as this dataset's Parity cell, "
+            + "differing only in where the boundaries fall. "
+            + "**The control is the PARITY figure, not Real**: this cell runs under the ablation "
+            + "table's protocol, and against Real instead SciFact's wash reads as a 0.032 "
+            + "regression. "
+            + "**nDCG@10 0.64551 against the parity control's 0.64593 — -0.00042, a wash.** "
+            + "13,103 units over 5,183 documents, max 18 per document, none dropped. "
+            + "**The pattern across the four is document length.** Semantic chunking costs "
+            + "accuracy on corpora of short documents and buys it on long ones: SciFact abstracts "
+            + "-0.00042, ArguAna single arguments -0.02930, FiQA answers -0.02577, TREC-COVID "
+            + "full-text articles +0.06769. TREC-COVID is also the only corpus where a document "
+            + "reached 418 units; the other three top out at 12 to 22. Splitting a document that "
+            + "was already one idea can only dilute it, and max-pooling cannot recover what the "
+            + "split threw away."
+            ),
+        new(
+            "fiqa",
+            BeirProtocol.SemanticChunking,
+            [0.34509],
+            "MEASURED 2026-08-26 on Windows 11, .NET 10.0.11, CPU ONNX Runtime — Phase 6.2.1. "
+            + "SemanticChunkingStrategy at its defaults (breakpoint percentile 0.25, minimum 100 "
+            + "characters), same corpus, embedder and retrieval as this dataset's Parity cell, "
+            + "differing only in where the boundaries fall. "
+            + "**The control is the PARITY figure, not Real**: this cell runs under the ablation "
+            + "table's protocol, and against Real instead SciFact's wash reads as a 0.032 "
+            + "regression. "
+            + "**nDCG@10 0.34509 against the parity control's 0.37086 — -0.02577.** 101,193 units "
+            + "over 57,600 of 57,638 documents, max 22 per document. **38 documents produced no "
+            + "units and are absent from the index**; the chunker yields nothing only for "
+            + "whitespace-only text, so those 38 are empty in BEIR's FiQA — asserted by the cell "
+            + "rather than assumed, because a chunker dropping documents with content would "
+            + "otherwise show up only as an nDCG nobody could account for. "
+            + "**The pattern across the four is document length.** Semantic chunking costs "
+            + "accuracy on corpora of short documents and buys it on long ones: SciFact abstracts "
+            + "-0.00042, ArguAna single arguments -0.02930, FiQA answers -0.02577, TREC-COVID "
+            + "full-text articles +0.06769. TREC-COVID is also the only corpus where a document "
+            + "reached 418 units; the other three top out at 12 to 22. Splitting a document that "
+            + "was already one idea can only dilute it, and max-pooling cannot recover what the "
+            + "split threw away."
+            ),
+        new(
+            "arguana",
+            BeirProtocol.SemanticChunking,
+            [0.47502],
+            "MEASURED 2026-08-26 on Windows 11, .NET 10.0.11, CPU ONNX Runtime — Phase 6.2.1. "
+            + "SemanticChunkingStrategy at its defaults (breakpoint percentile 0.25, minimum 100 "
+            + "characters), same corpus, embedder and retrieval as this dataset's Parity cell, "
+            + "differing only in where the boundaries fall. "
+            + "**The control is the PARITY figure, not Real**: this cell runs under the ablation "
+            + "table's protocol, and against Real instead SciFact's wash reads as a 0.032 "
+            + "regression. "
+            + "**nDCG@10 0.47502 against the parity control's 0.50432 — -0.02930, the largest "
+            + "loss of the four.** 16,059 units over 8,674 documents, max 12 per document, none "
+            + "dropped. ArguAna documents are single arguments, which is the shape splitting "
+            + "helps least. "
+            + "**The pattern across the four is document length.** Semantic chunking costs "
+            + "accuracy on corpora of short documents and buys it on long ones: SciFact abstracts "
+            + "-0.00042, ArguAna single arguments -0.02930, FiQA answers -0.02577, TREC-COVID "
+            + "full-text articles +0.06769. TREC-COVID is also the only corpus where a document "
+            + "reached 418 units; the other three top out at 12 to 22. Splitting a document that "
+            + "was already one idea can only dilute it, and max-pooling cannot recover what the "
+            + "split threw away."
+            ),
+        new(
+            "trec-covid",
+            BeirProtocol.SemanticChunking,
+            [0.52196],
+            "MEASURED 2026-08-26 on Windows 11, .NET 10.0.11, CPU ONNX Runtime — Phase 6.2.1. "
+            + "SemanticChunkingStrategy at its defaults (breakpoint percentile 0.25, minimum 100 "
+            + "characters), same corpus, embedder and retrieval as this dataset's Parity cell, "
+            + "differing only in where the boundaries fall. "
+            + "**The control is the PARITY figure, not Real**: this cell runs under the ablation "
+            + "table's protocol, and against Real instead SciFact's wash reads as a 0.032 "
+            + "regression. "
+            + "**nDCG@10 0.52196 against the parity control's 0.45427 — +0.06769, and the only "
+            + "gain of the four.** 360,345 units over 171,331 of 171,332 documents, max 418 "
+            + "per document — an order more splitting than any other corpus here, on the only "
+            + "corpus of full-text articles. One document produced no units and is empty. "
+            + "**The pattern across the four is document length.** Semantic chunking costs "
+            + "accuracy on corpora of short documents and buys it on long ones: SciFact abstracts "
+            + "-0.00042, ArguAna single arguments -0.02930, FiQA answers -0.02577, TREC-COVID "
+            + "full-text articles +0.06769. TREC-COVID is also the only corpus where a document "
+            + "reached 418 units; the other three top out at 12 to 22. Splitting a document that "
+            + "was already one idea can only dilute it, and max-pooling cannot recover what the "
+            + "split threw away."
+            ),
+];
 
     /// <summary>
     /// Asserts one measurement reproduced what this repository last recorded for that case.
