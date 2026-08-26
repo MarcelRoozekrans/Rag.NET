@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-25 (6.2.5-6.2.11 merged; RAPTOR Task 5 ran and reversed the pilot's headline)
+**Last updated:** 2026-08-26 (6.2.11 and 6.2.12 shipped; the first external user found silent data loss)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -8,7 +8,36 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.1 — Retrieval & Answer Sweep (active; its RAPTOR measurement is at Task 5).
+**Phase:** 6.2.1 — Retrieval & Answer Sweep (active; RAPTOR Task 5 is done and pinned in #389).
+
+**2026-08-26 shipped 6.2.12 — the first external user's defects.** Seven merged PRs, all verified
+on `main` by content. Its full record is in `ROADMAP.md`; the three findings worth carrying here:
+
+1. **Silent data loss, live at shipped defaults.** `CleanupMode.Full` deletes what a run did not
+   see. A provider listing failure was collected into `Errors` and dropped, so the entries behind
+   it were never seen and were deleted as disappeared — **one failed sitemap page removed every
+   document behind it, and the run reported success.** Fixed in #402. It is the same hazard #394
+   guarded for `StopOnFirstError`, through a door that guard did not cover, so the single
+   `stoppedEarly` bool became a `CleanupBlocked` reason: every way a run can fail to see an entry
+   now has to be named rather than defaulting to "safe to delete".
+
+2. **Two of the defects were caused by fixes earlier in the same phase.** #390's fix deadlocked
+   Blazor (#396), and #396's fix still hung on unrelated host singletons (#400) because forwarding
+   resolved *every* eligible root registration eagerly. Fixed in #403 by forwarding lazily. The
+   trade was measured rather than argued: an instance descriptor is disposed 0 times by the child
+   and a factory descriptor once, so laziness costs a second `Dispose` at shutdown for services the
+   pipeline actually used — against a hang at startup.
+
+3. **The reported "lock" was an unconditional sleep.** `AzureAISearchVectorStore.StoreAsync` ended
+   with `await Task.Delay(1s)` — once per document, so a 500-page ingest spent over eight minutes
+   asleep, buying nothing, since Azure gives no read-after-write guarantee at any fixed delay.
+   Removed in #401 with a solution-wide sweep; waits that poll a real condition against a bounded
+   timeout stayed.
+
+**None of the four had a test, and the suite was green throughout** — the same shape as 6.2.3's
+RAPTOR finding, where no test had ever built a tree deeper than one level. Every fix landed with a
+test that fails against the previous code, mutation-checked with the mutation verified to compile
+first.
 
 **2026-08-25 moved five phases.** All verified on `main` by content rather than by a PR's MERGED
 label:
@@ -21,7 +50,8 @@ label:
 | 6.2.8 — requested DX | complete, #378 (three of four items; #353 split into 6.2.10) |
 | 6.2.9 — `Umap.Fit` at corpus scale | complete, #382 |
 | 6.2.10 — vector-store initialisation | complete, branch `feat/353-vector-store-init` |
-| 6.2.11 — HTML structure and a Guid seam | pending, added 2026-08-25 |
+| 6.2.11 — HTML structure and a Guid seam | complete, #385 / #386 |
+| 6.2.12 — dogfooding defects | complete, #391 / #397 / #398 / #399 / #401 / #402 / #403 |
 
 **Issue sweep, 2026-08-25.** Every open issue checked against `main` by content. **#365** (Tool
 message) and **#354** (Azure Document Intelligence cassette) were done and are now closed with the
@@ -120,7 +150,8 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Recommended Next Step
 
-**Decide what to do about the corpus-scope default** — see OPEN DECISION below. Task 5 measured it
+**Decide what to do about the corpus-scope default** — this is the one thing blocking on a person
+rather than on work, and it has been open since 2026-08-25. — see OPEN DECISION below. Task 5 measured it
 and the answer was not the one #331 assumed; the decision is a design call, not a measurement one,
 and nothing has been changed on the strength of a single corpus.
 
@@ -129,8 +160,10 @@ filed) and the 17 Done sections that need a pinned figure with a control.
 
 **There is no measurement run set up and waiting.** RAPTOR Task 5 is done, and the #300 follow-up
 was done on 2026-08-18 (see Blockers). The 17 Done sections that still need a pinned figure with a
-control mostly need a **new harness arm built first** — there is no `SemanticChunking` or
-`LateChunking` protocol in `BeirProtocol`, so those cannot be run, only written. The bottleneck for
+control mostly need a **new harness arm built first**. `SemanticChunking` **now exists** — #393 built it
+and measured it, and the result is that it depends on document length: SciFact -0.00042, FiQA
+-0.02577, ArguAna -0.02930, **TREC-COVID +0.06769**. `LateChunking` still has no protocol, and
+needs the token-level embedding path before one can be written. The bottleneck for
 6.2.1 is engineering now, not compute.
 
 Historical context for the arms, retained: Historical context for the arms, retained: `RaptorOptions.MaxClusters` defaults to `null`, so before
