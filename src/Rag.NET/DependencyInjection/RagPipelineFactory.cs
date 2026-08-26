@@ -37,6 +37,7 @@ namespace Rag.NET.DependencyInjection;
 /// </param>
 internal sealed class RagPipelineFactory(
     IReadOnlyDictionary<string, IServiceCollection> collections,
+    Action<string> forwardInto,
     IReadOnlyList<Type> sharedServiceTypes) : IRagPipelineFactory, IDisposable, IAsyncDisposable
 {
     private readonly Dictionary<string, ServiceProvider> _providers = new(StringComparer.Ordinal);
@@ -128,6 +129,11 @@ internal sealed class RagPipelineFactory(
                     + "Register one with services.AddRagNet(\"" + name + "\", rag => …).",
                     nameof(name));
             }
+
+            // Forwarding runs here, not when this factory was constructed. Doing it there resolved
+            // root singletons from inside IRagPipelineFactory's own factory delegate, which
+            // deadlocked whenever one of them depended on IRagPipelineFactory (#396).
+            forwardInto(name);
 
             var built = collection.BuildServiceProvider();
             _providers[name] = built;
