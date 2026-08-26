@@ -828,6 +828,10 @@ public static class BeirRunBudget
         BeirProtocol.Haystack =>
             "HAYSTACK entrant (DocumentSplitter defaults, InMemoryDocumentStore dot_product, " +
             "pinned embedder, scored from the Python harness's TREC run file)",
+        BeirProtocol.SemanticChunking =>
+            "SEMANTIC CHUNKING (documents split on embedding-based sentence boundaries instead of " +
+            "indexed one chunk per document, max-pooled back to documents, against the parity " +
+            "dense figure)",
         BeirProtocol.GraphRag =>
             "GRAPHRAG (entities and relations extracted into a graph, communities detected, " +
             "local and global search over the result)",
@@ -915,6 +919,7 @@ public static class BeirRunBudget
             BeirProtocol.HybridBm25 => "UnderBm25HybridRrf",
             BeirProtocol.Hyde => "UnderCachedHyde",
             BeirProtocol.Reranked => "UnderCrossEncoderRerank",
+            BeirProtocol.SemanticChunking => "UnderSemanticChunking",
             BeirProtocol.Comparison => nameof(BeirComparisonControlTests),
             BeirProtocol.SemanticKernel => nameof(BeirSemanticKernelDefaultsTests),
             BeirProtocol.LangChain => "ThroughLangChain",
