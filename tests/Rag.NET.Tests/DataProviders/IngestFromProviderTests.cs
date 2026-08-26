@@ -351,6 +351,57 @@ public sealed class IngestFromProviderTests : IDisposable
                 new RagError.StorageFailed(new InvalidOperationException("index does not exist")))));
 
     [Fact]
+    public async Task CleanupModeFull_WithoutAHashStore_DeletesNothingAndSaysSo()
+    {
+        // #394: a sitemap page excluded after indexing stayed in the index, and the run reported
+        // success. Cleanup compares what this run saw against the ids the store recorded earlier —
+        // with no store there is no history, so nothing can ever be found missing. It used to
+        // return silently, which is indistinguishable from "there was nothing to remove".
+        var provider = MakeProvider(("id-1", "a.txt", "one", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(
+            provider,
+            new ProviderId("prov"),
+            hashStore: null,
+            cleanupMode: CleanupMode.Full,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Ingested);
+        Assert.Equal(0, result.Deleted);
+
+        var validation = Assert.Single(result.Errors.OfType<RagError.ValidationFailed>());
+        Assert.Contains(validation.Failures, f =>
+            string.Equals(f.PropertyName, "cleanupMode", StringComparison.Ordinal));
+        Assert.Contains(validation.Failures, f =>
+            f.ErrorMessage.Contains("hashStore", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task CleanupModeFull_WithAHashStore_RemovesWhatTheProviderNoLongerLists()
+    {
+        // The other half, and the mechanism #394 actually needs: an entry the provider stops
+        // listing — because a filter now excludes it, or because it was deleted at the source — is
+        // removed. The provider does not have to say anything was excluded; not listing it is the
+        // whole signal.
+        var hashStore = new SqliteContentHashStore(_dbPath);
+        await hashStore.SetAsync(new ProviderId("prov"), new EntryId("excluded-later"), null, "hash",
+            TestContext.Current.CancellationToken);
+
+        var provider = MakeProvider(("id-1", "a.txt", "one", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(
+            provider,
+            new ProviderId("prov"),
+            hashStore: hashStore,
+            cleanupMode: CleanupMode.Full,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Deleted);
+        await _pipeline.Received(1).DeleteAsync("excluded-later", Arg.Any<CancellationToken>());
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
     public async Task IngestFromProviderAsync_CleanupModeNone_DoesNotDeleteDisappearedDocuments()
     {
         var hashStore = new SqliteContentHashStore(_dbPath);

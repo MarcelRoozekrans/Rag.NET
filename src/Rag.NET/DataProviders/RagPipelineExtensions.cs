@@ -108,11 +108,8 @@ public static class RagPipelineExtensions
         failed = tally.Failed;
         var stoppedEarly = tally.StoppedEarly;
 
-        if (cleanupMode == CleanupMode.Full && hashStore is not null)
-        {
-            deleted = await CleanupUnlessTheRunStoppedEarlyAsync(pipeline, providerId, hashStore,
-                knownIds, seenIds, errors, stoppedEarly, cancellationToken).ConfigureAwait(false);
-        }
+        deleted = await CleanupIfRequestedAsync(pipeline, providerId, hashStore, cleanupMode,
+            knownIds, seenIds, errors, stoppedEarly, cancellationToken).ConfigureAwait(false);
 
         return new ProviderIngestionResult(ingested, skipped, failed, deleted, errors.ToList());
     }
@@ -179,6 +176,51 @@ public static class RagPipelineExtensions
 
         return new EntryTally(ingested, skipped, failed,
             stopSignal.IsCancellationRequested && !cancellationToken.IsCancellationRequested);
+    }
+
+    /// <summary>
+    /// Runs full cleanup when it was asked for and can actually work, and says so when it cannot.
+    /// </summary>
+    /// <remarks>
+    /// <b>Asking for <see cref="CleanupMode.Full"/> without a hash store used to do nothing,
+    /// quietly.</b> Cleanup removes what this run did not see by comparing against the ids the
+    /// store recorded on earlier runs; with no store there is no history, every document looks new,
+    /// and nothing is ever deleted. Reported as #394 — pages excluded from a sitemap after indexing
+    /// stayed in the index and the run reported success.
+    /// </remarks>
+    private static async Task<int> CleanupIfRequestedAsync(
+        IRagPipeline pipeline,
+        ProviderId providerId,
+        IContentHashStore? hashStore,
+        CleanupMode cleanupMode,
+        IReadOnlySet<EntryId> knownIds,
+        ConcurrentDictionary<EntryId, byte> seenIds,
+        ConcurrentBag<RagError> errors,
+        bool stoppedEarly,
+        CancellationToken cancellationToken)
+    {
+        if (cleanupMode != CleanupMode.Full)
+        {
+            return 0;
+        }
+
+        if (hashStore is null)
+        {
+            errors.Add(new RagError.ValidationFailed(
+            [
+                new ValidationFailure(
+                    nameof(cleanupMode),
+                    "CleanupMode.Full was requested without a hashStore, so nothing was deleted. " +
+                    "Cleanup removes documents this run did not see by comparing against the ids the " +
+                    "store recorded on previous runs; with no store there is nothing to compare. Pass " +
+                    "an IContentHashStore — the same one the earlier runs used, or cleanup has no " +
+                    "history to work from."),
+            ]));
+            return 0;
+        }
+
+        return await CleanupUnlessTheRunStoppedEarlyAsync(pipeline, providerId, hashStore,
+            knownIds, seenIds, errors, stoppedEarly, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
