@@ -43,6 +43,14 @@
          has the parity and real runs share BeirHarness. -->
     <ProjectReference Include="..\..\benchmarks\Rag.NET.Benchmarks.Quality.GraphExtractions\Rag.NET.Benchmarks.Quality.GraphExtractions.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Benchmarks.Quality\Rag.NET.Benchmarks.Quality.csproj" />
+    <!-- RagTelemetrySource is NOT linked into this project, unlike every other instrumented
+         assembly (see src/Shared/RagTelemetrySource.cs). This ProjectReference to
+         Rag.NET.GraphRag already brings its own linked copy into scope, made visible here by the
+         InternalsVisibleTo grant on Rag.NET.GraphRag.csproj. Linking a second copy on top of that
+         visibility makes `Rag.NET.Telemetry.RagTelemetrySource` ambiguous between the two
+         candidates and fails to build (CS0436) — exactly the "ambiguity note" in
+         RagTelemetrySource.cs's own remarks. The fixture in LegacyPageRankLocalSearch.cs starts
+         an activity through Rag.NET.GraphRag's instance, not one of its own. -->
     <ProjectReference Include="..\..\src\Rag.NET.GraphRag\Rag.NET.GraphRag.csproj" />
     <!-- SemanticChunkingStrategy, for the SemanticChunking ablation cell: it is the only cell
          that changes what a unit is rather than how units are ranked. -->
@@ -69,6 +77,9 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
+    <!-- LegacyPageRankLocalSearchTests substitutes IGraphStore, as GraphLocalSearchBehaviorTests
+         did before the move. -->
+    <PackageReference Include="NSubstitute" />
   </ItemGroup>
 
 </Project>
