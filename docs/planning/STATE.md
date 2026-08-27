@@ -170,13 +170,27 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**Delete `GraphLocalSearchBehavior` and `PageRankWeight`** — the operator's pick, 2026-08-27. It
-has been unblocked since 2026-08-20, when 6.x.7 published the replacement figure that was its stated
-precondition. It is not a trivial deletion: `Directory.Build.props` sets `TreatWarningsAsErrors`, so
-17 files across four projects that deliberately reference these members have to go with them, and
-three pinned figures (the `local` answer arm at 0.2102, `BeirReproduction`'s GraphRag 0.56897, and
-the blend ablation) become unreproducible once they do — which needs answering before the deletion,
-not after.
+**~~Delete `GraphLocalSearchBehavior` and `PageRankWeight`~~ — BUILT 2026-08-27 on branch
+`refactor/delete-pagerank-local-search`, not yet merged.** The blend, its three options properties
+(`PageRankWeight`, `LocalSearchDepth`, `LocalTopEntities`) and its DI registration are gone from the
+package; `GraphRagRetrievalOptions` is renamed `GraphRagGlobalSearchOptions`.
+
+**The three pinned figures survived, and that was the whole design.** A frozen copy,
+`LegacyPageRankLocalSearch`, lives in the measurement harness, and the figures were re-measured
+through it *before* the original was deleted — the only moment that comparison was possible:
+**0.56897/0.56897, 0.2102/0.2102, 2,255-of-2,255**, zero skips, zero model calls (35,296 extraction
+requests replayed, embedding cache 325,661 hits / 0 misses). All three are now machine-asserted;
+the ablation's was only *printed* before, so nothing would have failed if it regressed.
+
+**The file count in the issue and in this file was wrong three times** — "17 files in four projects"
+here, 19 in the design doc, **21 across five** in fact. Each low count came from grepping the two
+*named* members; only the union of all seven targets finds `GraphGlobalSearchBehavior` and its
+tests, which touch the renamed options type but never the deleted members.
+
+**One item is unverified and gates nothing else:** the `Rag.NET.E2ETests` GraphRag tests never ran —
+no Docker daemon on this machine. Their local-search assertion was rewritten (it demanded an entity
+chunk that `GraphChunkRoutingBehavior` provably strips, with a failure message stating a diagnosis
+#247's store separation had already made false) and that rewrite is verified only by reading.
 
 **The corpus-scope default is decided** (2026-08-27, option 3 — see DECIDED below) and is no longer
 blocking on a person. It is now scheduled work: a second-corpus RAPTOR arm.
@@ -225,7 +239,9 @@ Three things govern the run, all in the plan:
 3. **`raptorcorpus` is RAPTOR's result, not `raptor`.** Publishing the per-document figure would
    repeat 5.2's misattribution, which cost three weeks and a revised published finding.
 
-**Also unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`.
+~~**Also unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`.~~ **Built
+2026-08-27** — and it was not cheap: 21 files across five projects, six tasks, and a plan that was
+wrong three times in ways only implementation exposed.
 
 ### Task 4 completed 2026-08-24 23:49 and the gate HELD.
 
