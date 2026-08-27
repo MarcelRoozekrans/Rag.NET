@@ -474,6 +474,15 @@ public sealed class BeirGraphRagCorpusTests
         Assert.True(
             ablation.Control.NormalizedDiscountedCumulativeGain > 0,
             "The candidate-set control scored zero, which is chunk ids reaching IrMetrics.");
+        Assert.True(
+            ablation.IdenticalTop10 == ablation.Control.EvaluatedQueryCount,
+            FormattableString.Invariant($"""
+                PageRankWeight = 0 must make local search the identity over its candidates: only
+                {ablation.IdenticalTop10} of {ablation.Control.EvaluatedQueryCount} judged queries had a
+                top-{Cutoff} ranking identical to the candidate-set control. A difference here means
+                the blend is no longer a no-op at zero weight, and the frozen fixture no longer
+                reproduces what #239 measured.
+                """));
     }
 
     /// <summary>Walks every judged query once and scores both ablations from the same candidates.</summary>
@@ -485,8 +494,8 @@ public sealed class BeirGraphRagCorpusTests
     {
         const int ReachCutoff = 100;
         var queries = BeirHarness.JudgedQueries(dataset);
-        var unweighted = new GraphRagRetrievalOptions { PageRankWeight = 0.0 };
-        var defaults = new GraphRagRetrievalOptions();
+        var unweighted = new LegacyPageRankOptions { PageRankWeight = 0.0 };
+        var defaults = new LegacyPageRankOptions();
 
         var controlAt10 = new Dictionary<string, IReadOnlyList<string>>(queries.Count, StringComparer.Ordinal);
         var unweightedAt10 = new Dictionary<string, IReadOnlyList<string>>(queries.Count, StringComparer.Ordinal);

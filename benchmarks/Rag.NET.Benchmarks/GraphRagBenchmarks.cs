@@ -35,9 +35,7 @@ public class GraphRagBenchmarks
     private List<TextChunk> _chunks = null!;
 
     // ── Retrieval behaviors ─────────────────────────────────────────────
-    private GraphLocalSearchBehavior _localSearchBehavior = null!;
     private GraphGlobalSearchBehavior _globalSearchBehavior = null!;
-    private IReadOnlyList<SearchResult> _localSearchResults = null!;
     private IReadOnlyList<SearchResult> _globalSearchResults = null!;
 
     [GlobalSetup]
@@ -45,11 +43,10 @@ public class GraphRagBenchmarks
     {
         _graph = BuildRandomGraph(NodeCount);
         _chunks = BuildChunks(Math.Min(NodeCount, 20));
-        _localSearchResults = BuildEntitySearchResults(NodeCount);
         _globalSearchResults = BuildCommunitySearchResults(Math.Max(NodeCount / 10, 3));
         _globalSearchBehavior = new GraphGlobalSearchBehavior(
             new FakeChatClient(),
-            new GraphRagRetrievalOptions(),
+            new GraphRagGlobalSearchOptions(),
             BuildChunkStore(),
             new FakeEmbeddingGenerator(EmbeddingDimensions));
         // Behaviors that use the NSubstitute IGraphStore mock are rebuilt each
@@ -78,11 +75,6 @@ public class GraphRagBenchmarks
             new FakeEmbeddingGenerator(EmbeddingDimensions),
             graphStore,
             new GraphRagOptions { Enabled = true, GleaningPasses = 0 });
-        _localSearchBehavior = new GraphLocalSearchBehavior(
-            graphStore,
-            new GraphRagRetrievalOptions { LocalTopEntities = 5, LocalSearchDepth = 1, PageRankWeight = 0.3 },
-            BuildChunkStore(),
-            new FakeEmbeddingGenerator(EmbeddingDimensions));
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -130,14 +122,6 @@ public class GraphRagBenchmarks
     // ════════════════════════════════════════════════════════════════════
     // D) Retrieval modes
     // ════════════════════════════════════════════════════════════════════
-
-    [Benchmark]
-    public async Task<int> Retrieval_LocalSearch()
-    {
-        var ctx = CreateRetrievalContext();
-        var results = await _localSearchBehavior.HandleAsync(ctx, default, (_, _) => new ValueTask<IReadOnlyList<SearchResult>>(_localSearchResults)).ConfigureAwait(false);
-        return results.Count;
-    }
 
     [Benchmark]
     public async Task<int> Retrieval_GlobalSearch()
@@ -197,34 +181,6 @@ public class GraphRagBenchmarks
         }
 
         return chunks;
-    }
-
-    private static IReadOnlyList<SearchResult> BuildEntitySearchResults(int count)
-    {
-        var results = new List<SearchResult>(count);
-        for (int i = 0; i < count; i++)
-        {
-            var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
-            {
-                ["graph_type"] = "entity",
-                ["graph_entity_name"] = $"Entity_{i}",
-                ["graph_entity_type"] = "Concept",
-            };
-
-            results.Add(new SearchResult
-            {
-                Chunk = new TextChunk
-                {
-                    Text = $"Description of entity {i}",
-                    DocumentId = new DocumentId("bench-doc"),
-                    ChunkIndex = i,
-                    Metadata = metadata,
-                },
-                Score = 1.0 - (i * 0.002),
-            });
-        }
-
-        return results.AsReadOnly();
     }
 
     private static IReadOnlyList<SearchResult> BuildCommunitySearchResults(int count)

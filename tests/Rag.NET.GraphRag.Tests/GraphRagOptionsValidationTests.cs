@@ -6,7 +6,7 @@ namespace Rag.NET.GraphRag.Tests;
 
 /// <summary>
 /// Registration-time validation for <see cref="GraphRagOptions"/> and
-/// <see cref="GraphRagRetrievalOptions"/>, which the issue #90 audit found entirely
+/// <see cref="GraphRagGlobalSearchOptions"/>, which the issue #90 audit found entirely
 /// unvalidated. Same shape as core's <c>ChunkingOptionsValidationTests</c>: the failure
 /// happens at the configuring line, not on some later ingestion or retrieval that consumes
 /// the singleton.
@@ -64,59 +64,6 @@ public class GraphRagOptionsValidationTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void NonPositiveLocalSearchDepth_ThrowsAtRegistration(int depth)
-    {
-        // Traversal loops once per hop, so zero hops collected no neighbors and the PageRank
-        // blend silently never applied.
-        var ex = Assert.Throws<ArgumentException>(() =>
-            NewBuilder().UseGraphRag(retrieval: o => o.LocalSearchDepth = depth));
-
-        Assert.Contains("LocalSearchDepth", ex.Message, StringComparison.Ordinal);
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void NonPositiveLocalTopEntities_ThrowsAtRegistration(int topEntities)
-    {
-        // Take(0) seeded traversal with no entities — local graph search silently disabled.
-        var ex = Assert.Throws<ArgumentException>(() =>
-            NewBuilder().UseGraphRag(retrieval: o => o.LocalTopEntities = topEntities));
-
-        Assert.Contains("LocalTopEntities", ex.Message, StringComparison.Ordinal);
-    }
-
-    [Theory]
-    [InlineData(-0.1)]
-    [InlineData(1.1)]
-    [InlineData(double.NaN)]
-    public void PageRankWeightOutsideUnitRange_ThrowsAtRegistration(double weight)
-    {
-        // The audit's GraphRAG case: (1 − w) × similarity + w × pageRank with w outside [0, 1]
-        // gives one term a negative coefficient — ranking silently corrupted.
-        var ex = Assert.Throws<ArgumentException>(() =>
-            NewBuilder().UseGraphRag(retrieval: o => o.PageRankWeight = weight));
-
-        Assert.Contains("PageRankWeight", ex.Message, StringComparison.Ordinal);
-    }
-
-    [Theory]
-    [InlineData(0.0)]
-    [InlineData(1.0)]
-    public void PageRankWeightAtUnitRangeBounds_IsAccepted(double weight)
-    {
-        // 0 is "similarity only", 1 is "PageRank only" — both ends are meaningful blends.
-        var builder = NewBuilder();
-
-        builder.UseGraphRag(retrieval: o => o.PageRankWeight = weight);
-
-        var options = builder.Services.BuildServiceProvider().GetRequiredService<GraphRagRetrievalOptions>();
-        Assert.Equal(weight, options.PageRankWeight);
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
     public void NonPositiveGlobalBatchSize_ThrowsAtRegistration(int batchSize)
     {
         // BatchReports advances its loop by this value: zero looped forever — global search
@@ -137,7 +84,7 @@ public class GraphRagOptionsValidationTests
 
         builder.UseGraphRag();
 
-        var options = builder.Services.BuildServiceProvider().GetRequiredService<GraphRagRetrievalOptions>();
+        var options = builder.Services.BuildServiceProvider().GetRequiredService<GraphRagGlobalSearchOptions>();
         Assert.Null(options.GlobalBatchSize);
     }
 
@@ -150,15 +97,6 @@ public class GraphRagOptionsValidationTests
 
         var provider = builder.Services.BuildServiceProvider();
         var options = provider.GetRequiredService<GraphRagOptions>();
-        var retrievalOptions = provider.GetRequiredService<GraphRagRetrievalOptions>();
         Assert.Equal(500, options.MaxEntityDescriptionLength);
-
-        // 0, not 0.3, since #239. The blend put PageRank (mean 1.6e-5 over 62,392 entities) against
-        // cosine (0.3-0.6), so at 0.3 it demoted every entity chunk it had traversed to. Measured:
-        // at 0 local search reproduced the candidate-set control on 2,255 of 2,255 queries, so the
-        // whole -0.02761 nDCG@10 was this default. Pinned here because a default that costs quality
-        // by construction should not be able to come back by inattention.
-        Assert.Equal(0.0, retrievalOptions.PageRankWeight);
-        Assert.Equal(1, retrievalOptions.LocalSearchDepth);
     }
 }

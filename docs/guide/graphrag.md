@@ -76,9 +76,9 @@ placed in the retrieval pipeline: local search is `IGraphRagSearch`, a service y
 rather than a pipeline behaviour, and `GraphGlobalSearchBehavior` is deliberately left out — it
 runs an LLM map-reduce over community reports on every query, so it stays opt-in.
 
-### Adding global search, or placing local search's deprecated behaviour yourself
+### Adding global search
 
-Earlier versions of this page taught a four-delegate form, because `UseGraphRag` used to register its behaviors without placing any of them and the delegates were the only way into a pipeline. That form still works and still takes precedence — use it for global search, or to place local search's older, deprecated `GraphLocalSearchBehavior` in the pipeline yourself:
+Earlier versions of this page taught a four-delegate form, because `UseGraphRag` used to register its behaviors without placing any of them and the delegates were the only way into a pipeline. That form still works and still takes precedence — use it to place `GraphGlobalSearchBehavior` yourself, or to move the ingestion behaviours to different positions:
 
 ```csharp
 services.AddRagNet(
@@ -88,7 +88,6 @@ services.AddRagNet(
         .Add<GraphEntityExtractionBehavior>(after: typeof(EmbeddingBehavior))
         .Add<CommunityDetectionBehavior>(after: typeof(GraphEntityExtractionBehavior)),
     retrieval: p => p
-        .Add<GraphLocalSearchBehavior>(before: typeof(RerankingBehavior))
         .Add<GraphGlobalSearchBehavior>(before: typeof(RerankingBehavior))
 );
 ```
@@ -140,20 +139,23 @@ rag.UseGraphRag(options =>
 ```csharp
 rag.UseGraphRag(retrieval: options =>
 {
-    options.LocalSearchDepth = 1;                 // Hop depth — must be greater than 0
-    options.LocalTopEntities = 10;                // Starting entities — must be greater than 0
-    options.PageRankWeight = 0.0;                 // PageRank vs similarity blend — DEFAULT 0, see below
     options.GlobalBatchSize = 5;                  // Reports per map batch — when set, must be greater than 0
     options.GlobalReportCandidates = 50;          // Reports fetched when none were handed down — when set, > 0
     options.GlobalChatClient = cheapModel;         // Optional for map-reduce
 });
 ```
 
-These are validated at registration too. `LocalSearchDepth` or `LocalTopEntities` at zero would silently disable local graph search; a `PageRankWeight` outside `[0, 1]` would give one blend term a negative coefficient; `GlobalBatchSize = 0` would hang global search in an infinite batching loop; `GlobalReportCandidates = 0` would ask the store for no reports and silently restore the do-nothing behaviour below.
+These are validated at registration too. `GlobalBatchSize = 0` would hang global search in an infinite batching loop; `GlobalReportCandidates = 0` would ask the store for no reports and silently restore the do-nothing behaviour below.
 
 `GlobalReportCandidates` exists because global search was, in practice, unreachable. It maps and reduces over chunks tagged `graph_type = community_report`, partitioned out of whatever retrieval handed it — and a corpus produces a few hundred long, general reports against tens of thousands of short, specific entity and article chunks, with nothing reserving the reports a slot. Over a sixty-article corpus not one report appeared in a dense top-500, so the map phase never ran and the behavior returned its input untouched, looking to every caller as though it had worked. It now re-enters the retrieval pipeline with a metadata filter of its own when it is handed no reports, fetching this many. Any `MetadataFilter` you set is preserved — only the graph-type key is added — and the second retrieval is skipped entirely when the first already contains reports.
 
-> **Which search runs is a registration decision, not a setting.** Call `IGraphRagSearch` directly for local search, add `GraphGlobalSearchBehavior` to the retrieval pipeline for global search, or place local search's older, deprecated `GraphLocalSearchBehavior` there yourself. There is deliberately no `Mode` property — one existed until 0.1.0, was never read by any behavior, and is described in issue #104.
+> **Which search runs is a registration decision, not a setting.** Call `IGraphRagSearch` directly for local search, or add `GraphGlobalSearchBehavior` to the retrieval pipeline for global search. There is deliberately no `Mode` property — one existed until 0.1.0, was never read by any behavior, and is described in issue #104.
+
+> The PageRank blend has been removed. It scored local search by mixing PageRank into dense
+> similarity, which is not part of Microsoft's local search; at its shipped default the blend
+> demoted the very chunks the graph walk had reached, and at weight 0 it reproduced the plain
+> candidate set on 2,255 of 2,255 queries. Local search is now
+> `LocalSearch.IGraphRagSearch`, measured at 0.3459 overall and 0.8603 on inference questions.
 
 ### The graph's chunks live in their own store
 

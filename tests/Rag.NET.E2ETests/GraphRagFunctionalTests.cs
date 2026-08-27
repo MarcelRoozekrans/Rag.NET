@@ -5,6 +5,7 @@ using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Graph;
 using Rag.NET.GraphRag;
+using Rag.NET.GraphRag.LocalSearch;
 using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -25,7 +26,7 @@ namespace Rag.NET.E2ETests;
 /// This exists because the package shipped marked done without ever being run end to end,
 /// and the dead-settings sweep (#108) then found three documented behaviours that did not
 /// exist — <c>EntityTypes</c>/<c>RelationshipTypes</c> doing nothing (#112),
-/// <c>GraphRagRetrievalOptions.Mode</c> never read (#104), and three settings validated only
+/// <c>GraphRagGlobalSearchOptions.Mode</c> never read (#104), and three settings validated only
 /// after they were caught silently disabling or hanging search (#103). None of that survives
 /// one run of this class, which is the point: every stage here fails loudly when it produces
 /// nothing, because a test that passes on an empty graph is how those defects lived so long.
@@ -174,7 +175,6 @@ public sealed class GraphRagFunctionalTests : IAsyncLifetime
                 .Add<GraphEntityExtractionBehavior>(after: typeof(EmbeddingBehavior))
                 .Add<CommunityDetectionBehavior>(after: typeof(GraphEntityExtractionBehavior)),
             retrieval: p => p
-                .Add<GraphLocalSearchBehavior>(before: typeof(RerankingBehavior))
                 .Add<GraphGlobalSearchBehavior>(before: typeof(RerankingBehavior)));
 
         _sp = services.BuildServiceProvider();
@@ -244,24 +244,29 @@ public sealed class GraphRagFunctionalTests : IAsyncLifetime
             $"Extracted: [{string.Join(", ", snapshot.Entities.Select(e => e.Name))}]");
     }
 
+    /// <remarks>
+    /// Asserted against <see cref="IGraphRagSearch"/> directly, not <c>_pipeline.RetrieveAsync</c>.
+    /// Local search is a service, not a retrieval-pipeline behaviour (<c>UseGraphRag</c> never
+    /// places one by default), and its entity chunks live in their own <c>GraphChunkStore</c>
+    /// (#247) — <c>GraphChunkRoutingBehavior</c> takes every graph-tagged chunk out of the batch
+    /// before it reaches the document vector store <c>RetrieveAsync</c> searches. A chunk tagged
+    /// <c>graph_type == "entity"</c> can never come back from that call; asking
+    /// <see cref="IGraphRagSearch"/> for its own context window is what actually exercises local
+    /// search.
+    /// </remarks>
     private async Task AssertLocalSearchReturnsEntityResultsAsync()
     {
-        var result = await _pipeline.RetrieveAsync(
+        var localSearch = _sp.GetRequiredService<IGraphRagSearch>();
+        var context = await localSearch.BuildLocalContextAsync(
             "Who was Marie Curie and where did she work?",
-            new RetrievalOptions { TopK = 50 },
             TestContext.Current.CancellationToken);
 
-        Assert.True(result.IsSuccess, $"Local-search retrieval failed: {result}");
         Assert.True(
-            result.Value.Count > 0,
-            "Retrieval returned nothing for a query about a named entity — local search has " +
-            "no results to blend, so the graph path was never exercised.");
-        Assert.True(
-            result.Value.Any(r =>
-                r.Chunk.Metadata.TryGetValue("graph_type", out var gt) && gt == "entity"),
-            "No entity chunk came back for a query about Marie Curie. Entity descriptions " +
-            "are embedded at ingestion, so their absence means GraphLocalSearchBehavior had " +
-            "nothing to traverse from — the local graph path is dead.");
+            context.Entities.Rendered > 0,
+            "Local search selected and rendered no entities for a query naming Marie Curie " +
+            "explicitly. Entity chunks live in GraphChunkStore, separate from the document " +
+            "store (#247) — either entity-selection embedding found no match, or the context " +
+            "builder's entity budget dropped every candidate it was offered.");
     }
 
     private async Task AssertGlobalSearchSynthesizesAnswerAsync()

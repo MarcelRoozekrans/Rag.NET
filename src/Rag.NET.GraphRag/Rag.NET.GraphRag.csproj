@@ -37,6 +37,13 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>Rag.NET.GraphRag.Tests</_Parameter1>
     </AssemblyAttribute>
+    <!-- The measurement harness carries LegacyPageRankLocalSearch, a frozen copy of the deleted
+         GraphLocalSearchBehavior that keeps three pinned figures reproducible. It calls
+         GraphChunkSearch, which is internal. See
+         docs/plans/2026-08-27-delete-pagerank-local-search-design.md. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Benchmarks.Quality.IntegrationTests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>

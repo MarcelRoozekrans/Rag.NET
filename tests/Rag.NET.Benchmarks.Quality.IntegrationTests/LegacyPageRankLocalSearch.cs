@@ -1,33 +1,37 @@
 using Microsoft.Extensions.AI;
 using Rag.NET.Graph;
+using Rag.NET.GraphRag;
 using Rag.NET.Models;
 using Rag.NET.Retrieval;
 using Rag.NET.Telemetry;
 
-namespace Rag.NET.GraphRag;
+namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 
 /// <summary>
-/// Local search behavior that traverses entity neighbors, relationships, and community reports
-/// from the graph store, then blends PageRank with vector similarity scores.
-/// If placed by hand, its documented position is before RerankingBehavior in the retrieval
-/// pipeline — see the deprecation notice below.
+/// A frozen copy of the deleted <c>GraphLocalSearchBehavior</c>, kept so the figures measured
+/// through it stay reproducible.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Deprecated, and no longer placed by <c>UseGraphRag</c>.</b> Local search is
-/// <see cref="LocalSearch.IGraphRagSearch"/>. This behaviour blends PageRank into dense retrieval
-/// scores, which is not in Microsoft's local search at all: that blend was the entire −0.02761
-/// nDCG@10 charged to GraphRAG in Milestone 5.2, and at <c>PageRankWeight = 0</c> — the default
-/// since #296 — the ranking matched the candidate-set control on 2,255 of 2,255 queries. It is
-/// retained rather than deleted so the figures measured through it stay reproducible:
-/// <c>MultiHopRagAnswerReproduction</c>'s local arm (0.2102 at weight 0.3) and
-/// <c>BeirReproduction</c>'s GraphRag nDCG (0.56897). Scheduled for deletion once Phase 6.x.7
-/// publishes the replacement figure.
+/// <b>This is a measurement fixture, not an implementation. Do not improve it.</b> It was removed
+/// from <c>Rag.NET.GraphRag</c> on 2026-08-27 because it blends PageRank into dense retrieval
+/// scores, which is not in Microsoft's local search at all — that blend was the entire −0.02761
+/// nDCG@10 charged to GraphRAG in Milestone 5.2. The shipped local search is
+/// <c>Rag.NET.GraphRag.LocalSearch.IGraphRagSearch</c>, measured at 0.3459 overall and 0.8603 on
+/// inference.
+/// </para>
+/// <para>
+/// Three pinned figures execute this code and nothing else can reproduce them:
+/// <c>MultiHopRagAnswerReproduction</c>'s local arm (0.2102 at weight 0.3),
+/// <c>BeirReproduction</c>'s GraphRag nDCG (0.56897), and the blend ablation in
+/// <c>BeirGraphRagCorpusTests</c>. <b>Any behavioural change here silently changes what those
+/// three numbers mean</b>, without failing anything — which is why
+/// <c>LegacyPageRankLocalSearchTests</c> moved here with it.
 /// </para>
 /// </remarks>
-public sealed class GraphLocalSearchBehavior(
+internal sealed class LegacyPageRankLocalSearch(
     IGraphStore graphStore,
-    GraphRagRetrievalOptions options,
+    LegacyPageRankOptions options,
     GraphChunkStore chunkStore,
     IEmbeddingGenerator<string, Embedding<float>> embedder) : IRetrievalBehavior
 {

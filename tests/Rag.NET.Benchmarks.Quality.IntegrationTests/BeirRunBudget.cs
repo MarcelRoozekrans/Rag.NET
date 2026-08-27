@@ -553,7 +553,8 @@ public static class BeirRunBudget
             "both superlinear and both in graph construction, are where the overshoot lived: " +
             "SqliteGraphStore rewriting each entity description on every occurrence " +
             "(O(occurrences^2) bytes, derived at ~48x the slice's cost), and " +
-            "GraphLocalSearchBehavior traversing per query through GetNeighborsAsync, " +
+            "GraphLocalSearchBehavior (now the frozen LegacyPageRankLocalSearch in this harness) " +
+            "traversing per query through GetNeighborsAsync, " +
             "GetRelationshipsAsync and GetCommunitiesForEntityAsync over a `relationships` table " +
             "with no index on source_entity or target_entity -- ~45,000 full scans of 147,021 " +
             "rows over the run, derived at 15-40 min. Graph construction measured 22 m 18 s in " +

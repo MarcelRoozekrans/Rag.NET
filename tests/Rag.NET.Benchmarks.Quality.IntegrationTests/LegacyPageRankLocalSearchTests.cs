@@ -2,14 +2,15 @@
 using Rag.NET.Storage;
 using NSubstitute;
 using Rag.NET.Graph;
+using Rag.NET.GraphRag;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Retrieval;
 using Xunit;
 
-namespace Rag.NET.GraphRag.Tests;
+namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 
-public class GraphLocalSearchBehaviorTests
+public class LegacyPageRankLocalSearchTests
 {
     private readonly IGraphStore _graphStore = Substitute.For<IGraphStore>();
 
@@ -28,7 +29,7 @@ public class GraphLocalSearchBehaviorTests
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder =
         Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
 
-    public GraphLocalSearchBehaviorTests()
+    public LegacyPageRankLocalSearchTests()
     {
         _ = _embedder.GenerateAsync(
                 Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
@@ -69,13 +70,13 @@ public class GraphLocalSearchBehaviorTests
         // PageRankWeight explicit because the walk is opt-in since #239: at the default 0 there is
         // nothing to harvest scores for, so the behaviour skips the graph entirely. A test OF the
         // traversal has to ask for the traversal.
-        var options = new GraphRagRetrievalOptions
+        var options = new LegacyPageRankOptions
         {
             LocalTopEntities = 10,
             LocalSearchDepth = 2,
             PageRankWeight = 0.3,
         };
-        var sut = new GraphLocalSearchBehavior(_graphStore, options, _chunkStore, _embedder);
+        var sut = new LegacyPageRankLocalSearch(_graphStore, options, _chunkStore, _embedder);
 
         var results = CreateEntityResults();
         var ctx = CreateContext();
@@ -104,13 +105,13 @@ public class GraphLocalSearchBehaviorTests
     [Fact]
     public async Task HandleAsync_BlendsPageRankWithSimilarity()
     {
-        var options = new GraphRagRetrievalOptions
+        var options = new LegacyPageRankOptions
         {
             LocalTopEntities = 10,
             LocalSearchDepth = 1,
             PageRankWeight = 0.4,
         };
-        var sut = new GraphLocalSearchBehavior(_graphStore, options, _chunkStore, _embedder);
+        var sut = new LegacyPageRankLocalSearch(_graphStore, options, _chunkStore, _embedder);
 
         var results = CreateEntityResults(); // Alice entity has score 0.9
         var ctx = CreateContext();
@@ -132,8 +133,13 @@ public class GraphLocalSearchBehaviorTests
     [Fact]
     public async Task HandleAsync_NoEntityResults_ReturnsStandardResults()
     {
-        var options = new GraphRagRetrievalOptions();
-        var sut = new GraphLocalSearchBehavior(_graphStore, options, _chunkStore, _embedder);
+        // PageRankWeight explicit at 0: the shared constructor seeds an "Alice" entity chunk into
+        // _chunkStore for every test, so despite this test's name the entity search here does
+        // find a result. On the shipped type this test passed anyway because the default was 0,
+        // which skips the walk regardless of what the entity search finds; LegacyPageRankOptions
+        // defaults to 0.3, so that has to be requested explicitly here too.
+        var options = new LegacyPageRankOptions { PageRankWeight = 0 };
+        var sut = new LegacyPageRankLocalSearch(_graphStore, options, _chunkStore, _embedder);
         var ctx = CreateContext();
 
         var results = (IReadOnlyList<SearchResult>)new List<SearchResult>
@@ -161,13 +167,13 @@ public class GraphLocalSearchBehaviorTests
     public async Task HandleAsync_RespectsLocalSearchDepth()
     {
         // As above: non-zero weight, or there is no walk whose depth could be respected.
-        var options = new GraphRagRetrievalOptions
+        var options = new LegacyPageRankOptions
         {
             LocalSearchDepth = 3,
             LocalTopEntities = 10,
             PageRankWeight = 0.3,
         };
-        var sut = new GraphLocalSearchBehavior(_graphStore, options, _chunkStore, _embedder);
+        var sut = new LegacyPageRankLocalSearch(_graphStore, options, _chunkStore, _embedder);
 
         var results = CreateEntityResults();
         var ctx = CreateContext();
@@ -183,13 +189,13 @@ public class GraphLocalSearchBehaviorTests
     [Fact]
     public async Task HandleAsync_EntitiesWithZeroPageRank_BlendingStable()
     {
-        var options = new GraphRagRetrievalOptions
+        var options = new LegacyPageRankOptions
         {
             LocalTopEntities = 10,
             LocalSearchDepth = 1,
             PageRankWeight = 0.4,
         };
-        var sut = new GraphLocalSearchBehavior(_graphStore, options, _chunkStore, _embedder);
+        var sut = new LegacyPageRankLocalSearch(_graphStore, options, _chunkStore, _embedder);
 
         var results = CreateEntityResults(); // Alice entity has score 0.9
         var ctx = CreateContext();
@@ -212,8 +218,8 @@ public class GraphLocalSearchBehaviorTests
     [Fact]
     public async Task HandleAsync_ChunksFromDifferentDocumentsSharingChunkIndex_BothSurvive()
     {
-        var options = new GraphRagRetrievalOptions { LocalTopEntities = 10, LocalSearchDepth = 1 };
-        var sut = new GraphLocalSearchBehavior(_graphStore, options, _chunkStore, _embedder);
+        var options = new LegacyPageRankOptions { LocalTopEntities = 10, LocalSearchDepth = 1 };
+        var sut = new LegacyPageRankLocalSearch(_graphStore, options, _chunkStore, _embedder);
         StubEmptyGraph();
 
         var results = (IReadOnlyList<SearchResult>)new List<SearchResult>
@@ -234,8 +240,8 @@ public class GraphLocalSearchBehaviorTests
     [Fact]
     public async Task HandleAsync_DuplicateChunkWithinOneDocument_CollapsesToHighestScore()
     {
-        var options = new GraphRagRetrievalOptions { LocalTopEntities = 10, LocalSearchDepth = 1 };
-        var sut = new GraphLocalSearchBehavior(_graphStore, options, _chunkStore, _embedder);
+        var options = new LegacyPageRankOptions { LocalTopEntities = 10, LocalSearchDepth = 1 };
+        var sut = new LegacyPageRankLocalSearch(_graphStore, options, _chunkStore, _embedder);
         StubEmptyGraph();
 
         var results = (IReadOnlyList<SearchResult>)new List<SearchResult>
@@ -330,7 +336,7 @@ public class GraphLocalSearchBehaviorTests
     [Fact]
     public async Task AtTheDefaultWeight_NoGraphWalkHappensAtAll()
     {
-        var sut = new GraphLocalSearchBehavior(_graphStore, new GraphRagRetrievalOptions(), _chunkStore, _embedder);
+        var sut = new LegacyPageRankLocalSearch(_graphStore, new LegacyPageRankOptions { PageRankWeight = 0 }, _chunkStore, _embedder);
         var results = CreateEntityResults();
 
         var actual = await sut.HandleAsync(
@@ -348,8 +354,8 @@ public class GraphLocalSearchBehaviorTests
     [Fact]
     public async Task AtANonZeroWeight_TheWalkStillHappens()
     {
-        var options = new GraphRagRetrievalOptions { PageRankWeight = 0.4, LocalSearchDepth = 1 };
-        var sut = new GraphLocalSearchBehavior(_graphStore, options, _chunkStore, _embedder);
+        var options = new LegacyPageRankOptions { PageRankWeight = 0.4, LocalSearchDepth = 1 };
+        var sut = new LegacyPageRankLocalSearch(_graphStore, options, _chunkStore, _embedder);
         _graphStore.GetNeighborsAsync("Alice", 1, Arg.Any<CancellationToken>())
             .Returns([new GraphEntity("Alice", "Person", "Alice desc") { PageRankScore = 0.8 }]);
 
@@ -368,7 +374,7 @@ public class GraphLocalSearchBehaviorTests
     [Fact]
     public async Task AtTheDefaultWeight_DuplicatesAreStillCollapsed()
     {
-        var sut = new GraphLocalSearchBehavior(_graphStore, new GraphRagRetrievalOptions(), _chunkStore, _embedder);
+        var sut = new LegacyPageRankLocalSearch(_graphStore, new LegacyPageRankOptions { PageRankWeight = 0 }, _chunkStore, _embedder);
 
         var results = (IReadOnlyList<SearchResult>)new List<SearchResult>
         {

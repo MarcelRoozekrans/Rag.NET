@@ -28,14 +28,15 @@ public static class RagBuilderExtensions
     /// graph — while retrieval quietly stayed a plain vector search (issue #191).
     /// </para>
     /// <para>
-    /// <b><see cref="GraphGlobalSearchBehavior"/> is deliberately not placed</b>, and neither is
-    /// <see cref="GraphLocalSearchBehavior"/> — which search runs is the caller's decision, as
-    /// <c>docs/guide/graphrag.md</c> states. Local search is <see cref="LocalSearch.IGraphRagSearch"/>,
-    /// a graph traversal you call directly; global search re-enters the pipeline for community
-    /// reports and runs an LLM map-reduce over them on every query, so enabling that by default
-    /// would be per-query spend nobody asked for. Both stay registered as services, so naming
-    /// <see cref="GraphGlobalSearchBehavior"/> in <c>AddRagNet</c>'s <c>retrieval:</c> delegate — or
-    /// resolving <see cref="LocalSearch.IGraphRagSearch"/> — is all it takes.
+    /// <b><see cref="GraphGlobalSearchBehavior"/> is deliberately not placed into the retrieval
+    /// pipeline</b> — which search runs is the caller's decision, as <c>docs/guide/graphrag.md</c>
+    /// states. <see cref="LocalSearch.IGraphRagSearch"/> is not a pipeline behaviour at all, so
+    /// placement does not apply to it — it is a service you resolve and call directly, a graph
+    /// traversal rather than a step in a ranked-list chain. Global search, by contrast, re-enters
+    /// the pipeline for community reports and runs an LLM map-reduce over them on every query, so
+    /// enabling that by default would be per-query spend nobody asked for. Both stay registered, so
+    /// naming <see cref="GraphGlobalSearchBehavior"/> in <c>AddRagNet</c>'s <c>retrieval:</c>
+    /// delegate — or resolving <see cref="LocalSearch.IGraphRagSearch"/> — is all it takes.
     /// </para>
     /// <para>
     /// The explicit form the guide teaches is unchanged and still wins: those delegates run before
@@ -44,10 +45,10 @@ public static class RagBuilderExtensions
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentException">
-    /// The configured <see cref="GraphRagOptions"/> or <see cref="GraphRagRetrievalOptions"/>
+    /// The configured <see cref="GraphRagOptions"/> or <see cref="GraphRagGlobalSearchOptions"/>
     /// violate a documented constraint — the generated validators reject the registration at
-    /// the configuring line rather than letting a bad value crash ingestion, hang global
-    /// search, or silently corrupt the PageRank blend.
+    /// the configuring line rather than letting a bad value crash ingestion or hang global
+    /// search.
     /// </exception>
     /// <exception cref="InvalidOperationException">
     /// <c>AddRagNet</c> has not been called, so there is no pipeline to place the behaviours in.
@@ -56,7 +57,7 @@ public static class RagBuilderExtensions
     public static TBuilder UseGraphRag<TBuilder>(
         this TBuilder builder,
         Action<GraphRagOptions>? configure = null,
-        Action<GraphRagRetrievalOptions>? retrieval = null,
+        Action<GraphRagGlobalSearchOptions>? retrieval = null,
         Action<GraphStoreBuilder>? graph = null,
         Action<GraphChunkStoreBuilder>? chunks = null,
         Action<LocalSearchContextOptions>? localSearch = null)
@@ -67,9 +68,9 @@ public static class RagBuilderExtensions
         ThrowIfInvalid(new GraphRagOptionsValidator().Validate(options), nameof(configure), "GraphRAG ingestion");
         builder.Services.AddSingleton(options);
 
-        var retrievalOptions = new GraphRagRetrievalOptions();
+        var retrievalOptions = new GraphRagGlobalSearchOptions();
         retrieval?.Invoke(retrievalOptions);
-        ThrowIfInvalid(new GraphRagRetrievalOptionsValidator().Validate(retrievalOptions), nameof(retrieval), "GraphRAG retrieval");
+        ThrowIfInvalid(new GraphRagGlobalSearchOptionsValidator().Validate(retrievalOptions), nameof(retrieval), "GraphRAG retrieval");
         builder.Services.AddSingleton(retrievalOptions);
 
         // Where the graph's own chunks live (#247). Separate from the document store by design:
@@ -168,15 +169,8 @@ public static class RagBuilderExtensions
     /// <param name="services">The collection to register into.</param>
     /// <param name="retrievalOptions">The validated retrieval options.</param>
     private static void RegisterRetrievalBehaviors(
-        IServiceCollection services, GraphRagRetrievalOptions retrievalOptions)
+        IServiceCollection services, GraphRagGlobalSearchOptions retrievalOptions)
     {
-        services.AddSingleton<GraphLocalSearchBehavior>(sp =>
-            new GraphLocalSearchBehavior(
-                sp.GetRequiredService<IGraphStore>(),
-                retrievalOptions,
-                sp.GetRequiredService<GraphChunkStore>(),
-                sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>()));
-
         services.AddSingleton<GraphGlobalSearchBehavior>(sp =>
             new GraphGlobalSearchBehavior(
                 retrievalOptions.GlobalChatClient ?? sp.GetRequiredService<IChatClient>(),

@@ -23,7 +23,9 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// which the retrieval measurements of 5.2 could not see.
 /// <para>
 /// <b>Arms.</b> <c>dense</c>: the Real leg's article chunks alone, dense top-6. <c>local</c>:
-/// the graph run's store, dense top-500 through <c>GraphLocalSearchBehavior</c> at
+/// the graph run's store, dense top-500 through <c>LegacyPageRankLocalSearch</c> — the frozen copy
+/// of the behaviour that shipped under the name <c>GraphLocalSearchBehavior</c> and was deleted
+/// from the package; the code now lives in this measurement harness — at
 /// <c>PageRankWeight = 0.3</c> — the shipped default when these figures were measured, and no longer
 /// the default since #239 set it to 0, so <c>GraphRagRun</c> pins it explicitly rather than
 /// inheriting it — top-6 of what it returns: article, entity, relationship and

@@ -72,18 +72,25 @@ public sealed class PipelinePlacementTests
             "It must run after both or it separates only some of the graph's chunks.");
     }
 
+    /// <summary>
+    /// <c>UseGraphRag()</c> registers the local search it ships — <see cref="IGraphRagSearch"/> —
+    /// as a service, even though it places no retrieval-pipeline behaviour for it.
+    /// </summary>
+    /// <remarks>
+    /// This is the only registration guard for <see cref="IGraphRagSearch"/> in the repository.
+    /// It is not in either pipeline chain (see
+    /// <see cref="UseGraphRag_WithNoPipelineDelegates_LeavesGlobalSearchOutOfTheChain"/> and its
+    /// ingestion counterparts) and it is not resolved by any other test, so nothing else would
+    /// catch a change that broke resolving it — a caller following
+    /// <c>docs/guide/graphrag.md</c>'s instruction to call <c>IGraphRagSearch</c> directly would
+    /// be the first to find out.
+    /// </remarks>
     [Fact]
-    public void UseGraphRag_WithNoPipelineDelegates_LeavesTheObsoleteLocalSearchOutOfTheChain()
+    public void UseGraphRag_WithNoPipelineDelegates_RegistersLocalSearchAsAService()
     {
-        // At PageRankWeight 0 — the default since #296 — the behaviour skips the graph walk and
-        // returns its input unchanged, reproducing the candidate-set control on 2,255 of 2,255
-        // queries. So unregistering it changes nothing any default user sees; what it stops is a
-        // no-op standing where a reader expects local search to be. Local search is IGraphRagSearch,
-        // which AddGraphRag registers as a service rather than placing in the retrieval chain.
         var services = new ServiceCollection();
         services.AddRagNet(rag => rag.UseGraphRag());
 
-        Assert.DoesNotContain(typeof(GraphLocalSearchBehavior), RetrievalChain(services));
         Assert.Contains(services, d => d.ServiceType == typeof(IGraphRagSearch));
     }
 
@@ -123,38 +130,6 @@ public sealed class PipelinePlacementTests
         var types = RetrievalChain(services);
 
         Assert.Contains(typeof(GraphGlobalSearchBehavior), types);
-    }
-
-    /// <summary>
-    /// The four-delegate form <c>docs/guide/graphrag.md</c> teaches keeps working, and keeps
-    /// placing each behaviour exactly once, at the position the caller asked for.
-    /// </summary>
-    [Fact]
-    public void UseGraphRag_WithTheDocumentedDelegates_StillPlacesEachBehaviourExactlyOnce()
-    {
-        var services = new ServiceCollection();
-        services.AddRagNet(
-            configure: rag => rag.UseGraphRag(),
-            ingestion: pipeline => pipeline
-                .Add<GraphEntityExtractionBehavior>(after: typeof(SparseEmbeddingBehavior))
-                .Add<CommunityDetectionBehavior>(after: typeof(GraphEntityExtractionBehavior)),
-            retrieval: pipeline => pipeline
-                .Add<GraphLocalSearchBehavior>(before: typeof(VectorStoreBehavior)));
-
-        var ingestion = IngestionChain(services);
-        var retrieval = RetrievalChain(services);
-
-        Assert.Equal(1, ingestion.Count(t => t == typeof(GraphEntityExtractionBehavior)));
-        Assert.Equal(1, ingestion.Count(t => t == typeof(CommunityDetectionBehavior)));
-        Assert.Equal(1, retrieval.Count(t => t == typeof(GraphLocalSearchBehavior)));
-
-        // The caller's positions win, not the defaults this fix added.
-        Assert.Equal(
-            ingestion.IndexOf(typeof(SparseEmbeddingBehavior)) + 1,
-            ingestion.IndexOf(typeof(GraphEntityExtractionBehavior)));
-        Assert.Equal(
-            retrieval.IndexOf(typeof(VectorStoreBehavior)) - 1,
-            retrieval.IndexOf(typeof(GraphLocalSearchBehavior)));
     }
 
     [Fact]

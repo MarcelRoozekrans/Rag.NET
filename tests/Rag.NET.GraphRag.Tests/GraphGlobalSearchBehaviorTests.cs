@@ -77,7 +77,7 @@ public class GraphGlobalSearchBehaviorTests
     [Fact]
     public async Task HandleAsync_CollectsCommunityReportsAndMapReduces()
     {
-        var options = new GraphRagRetrievalOptions { GlobalBatchSize = 5 };
+        var options = new GraphRagGlobalSearchOptions { GlobalBatchSize = 5 };
         var sut = new GraphGlobalSearchBehavior(_chatClient, options, _chunkStore, _embedder);
         var ctx = CreateContext();
         var results = CreateCommunityResults(3);
@@ -100,7 +100,7 @@ public class GraphGlobalSearchBehaviorTests
     [Fact]
     public async Task HandleAsync_RespectsGlobalBatchSize()
     {
-        var options = new GraphRagRetrievalOptions { GlobalBatchSize = 2 };
+        var options = new GraphRagGlobalSearchOptions { GlobalBatchSize = 2 };
         var sut = new GraphGlobalSearchBehavior(_chatClient, options, _chunkStore, _embedder);
         var ctx = CreateContext();
         var results = CreateCommunityResults(4);
@@ -123,7 +123,7 @@ public class GraphGlobalSearchBehaviorTests
     [Fact]
     public async Task HandleAsync_NoCommunityReports_ReturnsStandardResults()
     {
-        var options = new GraphRagRetrievalOptions();
+        var options = new GraphRagGlobalSearchOptions();
         var sut = new GraphGlobalSearchBehavior(_chatClient, options, _chunkStore, _embedder);
         var ctx = CreateContext();
 
@@ -155,7 +155,7 @@ public class GraphGlobalSearchBehaviorTests
     public async Task HandleAsync_UsesGlobalChatClient()
     {
         var globalClient = Substitute.For<IChatClient>();
-        var options = new GraphRagRetrievalOptions
+        var options = new GraphRagGlobalSearchOptions
         {
             GlobalBatchSize = 5,
             GlobalChatClient = globalClient,
@@ -187,7 +187,7 @@ public class GraphGlobalSearchBehaviorTests
     [Fact]
     public async Task HandleAsync_ReducesToSingleResult()
     {
-        var options = new GraphRagRetrievalOptions { GlobalBatchSize = 5 };
+        var options = new GraphRagGlobalSearchOptions { GlobalBatchSize = 5 };
         var sut = new GraphGlobalSearchBehavior(_chatClient, options, _chunkStore, _embedder);
         var ctx = CreateContext();
 
@@ -226,7 +226,7 @@ public class GraphGlobalSearchBehaviorTests
     [Fact]
     public async Task HandleAsync_SingleCommunityReport_StillProcesses()
     {
-        var options = new GraphRagRetrievalOptions { GlobalBatchSize = 5 };
+        var options = new GraphRagGlobalSearchOptions { GlobalBatchSize = 5 };
         var sut = new GraphGlobalSearchBehavior(_chatClient, options, _chunkStore, _embedder);
         var ctx = CreateContext();
         var results = CreateCommunityResults(1);
@@ -266,7 +266,7 @@ public class GraphGlobalSearchBehaviorTests
     {
         await SeedReportAsync("a community report");
         var sut = new GraphGlobalSearchBehavior(
-            _chatClient, new GraphRagRetrievalOptions(), _chunkStore, _embedder);
+            _chatClient, new GraphRagGlobalSearchOptions(), _chunkStore, _embedder);
         SetupChatClient("global answer");
 
         var calls = 0;
@@ -293,7 +293,7 @@ public class GraphGlobalSearchBehaviorTests
     public async Task HandleAsync_CandidateSetAlreadyHasReports_UsesThemWithoutFetching()
     {
         var sut = new GraphGlobalSearchBehavior(
-            _chatClient, new GraphRagRetrievalOptions(), _chunkStore, _embedder);
+            _chatClient, new GraphRagGlobalSearchOptions(), _chunkStore, _embedder);
         SetupChatClient("global answer");
 
         // Nothing seeded into the chunk store: if the behaviour went there anyway it would find no
@@ -321,7 +321,7 @@ public class GraphGlobalSearchBehaviorTests
     {
         await SeedReportAsync("acme report");
         var sut = new GraphGlobalSearchBehavior(
-            _chatClient, new GraphRagRetrievalOptions(), _chunkStore, _embedder);
+            _chatClient, new GraphRagGlobalSearchOptions(), _chunkStore, _embedder);
         SetupChatClient("global answer");
 
         var ctx = new RetrievalContext

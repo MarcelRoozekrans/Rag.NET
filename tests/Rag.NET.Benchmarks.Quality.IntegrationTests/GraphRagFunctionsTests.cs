@@ -41,11 +41,15 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// </para>
 /// <para>
 /// <b>Deliberately not asserted: retrieval-mode routing.</b> The design intends a
-/// <c>Mode</c> setting on <c>GraphRagRetrievalOptions</c> selecting local, global or automatic
+/// <c>Mode</c> setting on <c>GraphRagGlobalSearchOptions</c> selecting local, global or automatic
 /// search — issue #104. Neither the property nor a <c>GraphRagRetrievalMode</c> enum exists in the
 /// package today, and neither behavior consults anything of the kind: <c>UseGraphRag</c> registers
-/// both <c>GraphLocalSearchBehavior</c> and <c>GraphGlobalSearchBehavior</c> unconditionally, and
-/// this guard therefore invokes each one directly. A test asserting that <c>Mode = Local</c> routes
+/// <c>GraphGlobalSearchBehavior</c> unconditionally, and local search left the pipeline entirely
+/// (#316) — its live replacement is <c>IGraphRagSearch</c>, also registered unconditionally, outside
+/// the pipeline. This guard invokes global search through the registered behavior and local search
+/// through <c>LegacyPageRankLocalSearch</c>, the frozen copy of the deleted <c>GraphLocalSearchBehavior</c>
+/// that now lives in this harness, invoked directly rather than through any registration. A test
+/// asserting that <c>Mode = Local</c> routes
 /// to local search would not compile, and one written against a stub would be red on arrival. A
 /// permanently failing test is not a guard; the assertion lands with #104's fix.
 /// </para>
