@@ -25,7 +25,11 @@ public sealed class PipelineParityTests
         "the sixth document, furthest from the query",
     ];
 
-    /// <summary>Strictly below <see cref="Corpus"/>'s length, so truncation is observable.</summary>
+    /// <summary>
+    /// The synthetic leg's search depth. Strictly below <see cref="Corpus"/>'s length, so
+    /// truncation is observable. The real leg uses <see cref="RealLegDepth"/> instead — this
+    /// constant describes only the synthetic corpus above.
+    /// </summary>
     private const int TopK = 4;
 
     [Fact]
@@ -62,14 +66,20 @@ public sealed class PipelineParityTests
     private const int RealLegQueryCount = 20;
 
     /// <summary>
+    /// The real leg's search depth: the rank cutoff every pinned figure in this project is quoted
+    /// at, not the synthetic fixture's <see cref="TopK"/>.
+    /// </summary>
+    private const int RealLegDepth = BeirHarness.Cutoff;
+
+    /// <summary>
     /// The same claim on the corpus the pinned figures come from, against the harness's own dense
     /// row rather than a restatement of it.
     /// </summary>
     /// <remarks>
     /// Gated on provisioning only, deliberately — not on <c>RAGNET_BEIR_LONG_RUNS</c>. The
-    /// embeddings are cached and twenty queries are seconds; the long-run gate exists for
-    /// hour-scale sweeps, and putting the honest leg behind it would mean it effectively never
-    /// runs.
+    /// embeddings are cached and twenty queries are seconds once the cache the other BEIR legs
+    /// warm is populated; the long-run gate exists for hour-scale sweeps, and putting the honest
+    /// leg behind it would mean it effectively never runs.
     /// </remarks>
     [Fact]
     public async Task DefaultPipeline_ReturnsWhatTheHarnessDenseRowReturns_OnSciFact()
@@ -90,19 +100,14 @@ public sealed class PipelineParityTests
 
         var units = BeirHarness.OneChunkPerDocument(dataset.Documents);
 
+        // The corpus actually landed. Without this, a silently-empty index would leave both sides
+        // returning zero hits and every AssertSame below would pass vacuously.
+        Assert.Equal(descriptor.DocumentCount, units.Count);
+
         // One store, indexed once, handed to both sides. This is what makes the sixteen behaviours
         // the only surviving variable.
         using var store = new InMemoryVectorStore();
-        var unitTexts = units.Select(u => u.Text).ToArray();
-        var unitVectors = await BeirHarness.EmbedAsync(generator, embeddings, unitTexts, ct);
-
-        var chunks = new List<EmbeddedChunk>(units.Count);
-        for (var i = 0; i < units.Count; i++)
-        {
-            chunks.Add(new EmbeddedChunk { Chunk = units[i], Embedding = unitVectors[i] });
-        }
-
-        await store.StoreAsync(chunks, ct);
+        await IndexUnitsAsync(store, units, generator, embeddings, ct);
 
         // The pipeline reads the identical cached vector rather than calling the generator live: a
         // cache populated under a different model revision would otherwise disagree with a live
@@ -116,14 +121,19 @@ public sealed class PipelineParityTests
 
         Assert.Equal(RealLegQueryCount, queries.Length);
 
-        var searchOptions = new SearchOptions { TopK = TopK };
+        var searchOptions = new SearchOptions { TopK = RealLegDepth };
         foreach (var query in queries)
         {
             var harness = await AblationRow.Dense.RetrieveAsync(
                 query, generator, embeddings, store, searchOptions, ct);
 
+            // The harness side actually retrieved. Safe: SciFact has 5,183 documents and MinScore
+            // is 0 on both sides, so a full depth of hits always comes back — a short list here
+            // means indexing or retrieval silently produced nothing, not a legitimate empty result.
+            Assert.Equal(RealLegDepth, harness.Count);
+
             var pipeline = await PipelineParity.RetrieveThroughPipelineAsync(
-                store, pipelineEmbedder, query.Text, TopK, ct);
+                store, pipelineEmbedder, query.Text, RealLegDepth, ct);
 
             PipelineParity.AssertSame(harness, pipeline, query.Text);
         }
@@ -148,6 +158,26 @@ public sealed class PipelineParityTests
                 },
                 Embedding = vectors[i].Vector,
             });
+        }
+
+        await store.StoreAsync(chunks, ct);
+    }
+
+    /// <summary>Embeds <paramref name="units"/> through the cache and stores them, verbatim.</summary>
+    private static async Task IndexUnitsAsync(
+        IVectorStore store,
+        IReadOnlyList<TextChunk> units,
+        OnnxEmbeddingGenerator generator,
+        EmbeddingCache embeddings,
+        CancellationToken ct)
+    {
+        var unitTexts = units.Select(u => u.Text).ToArray();
+        var unitVectors = await BeirHarness.EmbedAsync(generator, embeddings, unitTexts, ct);
+
+        var chunks = new List<EmbeddedChunk>(units.Count);
+        for (var i = 0; i < units.Count; i++)
+        {
+            chunks.Add(new EmbeddedChunk { Chunk = units[i], Embedding = unitVectors[i] });
         }
 
         await store.StoreAsync(chunks, ct);
