@@ -15,7 +15,12 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// </summary>
 public sealed class PipelineParityTests
 {
-    private static readonly string[] Corpus =
+    /// <summary>
+    /// The synthetic corpus. <see langword="internal"/> so
+    /// <see cref="OrderingEmbeddingGeneratorTests"/> guards <i>this</i> corpus rather than a
+    /// look-alike of its own that would only coincidentally match it.
+    /// </summary>
+    internal static readonly string[] Corpus =
     [
         "the first document, nearest the query",
         "the second document",
@@ -32,6 +37,12 @@ public sealed class PipelineParityTests
     /// </summary>
     private const int TopK = 4;
 
+    /// <summary>
+    /// Every query the fixture offers, not just the one at angle 0. A default behaviour that
+    /// stopped no-opping need not do so uniformly — MMR, for one, is a provable no-op on
+    /// <see cref="OrderingEmbeddingGenerator.QueryText"/> because that query sits exactly on
+    /// document 0 — so a single-query leg can be green while the pipeline has already drifted.
+    /// </summary>
     [Fact]
     public async Task DefaultPipeline_ReturnsWhatTheHarnessDenseRowReturns_OnASyntheticCorpus()
     {
@@ -41,25 +52,64 @@ public sealed class PipelineParityTests
         using var store = new InMemoryVectorStore();
         await IndexAsync(store, embedder, ct);
 
-        // The harness side, expressed as DenseRow expresses it: one query embedding, one cosine
-        // search. AblationRow.Dense itself takes a concrete OnnxEmbeddingGenerator, so it cannot be
-        // called with a fixture embedder — the real leg calls it directly.
-        var queryVectors = await embedder.GenerateAsync(
-            [OrderingEmbeddingGenerator.QueryText], cancellationToken: ct);
-        var harnessResults = await store.SearchAsync(
+        Assert.True(
+            embedder.QueryTexts.Count > 1,
+            "the fast leg is back to a single query; a divergence affecting only some queries " +
+            "would be invisible.");
+
+        foreach (var query in embedder.QueryTexts)
+        {
+            var harness = await HarnessDenseRowAsync(store, embedder, query, ct);
+
+            // The harness side actually retrieved. The corpus is longer than TopK and MinScore is 0,
+            // so a full page always comes back; a short list means retrieval silently produced
+            // nothing and every AssertSame below it would agree on the empty prefix and pass.
+            Assert.Equal(TopK, harness.Count);
+
+            var pipeline = await PipelineParity.RetrieveThroughPipelineAsync(
+                store, embedder, query, TopK, ct);
+
+            PipelineParity.AssertSame(harness, pipeline, query);
+
+            if (string.Equals(query, OrderingEmbeddingGenerator.QueryText, StringComparison.Ordinal))
+            {
+                AssertPinnedRanking(harness);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The fixture's ordering is known by construction for the query at angle 0, so this pins what
+    /// BOTH sides should have returned. Without it, two identically-wrong rankings would agree and
+    /// pass.
+    /// </summary>
+    private static void AssertPinnedRanking(IReadOnlyList<ChunkHit> harness)
+    {
+        var ids = new string[harness.Count];
+        for (var i = 0; i < harness.Count; i++)
+        {
+            ids[i] = harness[i].ChunkId;
+        }
+
+        Assert.Equal(["doc-0#0", "doc-1#0", "doc-2#0", "doc-3#0"], ids);
+    }
+
+    /// <summary>
+    /// The harness side, expressed as <c>DenseRow</c> expresses it: one query embedding, one cosine
+    /// search. <c>AblationRow.Dense</c> itself takes a concrete <c>OnnxEmbeddingGenerator</c>, so it
+    /// cannot be called with a fixture embedder — the real leg calls it directly.
+    /// </summary>
+    private static async Task<IReadOnlyList<ChunkHit>> HarnessDenseRowAsync(
+        IVectorStore store,
+        OrderingEmbeddingGenerator embedder,
+        string query,
+        CancellationToken ct)
+    {
+        var queryVectors = await embedder.GenerateAsync([query], cancellationToken: ct);
+        var results = await store.SearchAsync(
             queryVectors[0].Vector, new SearchOptions { TopK = TopK }, ct);
-        var harness = PipelineParity.ToChunkHits(harnessResults);
 
-        var pipeline = await PipelineParity.RetrieveThroughPipelineAsync(
-            store, embedder, OrderingEmbeddingGenerator.QueryText, TopK, ct);
-
-        PipelineParity.AssertSame(harness, pipeline, OrderingEmbeddingGenerator.QueryText);
-
-        // The fixture's ordering is known by construction, so this pins what BOTH sides should have
-        // returned. Without it, two identically-wrong rankings would agree and pass.
-        Assert.Equal(
-            ["doc-0#0", "doc-1#0", "doc-2#0", "doc-3#0"],
-            harness.Select(h => h.ChunkId).ToArray());
+        return PipelineParity.ToChunkHits(results);
     }
 
     /// <summary>How many queries the real leg compares — fixed, so the run is seconds.</summary>
@@ -76,10 +126,12 @@ public sealed class PipelineParityTests
     /// row rather than a restatement of it.
     /// </summary>
     /// <remarks>
-    /// Gated on provisioning only, deliberately — not on <c>RAGNET_BEIR_LONG_RUNS</c>. The
-    /// embeddings are cached and twenty queries are seconds once the cache the other BEIR legs
-    /// warm is populated; the long-run gate exists for hour-scale sweeps, and putting the honest
-    /// leg behind it would mean it effectively never runs.
+    /// Gated on provisioning only, deliberately — not on <c>RAGNET_BEIR_LONG_RUNS</c>. The corpus
+    /// embeddings are the expensive part and the other BEIR legs leave them warm in the cache. The
+    /// query embeddings need not be: the first twenty query ids by ordinal sort are mostly
+    /// unjudged, so no other leg has ever embedded them, and this leg may pay for up to twenty live
+    /// ONNX embeds — still seconds. The long-run gate exists for hour-scale sweeps, and putting the
+    /// honest leg behind it would mean it effectively never runs.
     /// </remarks>
     [Fact]
     public async Task DefaultPipeline_ReturnsWhatTheHarnessDenseRowReturns_OnSciFact()
@@ -99,10 +151,6 @@ public sealed class PipelineParityTests
         var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
 
         var units = BeirHarness.OneChunkPerDocument(dataset.Documents);
-
-        // The corpus actually landed. Without this, a silently-empty index would leave both sides
-        // returning zero hits and every AssertSame below would pass vacuously.
-        Assert.Equal(descriptor.DocumentCount, units.Count);
 
         // One store, indexed once, handed to both sides. This is what makes the sixteen behaviours
         // the only surviving variable.
@@ -127,9 +175,11 @@ public sealed class PipelineParityTests
             var harness = await AblationRow.Dense.RetrieveAsync(
                 query, generator, embeddings, store, searchOptions, ct);
 
-            // The harness side actually retrieved. Safe: SciFact has 5,183 documents and MinScore
-            // is 0 on both sides, so a full depth of hits always comes back — a short list here
-            // means indexing or retrieval silently produced nothing, not a legitimate empty result.
+            // The vacuous-pass guard, and the only assertion here that touches the store: with zero
+            // hits on both sides AssertSame agrees on all twenty queries and the leg passes without
+            // ever having retrieved anything. Demanding a full page is safe — SciFact has 5,183
+            // documents and MinScore is 0 on both sides — so a short list means indexing or
+            // retrieval silently produced nothing, not a legitimate empty result.
             Assert.Equal(RealLegDepth, harness.Count);
 
             var pipeline = await PipelineParity.RetrieveThroughPipelineAsync(

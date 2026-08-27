@@ -4306,8 +4306,8 @@ and it needs a dataset whose questions are not constructed per document.
 
 **What this does not do is complete the phase.** RAPTOR is one technique of a sweep that still owes
 HyDE, reranking, hybrid BM25, late chunking, SPLADE, the three answer engines as arms, every vector
-store through the SciFact parity leg, the pipeline-parity test, the second-corpus RAPTOR arm, and
-local search's unexplained yes/no abstention.
+store through the SciFact parity leg, ~~the pipeline-parity test~~ (**fast leg complete 2026-08-27**;
+see below), the second-corpus RAPTOR arm, and local search's unexplained yes/no abstention.
 
 **The pipeline-parity test's fast leg is complete, 2026-08-27 — the DoD clause 6.2.1's exit
 condition names explicitly.** `OrderingEmbeddingGenerator` is a deterministic fixture embedder built
@@ -4325,6 +4325,22 @@ over a synthetic six-document corpus that runs on every push and **passes**, and
 runs SciFact through `AblationRow.Dense` over the same shared store, at `BeirHarness.Cutoff` (10),
 gated on provisioning only rather than on `RAGNET_BEIR_LONG_RUNS`.
 
+**The fast leg runs six queries, not one — and the reason is the mutation check below.** A final
+review caught it running only the query at angle 0, which is *identically* document 0's vector, so a
+whole class of reordering cancels out there; a leg pinned to that one angle can be green while the
+pipeline has already drifted for every other query. The fixture now also carries one query per
+adjacent document pair, at angles *j·δ + δ/3* — each a distinct multiple of *δ/3* from every
+document, so still tie-free, and sitting on no document. The guard test asserts exactly that: only
+`QueryText` coincides with a document vector, and it does so deliberately, because its hand-checked
+ranking `doc-0#0 … doc-3#0` is the leg's pin against two identically-wrong rankings agreeing.
+
+**`UseMmr` was re-run as a mutation against the six-query leg, and it now fails** — `Rank 1 differs
+for 'the parity query, a third past document 0' — pipeline doc-5#0 (0,5000000596046448) vs harness
+doc-1#0 (0,9888308644294739)` — while the `QueryText` query alone still passes under it. That is the
+finding stated as evidence rather than as argument: the single-query leg was green against a
+behaviour that stops no-opping the moment the query moves off document 0. (The leg fails at the
+first mismatch, so what is measured is the second query, not all six.)
+
 **The mutation check was run, and it failed on purpose, with this verbatim message:** `Rank 1
 differs for 'the parity query' - pipeline doc-2#0 (0,9009689092636108) vs harness doc-1#0
 (0,9749279618263245). Either a default retrieval behaviour stopped being a no-op, or the harness's
@@ -4333,8 +4349,7 @@ something the shipped pipeline no longer does, and the figures - not this test -
 attention.` **The plan's suggested mutation, `UseMmr`, did not work, and why matters**:
 `OrderingEmbeddingGenerator`'s query vector is placed identically to doc-0's vector by construction,
 so MMR's relevance and diversity terms cancel exactly and MMR reproduces the harness's order — a
-*mathematical* no-op on this fixture, not a defect in `MmrBehavior`. A future reader who retries
-`UseMmr` here would hit the same silent green and could wrongly conclude the test cannot fail.
+*mathematical* no-op on this fixture, not a defect in `MmrBehavior`.
 `UseRedundancyFilter = true` was used instead: the fixture's six documents sit on a unit circle at
 equally spaced angles, so adjacent documents carry cosine similarity ≈0.975 — above
 `RedundancyFilterBehavior`'s default 0.95 threshold — and enabling the filter genuinely changes both
@@ -4348,9 +4363,11 @@ should be read as a pass that did not happen.
 **A review caught the real leg passing vacuously, before merge.** With zero hits on both sides,
 `AssertSame` would agree on all 20 queries and pass regardless of whether retrieval worked at all —
 the exact failure mode the fast leg already guards against with its hardcoded expected ranking.
-Fixed before merge with two explicit assertions: that indexing actually landed one chunk per
-document, and that the harness side actually retrieved a full page of hits (`BeirHarness.Cutoff`)
-at every query.
+Fixed before merge with one assertion that touches the store: that the harness side actually
+retrieved a full page of hits (`BeirHarness.Cutoff`) at every query. A second assertion, on the unit
+count, was added at the same time and **removed again in the final review** — it was a tautology
+(`BeirHarness.LoadAsync` already asserts the document count, and `OneChunkPerDocument` is one unit
+per document) and it never touched the store, so it could say nothing about indexing.
 
 **The fast leg satisfies 6.2.1's exit-condition clause** — *"the pipeline-parity test is in the fast
 tier"* — and runs, green, on every push. **This does not complete the phase.** It still owes HyDE,
