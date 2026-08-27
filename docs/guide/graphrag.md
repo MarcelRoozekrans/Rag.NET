@@ -151,7 +151,7 @@ These are validated at registration too. `GlobalBatchSize = 0` would hang global
 
 > **Which search runs is a registration decision, not a setting.** Call `IGraphRagSearch` directly for local search, or add `GraphGlobalSearchBehavior` to the retrieval pipeline for global search. There is deliberately no `Mode` property — one existed until 0.1.0, was never read by any behavior, and is described in issue #104.
 
-> The PageRank blend was removed in v1.0. It scored local search by mixing PageRank into dense
+> The PageRank blend has been removed. It scored local search by mixing PageRank into dense
 > similarity, which is not part of Microsoft's local search; at its shipped default the blend
 > demoted the very chunks the graph walk had reached, and at weight 0 it reproduced the plain
 > candidate set on 2,255 of 2,255 queries. Local search is now

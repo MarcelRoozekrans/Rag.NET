@@ -114,10 +114,11 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// <remarks>
     /// <para>
     /// <b>Explicit because the library default changed under it.</b> This was <c>new()</c>, inheriting
-    /// whatever <see cref="GraphRagGlobalSearchOptions"/> shipped — which was 0.3 when every figure the
-    /// <c>local</c> arm pins was measured. #239 changed that default to 0, so leaving this inheriting
-    /// would have silently re-pointed those pins at a different configuration while their recorded
-    /// text still said 0.3.
+    /// whatever <c>GraphRagRetrievalOptions</c> shipped — the type these properties lived on before
+    /// it was renamed to <see cref="GraphRagGlobalSearchOptions"/> — which was 0.3 when every figure
+    /// the <c>local</c> arm pins was measured. #239 changed that default to 0, so leaving this
+    /// inheriting would have silently re-pointed those pins at a different configuration while their
+    /// recorded text still said 0.3.
     /// </para>
     /// <para>
     /// A pinned measurement must not follow a library default. The figure describes one configuration
@@ -129,8 +130,10 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// <para>
     /// The <c>PageRankWeight = 0</c> case is not lost: it is the ablation in
     /// <c>BeirGraphRagCorpusTests.Ablations_UnderTheGraphPath_PageRankWeightZero_AndGraphReach</c>,
-    /// measured at nDCG@10 0.59658 — the candidate-set control to five decimals — and that is now the
-    /// configuration the library ships.
+    /// measured at nDCG@10 0.59658 — the candidate-set control to five decimals. The library ships
+    /// no blend at all now, and that ablation is what its absence is equivalent to: a weight of zero
+    /// already made the blend the identity, so removing it outright reproduces the same candidate
+    /// set.
     /// </para>
     /// </remarks>
     private readonly LegacyPageRankOptions _retrievalOptions = new() { PageRankWeight = 0.3 };

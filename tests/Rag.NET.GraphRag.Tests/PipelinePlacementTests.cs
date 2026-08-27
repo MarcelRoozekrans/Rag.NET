@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DependencyInjection;
+using Rag.NET.GraphRag.LocalSearch;
 using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Retrieval.Behaviors;
 using Xunit;
@@ -69,6 +70,28 @@ public sealed class PipelinePlacementTests
             router > extraction && router > detection,
             $"The router is at {router}, extraction at {extraction}, detection at {detection}. " +
             "It must run after both or it separates only some of the graph's chunks.");
+    }
+
+    /// <summary>
+    /// <c>UseGraphRag()</c> registers the local search it ships — <see cref="IGraphRagSearch"/> —
+    /// as a service, even though it places no retrieval-pipeline behaviour for it.
+    /// </summary>
+    /// <remarks>
+    /// This is the only registration guard for <see cref="IGraphRagSearch"/> in the repository.
+    /// It is not in either pipeline chain (see
+    /// <see cref="UseGraphRag_WithNoPipelineDelegates_LeavesGlobalSearchOutOfTheChain"/> and its
+    /// ingestion counterparts) and it is not resolved by any other test, so nothing else would
+    /// catch a change that broke resolving it — a caller following
+    /// <c>docs/guide/graphrag.md</c>'s instruction to call <c>IGraphRagSearch</c> directly would
+    /// be the first to find out.
+    /// </remarks>
+    [Fact]
+    public void UseGraphRag_WithNoPipelineDelegates_RegistersLocalSearchAsAService()
+    {
+        var services = new ServiceCollection();
+        services.AddRagNet(rag => rag.UseGraphRag());
+
+        Assert.Contains(services, d => d.ServiceType == typeof(IGraphRagSearch));
     }
 
     /// <summary>

@@ -1,8 +1,9 @@
 namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 
 /// <summary>
-/// The three <c>GraphRagGlobalSearchOptions</c> properties deleted alongside the behaviour, at the
-/// values they carried when the pinned figures were measured.
+/// The three properties deleted alongside the behaviour — carried by <c>GraphRagRetrievalOptions</c>
+/// at the time, since renamed to <c>GraphRagGlobalSearchOptions</c> — at the values they carried
+/// when the pinned figures were measured.
 /// </summary>
 /// <remarks>
 /// <b><c>PageRankWeight</c> defaults to 0.3, not 0.</b> 0.3 was the shipped default when the
