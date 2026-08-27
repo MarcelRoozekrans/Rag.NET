@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-26 (6.2.11 and 6.2.12 shipped; the first external user found silent data loss)
+**Last updated:** 2026-08-27 (#176 answered and shipped in #405 — the last of 6.2.1's four named debts)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -8,7 +8,9 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.1 — Retrieval & Answer Sweep (active; RAPTOR Task 5 is done and pinned in #389).
+**Phase:** 6.2.1 — Retrieval & Answer Sweep (active; RAPTOR Task 5 is done and pinned in #389,
+and **#176 closed 2026-08-26 in #405** — all four named debts are now closed and only the sweep
+itself remains).
 
 **2026-08-26 shipped 6.2.12 — the first external user's defects.** Seven merged PRs, all verified
 on `main` by content. Its full record is in `ROADMAP.md`; the three findings worth carrying here:
@@ -66,7 +68,9 @@ on `main`** — corrected 2026-08-25. Statuses are written when a phase is plann
 editing this file at the moment its PR merges, which is the same failure the Working State branch
 field has now had three times.
 
-**Last completed:** **Phase 6.2.9 — `Umap.Fit` at Corpus Scale** (#348), built 2026-08-25.
+**Last completed:** **#176, answered 2026-08-26 and shipped in #405** — see Phase state below;
+the finding is that the singletons are honest and the obvious fix would make the graph worse.
+Before it, **Phase 6.2.9 — `Umap.Fit` at Corpus Scale** (#348), built 2026-08-25.
 Measured before changing anything, which is what makes the rest of it quotable: the kNN graph is
 **92% of `Umap.Fit`'s time and 98% of its allocation**, so #348 named the right target. Bounded
 k-selection replaced the full sort and the row loop parallelises above 512 rows —
@@ -102,9 +106,25 @@ found while fixing it. The review loop also caught a first attempt at #333's fix
 **one stray chunk switch clustering off for an entire corpus**, and a #332 regression test that had
 become provably vacuous — it passed against the unfixed code.
 
-**Phase state:** 6.2.1's four named debts are down to one. #239 and #200 closed 2026-08-17, #247
-closed 2026-08-18 (pinned at 0.3494 in #280). **#176 remains, and is worse than filed**: 78.8%
-singletons on the full corpus against the 65% the issue carries.
+**Phase state: 6.2.1's four named debts are all closed.** #239 and #200 on 2026-08-17, #247 on
+2026-08-18 (pinned at 0.3494 in #280), and **#176 on 2026-08-26 in #405**.
+
+**#176 was answered by reading names, not by moving a number — and the answer is that it is not a
+defect worth fixing.** The counts were already understood: 853 of 16,403 relationships (5.20%) are
+dropped because an endpoint resolves to no extracted entity, stranding 123 entities that do have
+edges, and 273 + 123 is **exactly** the pinned slice's 396 singletons. What nobody had checked is
+what those endpoints are *called*. They are **565 distinct names**, and they are not entities the
+extractor missed — `content policies` (10), `tasks` (10), `smart plug` (9), `handy tool` (8), `film`
+(7), `ceremony` (6), `death` (5) — common nouns, mixed with paraphrases of things that *are*
+extracted: `Falun Gong practitioners` beside the entity `Falun Gong`, `Rachel's husband`.
+
+**That rules out the obvious fix.** Promoting an unresolved endpoint into an entity drives the
+singleton share down while adding 565 junk nodes named after common nouns — a better-looking number
+over a worse graph. **The singleton count is precisely the metric easiest to move without helping
+anything**, which is the transferable part. Nothing was changed on the strength of it. Any real fix
+belongs in the extraction prompt and must be measured against retrieval. The full-corpus 78.8%
+(2,816 of 3,573) stands as a documented property rather than an open debt. Cost: zero model calls —
+the extraction cache was replayed refuse-on-miss.
 
 ## Open Decisions
 
@@ -150,13 +170,21 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Recommended Next Step
 
-**Decide what to do about the corpus-scope default** — this is the one thing blocking on a person
-rather than on work, and it has been open since 2026-08-25. — see OPEN DECISION below. Task 5 measured it
-and the answer was not the one #331 assumed; the decision is a design call, not a measurement one,
-and nothing has been changed on the strength of a single corpus.
+**Delete `GraphLocalSearchBehavior` and `PageRankWeight`** — the operator's pick, 2026-08-27. It
+has been unblocked since 2026-08-20, when 6.x.7 published the replacement figure that was its stated
+precondition. It is not a trivial deletion: `Directory.Build.props` sets `TreatWarningsAsErrors`, so
+17 files across four projects that deliberately reference these members have to go with them, and
+three pinned figures (the `local` answer arm at 0.2102, `BeirReproduction`'s GraphRag 0.56897, and
+the blend ablation) become unreproducible once they do — which needs answering before the deletion,
+not after.
 
-**The measurement work still open in 6.2.1** is #176 (78.8% singleton communities, worse than
-filed) and the 17 Done sections that need a pinned figure with a control.
+**The corpus-scope default is decided** (2026-08-27, option 3 — see DECIDED below) and is no longer
+blocking on a person. It is now scheduled work: a second-corpus RAPTOR arm.
+
+**The measurement work still open in 6.2.1** is the 17 Done sections that need a pinned figure with
+a control. **#176 is no longer on this list** — it was answered 2026-08-26 in #405, and the answer
+needed no new measurement at all: the counts were already recorded and what was missing was reading
+the dropped endpoints' *names*.
 
 **There is no measurement run set up and waiting.** RAPTOR Task 5 is done, and the #300 follow-up
 was done on 2026-08-18 (see Blockers). The 17 Done sections that still need a pinned figure with a
@@ -288,22 +316,56 @@ works, and it trades accuracy for abstention (51.8% correct null-abstention, the
 ~8 h estimate came from a rate observed during *tree summarisation*, whose prompts are much larger;
 the pilot notes flagged that uncertainty explicitly and it was right to.
 
-## OPEN DECISION — what to do about the corpus-scope default
+## DECIDED 2026-08-27 — the corpus-scope default waits on a second corpus
 
-`RaptorTreeScope.Corpus` is the shipped default and a breaking change (#331, phase 6.2.3). It does
-not buy accuracy on this corpus; it costs a little. **Nothing has been changed on the strength of
-this** — it is one corpus, and the strict rule is a wash. The options, none taken:
+`RaptorTreeScope.Corpus` is the shipped default and a breaking change (#331, phase 6.2.3). Task 5
+measured it as **worse** than the per-document tree it replaced — −0.0146 paper (p=0.0247), −0.0204
+raw (p=0.0006), strict a wash (p=0.7372) — with the gap concentrated in **inference** queries
+(0.7831 against the control's 0.8309), which is the exact multi-hop case #331 argued it would help.
 
-1. Revert the default to `PerDocument` and keep `Corpus` opt-in.
-2. Keep the default and document the measured cost.
-3. Measure a second corpus before deciding, since a single dataset reversing a design decision is
-   thin evidence — MultiHop-RAG rewards per-document locality by construction.
+**The operator's decision, 2026-08-27, is option 3: measure a second corpus before changing
+anything.** The three options were:
+
+1. Revert the default to `PerDocument` and keep `Corpus` opt-in. *(Not taken.)*
+2. Keep the default and document the measured cost. *(Not taken.)*
+3. **Measure a second corpus before deciding.** ← **taken**
+
+**The reasoning is the reason the other two were refused, and it is worth keeping:** a single
+dataset reversing a design decision is thin evidence, and **MultiHop-RAG rewards per-document
+locality by construction** — its questions are built by composing facts drawn from identifiable
+source articles, so a per-document tree is measuring on home ground. Two of three rules signing the
+same way is real, but it is real *on this corpus*, and the corpus is not neutral about the thing
+being tested. Reverting a breaking default on it would be acting on the least neutral evidence
+available.
+
+**So the default stays `Corpus` for now, and that is a hold rather than an endorsement.** Nothing
+has been changed on the strength of the Task 5 numbers, and nothing should be until a second corpus
+reports. Two of three rules are significant against it; if the second corpus signs the same way, the
+revert becomes well-founded rather than corpus-shaped.
+
+**What this adds to 6.2.1:** a second-corpus RAPTOR arm, needing a dataset whose questions are not
+constructed per-document. `BeirDatasetDescriptor` already has the shape. This is now a named thread
+in the phase, not an open question — the question is answered and the work is scheduled.
+
+**Cost note carried from Task 5:** the full sweep was 58 m of generation after a 28 m I/O-bound load
+for ~5,600 new answers. A second corpus is that order again, not the ~8 h the original plan
+estimated — that figure came from a rate observed during tree *summarisation*, whose prompts are
+much larger than answer generation's.
 
 ## Working State
 
-**Branch:** `chore/roadmap-6-2-11`, cut from `main` at `685ca037`. Bookkeeping only. Both of the
-day's feature branches merged and were **verified on `main` by content**, not by their MERGED
-labels — `RagPipelineFactory.cs` exists (#381) and `Umap.NearestNeighborsOf` is present (#382).
+**Branch:** `chore/planning-176-and-phase-table`, cut from `origin/main` on 2026-08-27.
+Bookkeeping only — this file, `ROADMAP.md` and `MILESTONE.md`.
+
+**The field was stale again when this session opened, for the fourth time.** It named
+`chore/roadmap-6-2-11` while the checkout was on `research/176-dropped-endpoints`, and *that* branch
+had already shipped: its two commits were squash-merged as **#404** and **#405** under different
+SHAs, so `git log origin/<branch>..HEAD` showed nothing pushed while the work was on `main` all
+along. **Verified on `main` by content** — `DescribeDroppedEndpoints` is in
+`GraphRagFunctionsTests.cs` and `Phase 6.2.12` is in `ROADMAP.md` there — rather than by either PR's
+label. The lesson generalises the one already recorded: a branch that *looks* unpushed is no more
+trustworthy than a PR that *looks* merged. Diff the branch against `origin/main` by content before
+concluding either way; here the only difference was main's own newer anglesharp bump (#406).
 
 **Tasks 1-4 of `docs/plans/2026-08-21-raptor-real-protocol-implementation.md` are on `main`** —
 Tasks 1-3 in #347 (`c2d83075`), Task 4 in #370 (`2de9c5c9`); verified by content, not by a MERGED
