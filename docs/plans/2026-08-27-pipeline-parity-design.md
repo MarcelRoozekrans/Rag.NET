@@ -132,10 +132,22 @@ because it is the harness, on the corpus the figures come from.
 the fast leg are forced by the harness's public surface rather than chosen:
 
 - `RetrieveScoredRunsAsync` builds and disposes its own `InMemoryVectorStore`, so the instance
-  cannot be shared. The test instead indexes its own store from the same `OneChunkPerDocument`
-  units, through the same `OnnxEmbeddingGenerator` and the same prefetched `EmbeddingCache`. The
-  two stores therefore hold identical vectors, and the residual variable is `IndexAsync` running
-  twice rather than once — the same deterministic code over the same cached vectors both times.
+  cannot be shared. The test indexes its own store from the same `OneChunkPerDocument` units,
+  through the same `OnnxEmbeddingGenerator` and the same prefetched `EmbeddingCache`, so the two
+  stores hold identical vectors.
+
+  **`IndexAsync` is private as well, so this is an equivalent indexing path rather than the same
+  one** — and that is a second copy of a step, which is the one thing this design otherwise refuses
+  (approach B was rejected for measuring copies). It is tolerable here because the step is small and
+  its inputs are pinned: identical units, identical cached vectors, one upsert each. But it is a
+  real difference from the fast leg, which shares the store by identity and carries no copy at all.
+
+  **The plan should consider one alternative before accepting the copy**: widening `IndexAsync` from
+  `private` to `internal`. `PipelineParity` lives in the same assembly as `BeirHarness`, so that is a
+  visibility change with no behaviour change, no new public surface, and no effect on any pinned
+  figure — and it would restore *the same code* on both sides. Weighed against "no change to
+  `BeirHarness`", which is a rule about not perturbing the instrument, and a visibility widening
+  perturbs nothing it measures. Decide it in the plan, with the trade named either way.
 - Its output is `ScoredDocument` runs, already pooled. The pipeline's chunk results are put through
   **the same `DocumentRanking.TopDocuments`** before comparison, so applying one pooling function to
   both sides keeps retrieval the only possible source of a difference.
