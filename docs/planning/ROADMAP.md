@@ -4213,7 +4213,7 @@ phase's own first task; this entry states the question and the evidence, not the
 whatever definition this phase settles, or carries a `<VerifiedByReason>` stating why it stays.
 That is Milestone 6's second DoD criterion, and this phase owns it.
 
-### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: active 2026-08-20 — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at. Two of its four named debts are now closed: #239 and #200 on 2026-08-17, **#247 on 2026-08-18** — fixed twice over, #311 hiding graph chunks from retrieval by default and #312 giving them their own store, pinned at 0.3494 in #280. #176 remains and is **worse** than it was recorded: the full corpus gives 2,816 singletons of 3,573, **78.8%** against the 65% the issue carries. The local-search thread completed 2026-08-20 (#323, #326); the sweep itself has not started. **The RAPTOR measurement's Tasks 4-6 unblocked 2026-08-22** when #345 merged in #351 (`bb4c11c7`, verified on `main` by content): before it, `SelectClusterCount` capped every level at `SelectK(maxK: Min(count, 10))`, so over MultiHop-RAG's 17,648 chunks the largest level-1 cluster held at least 1,765 chunks (~183k tokens) against `gpt-4o-mini`'s 128k context and the corpus tree could not be built at the shipped default at all]
+### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: active 2026-08-20 — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at. Two of its four named debts are now closed: #239 and #200 on 2026-08-17, **#247 on 2026-08-18** — fixed twice over, #311 hiding graph chunks from retrieval by default and #312 giving them their own store, pinned at 0.3494 in #280. **All four of its named debts are now closed**: #239 and #200 on 2026-08-17, #247 on 2026-08-18, and **#176 answered 2026-08-26 in #405** — not by driving the number down but by naming the dropped endpoints, which turn out to be common nouns and paraphrases rather than entities the extractor missed, so the singletons are honest and the obvious fix would trade a better number for a worse graph. The full-corpus reading stands at 2,816 of 3,573 (**78.8%**) against the 65% the issue carries, and that is now a documented property rather than an open debt. The local-search thread completed 2026-08-20 (#323, #326); the sweep itself has not started. **The RAPTOR measurement's Tasks 4-6 unblocked 2026-08-22** when #345 merged in #351 (`bb4c11c7`, verified on `main` by content): before it, `SelectClusterCount` capped every level at `SelectK(maxK: Min(count, 10))`, so over MultiHop-RAG's 17,648 chunks the largest level-1 cluster held at least 1,765 chunks (~183k tokens) against `gpt-4o-mini`'s 128k context and the corpus tree could not be built at the shipped default at all]
 **Plan:** `docs/plans/2026-08-19-graphrag-local-search-completion-implementation.md` — the GraphRAG
 local-search thread only (spec sub-phases 6.x.1, 6.x.6, 6.x.7), not the whole sweep. **Complete
 2026-08-20.** Tasks 1–5 merged in #323; Task 6's measurement ran the same night and is pinned as the
@@ -4256,7 +4256,7 @@ store through the SciFact parity leg, reproducing 0.64593 ± 0.005 through itsel
 **pipeline-parity test** — the same query through a real `AddRagNet` pipeline and through the
 harness, top-k identical, on every push — which closes the gap 5.2.2 named. #239's blend and
 traversal are decided here (rescale, drop, or use), with the ablation numbers in hand. #176 and
-#200 ride along.
+#200 rode along and are both closed — #200 on 2026-08-17, #176 on 2026-08-26.
 
 **What it costs:** one BEIR run per retrieval feature (minutes to an hour, embeddings cached); one
 answer arm per engine (~$3 derived each, replayed after); one container run per store; a fast-tier
@@ -4269,11 +4269,35 @@ allowlist is empty.
 **Open threads, 2026-08-20** — what is actually left, now that #247 and the local-search work have
 closed: RAPTOR, HyDE, reranking, hybrid BM25, late chunking and SPLADE under the Real protocol; the
 three answer engines as arms; every vector store through the SciFact parity leg; the
-pipeline-parity test; **#176** at its re-measured 78.8%; **local search's yes/no abstention** — it
+pipeline-parity test; ~~**#176** at its re-measured 78.8%~~ (**answered 2026-08-26 in #405** — not
+a defect worth fixing; see below); **local search's yes/no abstention** — it
 commits on 8.8% of comparison and 4.3% of temporal questions where global search scores 0.4953 and
 0.3928, which nobody has explained; and the **deletion of `GraphLocalSearchBehavior` and
 `PageRankWeight`**, which the note below made conditional on 6.x.7 publishing its replacement
 figure. That figure published on 2026-08-20, so the deletion is now unblocked.
+
+**#176 is answered, 2026-08-26 — and the answer is that it is not a defect worth fixing (#405).**
+It was answered by looking at what the dropped relationship endpoints are *called*, which nobody had
+done; the counts were already understood. 853 of 16,403 relationships (5.20%) are dropped because an
+endpoint resolves to no extracted entity, stranding 123 entities that do have edges, and
+273 + 123 = **exactly** the 396 singletons on the pinned slice. Those 853 drops name **565 distinct**
+endpoints, and they are not entities the extractor missed: `content policies` (10), `tasks` (10),
+`smart plug` (9), `handy tool` (8), `film` (7), `ceremony` (6), `death` (5), `decisions` (5) — common
+nouns — mixed with descriptive paraphrases of things that *are* extracted, `Falun Gong practitioners`
+beside the entity `Falun Gong`, `Rachel's husband`, `Lars Mapstead's parents`.
+
+**That rules out the obvious fix.** Promoting an unresolved endpoint into an entity drives the
+singleton share down while adding 565 junk nodes named after common nouns — a better-looking number
+over a worse graph, and **the singleton count is precisely the metric easiest to move without
+helping anything**. The singletons are honest. What produces them is the model writing relationship
+endpoints as prose descriptions rather than the canonical names it extracted, so any fix belongs in
+the extraction prompt and has to be measured against *retrieval*, not against this count. **Nothing
+was changed on the strength of it.** The diagnostic stays — it prints the counts and a ten-name
+sample, because the names are what made the answer decidable and a future extraction change should be
+readable in them. Measured by replaying the extraction cache refuse-on-miss: zero model calls.
+
+**This closes the last of 6.2.1's four named debts** (#239, #200, #247, #176). What remains in the
+phase is the sweep itself, which was never about those four.
 
 - **`GraphLocalSearchBehavior` and `PageRankWeight` are deprecated in `<remarks>`, not
   `[Obsolete]`, and not deleted** (2026-08-19, Task 1 of the local-search completion plan).
