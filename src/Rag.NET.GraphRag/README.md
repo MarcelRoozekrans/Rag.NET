@@ -29,9 +29,9 @@ services.AddRagNet(rag => rag.UseGraphRag(
 after that. Neither search behaviour is placed in the retrieval pipeline by default: local search
 is `IGraphRagSearch`, a service you call directly rather than a pipeline behaviour, and
 `GraphGlobalSearchBehavior` is deliberately left out — it runs an LLM map-reduce over community
-reports on every query, so it stays opt-in. Add global search — or place local search's older,
-deprecated `GraphLocalSearchBehavior` yourself — with the pipeline delegates. `Add` is idempotent
-and those delegates run first, so your placement wins and each behavior appears once:
+reports on every query, so it stays opt-in. Add global search with the pipeline delegates.
+`Add` is idempotent and those delegates run first, so your placement wins and each behavior
+appears once:
 
 ```csharp
 using Rag.NET.DependencyInjection;

@@ -373,8 +373,8 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// </summary>
     /// <param name="candidates">The dense candidate set for one query.</param>
     /// <param name="retrievalOptions">
-    /// Supplies <see cref="GraphRagRetrievalOptions.LocalTopEntities"/> and
-    /// <see cref="GraphRagRetrievalOptions.LocalSearchDepth"/>, so the seeds and the walk are the
+    /// Supplies <see cref="LegacyPageRankOptions.LocalTopEntities"/> and
+    /// <see cref="LegacyPageRankOptions.LocalSearchDepth"/>, so the seeds and the walk are the
     /// behavior's own.
     /// </param>
     /// <param name="cancellationToken">Cancels the walk.</param>
@@ -402,7 +402,7 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// </remarks>
     public async Task<IReadOnlyList<string>> ExpandDocumentsAsync(
         IReadOnlyList<SearchResult> candidates,
-        GraphRagRetrievalOptions retrievalOptions,
+        LegacyPageRankOptions retrievalOptions,
         CancellationToken cancellationToken)
     {
         var seeds = candidates

@@ -29,7 +29,7 @@ public static class RagBuilderExtensions
     /// </para>
     /// <para>
     /// <b><see cref="GraphGlobalSearchBehavior"/> is deliberately not placed</b>, and neither is
-    /// <see cref="GraphLocalSearchBehavior"/> — which search runs is the caller's decision, as
+    /// <see cref="LocalSearch.IGraphRagSearch"/> — which search runs is the caller's decision, as
     /// <c>docs/guide/graphrag.md</c> states. Local search is <see cref="LocalSearch.IGraphRagSearch"/>,
     /// a graph traversal you call directly; global search re-enters the pipeline for community
     /// reports and runs an LLM map-reduce over them on every query, so enabling that by default
@@ -170,13 +170,6 @@ public static class RagBuilderExtensions
     private static void RegisterRetrievalBehaviors(
         IServiceCollection services, GraphRagRetrievalOptions retrievalOptions)
     {
-        services.AddSingleton<GraphLocalSearchBehavior>(sp =>
-            new GraphLocalSearchBehavior(
-                sp.GetRequiredService<IGraphStore>(),
-                retrievalOptions,
-                sp.GetRequiredService<GraphChunkStore>(),
-                sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>()));
-
         services.AddSingleton<GraphGlobalSearchBehavior>(sp =>
             new GraphGlobalSearchBehavior(
                 retrievalOptions.GlobalChatClient ?? sp.GetRequiredService<IChatClient>(),

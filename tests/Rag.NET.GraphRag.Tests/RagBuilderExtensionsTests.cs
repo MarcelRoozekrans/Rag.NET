@@ -100,7 +100,6 @@ public class RagBuilderExtensionsTests
 
         Assert.Contains(services, d => d.ServiceType == typeof(GraphEntityExtractionBehavior));
         Assert.Contains(services, d => d.ServiceType == typeof(CommunityDetectionBehavior));
-        Assert.Contains(services, d => d.ServiceType == typeof(GraphLocalSearchBehavior));
         Assert.Contains(services, d => d.ServiceType == typeof(GraphGlobalSearchBehavior));
     }
 

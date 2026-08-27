@@ -174,7 +174,6 @@ public sealed class GraphRagFunctionalTests : IAsyncLifetime
                 .Add<GraphEntityExtractionBehavior>(after: typeof(EmbeddingBehavior))
                 .Add<CommunityDetectionBehavior>(after: typeof(GraphEntityExtractionBehavior)),
             retrieval: p => p
-                .Add<GraphLocalSearchBehavior>(before: typeof(RerankingBehavior))
                 .Add<GraphGlobalSearchBehavior>(before: typeof(RerankingBehavior)));
 
         _sp = services.BuildServiceProvider();
@@ -260,8 +259,8 @@ public sealed class GraphRagFunctionalTests : IAsyncLifetime
             result.Value.Any(r =>
                 r.Chunk.Metadata.TryGetValue("graph_type", out var gt) && gt == "entity"),
             "No entity chunk came back for a query about Marie Curie. Entity descriptions " +
-            "are embedded at ingestion, so their absence means GraphLocalSearchBehavior had " +
-            "nothing to traverse from — the local graph path is dead.");
+            "are embedded at ingestion, so their absence means dense retrieval had nothing " +
+            "to surface — the entity chunks never made it into the vector store.");
     }
 
     private async Task AssertGlobalSearchSynthesizesAnswerAsync()
