@@ -16,7 +16,7 @@ version = "0.1.0"
 description = "Rag.NET library comparison, Stage 2: Python entrants that emit TREC run files"
 requires-python = "==3.14.*"
 dependencies = [
-    "haystack-ai==3.0.0",
+    "haystack-ai==3.1.0",
     "langchain-core==1.6.0",
     "langchain-text-splitters==1.1.2",
     "llama-index-core==0.14.24",
