@@ -4272,9 +4272,15 @@ three answer engines as arms; every vector store through the SciFact parity leg;
 pipeline-parity test; ~~**#176** at its re-measured 78.8%~~ (**answered 2026-08-26 in #405** — not
 a defect worth fixing; see below); **local search's yes/no abstention** — it
 commits on 8.8% of comparison and 4.3% of temporal questions where global search scores 0.4953 and
-0.3928, which nobody has explained; and the **deletion of `GraphLocalSearchBehavior` and
-`PageRankWeight`**, which the note below made conditional on 6.x.7 publishing its replacement
-figure. That figure published on 2026-08-20, so the deletion is now unblocked.
+0.3928, which nobody has explained; and ~~the **deletion of `GraphLocalSearchBehavior` and
+`PageRankWeight`**~~ (**done 2026-08-27 in #408** — see the bullet below).
+
+**RAPTOR's thread is measured but not yet written down.** Task 5 of
+`docs/plans/2026-08-21-raptor-real-protocol-implementation.md` ran 2026-08-25 and pinned four arms
+over 2,255 judged queries; **Task 6 — state the finding in the guide, raise `VerifiedBy`, point the
+`features.md` row at the run — never ran.** Until it does, the phase has the figure and the ledger
+still says the technique is unexercised, which is the exact gap Phase 6.0's two guards exist to
+count.
 
 **#176 is answered, 2026-08-26 — and the answer is that it is not a defect worth fixing (#405).**
 It was answered by looking at what the dropped relationship endpoints are *called*, which nobody had
@@ -4299,8 +4305,21 @@ readable in them. Measured by replaying the extraction cache refuse-on-miss: zer
 **This closes the last of 6.2.1's four named debts** (#239, #200, #247, #176). What remains in the
 phase is the sweep itself, which was never about those four.
 
-- **`GraphLocalSearchBehavior` and `PageRankWeight` are deprecated in `<remarks>`, not
-  `[Obsolete]`, and not deleted** (2026-08-19, Task 1 of the local-search completion plan).
+- ~~**`GraphLocalSearchBehavior` and `PageRankWeight` are deprecated in `<remarks>`, not
+  `[Obsolete]`, and not deleted**~~ — **deleted 2026-08-27 in #408** (`c3e4aa94`), verified on
+  `main` by content: `GraphRagGlobalSearchOptions.cs` is present, `PageRankWeight` is gone from
+  `src/`, and the frozen `LegacyPageRankLocalSearch` fixture lives in the measurement harness.
+  **The three pinned figures survived, which was the whole design of the change** — they were
+  re-measured *through the frozen copy before the original was deleted*, the only moment that
+  comparison is possible: **0.56897/0.56897, 0.2102/0.2102, 2,255-of-2,255**, zero skips, zero model
+  calls. All three are now machine-asserted; the ablation's was previously only *printed*, so
+  nothing in the suite would have failed had it regressed. The change cost 21 files across five
+  projects — **the estimate was wrong three times** (17 here, 19 in the design doc) because each low
+  count came from grepping the two *named* members rather than the union of all seven targets, which
+  is what reaches `GraphGlobalSearchBehavior` and its tests. One item is unverified and gates
+  nothing: the `Rag.NET.E2ETests` GraphRag tests never ran (no Docker daemon), so their rewritten
+  local-search assertion is verified by reading only. The reasoning that held the deletion back
+  until 2026-08-20, retained because it is why the frozen fixture exists:
   `[Obsolete]` was rejected, not merely skipped: `Directory.Build.props` sets
   `TreatWarningsAsErrors=true`, so CS0618 would be a build error across the 17 files in four
   projects that deliberately still reference these members, and `PageRankWeight`'s
