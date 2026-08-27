@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-27 (#176 answered and shipped in #405 — the last of 6.2.1's four named debts)
+**Last updated:** 2026-08-27 (#408 merged, and RAPTOR Task 6 done — the sweep's first completed technique)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -9,8 +9,10 @@ without one, which is why every session so far re-derived its position from `ROA
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
 **Phase:** 6.2.1 — Retrieval & Answer Sweep (active; RAPTOR Task 5 is done and pinned in #389,
-and **#176 closed 2026-08-26 in #405** — all four named debts are now closed and only the sweep
-itself remains).
+**#176 closed 2026-08-26 in #405** and the **PageRank blend deleted 2026-08-27 in #408** — all four
+named debts are closed and only the sweep itself remains). **RAPTOR Task 6 closed 2026-08-27, so
+RAPTOR is the sweep's first completed technique** — measured, pinned, and now written down at
+`VerifiedBy=benchmark`.
 
 **2026-08-26 shipped 6.2.12 — the first external user's defects.** Seven merged PRs, all verified
 on `main` by content. Its full record is in `ROADMAP.md`; the three findings worth carrying here:
@@ -170,8 +172,39 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**~~Delete `GraphLocalSearchBehavior` and `PageRankWeight`~~ — BUILT 2026-08-27 on branch
-`refactor/delete-pagerank-local-search`, not yet merged.** The blend, its three options properties
+**~~RAPTOR Task 6~~ — DONE 2026-08-27. RAPTOR is the sweep's first completed technique.** The
+ledger the Task 5 measurement earned is now written: `docs/guide/raptor.md` has a `## Measured`
+section, `Rag.NET.Raptor.csproj` is `<VerifiedBy>benchmark</VerifiedBy>`, and
+`docs/reference/features.md`'s RAPTOR row points at `MultiHopRagAnswerReproduction` instead of
+saying *"Not yet `benchmark`"*. `dotnet build Rag.NET.slnx` 0 warnings; RepoConventions 94 passed,
+0 failed.
+
+**The two Phase 6.0 guards still report `[SKIP]`, and that is by design rather than a pass being
+claimed for them.** `EveryDoneSectionSaysWhatExercisesIt` and `NoPackageStaysAtBareUnit` skip while
+their allowlists are non-empty and fail on any *unlisted* violation — the "failing behind a work
+list" shape 6.0 built. RAPTOR was in neither allowlist, so nothing was removed from one; what did
+run and pass is the well-formedness assertion on the new `benchmark` pointer, plus both staleness
+twins. **Do not read those two skips as green.**
+
+**The guide states the hold, not just the number** — corpus scope measured *worse* than the
+per-document tree it replaced, and the default nevertheless stays `Corpus` pending a second corpus
+(see DECIDED 2026-08-27). Rather than a verdict, the guide gives a corpus-shaped rule: if your
+questions resemble MultiHop-RAG's, set `PerDocument`; if your documents genuinely share themes,
+`Corpus` is the paper's mechanism; either way measure your own corpus.
+
+**What is next is a choice between threads, and nothing forces the order.** The phase now owes
+HyDE, reranking, hybrid BM25, late chunking, SPLADE, the three answer engines as arms, every vector
+store through the SciFact parity leg, the pipeline-parity test, the second-corpus RAPTOR arm, and
+local search's unexplained yes/no abstention. **The recommendation is the pipeline-parity test**:
+it is fast-tier, needs no corpus run and no model calls, closes the gap 5.2.2 named explicitly, and
+is the one remaining DoD clause that is pure engineering. **HyDE and reranking are the cheapest
+*measurement* threads** — both already have parity-corpus cells, so they are re-measurements under
+the Real protocol rather than new harness arms. `LateChunking` remains the most expensive: it has no
+protocol and needs the token-level embedding path built before one can be written.
+
+**~~Delete `GraphLocalSearchBehavior` and `PageRankWeight`~~ — MERGED 2026-08-27 in #408
+(`c3e4aa94`), verified on `main` by content rather than by the PR's label.** The blend, its three
+options properties
 (`PageRankWeight`, `LocalSearchDepth`, `LocalTopEntities`) and its DI registration are gone from the
 package; `GraphRagRetrievalOptions` is renamed `GraphRagGlobalSearchOptions`.
 
@@ -239,9 +272,9 @@ Three things govern the run, all in the plan:
 3. **`raptorcorpus` is RAPTOR's result, not `raptor`.** Publishing the per-document figure would
    repeat 5.2's misattribution, which cost three weeks and a revised published finding.
 
-~~**Also unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`.~~ **Built
-2026-08-27** — and it was not cheap: 21 files across five projects, six tasks, and a plan that was
-wrong three times in ways only implementation exposed.
+~~**Also unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`.~~
+**Merged 2026-08-27 in #408** — and it was not cheap: 21 files across five projects, six tasks, and
+a plan that was wrong three times in ways only implementation exposed.
 
 ### Task 4 completed 2026-08-24 23:49 and the gate HELD.
 
@@ -370,10 +403,22 @@ much larger than answer generation's.
 
 ## Working State
 
-**Branch:** `chore/planning-176-and-phase-table`, cut from `origin/main` on 2026-08-27.
-Bookkeeping only — this file, `ROADMAP.md` and `MILESTONE.md`.
+**Branch:** `chore/reconcile-408-and-raptor-task-6`, cut from `origin/main` (`9b4db1f7`) on
+2026-08-27. Bookkeeping plus RAPTOR Task 6 — this file, `ROADMAP.md`, `docs/guide/raptor.md`,
+`docs/reference/features.md` and `src/Rag.NET.Raptor/Rag.NET.Raptor.csproj`.
 
-**The field was stale again when this session opened, for the fourth time.** It named
+**It was stale again when this session opened, for the fifth time — and so was the step below
+it.** The field named `chore/planning-176-and-phase-table` while the checkout was on
+`refactor/delete-pagerank-local-search`, and that branch had *also* already shipped: **PR #408
+squash-merged to `main` as `c3e4aa94` on 2026-08-27**, verified on `main` by content —
+`GraphRagGlobalSearchOptions.cs` present, `PageRankWeight` gone from `src/` (the one surviving
+mention is a doc comment in `LocalSearchContextBuilder`), `LegacyPageRankLocalSearch` named in the
+GraphRag csproj's IVT comment — rather than by the PR's MERGED label. **The pattern is now exact
+and worth naming: this field, and the Recommended Next Step under it, both go stale at the moment
+the branch they describe merges, which is the one moment nobody is editing this file.** Read both
+against `git branch --show-current` and against `origin/main` by content before trusting either.
+
+**The fourth time, recorded 2026-08-27, read as follows.** It named
 `chore/roadmap-6-2-11` while the checkout was on `research/176-dropped-endpoints`, and *that* branch
 had already shipped: its two commits were squash-merged as **#404** and **#405** under different
 SHAs, so `git log origin/<branch>..HEAD` showed nothing pushed while the work was on `main` all

@@ -2,6 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status: executed and merged 2026-08-27 in [#408](https://github.com/MarcelRoozekrans/Rag.NET/pull/408) (`c3e4aa94`),
+> verified on `main` by content rather than by the PR's label.** The step checkboxes below were
+> never ticked during execution and are left as written — the record of what shipped is the merge
+> and the ROADMAP's 6.2.1 entry, not this file's boxes. Two caveats belong with it: the change
+> touched **21 files across five projects**, not the 17 the design estimated, and the
+> `Rag.NET.E2ETests` GraphRag tests **never ran** (no Docker daemon on the build machine), so their
+> rewritten local-search assertion is verified by reading only.
+
 **Goal:** Stop shipping `GraphLocalSearchBehavior` and its three options from `Rag.NET.GraphRag`, while keeping the three pinned figures it produced reproducible through a frozen copy in the measurement harness.
 
 **Architecture:** The behaviour moves out of the published package into `Rag.NET.Benchmarks.Quality.IntegrationTests` as `LegacyPageRankLocalSearch`, a fixture whose only job is to reproduce figures measured against deleted code. The shipped local search is the Microsoft-spec implementation under `LocalSearch/`, untouched. `GraphRagRetrievalOptions` loses its three local-search properties and is renamed `GraphRagGlobalSearchOptions`.
