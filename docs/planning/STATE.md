@@ -170,11 +170,16 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**Decide what to do about the corpus-scope default** — this is still the one thing blocking on a
-person rather than on work, and it has been open since 2026-08-25. See OPEN DECISION below. Task 5
-measured it and the answer was not the one #331 assumed; the decision is a design call, not a
-measurement one, and nothing has been changed on the strength of a single corpus. **It is now the
-only thing in 6.2.1 waiting on a decision rather than on engineering**, since #176 closed.
+**Delete `GraphLocalSearchBehavior` and `PageRankWeight`** — the operator's pick, 2026-08-27. It
+has been unblocked since 2026-08-20, when 6.x.7 published the replacement figure that was its stated
+precondition. It is not a trivial deletion: `Directory.Build.props` sets `TreatWarningsAsErrors`, so
+17 files across four projects that deliberately reference these members have to go with them, and
+three pinned figures (the `local` answer arm at 0.2102, `BeirReproduction`'s GraphRag 0.56897, and
+the blend ablation) become unreproducible once they do — which needs answering before the deletion,
+not after.
+
+**The corpus-scope default is decided** (2026-08-27, option 3 — see DECIDED below) and is no longer
+blocking on a person. It is now scheduled work: a second-corpus RAPTOR arm.
 
 **The measurement work still open in 6.2.1** is the 17 Done sections that need a pinned figure with
 a control. **#176 is no longer on this list** — it was answered 2026-08-26 in #405, and the answer
@@ -311,16 +316,41 @@ works, and it trades accuracy for abstention (51.8% correct null-abstention, the
 ~8 h estimate came from a rate observed during *tree summarisation*, whose prompts are much larger;
 the pilot notes flagged that uncertainty explicitly and it was right to.
 
-## OPEN DECISION — what to do about the corpus-scope default
+## DECIDED 2026-08-27 — the corpus-scope default waits on a second corpus
 
-`RaptorTreeScope.Corpus` is the shipped default and a breaking change (#331, phase 6.2.3). It does
-not buy accuracy on this corpus; it costs a little. **Nothing has been changed on the strength of
-this** — it is one corpus, and the strict rule is a wash. The options, none taken:
+`RaptorTreeScope.Corpus` is the shipped default and a breaking change (#331, phase 6.2.3). Task 5
+measured it as **worse** than the per-document tree it replaced — −0.0146 paper (p=0.0247), −0.0204
+raw (p=0.0006), strict a wash (p=0.7372) — with the gap concentrated in **inference** queries
+(0.7831 against the control's 0.8309), which is the exact multi-hop case #331 argued it would help.
 
-1. Revert the default to `PerDocument` and keep `Corpus` opt-in.
-2. Keep the default and document the measured cost.
-3. Measure a second corpus before deciding, since a single dataset reversing a design decision is
-   thin evidence — MultiHop-RAG rewards per-document locality by construction.
+**The operator's decision, 2026-08-27, is option 3: measure a second corpus before changing
+anything.** The three options were:
+
+1. Revert the default to `PerDocument` and keep `Corpus` opt-in. *(Not taken.)*
+2. Keep the default and document the measured cost. *(Not taken.)*
+3. **Measure a second corpus before deciding.** ← **taken**
+
+**The reasoning is the reason the other two were refused, and it is worth keeping:** a single
+dataset reversing a design decision is thin evidence, and **MultiHop-RAG rewards per-document
+locality by construction** — its questions are built by composing facts drawn from identifiable
+source articles, so a per-document tree is measuring on home ground. Two of three rules signing the
+same way is real, but it is real *on this corpus*, and the corpus is not neutral about the thing
+being tested. Reverting a breaking default on it would be acting on the least neutral evidence
+available.
+
+**So the default stays `Corpus` for now, and that is a hold rather than an endorsement.** Nothing
+has been changed on the strength of the Task 5 numbers, and nothing should be until a second corpus
+reports. Two of three rules are significant against it; if the second corpus signs the same way, the
+revert becomes well-founded rather than corpus-shaped.
+
+**What this adds to 6.2.1:** a second-corpus RAPTOR arm, needing a dataset whose questions are not
+constructed per-document. `BeirDatasetDescriptor` already has the shape. This is now a named thread
+in the phase, not an open question — the question is answered and the work is scheduled.
+
+**Cost note carried from Task 5:** the full sweep was 58 m of generation after a 28 m I/O-bound load
+for ~5,600 new answers. A second corpus is that order again, not the ~8 h the original plan
+estimated — that figure came from a rate observed during tree *summarisation*, whose prompts are
+much larger than answer generation's.
 
 ## Working State
 
