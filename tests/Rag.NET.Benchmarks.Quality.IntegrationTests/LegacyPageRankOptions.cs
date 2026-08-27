@@ -1,7 +1,7 @@
 namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 
 /// <summary>
-/// The three <c>GraphRagRetrievalOptions</c> properties deleted alongside the behaviour, at the
+/// The three <c>GraphRagGlobalSearchOptions</c> properties deleted alongside the behaviour, at the
 /// values they carried when the pinned figures were measured.
 /// </summary>
 /// <remarks>

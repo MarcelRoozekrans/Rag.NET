@@ -11,7 +11,7 @@ namespace Rag.NET.GraphRag;
 /// </summary>
 public sealed class GraphGlobalSearchBehavior(
     IChatClient chatClient,
-    GraphRagRetrievalOptions options,
+    GraphRagGlobalSearchOptions options,
     GraphChunkStore chunkStore,
     IEmbeddingGenerator<string, Embedding<float>> embedder) : IRetrievalBehavior
 {

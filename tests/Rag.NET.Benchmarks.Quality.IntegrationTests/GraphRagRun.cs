@@ -114,7 +114,7 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// <remarks>
     /// <para>
     /// <b>Explicit because the library default changed under it.</b> This was <c>new()</c>, inheriting
-    /// whatever <see cref="GraphRagRetrievalOptions"/> shipped — which was 0.3 when every figure the
+    /// whatever <see cref="GraphRagGlobalSearchOptions"/> shipped — which was 0.3 when every figure the
     /// <c>local</c> arm pins was measured. #239 changed that default to 0, so leaving this inheriting
     /// would have silently re-pointed those pins at a different configuration while their recorded
     /// text still said 0.3.
@@ -137,13 +137,13 @@ internal sealed class GraphRagRun : IAsyncDisposable
 
     /// <summary>
     /// Global-search options at upstream defaults. Kept separate from <see cref="_retrievalOptions"/>
-    /// because <see cref="GraphGlobalSearchBehavior"/> needs <see cref="GraphRagRetrievalOptions"/>
-    /// members — <see cref="GraphRagRetrievalOptions.GlobalBatchSize"/> and
-    /// <see cref="GraphRagRetrievalOptions.GlobalReportCandidates"/> — that
+    /// because <see cref="GraphGlobalSearchBehavior"/> needs <see cref="GraphRagGlobalSearchOptions"/>
+    /// members — <see cref="GraphRagGlobalSearchOptions.GlobalBatchSize"/> and
+    /// <see cref="GraphRagGlobalSearchOptions.GlobalReportCandidates"/> — that
     /// <see cref="LegacyPageRankOptions"/> does not carry; global search reads none of the
     /// PageRank-blend properties, so the split changes nothing it measures.
     /// </summary>
-    private readonly GraphRagRetrievalOptions _globalRetrievalOptions = new();
+    private readonly GraphRagGlobalSearchOptions _globalRetrievalOptions = new();
 
     /// <summary>
     /// Microsoft's local search as specified — <see cref="IGraphRagSearch"/>, not

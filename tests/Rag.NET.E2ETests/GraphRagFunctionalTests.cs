@@ -25,7 +25,7 @@ namespace Rag.NET.E2ETests;
 /// This exists because the package shipped marked done without ever being run end to end,
 /// and the dead-settings sweep (#108) then found three documented behaviours that did not
 /// exist — <c>EntityTypes</c>/<c>RelationshipTypes</c> doing nothing (#112),
-/// <c>GraphRagRetrievalOptions.Mode</c> never read (#104), and three settings validated only
+/// <c>GraphRagGlobalSearchOptions.Mode</c> never read (#104), and three settings validated only
 /// after they were caught silently disabling or hanging search (#103). None of that survives
 /// one run of this class, which is the point: every stage here fails loudly when it produces
 /// nothing, because a test that passes on an empty graph is how those defects lived so long.

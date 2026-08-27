@@ -3,9 +3,9 @@ using ZeroAlloc.Validation;
 
 namespace Rag.NET.GraphRag;
 
-/// <summary>Configuration for GraphRAG retrieval behaviors.</summary>
+/// <summary>Configuration for GraphRAG global search.</summary>
 [Validate]
-public sealed class GraphRagRetrievalOptions
+public sealed class GraphRagGlobalSearchOptions
 {
     /// <summary>
     /// Reports per batch in global map phase. Null = auto. Default: null.

@@ -6,7 +6,7 @@ namespace Rag.NET.GraphRag.Tests;
 
 /// <summary>
 /// Registration-time validation for <see cref="GraphRagOptions"/> and
-/// <see cref="GraphRagRetrievalOptions"/>, which the issue #90 audit found entirely
+/// <see cref="GraphRagGlobalSearchOptions"/>, which the issue #90 audit found entirely
 /// unvalidated. Same shape as core's <c>ChunkingOptionsValidationTests</c>: the failure
 /// happens at the configuring line, not on some later ingestion or retrieval that consumes
 /// the singleton.
@@ -84,7 +84,7 @@ public class GraphRagOptionsValidationTests
 
         builder.UseGraphRag();
 
-        var options = builder.Services.BuildServiceProvider().GetRequiredService<GraphRagRetrievalOptions>();
+        var options = builder.Services.BuildServiceProvider().GetRequiredService<GraphRagGlobalSearchOptions>();
         Assert.Null(options.GlobalBatchSize);
     }
 

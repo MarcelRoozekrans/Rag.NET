@@ -41,7 +41,7 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// </para>
 /// <para>
 /// <b>Deliberately not asserted: retrieval-mode routing.</b> The design intends a
-/// <c>Mode</c> setting on <c>GraphRagRetrievalOptions</c> selecting local, global or automatic
+/// <c>Mode</c> setting on <c>GraphRagGlobalSearchOptions</c> selecting local, global or automatic
 /// search — issue #104. Neither the property nor a <c>GraphRagRetrievalMode</c> enum exists in the
 /// package today, and neither behavior consults anything of the kind: <c>UseGraphRag</c> registers
 /// <c>GraphGlobalSearchBehavior</c> unconditionally, and local search left the pipeline entirely

@@ -16,7 +16,7 @@ public class RagBuilderExtensionsTests
         builder.UseGraphRag();
 
         Assert.Contains(services, d => d.ServiceType == typeof(GraphRagOptions));
-        Assert.Contains(services, d => d.ServiceType == typeof(GraphRagRetrievalOptions));
+        Assert.Contains(services, d => d.ServiceType == typeof(GraphRagGlobalSearchOptions));
     }
 
     [Fact]

@@ -44,7 +44,7 @@ public static class RagBuilderExtensions
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentException">
-    /// The configured <see cref="GraphRagOptions"/> or <see cref="GraphRagRetrievalOptions"/>
+    /// The configured <see cref="GraphRagOptions"/> or <see cref="GraphRagGlobalSearchOptions"/>
     /// violate a documented constraint — the generated validators reject the registration at
     /// the configuring line rather than letting a bad value crash ingestion, hang global
     /// search, or silently corrupt the PageRank blend.
@@ -56,7 +56,7 @@ public static class RagBuilderExtensions
     public static TBuilder UseGraphRag<TBuilder>(
         this TBuilder builder,
         Action<GraphRagOptions>? configure = null,
-        Action<GraphRagRetrievalOptions>? retrieval = null,
+        Action<GraphRagGlobalSearchOptions>? retrieval = null,
         Action<GraphStoreBuilder>? graph = null,
         Action<GraphChunkStoreBuilder>? chunks = null,
         Action<LocalSearchContextOptions>? localSearch = null)
@@ -67,9 +67,9 @@ public static class RagBuilderExtensions
         ThrowIfInvalid(new GraphRagOptionsValidator().Validate(options), nameof(configure), "GraphRAG ingestion");
         builder.Services.AddSingleton(options);
 
-        var retrievalOptions = new GraphRagRetrievalOptions();
+        var retrievalOptions = new GraphRagGlobalSearchOptions();
         retrieval?.Invoke(retrievalOptions);
-        ThrowIfInvalid(new GraphRagRetrievalOptionsValidator().Validate(retrievalOptions), nameof(retrieval), "GraphRAG retrieval");
+        ThrowIfInvalid(new GraphRagGlobalSearchOptionsValidator().Validate(retrievalOptions), nameof(retrieval), "GraphRAG retrieval");
         builder.Services.AddSingleton(retrievalOptions);
 
         // Where the graph's own chunks live (#247). Separate from the document store by design:
@@ -168,7 +168,7 @@ public static class RagBuilderExtensions
     /// <param name="services">The collection to register into.</param>
     /// <param name="retrievalOptions">The validated retrieval options.</param>
     private static void RegisterRetrievalBehaviors(
-        IServiceCollection services, GraphRagRetrievalOptions retrievalOptions)
+        IServiceCollection services, GraphRagGlobalSearchOptions retrievalOptions)
     {
         services.AddSingleton<GraphGlobalSearchBehavior>(sp =>
             new GraphGlobalSearchBehavior(

@@ -46,7 +46,7 @@ public class GraphRagBenchmarks
         _globalSearchResults = BuildCommunitySearchResults(Math.Max(NodeCount / 10, 3));
         _globalSearchBehavior = new GraphGlobalSearchBehavior(
             new FakeChatClient(),
-            new GraphRagRetrievalOptions(),
+            new GraphRagGlobalSearchOptions(),
             BuildChunkStore(),
             new FakeEmbeddingGenerator(EmbeddingDimensions));
         // Behaviors that use the NSubstitute IGraphStore mock are rebuilt each
