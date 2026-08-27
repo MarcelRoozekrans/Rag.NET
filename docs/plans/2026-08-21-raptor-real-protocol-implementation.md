@@ -505,29 +505,47 @@ git commit -m "test(benchmarks): pin RAPTOR's four arms on MultiHop-RAG"
 
 ### Task 6: Read the result honestly, and update the ledger
 
+> **Executed 2026-08-27.** All four steps done: `docs/guide/raptor.md` gained its `## Measured`
+> section (placed after *Migration*, where a reader choosing a scope is standing), `features.md`'s
+> RAPTOR row moved off *"Not yet `benchmark`"*, `Rag.NET.Raptor.csproj` went `integration` →
+> `benchmark`, and `dotnet build Rag.NET.slnx` (0 warnings) plus
+> `dotnet test tests/Rag.NET.RepoConventions.Tests` (94 passed, 0 failed) both ran green.
+>
+> **Step 3's instruction was followed exactly: the RAPTOR *thread* is marked complete in 6.2.1's
+> block, the phase is not.** The sweep still owes HyDE, reranking, hybrid BM25, late chunking,
+> SPLADE, three answer engines, every vector store through the SciFact parity leg, the
+> pipeline-parity test, the second-corpus RAPTOR arm, and local search's unexplained abstention.
+>
+> **One thing this task could not do, and the guide says so instead of hiding it:** the measurement
+> says corpus scope is worse, and the default was *not* reverted. That is the 2026-08-27 decision
+> (option 3) — MultiHop-RAG composes its questions from identifiable source articles, so it rewards
+> per-document locality by construction and is the least neutral evidence on which to reverse a
+> breaking default. The guide gives the reader a corpus-shaped rule rather than a verdict.
+
+
 **Files:**
 - Modify: `docs/guide/raptor.md`
 - Modify: `docs/reference/features.md`
 - Modify: `src/Rag.NET.Raptor/Rag.NET.Raptor.csproj`
 - Modify: `docs/planning/ROADMAP.md`
 
-- [ ] **Step 1: State the finding in the guide**
+- [x] **Step 1: State the finding in the guide**
 
 Add a **Measured** section to `docs/guide/raptor.md` giving the corpus, the model, the top-k, the four figures and their differences. **Say plainly whether RAPTOR helps on this corpus.**
 
 Milestone 6's bar is *measured*, not *good*: a feature measured and found wanting is a completion, as 5.2 was. If the summaries displace rather than help, say so in the guide — a user choosing RAPTOR deserves the number.
 
-- [ ] **Step 2: Raise the verification level**
+- [x] **Step 2: Raise the verification level**
 
 `<VerifiedBy>integration</VerifiedBy>` becomes `<VerifiedBy>benchmark</VerifiedBy>` in `src/Rag.NET.Raptor/Rag.NET.Raptor.csproj`, with a comment naming the run and the pinned figures. `benchmark` means a measured run on a real corpus with a real model, pinned in a reproduction table — which, after Task 5, is true.
 
 Update the RAPTOR row's *Exercised by* pointer in `docs/reference/features.md`.
 
-- [ ] **Step 3: Update the roadmap**
+- [x] **Step 3: Update the roadmap**
 
 Mark 6.2.1's RAPTOR thread complete in its phase block, with the figures. **Do not mark the whole phase complete** — RAPTOR is one thread of a sweep that still owes HyDE, reranking, hybrid BM25, late chunking, SPLADE, the three answer engines, every vector store through the SciFact parity leg, the pipeline-parity test, #176, and local search's unexplained yes/no abstention.
 
-- [ ] **Step 4: Run the conventions tests and commit**
+- [x] **Step 4: Run the conventions tests and commit**
 
 ```
 dotnet build Rag.NET.slnx

@@ -77,6 +77,70 @@ If you do move to `Corpus` scope, the summary chunks a previous `PerDocument` in
 1. `IVectorStore` has no enumeration and no metadata-predicate delete, so "delete every chunk carrying `raptor_level`" is not an operation the API supports. Instead, call `DeleteByDocumentIdAsync` (or your ingestor's document-level delete) for every document that previously produced `PerDocument` summaries — this removes that document's stale summary chunks and its leaf chunks together, since both were filed under the same document id. Note that a shorter re-ingest of the same document strands any tail leaves the earlier, longer version produced (a general limitation of the leaf store's upsert-by-index behaviour, not specific to this migration).
 2. Re-ingest your documents so their leaves land in the leaf store, or — if the leaves are already there — call `RaptorTreeRebuilder.RebuildAsync` once to build the corpus tree fresh.
 
+## Measured
+
+RAPTOR has been run for real, and this section says what it bought. Measured **2026-08-25** on the
+full **609-article MultiHop-RAG corpus** (17,648 leaf chunks), `openai/gpt-4o-mini` at temperature
+0, top-6 context, four arms over 2,556 queries and 10,224 scored answers. Accuracy is over the
+**2,255 judged queries** — the 301 unanswerable nulls are scored separately as abstention. Both
+trees were already built and cached, so the run paid for answers only.
+
+| Arm | What it is | Paper rule | Raw | Strict | Inference |
+|---|---|---|---|---|---|
+| `raptor` | per-document tree (the control) | **0.3734** | **0.2860** | **0.3348** | **0.8309** |
+| `raptorcorpus` | corpus-wide tree — **the shipped default** | 0.3588 | 0.2656 | 0.3322 | 0.7831 |
+| `raptorfiltered` | summaries filtered out — leaves only | 0.3499 | 0.2603 | 0.3242 | 0.7721 |
+| `raptorboost` | corpus tree, `Boost` mode | 0.3450 | 0.2634 | 0.3086 | 0.7757 |
+
+**The run validated itself before it reported anything.** `raptorfiltered` reproduces the dense
+arm's separately pinned figures to four decimals on all three rules — 0.3499 / 0.2603 / 0.3242 —
+which is the evidence that the RAPTOR corpus and the dense corpus are the same corpus. Without that
+gate holding, none of the differences below would mean anything.
+
+**Summaries help a little.** `raptorcorpus − raptorfiltered = +0.0089` on the paper rule (McNemar
+p=0.0293), +0.0053 raw (p=0.1416), +0.0080 strict (p=0.0795) — significant on one rule of three,
+and small on all three. That is what the tree adds over the leaf chunks alone.
+
+**Corpus scope — the default — measured worse than the per-document tree it replaced.**
+`raptorcorpus − raptor = −0.0146` paper (McNemar p=0.0247, 85 corpus wins against 118
+per-document), **−0.0204 raw** (p=0.0006), −0.0027 strict (p=0.7372, a wash). Two of three rules
+significant, all three signed the same way. **The gap is entirely inference queries** — 0.7831
+against the control's 0.8309, while comparison and temporal are flat — which is the opposite of the
+argument for making `Corpus` the default: corpus-spanning summaries were meant to help exactly the
+multi-hop case they measurably hurt here.
+
+**`Boost` trades accuracy for abstention.** `raptorboost − raptorcorpus = −0.0137` paper
+(p=0.0073), −0.0235 strict (p=0.0000) — while abstaining correctly on **51.8%** of the 301
+unanswerable nulls, the best of the four arms. If you would rather the model decline than guess,
+that trade is available and it is a real one; it is not free.
+
+### What this means for your choice of scope
+
+**The default stays `Corpus`, and that is a hold rather than an endorsement** (decided 2026-08-27).
+One dataset reversing a shipped default is thin evidence, and **MultiHop-RAG is not a neutral
+referee here**: its questions are built by composing facts drawn from identifiable source articles,
+so a per-document tree is being measured on home ground. Two of three rules signing against the
+default is a real result *on this corpus*, and reverting a breaking default on the least neutral
+evidence available would be the wrong move. A second corpus, with questions not constructed per
+document, is what settles it.
+
+So, concretely:
+
+- **If your corpus resembles MultiHop-RAG** — questions answered by composing facts that each live
+  in one identifiable document — the measurement here says `PerDocument` is the better arm, and it
+  is one line to set (see [When to choose `PerDocument`](#when-to-choose-perdocument)).
+- **If your documents genuinely share themes across the corpus**, `Corpus` is the mechanism the
+  paper describes and the case this measurement cannot speak to.
+- **Either way, measure it on your own corpus** rather than inheriting this number. The four arms
+  above are what that looks like.
+
+The figures are pinned and machine-asserted in `MultiHopRagAnswerReproduction` (arms `raptor`,
+`raptorcorpus`, `raptorfiltered`, `raptorboost` under `multihop-rag`), so a regression fails a test
+rather than going unnoticed; each pin carries the full reading in its own note. The protocol is
+`docs/plans/2026-08-21-raptor-real-protocol-implementation.md`, and the pilot that preceded it —
+which put `raptorcorpus − raptor` at +0.0000 on 50 queries and was simply underpowered — is in
+`docs/plans/2026-08-21-raptor-pilot-notes.md`.
+
 ## Quick Start
 
 ```csharp

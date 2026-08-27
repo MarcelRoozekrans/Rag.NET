@@ -5,12 +5,20 @@
     <PackageId>Rag.NET.Raptor</PackageId>
     <Description>RAPTOR — Recursive Abstractive Processing for Tree-Organized Retrieval for Rag.NET</Description>
     <PackageTags>$(PackageTags);raptor;hierarchical-summarization</PackageTags>
-    <!-- integration, not unit: RaptorTreeScopeTests and RaptorCorpusBuildTests exercise the
-         Corpus-scope build over a real SqliteRaptorLeafStore, including surviving a reopen
-         (Rag.NET.Raptor.Store.Tests' SqliteRaptorLeafStoreTests). Not benchmark — that level
-         means a measured run on a real corpus pinned in a reproduction table, which is Phase
-         6.2.1's RAPTOR thread, not this one. -->
-    <VerifiedBy>integration</VerifiedBy>
+    <!-- benchmark: measured 2026-08-25 over the full 609-article MultiHop-RAG corpus (17,648
+         leaf chunks) with openai/gpt-4o-mini at temperature 0, top-6 context — four arms,
+         10,224 scored answers, accuracy over the 2,255 judged queries. Pinned and asserted in
+         MultiHopRagAnswerReproduction under multihop-rag: raptor 0.3734 (the per-document
+         control), raptorcorpus 0.3588 (the shipped default), raptorfiltered 0.3499 (the
+         validation gate — it reproduces the dense arm's pinned 0.3499/0.2603/0.3242 to four
+         decimals, which is what makes the rest of the run readable), raptorboost 0.3450.
+         The finding is not that RAPTOR is good: corpus scope measured 0.0146 WORSE than the
+         per-document tree it replaced (McNemar p=0.0247), concentrated in inference queries.
+         Milestone 6's bar is measured, not good. Protocol and reading in
+         docs/plans/2026-08-21-raptor-real-protocol-implementation.md and docs/guide/raptor.md's
+         Measured section. Still exercised at the integration level too, by RaptorTreeScopeTests
+         and RaptorCorpusBuildTests over a real SqliteRaptorLeafStore. -->
+    <VerifiedBy>benchmark</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

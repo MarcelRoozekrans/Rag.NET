@@ -4267,7 +4267,8 @@ and re-measured~~ (met 2026-08-18); the pipeline-parity test is in the fast tier
 allowlist is empty.
 
 **Open threads, 2026-08-20** — what is actually left, now that #247 and the local-search work have
-closed: RAPTOR, HyDE, reranking, hybrid BM25, late chunking and SPLADE under the Real protocol; the
+closed: ~~RAPTOR~~ (**complete 2026-08-27**, Tasks 1-6 — measured, pinned, and written down; see
+below), HyDE, reranking, hybrid BM25, late chunking and SPLADE under the Real protocol; the
 three answer engines as arms; every vector store through the SciFact parity leg; the
 pipeline-parity test; ~~**#176** at its re-measured 78.8%~~ (**answered 2026-08-26 in #405** — not
 a defect worth fixing; see below); **local search's yes/no abstention** — it
@@ -4275,12 +4276,35 @@ commits on 8.8% of comparison and 4.3% of temporal questions where global search
 0.3928, which nobody has explained; and ~~the **deletion of `GraphLocalSearchBehavior` and
 `PageRankWeight`**~~ (**done 2026-08-27 in #408** — see the bullet below).
 
-**RAPTOR's thread is measured but not yet written down.** Task 5 of
-`docs/plans/2026-08-21-raptor-real-protocol-implementation.md` ran 2026-08-25 and pinned four arms
-over 2,255 judged queries; **Task 6 — state the finding in the guide, raise `VerifiedBy`, point the
-`features.md` row at the run — never ran.** Until it does, the phase has the figure and the ledger
-still says the technique is unexercised, which is the exact gap Phase 6.0's two guards exist to
-count.
+**RAPTOR's thread is complete, 2026-08-27 — the first of the sweep's techniques to finish.** Task 6
+of `docs/plans/2026-08-21-raptor-real-protocol-implementation.md` closed the ledger the Task 5
+measurement had earned two days earlier: `docs/guide/raptor.md` gained a **Measured** section,
+`Rag.NET.Raptor.csproj` went `integration` → **`benchmark`**, and `features.md`'s RAPTOR row moved
+off *"Not yet `benchmark`"* onto `MultiHopRagAnswerReproduction`, where the four arms are
+machine-asserted. Zero compute — the run was cached; what was missing was the writing-down.
+
+**The measured finding, stated as the bar requires rather than as the feature would like:** over the
+**2,255 judged queries**, `raptor` (per-document control) **0.3734**, `raptorcorpus` (the shipped
+default) 0.3588, `raptorfiltered` (the gate) 0.3499, `raptorboost` 0.3450. The gate held — it
+reproduces the dense arm's pinned 0.3499 / 0.2603 / 0.3242 to four decimals — so the corpora did not
+diverge. Summaries buy `+0.0089` over leaves alone (p=0.0293). **And corpus scope, 6.2.3's breaking
+change, measured −0.0146 paper (p=0.0247) and −0.0204 raw (p=0.0006) against the per-document tree
+it replaced**, the whole gap sitting in inference queries (0.7831 against 0.8309) — the exact
+multi-hop case #331 argued corpus-spanning summaries would help.
+
+**The default was not reverted, and the guide says why rather than just what.** Per the 2026-08-27
+decision (option 3), `Corpus` stays as a *hold*: MultiHop-RAG composes its questions from
+identifiable source articles, so a per-document tree is measured on home ground, and reverting a
+breaking default on the least neutral evidence available is the wrong move. The guide gives the
+reader the corpus-shaped rule instead — if your questions resemble MultiHop-RAG's, set
+`PerDocument`; if your documents genuinely share themes, `Corpus` is what the paper describes;
+either way measure your own corpus. **A second-corpus arm is the scheduled work that settles it**,
+and it needs a dataset whose questions are not constructed per document.
+
+**What this does not do is complete the phase.** RAPTOR is one technique of a sweep that still owes
+HyDE, reranking, hybrid BM25, late chunking, SPLADE, the three answer engines as arms, every vector
+store through the SciFact parity leg, the pipeline-parity test, the second-corpus RAPTOR arm, and
+local search's unexplained yes/no abstention.
 
 **#176 is answered, 2026-08-26 — and the answer is that it is not a defect worth fixing (#405).**
 It was answered by looking at what the dropped relationship endpoints are *called*, which nobody had

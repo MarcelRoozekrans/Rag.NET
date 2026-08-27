@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-27 (#408 merged — the PageRank blend is deleted; next is RAPTOR Task 6)
+**Last updated:** 2026-08-27 (#408 merged, and RAPTOR Task 6 done — the sweep's first completed technique)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -10,8 +10,9 @@ without one, which is why every session so far re-derived its position from `ROA
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
 **Phase:** 6.2.1 — Retrieval & Answer Sweep (active; RAPTOR Task 5 is done and pinned in #389,
 **#176 closed 2026-08-26 in #405** and the **PageRank blend deleted 2026-08-27 in #408** — all four
-named debts are closed and only the sweep itself remains). **RAPTOR Task 6 — the ledger for the
-Task 5 figures — is the open item, and it is unstarted.**
+named debts are closed and only the sweep itself remains). **RAPTOR Task 6 closed 2026-08-27, so
+RAPTOR is the sweep's first completed technique** — measured, pinned, and now written down at
+`VerifiedBy=benchmark`.
 
 **2026-08-26 shipped 6.2.12 — the first external user's defects.** Seven merged PRs, all verified
 on `main` by content. Its full record is in `ROADMAP.md`; the three findings worth carrying here:
@@ -171,20 +172,35 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**The next step is RAPTOR Task 6 — write the ledger the Task 5 measurement earned.** Task 5 ran
-2026-08-25 and produced the figures below, and **Task 6 of
-`docs/plans/2026-08-21-raptor-real-protocol-implementation.md` never ran**: `docs/guide/raptor.md`
-has no *Measured* section, `src/Rag.NET.Raptor/Rag.NET.Raptor.csproj` is still
-`<VerifiedBy>integration</VerifiedBy>`, and `docs/reference/features.md`'s RAPTOR row still reads
-*"Not yet `benchmark`"* while naming the pin as future work. **It costs zero compute** — the run is
-done and cached; what is missing is the writing-down. It is also the phase's cheapest movement on
-two Milestone 6 DoD criteria at once (the *Exercised by* pointers, and the per-technique pinned
-figure with a control).
+**~~RAPTOR Task 6~~ — DONE 2026-08-27. RAPTOR is the sweep's first completed technique.** The
+ledger the Task 5 measurement earned is now written: `docs/guide/raptor.md` has a `## Measured`
+section, `Rag.NET.Raptor.csproj` is `<VerifiedBy>benchmark</VerifiedBy>`, and
+`docs/reference/features.md`'s RAPTOR row points at `MultiHopRagAnswerReproduction` instead of
+saying *"Not yet `benchmark`"*. `dotnet build Rag.NET.slnx` 0 warnings; RepoConventions 94 passed,
+0 failed.
 
-**Task 6 must state the hold, not just the number.** The honest reading is that corpus-level
-clustering measured *worse* than the per-document tree it replaced on this corpus, and that the
-default nevertheless stays `Corpus` pending a second corpus (see DECIDED 2026-08-27). A guide that
-prints only the figure, or only the hold, misreads it in opposite directions.
+**The two Phase 6.0 guards still report `[SKIP]`, and that is by design rather than a pass being
+claimed for them.** `EveryDoneSectionSaysWhatExercisesIt` and `NoPackageStaysAtBareUnit` skip while
+their allowlists are non-empty and fail on any *unlisted* violation — the "failing behind a work
+list" shape 6.0 built. RAPTOR was in neither allowlist, so nothing was removed from one; what did
+run and pass is the well-formedness assertion on the new `benchmark` pointer, plus both staleness
+twins. **Do not read those two skips as green.**
+
+**The guide states the hold, not just the number** — corpus scope measured *worse* than the
+per-document tree it replaced, and the default nevertheless stays `Corpus` pending a second corpus
+(see DECIDED 2026-08-27). Rather than a verdict, the guide gives a corpus-shaped rule: if your
+questions resemble MultiHop-RAG's, set `PerDocument`; if your documents genuinely share themes,
+`Corpus` is the paper's mechanism; either way measure your own corpus.
+
+**What is next is a choice between threads, and nothing forces the order.** The phase now owes
+HyDE, reranking, hybrid BM25, late chunking, SPLADE, the three answer engines as arms, every vector
+store through the SciFact parity leg, the pipeline-parity test, the second-corpus RAPTOR arm, and
+local search's unexplained yes/no abstention. **The recommendation is the pipeline-parity test**:
+it is fast-tier, needs no corpus run and no model calls, closes the gap 5.2.2 named explicitly, and
+is the one remaining DoD clause that is pure engineering. **HyDE and reranking are the cheapest
+*measurement* threads** — both already have parity-corpus cells, so they are re-measurements under
+the Real protocol rather than new harness arms. `LateChunking` remains the most expensive: it has no
+protocol and needs the token-level embedding path built before one can be written.
 
 **~~Delete `GraphLocalSearchBehavior` and `PageRankWeight`~~ — MERGED 2026-08-27 in #408
 (`c3e4aa94`), verified on `main` by content rather than by the PR's label.** The blend, its three
