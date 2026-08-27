@@ -108,18 +108,18 @@ package contract. Two of them —
 deduplication defect `BeirReproduction.cs:531` names as affecting the 0.56897 figure. They are the
 mechanical guard against R5, and a doc comment is not. Move all 10.
 
-**Decision 2 — `GraphRagBenchmarks.cs` needs an owner's call, defaulting to delete.** It is a
-BenchmarkDotNet perf benchmark of the deleted behaviour, not one of the three pinned figures.
-Benchmarking code that no longer ships measures nothing anyone can act on. Recommend deleting the
-local-search benchmark and keeping the global-search one.
+**Decision 2 — RESOLVED 2026-08-27: delete the local-search benchmark, keep the global-search
+one.** It is a BenchmarkDotNet perf benchmark of the deleted behaviour, not one of the three pinned
+figures, and benchmarking code that no longer ships measures nothing anyone can act on. The file
+survives; only its local-search members go.
 
-**Decision 3 — recommend *not* renaming the `retrieval:` parameter.** The design (§2) proposed
-`retrieval` → `globalSearch`. R6 shows `retrieval:` is a repo-wide convention across three packages
-and four sibling options types. Renaming GraphRAG's alone makes it the only package that breaks the
-pattern, for a cosmetic gain. **Recommend: rename the type (`GraphRagGlobalSearchOptions`), keep
-the parameter `retrieval:`.** Renaming the type at all is also arguably against convention —
-`RaptorRetrievalOptions` is the exact structural sibling — and the owner may prefer to keep
-`GraphRagRetrievalOptions` and drop T5/T6/T7 entirely, which would remove the largest group below.
+**Decision 3 — RESOLVED 2026-08-27: rename the type, keep the parameter.** The design (§2)
+proposed `retrieval` → `globalSearch`. R6 shows `retrieval:` is a repo-wide convention across three
+packages and four sibling options types, so renaming GraphRAG's alone would make it the only
+package breaking the pattern for a cosmetic gain. `GraphRagRetrievalOptions` becomes
+`GraphRagGlobalSearchOptions`; `UseGraphRag(retrieval:)` keeps its parameter name. **Group 5 stays,
+covering the type only.** The design doc §2 has been corrected to match — it carried the superseded
+recommendation.
 
 ## Execution order
 
@@ -161,8 +161,8 @@ rename applies to a smaller surface.
 
 - `GraphRagRetrievalOptions` → `GraphRagGlobalSearchOptions` across all 14 files, and
   `ThrowIfInvalid`'s generated-validator call site in the same edit (R4)
+- The `retrieval:` parameter name is **not** touched (Decision 3)
 - **Checkpoint:** full build + suite. **Commit.**
-- Skip this group entirely if the owner takes the "keep the name" option in Decision 3.
 
 ## What the compiler does and does not cover
 

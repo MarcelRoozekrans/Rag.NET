@@ -134,8 +134,13 @@ remaining members are all `Global*`. The name would overpromise.
 
 This is the change's largest blast radius and the part most worth sequencing carefully:
 
-- `UseGraphRag(retrieval: ...)`'s parameter type changes. Callers passing a lambda are unaffected by
-  the type name but the parameter name `retrieval` should become `globalSearch` to match.
+- `UseGraphRag(retrieval: ...)`'s parameter type changes. **The parameter name stays `retrieval`.**
+  This section originally proposed renaming it to `globalSearch`; the impact analysis found that
+  `retrieval:` is a repo-wide convention — `AddRagNet(retrieval:)`, `UseRaptor(retrieval:)`,
+  `UseGraphRag(retrieval:)`, alongside sibling types `RaptorRetrievalOptions`,
+  `TagRetrievalOptions` and `RetrievalOptions` — so renaming GraphRAG's alone would make it the
+  only package breaking the pattern, for a cosmetic gain. Decided 2026-08-27: rename the type,
+  keep the parameter.
 - The source generator emits `GraphRagRetrievalOptionsValidator` from the `[InclusiveBetween]` and
   `[Must]` attributes; that generated type renames with it. **`ThrowIfInvalid(new
   GraphRagRetrievalOptionsValidator()...)` in `RagBuilderExtensions` must be updated in the same
