@@ -528,7 +528,8 @@ public static class BeirReproduction
             "**THIS FIGURE IS REPRODUCIBLE ONLY WITH #231 (fix/230-local-search-dedup-key) " +
             "APPLIED, and that fix must land before or with this entry.** It was measured in a " +
             "worktree carrying main + the #173 harness (#229) + #231. Until #231, " +
-            "GraphLocalSearchBehavior keyed its deduplication on ChunkIndex alone rather than on " +
+            "GraphLocalSearchBehavior -- now the frozen LegacyPageRankLocalSearch in this harness -- " +
+            "keyed its deduplication on ChunkIndex alone rather than on " +
             "(DocumentId, ChunkIndex): entity chunks use per-document negative indices and " +
             "article chunks 0..n, so across 609 documents candidates from DIFFERENT documents " +
             "collided and roughly a third of every candidate set was discarded -- arbitrarily by " +
