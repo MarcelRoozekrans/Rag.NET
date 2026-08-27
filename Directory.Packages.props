@@ -88,7 +88,7 @@
     <PackageVersion Include="System.Numerics.Tensors" Version="10.0.11" />
     <PackageVersion Include="System.Threading.RateLimiting" Version="10.0.11" />
     <PackageVersion Include="Tesseract" Version="5.2.0" />
-    <PackageVersion Include="NRedisStack" Version="1.7.3" />
+    <PackageVersion Include="NRedisStack" Version="1.7.4" />
     <PackageVersion Include="SSH.NET" Version="2026.0.0" />
     <PackageVersion Include="Testcontainers" Version="4.14.0" />
     <PackageVersion Include="Testcontainers.Ollama" Version="4.14.0" />
