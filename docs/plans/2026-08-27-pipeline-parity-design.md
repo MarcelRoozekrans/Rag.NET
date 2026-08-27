@@ -52,16 +52,14 @@ Holding the store, the vectors, the scoring and the corpus fixed *by identity* i
 exactly one variable: the sixteen behaviours. Rebuilding an equivalent store instead would
 reintroduce indexing as a second variable and make a failure unattributable.
 
-**This holds by identity in the fast leg only.** `BeirHarness.RetrieveScoredRunsAsync` constructs its
-own store internally (`using var store = new InMemoryVectorStore()`) and its `RetrieveAsync` is
-private, so neither the store instance nor the chunk-level hits are reachable through the harness's
-public surface. Making them reachable would mean changing `BeirHarness`, which is exactly what
-approach A exists to avoid. The real leg therefore trades identity for **construction
-equivalence** — see [The two legs](#the-two-legs).
+**This holds by identity in both legs.** `BeirHarness.RetrieveScoredRunsAsync` builds its own store
+and its `RetrieveAsync` is private, so the harness's *measurement entry points* cannot share a store
+— but `AblationRow.Dense` is public and takes the store as a parameter, which is the road both legs
+take. No visibility change to `BeirHarness` is required.
 
 ### Level and tolerance
 
-**Chunk level, ordered, scores compared exactly — in the fast leg.**
+**Chunk level, ordered, scores compared exactly — in both legs.**
 
 - **Chunk level, not document level.** `DocumentRanking.TopDocuments` max-pools chunks into
   documents — a harness concern; the product does not do it. Pooling is lossy, so asserting after
@@ -128,34 +126,27 @@ Loads SciFact through the existing `BeirHarness.LoadAsync` / `IsProvisioned` pat
 sample of queries through both sides. This is the leg entitled to the phrase *"the harness's top-k"*,
 because it is the harness, on the corpus the figures come from.
 
-**It compares at document level, over two identically-constructed stores**, and both departures from
-the fast leg are forced by the harness's public surface rather than chosen:
+**It shares one store by identity and compares at chunk level, exactly as the fast leg does.** An
+earlier draft of this design had it comparing document-level rankings over two separately-indexed
+stores, on the reasoning that `RetrieveScoredRunsAsync` builds its own store and `RetrieveAsync` is
+private. That was solving the wrong problem — there is a public road:
 
-- `RetrieveScoredRunsAsync` builds and disposes its own `InMemoryVectorStore`, so the instance
-  cannot be shared. The test indexes its own store from the same `OneChunkPerDocument` units,
-  through the same `OnnxEmbeddingGenerator` and the same prefetched `EmbeddingCache`, so the two
-  stores hold identical vectors.
+- **`AblationRow.Dense` is public and takes the store as a parameter** ("The populated store. The
+  row never writes to it."), returning `IReadOnlyList<ChunkHit>` directly. It is the harness's own
+  dense row — documented as *"why this row's parity numbers are the ones validated against published
+  figures, and why they must not move"* — so the comparison is against harness code, not a replica
+  of it.
+- **`BeirHarness.EmbedAsync` is `internal`** and `PipelineParity` lives in the same assembly, so the
+  test can index one store itself and hand the same instance to both sides.
+- **`CachingEmbeddingGenerator` already exists** — `OnnxEmbeddingGenerator` behind `EmbeddingCache`,
+  in the `IEmbeddingGenerator` shape the pipeline takes. Registering it means both sides read the
+  *identical cached vector*, rather than the pipeline calling a live generator that could disagree
+  with a cache populated under a different model revision.
 
-  **`IndexAsync` is private as well, so this is an equivalent indexing path rather than the same
-  one** — and that is a second copy of a step, which is the one thing this design otherwise refuses
-  (approach B was rejected for measuring copies). It is tolerable here because the step is small and
-  its inputs are pinned: identical units, identical cached vectors, one upsert each. But it is a
-  real difference from the fast leg, which shares the store by identity and carries no copy at all.
-
-  **The plan should consider one alternative before accepting the copy**: widening `IndexAsync` from
-  `private` to `internal`. `PipelineParity` lives in the same assembly as `BeirHarness`, so that is a
-  visibility change with no behaviour change, no new public surface, and no effect on any pinned
-  figure — and it would restore *the same code* on both sides. Weighed against "no change to
-  `BeirHarness`", which is a rule about not perturbing the instrument, and a visibility widening
-  perturbs nothing it measures. Decide it in the plan, with the trade named either way.
-- Its output is `ScoredDocument` runs, already pooled. The pipeline's chunk results are put through
-  **the same `DocumentRanking.TopDocuments`** before comparison, so applying one pooling function to
-  both sides keeps retrieval the only possible source of a difference.
-
-Document level is not a weaker claim here so much as a different one, and it happens to be the more
-directly relevant: it is the unit every pinned figure is quoted in, so this leg compares the pipeline
-against literally what produces the published numbers. The chunk-level strictness lives in the fast
-leg, where the store *can* be shared by identity.
+So the store is indexed once and shared, there is no two-store equivalence question, and no
+visibility change to `BeirHarness` is needed. The only code this leg writes that the harness also
+has is indexing — and because both sides read the one store it produced, it cannot be a source of
+difference.
 
 It **skips, never fails**, when the model or the dataset cache is absent — the convention every
 other case in this project follows.
@@ -175,9 +166,7 @@ readings:
 > change was deliberate, every pinned figure now describes something the shipped pipeline no longer
 > does.
 
-It reports **the first differing rank with both ids and, where the leg has them, both scores** —
-chunk ids and scores in the fast leg, document ids in the real leg, whose comparison is after
-pooling. A diff at rank 1 and a diff at rank 9 of 10 are different bugs, and equal scores with
+It reports **the first differing rank with both chunk ids and both scores**. A diff at rank 1 and a diff at rank 9 of 10 are different bugs, and equal scores with
 different ids is a tie-break divergence rather than a vector divergence — a different cause
 entirely.
 
@@ -208,7 +197,7 @@ project is needed.**
 
 | File | Purpose |
 | --- | --- |
-| `PipelineParity.cs` | Builds a default `AddRagNet` container over a supplied store and embedder, runs a query through `IRagPipeline.RetrieveAsync`, and compares against an expected ranking. Two comparison modes, because the legs differ: **chunk-level** (ids and exact scores, fast leg) and **document-level** (ids after a shared `DocumentRanking.TopDocuments`, real leg). Both produce the diagnostic message above. |
+| `PipelineParity.cs` | Builds a default `AddRagNet` container over a supplied store and embedder, runs a query through `IRagPipeline.RetrieveAsync`, projects the results to `ChunkHit` using the same `"{DocumentId}#{ChunkIndex}"` shape `AblationRow.ToChunkHits` uses, and compares against an expected `IReadOnlyList<ChunkHit>` — ids and exact scores, in order. **One comparison mode, shared by both legs.** Produces the diagnostic message above. |
 | `OrderingEmbeddingGenerator.cs` | The fast leg's fixture embedder — deterministic, injective, strictly ordering. |
 | `OrderingEmbeddingGeneratorTests.cs` | The guard on that contract, separate so it fails on its own terms. |
 | `PipelineParityTests.cs` | The two legs. |
@@ -253,9 +242,8 @@ wired to nothing, and there is no point building it.
   exact-score parity over about ten queries.
 - The fixture embedder's determinism, injectivity and strict ordering are asserted by a separate
   test that fails on its own terms.
-- The real leg makes the document-level claim over SciFact with the real ONNX embedder, over two
-  identically-constructed stores and one shared pooling function, and skips rather than fails when
-  unprovisioned.
+- The real leg makes the same chunk-level claim over SciFact with the real ONNX embedder, against
+  `AblationRow.Dense` over one shared store, and skips rather than fails when unprovisioned.
 - A failure names the first differing rank with both ids and both scores.
 - **The mutation check has been run**: one default behaviour enabled, the test observed failing with
   a correct message, the mutation reverted.
