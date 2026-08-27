@@ -4263,14 +4263,17 @@ answer arm per engine (~$3 derived each, replayed after); one container run per 
 test for parity. What it does not promise: that any of them are good. Measured is the bar.
 
 **Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; ~~#247 is fixed
-and re-measured~~ (met 2026-08-18); the pipeline-parity test is in the fast tier; the guards'
-allowlist is empty.
+and re-measured~~ (met 2026-08-18); ~~the pipeline-parity test is in the fast tier~~ (met
+2026-08-27 — the fast leg only; the real leg has never run on this machine, see below); the
+guards' allowlist is empty.
 
 **Open threads, 2026-08-20** — what is actually left, now that #247 and the local-search work have
 closed: ~~RAPTOR~~ (**complete 2026-08-27**, Tasks 1-6 — measured, pinned, and written down; see
 below), HyDE, reranking, hybrid BM25, late chunking and SPLADE under the Real protocol; the
-three answer engines as arms; every vector store through the SciFact parity leg; the
-pipeline-parity test; ~~**#176** at its re-measured 78.8%~~ (**answered 2026-08-26 in #405** — not
+three answer engines as arms; every vector store through the SciFact parity leg; ~~the
+pipeline-parity test~~ (**fast leg complete 2026-08-27**, in the fast tier and green on every push;
+real leg written but never run; see below); ~~**#176** at its re-measured 78.8%~~ (**answered
+2026-08-26 in #405** — not
 a defect worth fixing; see below); **local search's yes/no abstention** — it
 commits on 8.8% of comparison and 4.3% of temporal questions where global search scores 0.4953 and
 0.3928, which nobody has explained; and ~~the **deletion of `GraphLocalSearchBehavior` and
@@ -4305,6 +4308,55 @@ and it needs a dataset whose questions are not constructed per document.
 HyDE, reranking, hybrid BM25, late chunking, SPLADE, the three answer engines as arms, every vector
 store through the SciFact parity leg, the pipeline-parity test, the second-corpus RAPTOR arm, and
 local search's unexplained yes/no abstention.
+
+**The pipeline-parity test's fast leg is complete, 2026-08-27 — the DoD clause 6.2.1's exit
+condition names explicitly.** `OrderingEmbeddingGenerator` is a deterministic fixture embedder built
+geometrically rather than hashed: text *i* of *n* sits at angle *i·δ*, δ = π/(2(n+1)), so cosine
+against the query is strictly decreasing and no two documents can tie — its own guard test asserts
+determinism, injectivity and strictly-decreasing pairwise-distinct scores, because 6.2.3's
+`new Random(123)`-inside-the-callback mock is exactly the failure shape a degenerate embedder would
+repeat here, invisibly, and this project has paid for that shape before. `PipelineParity` builds a
+fresh default `AddRagNet` container over a caller-supplied store and embedder, runs
+`IRagPipeline.RetrieveAsync`, and compares chunk-level against the harness's own dense row with
+**exact** score equality — no tolerance, because both sides call the same `SearchAsync` on the same
+store instance, shared by identity so indexing never becomes a second variable — and reports the
+first differing rank with both ids and both scores. `PipelineParityTests` has two legs: a fast leg
+over a synthetic six-document corpus that runs on every push and **passes**, and a real leg that
+runs SciFact through `AblationRow.Dense` over the same shared store, at `BeirHarness.Cutoff` (10),
+gated on provisioning only rather than on `RAGNET_BEIR_LONG_RUNS`.
+
+**The mutation check was run, and it failed on purpose, with this verbatim message:** `Rank 1
+differs for 'the parity query' - pipeline doc-2#0 (0,9009689092636108) vs harness doc-1#0
+(0,9749279618263245). Either a default retrieval behaviour stopped being a no-op, or the harness's
+dense path changed. If the behaviour change was deliberate, every pinned figure now describes
+something the shipped pipeline no longer does, and the figures - not this test - are what need
+attention.` **The plan's suggested mutation, `UseMmr`, did not work, and why matters**:
+`OrderingEmbeddingGenerator`'s query vector is placed identically to doc-0's vector by construction,
+so MMR's relevance and diversity terms cancel exactly and MMR reproduces the harness's order — a
+*mathematical* no-op on this fixture, not a defect in `MmrBehavior`. A future reader who retries
+`UseMmr` here would hit the same silent green and could wrongly conclude the test cannot fail.
+`UseRedundancyFilter = true` was used instead: the fixture's six documents sit on a unit circle at
+equally spaced angles, so adjacent documents carry cosine similarity ≈0.975 — above
+`RedundancyFilterBehavior`'s default 0.95 threshold — and enabling the filter genuinely changes both
+the count and the order the pipeline returns against the harness's untouched ranking.
+
+**The real leg has never run.** It skipped on the machine that built it — no ONNX model, no BEIR
+dataset cache provisioned — and is verified by reading only. This project has recorded exactly this
+caveat honestly before (RAPTOR's E2E GraphRag tests, 6.2.1 above) and it applies again here: nothing
+should be read as a pass that did not happen.
+
+**A review caught the real leg passing vacuously, before merge.** With zero hits on both sides,
+`AssertSame` would agree on all 20 queries and pass regardless of whether retrieval worked at all —
+the exact failure mode the fast leg already guards against with its hardcoded expected ranking.
+Fixed before merge with two explicit assertions: that indexing actually landed one chunk per
+document, and that the harness side actually retrieved a full page of hits (`BeirHarness.Cutoff`)
+at every query.
+
+**The fast leg satisfies 6.2.1's exit-condition clause** — *"the pipeline-parity test is in the fast
+tier"* — and runs, green, on every push. **This does not complete the phase.** It still owes HyDE,
+reranking, hybrid BM25, late chunking, SPLADE, the three answer engines as arms, every vector store
+through the SciFact parity leg, the second-corpus RAPTOR arm, and local search's unexplained yes/no
+abstention.
 
 **#176 is answered, 2026-08-26 — and the answer is that it is not a defect worth fixing (#405).**
 It was answered by looking at what the dropped relationship endpoints are *called*, which nobody had
