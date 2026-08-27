@@ -485,7 +485,7 @@ public sealed class BeirGraphRagCorpusTests
     {
         const int ReachCutoff = 100;
         var queries = BeirHarness.JudgedQueries(dataset);
-        var unweighted = new GraphRagRetrievalOptions { PageRankWeight = 0.0 };
+        var unweighted = new LegacyPageRankOptions { PageRankWeight = 0.0 };
         var defaults = new GraphRagRetrievalOptions();
 
         var controlAt10 = new Dictionary<string, IReadOnlyList<string>>(queries.Count, StringComparer.Ordinal);

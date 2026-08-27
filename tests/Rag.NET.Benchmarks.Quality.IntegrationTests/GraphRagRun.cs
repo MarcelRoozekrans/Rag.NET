@@ -133,11 +133,21 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// configuration the library ships.
     /// </para>
     /// </remarks>
-    private readonly GraphRagRetrievalOptions _retrievalOptions = new() { PageRankWeight = 0.3 };
+    private readonly LegacyPageRankOptions _retrievalOptions = new() { PageRankWeight = 0.3 };
+
+    /// <summary>
+    /// Global-search options at upstream defaults. Kept separate from <see cref="_retrievalOptions"/>
+    /// because <see cref="GraphGlobalSearchBehavior"/> needs <see cref="GraphRagRetrievalOptions"/>
+    /// members — <see cref="GraphRagRetrievalOptions.GlobalBatchSize"/> and
+    /// <see cref="GraphRagRetrievalOptions.GlobalReportCandidates"/> — that
+    /// <see cref="LegacyPageRankOptions"/> does not carry; global search reads none of the
+    /// PageRank-blend properties, so the split changes nothing it measures.
+    /// </summary>
+    private readonly GraphRagRetrievalOptions _globalRetrievalOptions = new();
 
     /// <summary>
     /// Microsoft's local search as specified — <see cref="IGraphRagSearch"/>, not
-    /// <see cref="GraphLocalSearchBehavior"/> — over the run's own stores, at the upstream defaults.
+    /// <see cref="LegacyPageRankLocalSearch"/> — over the run's own stores, at the upstream defaults.
     /// </summary>
     /// <remarks>
     /// Lazy because the builder is pure and the search holds only store references: constructing it
@@ -302,7 +312,7 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// it a corpus-scale nDCG cannot be attributed to anything.</b> Two things change at once when
     /// the graph path is measured against the dense one: the store gains a quarter of a million
     /// entity, relationship and community-report chunks, and
-    /// <see cref="GraphLocalSearchBehavior"/> reorders and deduplicates whatever comes out of it.
+    /// <see cref="LegacyPageRankLocalSearch"/> reorders and deduplicates whatever comes out of it.
     /// Scoring the candidates as well as the results separates them — same query, same store, same
     /// scan, one extra pooling — so a difference from the Real leg's figure can be laid at the door
     /// of the store's contents or of the behavior rather than at "GraphRAG" as an undivided thing.
@@ -328,9 +338,9 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// the behavior alone.
     /// </remarks>
     public async Task<GraphLocalSearchOutcome> LocalSearchWithCandidatesAsync(
-        string query, GraphRagRetrievalOptions retrievalOptions, CancellationToken cancellationToken)
+        string query, LegacyPageRankOptions retrievalOptions, CancellationToken cancellationToken)
     {
-        var behavior = new GraphLocalSearchBehavior(_graphStore, retrievalOptions, ChunkStore, _embedder);
+        var behavior = new LegacyPageRankLocalSearch(_graphStore, retrievalOptions, ChunkStore, _embedder);
         IReadOnlyList<SearchResult> candidates = [];
 
         var results = await behavior.HandleAsync(
@@ -358,7 +368,7 @@ internal sealed class GraphRagRun : IAsyncDisposable
 
     /// <summary>
     /// The documents the graph reaches from a candidate set's seed entities and that the candidate
-    /// set itself does not name — the expansion <see cref="GraphLocalSearchBehavior"/> does not
+    /// set itself does not name — the expansion <see cref="LegacyPageRankLocalSearch"/> does not
     /// perform, done here so it can be measured.
     /// </summary>
     /// <param name="candidates">The dense candidate set for one query.</param>
@@ -474,7 +484,7 @@ internal sealed class GraphRagRun : IAsyncDisposable
     public async Task<IReadOnlyList<SearchResult>> GlobalSearchAsync(
         string query, IChatClient chatClient, CancellationToken cancellationToken)
     {
-        var behavior = new GraphGlobalSearchBehavior(chatClient, _retrievalOptions, ChunkStore, _embedder);
+        var behavior = new GraphGlobalSearchBehavior(chatClient, _globalRetrievalOptions, ChunkStore, _embedder);
 
         return await behavior.HandleAsync(CreateContext(query), cancellationToken, RetrieveAsync);
     }
@@ -682,7 +692,7 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// <see cref="BaseTopK"/> chunks deep, before any graph work.
     /// </param>
     /// <param name="Results">
-    /// What <see cref="GraphLocalSearchBehavior"/> returned: the same chunks blended with PageRank
+    /// What <see cref="LegacyPageRankLocalSearch"/> returned: the same chunks blended with PageRank
     /// and deduplicated. It can hold <b>fewer</b> entries than
     /// <paramref name="Candidates"/> — see <see cref="BeirGraphRagCorpusTests"/>, which measures by
     /// how many and why that matters to the metric.
