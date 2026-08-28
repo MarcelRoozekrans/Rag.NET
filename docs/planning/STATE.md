@@ -1,6 +1,7 @@
 # Session State
 
-**Last updated:** 2026-08-27 (#408 merged, and RAPTOR Task 6 done — the sweep's first completed technique)
+**Last updated:** 2026-08-27 (RAPTOR Task 6 merged in #412, and the pipeline-parity test's fast leg
+built on `feat/pipeline-parity-test` — not yet merged)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -10,9 +11,12 @@ without one, which is why every session so far re-derived its position from `ROA
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
 **Phase:** 6.2.1 — Retrieval & Answer Sweep (active; RAPTOR Task 5 is done and pinned in #389,
 **#176 closed 2026-08-26 in #405** and the **PageRank blend deleted 2026-08-27 in #408** — all four
-named debts are closed and only the sweep itself remains). **RAPTOR Task 6 closed 2026-08-27, so
-RAPTOR is the sweep's first completed technique** — measured, pinned, and now written down at
-`VerifiedBy=benchmark`.
+named debts are closed and only the sweep itself remains). **RAPTOR Task 6 closed 2026-08-27 in
+#412, so RAPTOR is the sweep's first completed technique** — measured, pinned, and now written down
+at `VerifiedBy=benchmark`. **The pipeline-parity test's fast leg is built and green, 2026-08-27**,
+satisfying the exit condition's *"the pipeline-parity test is in the fast tier"* clause; its real
+leg exists but has never run on this machine (no ONNX model, no BEIR cache) and is verified by
+reading only. Neither closes the phase — see `ROADMAP.md`'s 6.2.1 block for what still remains.
 
 **2026-08-26 shipped 6.2.12 — the first external user's defects.** Seven merged PRs, all verified
 on `main` by content. Its full record is in `ROADMAP.md`; the three findings worth carrying here:
@@ -70,9 +74,16 @@ on `main`** — corrected 2026-08-25. Statuses are written when a phase is plann
 editing this file at the moment its PR merges, which is the same failure the Working State branch
 field has now had three times.
 
-**Last completed:** **#176, answered 2026-08-26 and shipped in #405** — see Phase state below;
-the finding is that the singletons are honest and the obvious fix would make the graph worse.
-Before it, **Phase 6.2.9 — `Umap.Fit` at Corpus Scale** (#348), built 2026-08-25.
+**Last completed:** **the pipeline-parity test's fast leg, 2026-08-27, on `feat/pipeline-parity-test`
+(not yet merged)** — `OrderingEmbeddingGenerator`, `PipelineParity` and `PipelineParityTests`
+compare a real `AddRagNet` pipeline against the harness's dense row with exact score equality; the
+mutation check ran and failed with a named-rank, both-ids-and-scores message; the real SciFact leg
+was written and reviewed but has never run on this machine and is verified by reading only. Before
+it, **RAPTOR Task 6** (#412, 2026-08-27) — RAPTOR is the sweep's first completed technique,
+measured, pinned, and written down at `VerifiedBy=benchmark`. Before that, **#176, answered
+2026-08-26 and shipped in #405** — see Phase state below; the finding is that the singletons are
+honest and the obvious fix would make the graph worse. Before it, **Phase 6.2.9 — `Umap.Fit` at
+Corpus Scale** (#348), built 2026-08-25.
 Measured before changing anything, which is what makes the rest of it quotable: the kNN graph is
 **92% of `Umap.Fit`'s time and 98% of its allocation**, so #348 named the right target. Bounded
 k-selection replaced the full sort and the row loop parallelises above 512 rows —
@@ -194,12 +205,24 @@ questions resemble MultiHop-RAG's, set `PerDocument`; if your documents genuinel
 
 **What is next is a choice between threads, and nothing forces the order.** The phase now owes
 HyDE, reranking, hybrid BM25, late chunking, SPLADE, the three answer engines as arms, every vector
-store through the SciFact parity leg, the pipeline-parity test, the second-corpus RAPTOR arm, and
-local search's unexplained yes/no abstention. **The recommendation is the pipeline-parity test**:
-it is fast-tier, needs no corpus run and no model calls, closes the gap 5.2.2 named explicitly, and
-is the one remaining DoD clause that is pure engineering. **HyDE and reranking are the cheapest
-*measurement* threads** — both already have parity-corpus cells, so they are re-measurements under
-the Real protocol rather than new harness arms. `LateChunking` remains the most expensive: it has no
+store through the SciFact parity leg, the second-corpus RAPTOR arm, and local search's unexplained
+yes/no abstention. ~~**The recommendation is the pipeline-parity test**: it is fast-tier, needs no
+corpus run and no model calls, closes the gap 5.2.2 named explicitly, and is the one remaining DoD
+clause that is pure engineering.~~ **Built 2026-08-27 on `feat/pipeline-parity-test` (not yet
+merged) — the fast leg only.** `OrderingEmbeddingGenerator`, `PipelineParity` and
+`PipelineParityTests` compare a real `AddRagNet` pipeline against the harness's own dense row at
+exact score equality; the fast leg runs a synthetic corpus on every push and passes. The mutation
+check ran: the plan's suggested mutation, `UseMmr`, is a mathematical no-op on this fixture (the
+query vector equals doc-0's vector by construction, so MMR's relevance and diversity terms cancel
+exactly and reproduce the harness's order) — `UseRedundancyFilter = true` was used instead, since
+adjacent fixture documents sit at cosine ≈0.975, above the 0.95 default threshold, and the check
+failed with a named-rank, both-ids-and-scores message before the mutation was reverted. **The real
+SciFact leg exists but has never run on this machine** — no ONNX model, no BEIR cache — and is
+verified by reading only; a review caught it passing vacuously with zero hits on both sides before
+merge, fixed with explicit corpus-landed and depth-of-hits assertions. **The next recommendation is
+HyDE and reranking's re-measurement under the Real protocol** — both already have parity-corpus
+cells, so they are re-measurements rather than new harness arms, and remain the cheapest
+*measurement* threads open in the phase. `LateChunking` remains the most expensive: it has no
 protocol and needs the token-level embedding path built before one can be written.
 
 **~~Delete `GraphLocalSearchBehavior` and `PageRankWeight`~~ — MERGED 2026-08-27 in #408
@@ -403,12 +426,24 @@ much larger than answer generation's.
 
 ## Working State
 
-**Branch:** `chore/reconcile-408-and-raptor-task-6`, cut from `origin/main` (`9b4db1f7`) on
-2026-08-27. Bookkeeping plus RAPTOR Task 6 — this file, `ROADMAP.md`, `docs/guide/raptor.md`,
-`docs/reference/features.md` and `src/Rag.NET.Raptor/Rag.NET.Raptor.csproj`.
+**Branch:** `feat/pipeline-parity-test`, cut from `origin/main` (`ab87d156`) on 2026-08-27. This
+task: `docs/planning/ROADMAP.md` and this file only, recording the pipeline-parity thread built by
+the five tasks before it — no code.
 
-**It was stale again when this session opened, for the fifth time — and so was the step below
-it.** The field named `chore/planning-176-and-phase-table` while the checkout was on
+**It was stale again when this session opened, for the sixth time.** The field named
+`chore/reconcile-408-and-raptor-task-6` while the checkout was already on
+`feat/pipeline-parity-test`, and that earlier branch had *also* already shipped: it squash-merged to
+`main` as **#412** (`ab87d156`) on 2026-08-27 — the same PR that, per its own commit message, was
+itself fixing the field's *fifth* stale occurrence. Verified on `main` by content — `## Measured` is
+in `docs/guide/raptor.md`, `<VerifiedBy>benchmark</VerifiedBy>` is in `Rag.NET.Raptor.csproj` — rather
+than by the PR's MERGED label. **Six for six: this field has now gone stale every single time the
+branch it named has merged, and only ever at that moment, because that is the one moment nobody is
+editing this file.** Read it against `git branch --show-current` and against `origin/main` by
+content before trusting either — a session that trusts this field's story of its own branch is
+trusting the one claim in the file structurally guaranteed to be checked last.
+
+**It was stale again when this session's predecessor opened, for the fifth time — and so was the
+step below it.** The field named `chore/planning-176-and-phase-table` while the checkout was on
 `refactor/delete-pagerank-local-search`, and that branch had *also* already shipped: **PR #408
 squash-merged to `main` as `c3e4aa94` on 2026-08-27**, verified on `main` by content —
 `GraphRagGlobalSearchOptions.cs` present, `PageRankWeight` gone from `src/` (the one surviving
