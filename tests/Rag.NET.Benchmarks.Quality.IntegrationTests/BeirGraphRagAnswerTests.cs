@@ -929,6 +929,17 @@ public sealed class BeirGraphRagAnswerTests
     /// <see cref="PipelineParityTests.DefaultPipeline_ReturnsWhatTheHarnessDenseRowReturns_OnSciFact"/>
     /// gives.
     /// </para>
+    /// <para>
+    /// <b>One difference from <see cref="PipelineParity"/>, deliberately.</b> That type builds a
+    /// fresh container per call so a warm <c>ResultCacheBehavior</c> or <c>EmbeddingCacheBehavior</c>
+    /// cannot make a re-run agree where a first run did not; this one is built once and shared by
+    /// every query. The difference is inert here because neither behaviour has anything to warm:
+    /// both take <c>HybridCache</c> and <c>CachingOptions</c> as optional injections and return
+    /// <c>next(...)</c> untouched when either is <see langword="null"/>, and the container below
+    /// registers neither. Register a cache here and that reasoning lapses — the shared container
+    /// would then carry state across queries and <c>flare</c>'s lookahead would stop reading the
+    /// live store.
+    /// </para>
     /// </remarks>
     private static ServiceProvider? BuildEnginePipeline(
         IReadOnlyList<string> arms,
@@ -936,8 +947,8 @@ public sealed class BeirGraphRagAnswerTests
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings)
     {
-        // flarefixed deliberately gets null: AnswerEngineArms substitutes a recording stub that
-        // proves lookahead never fired. Handing it a working retriever would destroy that proof.
+        // Only flare needs this. flarefixed's retriever is EngineRetrievers' stub and never comes
+        // from here, so an unselected flare costs nothing whether or not flarefixed is running.
         if (!arms.Contains(AnswerArm.Flare, StringComparer.Ordinal))
         {
             return null;
@@ -984,9 +995,8 @@ public sealed class BeirGraphRagAnswerTests
         var (localContexts, controlContexts, filteredContexts, localSpecContexts) =
             await CollectGraphStoreContextsIfNeededAsync(run, selection, arms, startedAt, ct);
 
-        // One retriever for the whole run, built outside the query loop: see BuildEnginePipeline.
         using var enginePipeline = BuildEnginePipeline(arms, articles, generator, embeddings);
-        var engineRetriever = enginePipeline?.GetRequiredService<IRetriever>();
+        var retrievers = new EngineRetrievers(enginePipeline?.GetRequiredService<IRetriever>());
 
         // Dense and global retrieval, and every answer, in parallel under the same bound.
         var done = 0;
@@ -1002,7 +1012,7 @@ public sealed class BeirGraphRagAnswerTests
                     if (AnswerEngineArms.IsEngineArm(arm))
                     {
                         answerText = await AnswerThroughEngineAsync(
-                            arm, query.Text, engineRetriever, run, articles, corpusRun,
+                            arm, query.Text, retrievers.For(arm), run, articles, corpusRun,
                             perDocumentRun, generator, embeddings, answering, _output, token);
                     }
                     else
@@ -1033,7 +1043,81 @@ public sealed class BeirGraphRagAnswerTests
                 ReportProgress(Interlocked.Increment(ref done), selection, arms, startedAt, answering);
             });
 
+        retrievers.AssertLookaheadStayedOff();
         return tallies;
+    }
+
+    /// <summary>
+    /// Which <see cref="IRetriever"/> each engine arm gets, and the one assertion that says
+    /// <see cref="AnswerArm.FlareFixed"/> held retrieval fixed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This type exists because the guarantee has been wrong three times.</b> The design gave
+    /// <c>flarefixed</c> a retriever that throws — but <c>FlareAnswerEngine.TryLookaheadRetrievalAsync</c>
+    /// catches and swallows every exception, so the throw proved nothing. That was fixed with
+    /// <see cref="AnswerEngineArms.UnreachableRetriever.WasCalled"/>, a flag set before the throw
+    /// and therefore immune to the swallow. Then the harness handed <c>flarefixed</c> the same real
+    /// retriever it built for <c>flare</c> — so <c>Create</c>'s <c>?? new UnreachableRetriever()</c>
+    /// never substituted the stub, and the flag was not merely unread but absent, in precisely the
+    /// run that matters: the one where both arms are selected, which is the only run
+    /// <c>flare − flarefixed</c> can be computed from.
+    /// </para>
+    /// <para>
+    /// So the whole chain is closed here rather than in one more link of it. The stub is
+    /// <b>installed</b> — <see cref="For"/> returns it for <c>flarefixed</c> and never returns the
+    /// real retriever for that arm, whatever else is selected. It is <b>one instance for the run</b>,
+    /// so a call from any query lands on the object this type holds. And it is <b>readable</b>:
+    /// <see cref="AssertLookaheadStayedOff"/> runs after the last answer and fails the test if the
+    /// flag is set. Passing <see langword="null"/> instead would reinstate the stub but leave it
+    /// unreachable — <c>Create</c> would build a fresh one per call and drop it — which is the same
+    /// unobservability in a different place.
+    /// </para>
+    /// </remarks>
+    private sealed class EngineRetrievers
+    {
+        private readonly AnswerEngineArms.UnreachableRetriever _flareFixed = new();
+        private readonly IRetriever? _flare;
+
+        /// <param name="flare">
+        /// The real pipeline retriever, or <see langword="null"/> when <c>flare</c> is not selected.
+        /// <see cref="AnswerEngineArms.Create"/> throws if <c>flare</c> is ever built without one,
+        /// so a mis-wiring fails loudly rather than quietly measuring a stub.
+        /// </param>
+        public EngineRetrievers(IRetriever? flare) => _flare = flare;
+
+        /// <summary>The retriever <paramref name="arm"/>'s engine is constructed with.</summary>
+        /// <remarks>
+        /// The three non-FLARE arms get <see langword="null"/> explicitly rather than the real
+        /// retriever they would ignore. <see cref="AnswerEngineArms.Create"/> does ignore it for
+        /// them today, so this changes nothing — but it makes "only <c>flare</c> is handed a live
+        /// retriever" a property of this method rather than a property of the factory it calls,
+        /// which is the sort of one-layer-away reasoning that put the wrong retriever in
+        /// <c>flarefixed</c>'s hands to begin with.
+        /// </remarks>
+        public IRetriever? For(string arm)
+        {
+            if (string.Equals(arm, AnswerArm.FlareFixed, StringComparison.Ordinal))
+            {
+                return _flareFixed;
+            }
+
+            return string.Equals(arm, AnswerArm.Flare, StringComparison.Ordinal) ? _flare : null;
+        }
+
+        /// <summary><c>flarefixed</c> never retrieved mid-generation.</summary>
+        /// <remarks>
+        /// Read after <c>Parallel.ForEachAsync</c> has completed, so every write to the flag
+        /// happens-before this read. Unconditional: when <c>flarefixed</c> is not selected the stub
+        /// is simply never handed out and the flag is trivially clear, which costs nothing and
+        /// removes a gate that could itself be wrong.
+        /// </remarks>
+        public void AssertLookaheadStayedOff() =>
+            Assert.False(
+                _flareFixed.WasCalled,
+                "flarefixed retrieved mid-generation. MaxRetrievals is 0, so this is unreachable " +
+                "unless FLARE's lookahead guard changed — the arm is no longer holding retrieval " +
+                "fixed and its comparison against mapreduce/refine is invalid.");
     }
 
     /// <summary>Every <see cref="ProgressEvery"/>th completed query, verbatim as it always was.</summary>
@@ -1063,6 +1147,11 @@ public sealed class BeirGraphRagAnswerTests
     /// <c>global</c> and RAPTOR figures were generated under. That separation is the reason the two
     /// branches in <see cref="AnswerAllAsync"/> are kept apart rather than folded together.
     /// </remarks>
+    /// <param name="engineRetriever">
+    /// Whatever <see cref="EngineRetrievers.For"/> hands back for <paramref name="arm"/> — the real
+    /// pipeline retriever for <c>flare</c>, the recording stub for <c>flarefixed</c>, and
+    /// <see langword="null"/> for the three arms that never retrieve mid-generation.
+    /// </param>
     private static async Task<string> AnswerThroughEngineAsync(
         string arm,
         string query,
