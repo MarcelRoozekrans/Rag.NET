@@ -471,6 +471,27 @@ Before it, **#414** as `641e27f0` — pipeline parity (`PipelineParity.cs`); and
 **Nothing here needs updating when a branch merges** — only when new work lands, which is the moment
 someone is already editing this file.
 
+## Measured 2026-08-28 — the machine was provisioned all along
+
+**Both things this session called unmeasurable were measurable.** `~/.cache/ragnet-beir` holds the
+corpus, `model.onnx`, `vocab.txt` and 256 embedding shards, and ships an `env.sh` that points the
+harness at them. The tests skip because **no environment variable is set**, not because anything is
+missing — and three sessions read that skip as "this machine cannot measure" and wrote it into the
+record. Source `env.sh` before writing *unprovisioned* anywhere.
+
+- **Pipeline parity, both legs: PASS**, zero skipped, 90.5 s. The SciFact leg ran for the first time —
+  20 queries, real ONNX embedder, `AblationRow.Dense` against a real `AddRagNet` pipeline over one
+  shared store, chunk ids and exact scores identical at every rank. **The sixteen default retrieval
+  behaviours are no-ops on real data**, which until now was asserted only by reading.
+- **Answer-engine pilot, 10 queries, 6 arms: PASS**, 15 tests, 0 failed, 0 skipped, 41 m (most of it
+  cache-replayed graph construction). All three gates held first time, including the lookahead gate
+  whose guarantee had been wrong in four successive versions.
+- **FLARE measured at ~11 calls per query against a ceiling of 33**, so the full sweep is on the
+  order of $5–10 rather than the derived $4–$21. Full reading in `ROADMAP.md`'s 6.2.1 entry.
+- **The predicted format-versus-reasoning confound is real and visible in the answers**: `dense`
+  answers "Trump" and scores correct where every engine answers discursively and scores wrong. No
+  accuracy headline is published from nine queries.
+
 **The seven occurrences are recorded below and are left as written.** They are the evidence that
 the field was structurally broken rather than repeatedly forgotten, and the reason it was replaced
 above rather than re-filled an eighth time.
