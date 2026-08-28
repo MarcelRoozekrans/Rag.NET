@@ -4264,7 +4264,7 @@ test for parity. What it does not promise: that any of them are good. Measured i
 
 **Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; ~~#247 is fixed
 and re-measured~~ (met 2026-08-18); ~~the pipeline-parity test is in the fast tier~~ (met
-2026-08-27 — the fast leg only; the real leg has never run on this machine, see below); the
+2026-08-27 — **both legs now run and pass as of 2026-08-28**, see below); the
 guards' allowlist is empty.
 
 **Open threads, 2026-08-20** — what is actually left, now that #247 and the local-search work have
@@ -4274,7 +4274,7 @@ three answer engines as arms~~ (**built 2026-08-28** on `feat/answer-engine-arms
 five arms, `flare` included; no pilot run; see below); every vector store through the SciFact parity
 leg; ~~the
 pipeline-parity test~~ (**fast leg complete 2026-08-27**, in the fast tier and green on every push;
-real leg written but never run; see below); ~~**#176** at its re-measured 78.8%~~ (**answered
+both legs measured 2026-08-28; see below); ~~**#176** at its re-measured 78.8%~~ (**answered
 2026-08-26 in #405** — not
 a defect worth fixing; see below); **local search's yes/no abstention** — it
 commits on 8.8% of comparison and 4.3% of temporal questions where global search scores 0.4953 and
@@ -4358,10 +4358,23 @@ equally spaced angles, so adjacent documents carry cosine similarity ≈0.975 �
 `RedundancyFilterBehavior`'s default 0.95 threshold — and enabling the filter genuinely changes both
 the count and the order the pipeline returns against the harness's untouched ranking.
 
-**The real leg has never run.** It skipped on the machine that built it — no ONNX model, no BEIR
-dataset cache provisioned — and is verified by reading only. This project has recorded exactly this
-caveat honestly before (RAPTOR's E2E GraphRag tests, 6.2.1 above) and it applies again here: nothing
-should be read as a pass that did not happen.
+~~**The real leg has never run.**~~ **IT RAN, 2026-08-28, AND IT PASSED** — 20 SciFact queries, the
+real ONNX embedder, `AblationRow.Dense` against a real `AddRagNet` pipeline over one shared store,
+chunk ids and exact scores identical at every rank. Both parity legs green, **zero skipped**, 90.5 s.
+
+**The claim it had never run was true but the reason given for it was wrong, and the correction
+matters more than the result.** The entry above said the machine had "no ONNX model, no BEIR dataset
+cache provisioned". The cache was there the whole time, at `~/.cache/ragnet-beir`, with
+`model.onnx`, `vocab.txt`, the SciFact corpus and 256 embedding shards. **The tests skip because no
+environment variable points at it**, and the cache ships an `env.sh` that sets them. Three sessions
+read "SKIPPED" as "this machine cannot measure" and wrote that conclusion into the planning record;
+the harness was reporting the absence of a *variable*, and the sessions heard the absence of a
+*corpus*. **Read a skip's reason, not its colour.**
+
+**So the central claim of this thread is now measured rather than argued:** the sixteen retrieval
+behaviours that run before `VectorStoreBehavior` really are no-ops at shipped defaults, on a real
+corpus with a real embedder. Every pinned figure in this project is produced by the harness; this is
+the first evidence that a user's `AddRagNet` pipeline reproduces it.
 
 **A review caught the real leg passing vacuously, before merge.** With zero hits on both sides,
 `AssertSame` would agree on all 20 queries and pass regardless of whether retrieval worked at all —
