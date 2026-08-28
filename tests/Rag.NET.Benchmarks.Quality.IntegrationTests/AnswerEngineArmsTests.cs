@@ -55,8 +55,13 @@ public sealed class AnswerEngineArmsTests
     }
 
     /// <summary>
-    /// The arm's defining claim, asserted structurally: at <c>MaxRetrievals = 0</c> the retriever is
-    /// unreachable, so <see cref="AnswerEngineArms.UnreachableRetriever"/> never throws.
+    /// The arm's defining claim, asserted on a recorded flag rather than on the retriever having
+    /// thrown: <c>FlareAnswerEngine.TryLookaheadRetrievalAsync</c> catches and swallows every
+    /// exception the retriever raises, so a throw alone proves nothing — the engine would keep
+    /// running and this test would pass even while lookahead had fired. What actually proves
+    /// lookahead stayed off at <c>MaxRetrievals = 0</c> is that
+    /// <see cref="AnswerEngineArms.UnreachableRetriever.WasCalled"/>, set before the throw and
+    /// therefore unaffected by the swallow, is still <see langword="false"/> afterward.
     /// </summary>
     /// <remarks>
     /// Observed <c>client.Calls</c> against the fake client in this file: 30 — <c>FlareOptions</c>'s
@@ -69,13 +74,18 @@ public sealed class AnswerEngineArmsTests
     public async Task FlareFixed_NeverRetrieves()
     {
         var client = new CountingChatClient();
-        var engine = AnswerEngineArms.Create(AnswerArm.FlareFixed, client, retriever: null);
+        var retriever = new AnswerEngineArms.UnreachableRetriever();
+        var engine = AnswerEngineArms.Create(AnswerArm.FlareFixed, client, retriever);
 
         var response = await engine.AskAsync(
             "q", Sources(), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(response);
         Assert.True(client.Calls >= 1, "flarefixed made no LLM call at all.");
+        Assert.False(
+            retriever.WasCalled,
+            "flarefixed's lookahead retrieval fired despite MaxRetrievals = 0 — the arm is no " +
+            "longer holding retrieval fixed and its comparison against mapreduce/refine is invalid.");
     }
 
     [Fact]

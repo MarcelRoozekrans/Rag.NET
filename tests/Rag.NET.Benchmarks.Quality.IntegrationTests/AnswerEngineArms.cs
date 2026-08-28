@@ -26,10 +26,11 @@ internal static class AnswerEngineArms
     /// <param name="arm">One of the engine arms; anything else throws.</param>
     /// <param name="chatClient">The harness's answering client, shared by every arm.</param>
     /// <param name="retriever">
-    /// Required by <see cref="AnswerArm.Flare"/> only, whose lookahead retrieves mid-generation.
-    /// <see cref="AnswerArm.FlareFixed"/> is given an <see cref="UnreachableRetriever"/> instead:
-    /// at <c>MaxRetrievals = 0</c> the retriever cannot be reached, so a stub that throws turns
-    /// "lookahead is off" from an observation into a structural guarantee.
+    /// Required by <see cref="AnswerArm.Flare"/>, whose lookahead retrieves mid-generation. For
+    /// <see cref="AnswerArm.FlareFixed"/> this is optional: production callers pass
+    /// <see langword="null"/> and get an <see cref="UnreachableRetriever"/> stub, while tests can
+    /// inject their own <see cref="UnreachableRetriever"/> instance to inspect after the call —
+    /// see that type's remarks for why the instance, not the throw, is the guarantee.
     /// </param>
     public static IAnswerEngine Create(string arm, IChatClient chatClient, IRetriever? retriever)
     {
@@ -54,7 +55,7 @@ internal static class AnswerEngineArms
         {
             return new FlareAnswerEngine(
                 chatClient,
-                new UnreachableRetriever(),
+                retriever ?? new UnreachableRetriever(),
                 new SelfAssessmentConfidenceScorer(chatClient),
                 new FlareOptions { MaxRetrievals = 0 });
         }
@@ -82,23 +83,37 @@ internal static class AnswerEngineArms
         || string.Equals(arm, AnswerArm.FlareFixed, StringComparison.Ordinal);
 
     /// <summary>
-    /// An <see cref="IRetriever"/> that throws if it is ever called.
+    /// An <see cref="IRetriever"/> that records whether it was called, then throws.
     /// </summary>
     /// <remarks>
-    /// <see cref="AnswerArm.FlareFixed"/>'s whole claim is that lookahead is off. A counter reading
-    /// zero and a code path that cannot execute are different guarantees, and this is the second
-    /// one: if a future change ever reaches the retriever, the arm fails loudly instead of quietly
-    /// retrieving and reporting as a fixed-context arm.
+    /// <see cref="AnswerArm.FlareFixed"/>'s whole claim is that lookahead is off. The throw alone is
+    /// <b>not</b> a structural guarantee of that: <c>FlareAnswerEngine.TryLookaheadRetrievalAsync</c>
+    /// wraps the retriever call in a catch-all that logs and swallows every exception, including this
+    /// one, and returns as if the lookahead simply found nothing — the engine keeps running, still
+    /// makes its call count, and a test watching only "did it throw" or "did calls happen" would pass
+    /// while lookahead had actually fired. <see cref="WasCalled"/> is set <b>before</b> the throw, so
+    /// it survives that swallowing and is the guarantee callers should assert on. The throw is kept
+    /// anyway: it is still correct behaviour for any caller that does not swallow it, and it costs
+    /// nothing to leave in.
     /// </remarks>
     internal sealed class UnreachableRetriever : IRetriever
     {
+        /// <summary>
+        /// <see langword="true"/> once <see cref="RetrieveAsync"/> has been entered, regardless of
+        /// what the caller does with the exception it then throws.
+        /// </summary>
+        public bool WasCalled { get; private set; }
+
         public Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
             string query,
             RetrievalOptions? options = null,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default)
+        {
+            WasCalled = true;
             throw new InvalidOperationException(
                 "flarefixed retrieved mid-generation. MaxRetrievals is 0, so this is unreachable " +
                 "unless FLARE's lookahead guard changed — the arm is no longer holding retrieval " +
                 "fixed and its comparison against mapreduce/refine is invalid.");
+        }
     }
 }
