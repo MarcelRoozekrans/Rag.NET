@@ -239,6 +239,64 @@ internal static class MultiHopRagAnswerReproduction
             "significantly so on two rules. Phase 6.2.4 fixed Boost so it could promote at all (#344); " +
             "this is the first measurement of what it does once it works, and the answer is that it " +
             "trades accuracy for abstention."),
+        new(
+            "multihop-rag",
+            AnswerArm.ChatEngine,
+            [],
+            "NEVER RUN -- Phase 6.2.1's answer-engine arms are wired but unmeasured; empty here " +
+            "per the guidance in RequireRecordedCase's own message, so the arm exists without a " +
+            "figure that would be a guess. Dense retrieval answered by ChatAnswerEngine in one " +
+            "call. This is the control for the four other engine arms: chatengine - dense is the " +
+            "prompt effect alone (the engine builds its own prompt), and each of mapreduce, " +
+            "refine, flare and flarefixed minus chatengine is that engine's mechanism alone, with " +
+            "the prompt effect already subtracted out. When somebody pays for the run, its figure " +
+            "belongs here."),
+        new(
+            "multihop-rag",
+            AnswerArm.MapReduce,
+            [],
+            "NEVER RUN -- wired but unmeasured, same as the other four engine arms; empty per " +
+            "RequireRecordedCase's own guidance rather than a guessed figure. Dense retrieval " +
+            "answered by MapReduceAnswerEngine: one call per context chunk, then one reduce over " +
+            "their outputs. Differenced against chatengine, not dense: same retrieval, same " +
+            "prompt-building engine route, so mapreduce - chatengine is what the map/reduce " +
+            "mechanism buys over a single call, uncontaminated by a prompt difference. When " +
+            "somebody pays for the run, its figure belongs here."),
+        new(
+            "multihop-rag",
+            AnswerArm.Refine,
+            [],
+            "NEVER RUN -- wired but unmeasured, same as the other four engine arms; empty per " +
+            "RequireRecordedCase's own guidance rather than a guessed figure. Dense retrieval " +
+            "answered by RefineAnswerEngine: an initial answer from the first chunk, then one " +
+            "sequential rewrite per remaining chunk. Differenced against chatengine for the same " +
+            "reason mapreduce is: refine - chatengine isolates the sequential-rewrite mechanism " +
+            "from the prompt effect chatengine already prices. When somebody pays for the run, " +
+            "its figure belongs here."),
+        new(
+            "multihop-rag",
+            AnswerArm.Flare,
+            [],
+            "NEVER RUN -- wired but unmeasured, same as the other four engine arms; empty per " +
+            "RequireRecordedCase's own guidance rather than a guessed figure. Dense retrieval " +
+            "answered by FlareAnswerEngine as shipped: sentence by sentence, re-retrieving " +
+            "mid-generation whenever a sentence scores below ConfidenceThreshold. This arm does " +
+            "not hold retrieval fixed, so it is not comparable to chatengine on mechanism alone -- " +
+            "flare - flarefixed is the number that isolates FLARE's mid-generation lookahead, " +
+            "since flarefixed runs the identical engine with the lookahead switched off. When " +
+            "somebody pays for the run, its figure belongs here."),
+        new(
+            "multihop-rag",
+            AnswerArm.FlareFixed,
+            [],
+            "NEVER RUN -- wired but unmeasured, same as the other four engine arms; empty per " +
+            "RequireRecordedCase's own guidance rather than a guessed figure. Dense retrieval " +
+            "answered by FlareAnswerEngine with MaxRetrievals = 0: the sentence-by-sentence " +
+            "mechanism with lookahead off, so retrieval is held fixed. Differenced against " +
+            "chatengine like mapreduce and refine (flarefixed - chatengine isolates the " +
+            "sentence-by-sentence mechanism alone); differenced against flare for the lookahead's " +
+            "effect (see the flare entry). When somebody pays for the run, its figure belongs " +
+            "here."),
     ];
 
     /// <summary>Asserts one arm's paper-rule accuracy reproduced what was last recorded, or records what it measured.</summary>

@@ -4269,8 +4269,10 @@ guards' allowlist is empty.
 
 **Open threads, 2026-08-20** — what is actually left, now that #247 and the local-search work have
 closed: ~~RAPTOR~~ (**complete 2026-08-27**, Tasks 1-6 — measured, pinned, and written down; see
-below), HyDE, reranking, hybrid BM25, late chunking and SPLADE under the Real protocol; the
-three answer engines as arms; every vector store through the SciFact parity leg; ~~the
+below), HyDE, reranking, hybrid BM25, late chunking and SPLADE under the Real protocol; ~~the
+three answer engines as arms~~ (**built 2026-08-28** on `feat/answer-engine-arms`, not yet merged —
+five arms, `flare` included; no pilot run; see below); every vector store through the SciFact parity
+leg; ~~the
 pipeline-parity test~~ (**fast leg complete 2026-08-27**, in the fast tier and green on every push;
 real leg written but never run; see below); ~~**#176** at its re-measured 78.8%~~ (**answered
 2026-08-26 in #405** — not
@@ -4305,7 +4307,8 @@ either way measure your own corpus. **A second-corpus arm is the scheduled work 
 and it needs a dataset whose questions are not constructed per document.
 
 **What this does not do is complete the phase.** RAPTOR is one technique of a sweep that still owes
-HyDE, reranking, hybrid BM25, late chunking, SPLADE, the three answer engines as arms, every vector
+HyDE, reranking, hybrid BM25, late chunking, SPLADE, ~~the three answer engines as arms~~ (**built
+2026-08-28**, not yet merged, not yet run; see below), every vector
 store through the SciFact parity leg, ~~the pipeline-parity test~~ (**fast leg complete 2026-08-27**;
 see below), the second-corpus RAPTOR arm, and local search's unexplained yes/no abstention.
 
@@ -4371,7 +4374,8 @@ per document) and it never touched the store, so it could say nothing about inde
 
 **The fast leg satisfies 6.2.1's exit-condition clause** — *"the pipeline-parity test is in the fast
 tier"* — and runs, green, on every push. **This does not complete the phase.** It still owes HyDE,
-reranking, hybrid BM25, late chunking, SPLADE, the three answer engines as arms, every vector store
+reranking, hybrid BM25, late chunking, SPLADE, ~~the three answer engines as arms~~ (**built
+2026-08-28**, not yet merged, not yet run; see below), every vector store
 through the SciFact parity leg, the second-corpus RAPTOR arm, and local search's unexplained yes/no
 abstention.
 
@@ -4422,6 +4426,68 @@ phase is the sweep itself, which was never about those four.
   the blend ablation. They are unregistered from the default pipeline, where at the default
   `PageRankWeight = 0` they were a no-op. → **delete once 6.x.7 publishes the replacement
   figure**, in the same phase.
+
+**The answer-engine arms are built, 2026-08-28, on `feat/answer-engine-arms` — not yet merged, and
+no pilot has run.** Five new arms share the existing `AnswerArm.Dense` retrieval case verbatim, so
+retrieval is held fixed by construction, and vary only generation: `chatengine`, `mapreduce`,
+`refine`, `flarefixed`, `flare`. `chatengine` is the control — single-shot through
+`ChatAnswerEngine` over the same routing as the others — so `chatengine − dense` is the prompt
+effect alone and `<engine> − chatengine` is the mechanism alone, the exact confound that cost
+Milestone 5.2 three weeks and a revised published finding. **`flare` shipped**, not excluded
+pending #414: #414 merged mid-implementation as `641e27f0`, verified on `main` by content
+(`PipelineParity.cs` present); this branch rebased onto it, and `flare`'s lookahead now resolves a
+real `IRetriever` from a real `AddRagNet` container, built the way `PipelineParity`'s tested adapter
+builds it, over the harness's own shared `articles` store by identity — so the lookahead retrieves
+from exactly the corpus it is measured on, not a stub. The engines build their own prompts over the
+harness's shared `CachedGraphRagClient`, so their cache entries are new keys; **`PromptTemplate` and
+the non-engine generation path were never touched**, verified byte-identical across three separate
+reviews (Task 4's initial review, its post-fix re-review, and Task 5's independent re-check).
+
+**Nothing has been run.** No pilot, no sweep — no arm has ever answered a real query. The machine
+that built this has no ONNX model, no BEIR cache and no API key, the same gap this phase has
+recorded honestly before (RAPTOR's E2E GraphRag tests and the pipeline-parity real leg, both above).
+Three pilot gates live inside `Accuracy_AgainstTheGoldAnswers_ThreeArms`: context identity against
+`dense` (chunk-identity comparison, fails at the first differing rank); per-arm call shape (an
+`EngineCallCountingChatClient` decorator, one instance per (arm, query), so `Parallel.ForEachAsync`'s
+concurrency cannot leak into the count); and lookahead observed firing in `flare` (a shared
+`CountingRetriever` wrapper, read once after the parallel loop, so a scorer that fails open and never
+triggers a lookahead cannot pass silently as `flare`). The gate **logic** is unit-tested with no
+model and no corpus, but the gates themselves have never executed and are verified by reading only.
+
+**Measured call shapes, from a fake client, no money spent:** `chatengine` exactly 1, `refine`
+exactly 6, `mapreduce` exactly 7 — all three matched the design's reading of the engines on the first
+run, nothing adjusted. FLARE's upper bound is **33** per query (`MaxSentences = 15` × 2 calls for
+generation and scoring, plus up to `MaxRetrievals = 3` regenerations), corrected during review from
+an initial 30 that missed the regeneration calls.
+
+**Cost is derived, not measured, from chunk size and prompt structure — ~$4 realistically, ~$21
+worst case for the 2,556-query sweep; the 50-query pilot is 6–40 cents.** The whole range is FLARE's
+sentence count: at one to three sentences — plausible, given MultiHop-RAG's few-word gold answers —
+FLARE lands near the bottom; at the full fifteen it is 80% of the bill on its own. The pilot's own
+call and token counters, printed by `DescribeEngineArmCosts` once a run exists, supersede this table
+the moment they do.
+
+**A caveat on what the eventual figures will mean, carried forward rather than fixed:**
+`CachedGraphRagClient.GetResponseAsync` ignores its `options` argument, so FLARE's
+`MaxOutputTokens = 150` and the engines' temperatures are discarded before a call is made. The pilot
+will therefore price *the harness's* configuration — which is what the sweep would run — but not
+what a shipped engine would send with its own options honoured. Deliberately not fixed: `options`
+are not part of the cache key, so honouring them now would silently change what every already-cached
+entry means.
+
+**One finding worth carrying as a lesson.** The guarantee that `flarefixed` holds retrieval fixed —
+the whole point of pairing it against `flare` — was wrong three times in three different places
+before it held: first a throwing stub, defeated because `FlareAnswerEngine`'s lookahead call catches
+and swallows the throw; then a recorded `WasCalled` flag, unreadable because the stub was never
+installed in the one run where `flare` and `flarefixed` are co-selected; then the `EngineRetrievers`
+holder that finally closed the gap. The answers were never affected by any of the three — what was
+repeatedly broken was the *proof* that they weren't.
+
+**This does not complete the phase, and Phase 6.2.1 is not marked complete.** It still owes HyDE,
+reranking, hybrid BM25, late chunking, SPLADE, every vector store through the SciFact parity leg, the
+second-corpus RAPTOR arm, and local search's unexplained yes/no abstention. The DoD's answer-engine
+clause — *"the three answer engines through the 5.2.2 harness against MultiHop-RAG's gold
+answers"* — is **not** met by building the arms; it needs the run, and the run has not happened.
 
 ### Phase 6.2.2: Requested Features [status: complete 2026-08-16 — #252 built and exercised; the phase stays open in spirit for any further request filed before the tag]
 **Goal:** the feature requests reported against the shipped packages, built and exercised to this

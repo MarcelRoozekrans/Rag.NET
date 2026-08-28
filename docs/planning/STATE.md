@@ -74,8 +74,16 @@ on `main`** — corrected 2026-08-25. Statuses are written when a phase is plann
 editing this file at the moment its PR merges, which is the same failure the Working State branch
 field has now had three times.
 
-**Last completed:** **the pipeline-parity test's fast leg, 2026-08-27, on `feat/pipeline-parity-test`
-(not yet merged)** — `OrderingEmbeddingGenerator`, `PipelineParity` and `PipelineParityTests`
+**Last completed:** **the answer-engine arms, 2026-08-28, on `feat/answer-engine-arms` (not yet
+merged)** — five arms sharing dense retrieval and varying only generation (`chatengine` the control,
+`mapreduce`, `refine`, `flarefixed`, `flare`), three pilot gates (context identity, call shape,
+lookahead firing), and a corrected cost model (~$4 realistic / ~$21 worst case for the 2,556-query
+sweep, dominated by FLARE's sentence count). `flare` shipped with a real retriever because #414
+merged mid-implementation as `641e27f0`. **No pilot has run** — this machine has no ONNX model, no
+BEIR cache and no API key — so every gate and every figure is verified by reading only; full account
+in `ROADMAP.md`'s 6.2.1 block. Before it, **the pipeline-parity test's fast leg, 2026-08-27** — now
+merged as **#414** (`641e27f0`), verified on `main` by content (`PipelineParity.cs` present) rather
+than by the PR's label — `OrderingEmbeddingGenerator`, `PipelineParity` and `PipelineParityTests`
 compare a real `AddRagNet` pipeline against the harness's dense row with exact score equality; the
 mutation check ran and failed with a named-rank, both-ids-and-scores message; the real SciFact leg
 was written and reviewed but has never run on this machine and is verified by reading only. Before
@@ -183,6 +191,16 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
+**The answer-engine arms are built, 2026-08-28, on `feat/answer-engine-arms` — get it merged, then
+run the pilot.** Five arms, three gates and a cost model exist; none of it has executed, because this
+machine has no ONNX model, no BEIR cache and no API key. **The recommended next step is the 50-query
+pilot itself** — 6–40 cents, dominated by FLARE's sentence count — on a machine that has all three,
+to find out whether the three gates (context identity, call shape, lookahead firing) actually hold
+rather than merely read correctly. Until that machine exists, **HyDE and reranking's re-measurement
+under the Real protocol remains the cheapest thread open in the phase that needs no money and no
+provisioning** (see below) — it can proceed in parallel with waiting for the pilot machine, not
+instead of the pilot.
+
 **~~RAPTOR Task 6~~ — DONE 2026-08-27. RAPTOR is the sweep's first completed technique.** The
 ledger the Task 5 measurement earned is now written: `docs/guide/raptor.md` has a `## Measured`
 section, `Rag.NET.Raptor.csproj` is `<VerifiedBy>benchmark</VerifiedBy>`, and
@@ -204,7 +222,8 @@ questions resemble MultiHop-RAG's, set `PerDocument`; if your documents genuinel
 `Corpus` is the paper's mechanism; either way measure your own corpus.
 
 **What is next is a choice between threads, and nothing forces the order.** The phase now owes
-HyDE, reranking, hybrid BM25, late chunking, SPLADE, the three answer engines as arms, every vector
+HyDE, reranking, hybrid BM25, late chunking, SPLADE, ~~the three answer engines as arms~~ (**built
+2026-08-28**, not yet merged, not yet run — see above), every vector
 store through the SciFact parity leg, the second-corpus RAPTOR arm, and local search's unexplained
 yes/no abstention. ~~**The recommendation is the pipeline-parity test**: it is fast-tier, needs no
 corpus run and no model calls, closes the gap 5.2.2 named explicitly, and is the one remaining DoD
@@ -426,9 +445,10 @@ much larger than answer generation's.
 
 ## Working State
 
-**Branch:** `feat/pipeline-parity-test`, cut from `origin/main` (`ab87d156`) on 2026-08-27. This
-task: `docs/planning/ROADMAP.md` and this file only, recording the pipeline-parity thread built by
-the five tasks before it — no code.
+**Branch:** `feat/answer-engine-arms`, cut from `origin/main` (`891e49c4`) on 2026-08-28 —
+deliberately not stacked on #414, which merged mid-implementation as `641e27f0` and was rebased onto
+instead. Five tasks built the five arms; this task: `docs/planning/ROADMAP.md` and this file only,
+recording the thread — no code.
 
 **It was stale again when this session opened, for the sixth time.** The field named
 `chore/reconcile-408-and-raptor-task-6` while the checkout was already on

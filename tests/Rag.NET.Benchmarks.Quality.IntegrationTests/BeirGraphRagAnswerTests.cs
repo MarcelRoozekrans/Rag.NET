@@ -4,15 +4,19 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using OpenAI;
+using Rag.NET.Abstractions;
 using Rag.NET.Benchmarks.Quality;
 using Rag.NET.Benchmarks.Quality.GraphExtractions;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Embeddings.Onnx;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Raptor;
 using Rag.NET.Storage;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 
@@ -148,7 +152,9 @@ public sealed class BeirGraphRagAnswerTests
 
         using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
         var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
-        using var answering = OpenAnsweringClient(cacheDirectory, out var generating);
+        using var answering = OpenAnsweringClient(cacheDirectory, out var generating, out var answeringModel);
+        using var engineClients = new EngineArmClients(
+            arms, answering.Cache, answeringModel, GraphExtractionModelIdentity.ExtractionTemperature);
 
         _output.WriteLine(DescribePlan(descriptor, selection, arms, generating, answering.Cache));
 
@@ -164,14 +170,26 @@ public sealed class BeirGraphRagAnswerTests
         _output.WriteLine(FormattableString.Invariant(
             $"graph, article and RAPTOR stores built in {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s"));
         var tallies = await AnswerAllAsync(
-            selection, arms, run, articles, corpusRun, perDocumentRun, generator, embeddings, answering, gold, ct);
-        _output.WriteLine(DescribeResults(descriptor, selection, tallies, answering, Stopwatch.GetElapsedTime(startedAt)));
+            selection, arms, run, articles, corpusRun, perDocumentRun, generator, embeddings, answering,
+            engineClients, gold, ct);
+        _output.WriteLine(DescribeResults(
+            descriptor, selection, tallies, answering, engineClients, Stopwatch.GetElapsedTime(startedAt)));
         _output.WriteLine("every scored answer: " + DumpAnswers(cacheDirectory, tallies, selection.IsPilot));
         _output.WriteLine("RaptorRun counters: " + DumpRaptorCounters(
             cacheDirectory, selection.IsPilot, ("corpus", corpusRun), ("per-document", perDocumentRun)));
 
         AssertEveryArmAnsweredEveryQuery(tallies, selection);
+        AssertPinnedFiguresReproduce(descriptor, selection, tallies);
+    }
 
+    /// <summary>
+    /// The pinned-figure check, split out of the theory (MA0051): a pilot pins nothing and says so,
+    /// a full run holds every arm's paper-rule accuracy to
+    /// <see cref="MultiHopRagAnswerReproduction"/>.
+    /// </summary>
+    private void AssertPinnedFiguresReproduce(
+        BeirDatasetDescriptor descriptor, QuerySelection selection, Dictionary<string, ArmTally> tallies)
+    {
         if (selection.IsPilot)
         {
             _output.WriteLine("PILOT — nothing is pinned. Run without " + MaxQueriesVariable + " to pin.");
@@ -388,6 +406,14 @@ public sealed class BeirGraphRagAnswerTests
     /// <see cref="RaptorRun"/> was actually built — otherwise a run with no RAPTOR arm selected
     /// would print zeroes into every transcript for a cost nothing paid.
     /// </summary>
+    /// <remarks>
+    /// <b>Reads <paramref name="answering"/> alone, and is still the whole figure.</b> Every counter
+    /// on <c>CachedGraphRagClient</c> is per instance, so since the engine arms got clients of their
+    /// own (<see cref="EngineArmClients"/>) most whole-run figures have to be summed across those
+    /// too. Not this one: both <see cref="RaptorRun"/>s summarise through this client and nothing
+    /// else, and this is called before <see cref="AnswerAllAsync"/>, so the engine clients have made
+    /// no call yet and have nothing to contribute.
+    /// </remarks>
     private static void LogRaptorSummarisationCostSoFar(
         ITestOutputHelper output, CachedGraphRagClient answering, RaptorRun? corpusRun, RaptorRun? perDocumentRun)
     {
@@ -711,9 +737,12 @@ public sealed class BeirGraphRagAnswerTests
 
     /// <summary>
     /// C1's fix: the default selection (<see cref="ArmsVariable"/> unset) must skip every arm
-    /// <see cref="MultiHopRagAnswerReproduction"/> has not actually measured yet — today, the four
-    /// RAPTOR arms, each pinned with an empty figure array — while every measured arm stays in, and
-    /// the run says out loud what it skipped and why.
+    /// <see cref="MultiHopRagAnswerReproduction"/> has not actually measured yet — the four RAPTOR
+    /// arms were the original case, pinned with an empty figure array until Task 5 measured them;
+    /// the five answer-engine arms added afterward are the same situation again, wired up and
+    /// pinned empty, deliberately left out of the default because they cost real API calls and
+    /// have no figure yet — while every measured arm stays in, and the run says out loud what it
+    /// skipped and why.
     /// </summary>
     [Fact]
     public void SelectArms_DefaultSelection_ContainsOnlyArmsWithARecordedFigure()
@@ -733,12 +762,18 @@ public sealed class BeirGraphRagAnswerTests
                     $"the default selection included '{arm}', which has no recorded figure.");
             }
 
-            // Every arm is measured as of Task 5 (2026-08-25), so the filter has nothing to remove
-            // and the default selection is all of them. This assertion is what makes the state
-            // explicit rather than incidental: adding an arm without pinning a figure — or with an
-            // empty one — drops it out of the default silently, and this fails when that happens.
-            Assert.Equal(AnswerArm.All.OrderBy(a => a, StringComparer.Ordinal),
+            // The four RAPTOR arms were measured as of Task 5 (2026-08-25); the five engine arms
+            // (chatengine, mapreduce, refine, flare, flarefixed) were added after that with empty
+            // figure arrays and are not measured yet, so the default selection is AnswerArm.All
+            // minus those five — not all of AnswerArm.All the way it was before they existed. This
+            // assertion is what makes the state explicit rather than incidental: adding an arm
+            // without pinning a figure — or with an empty one — drops it out of the default
+            // silently, and this fails when that happens.
+            Assert.Equal(
+                AnswerArm.All.Except(UnmeasuredEngineArms, StringComparer.Ordinal).OrderBy(a => a, StringComparer.Ordinal),
                 arms.OrderBy(a => a, StringComparer.Ordinal));
+
+            AssertEngineArmsStayUnmeasuredAndExcluded(arms);
 
             // The four RAPTOR arms were the unmeasured ones this test was written around; they are
             // pinned now, and are asserted here so their removal from the default would be caught.
@@ -756,6 +791,32 @@ public sealed class BeirGraphRagAnswerTests
         finally
         {
             Environment.SetEnvironmentVariable(ArmsVariable, previous);
+        }
+    }
+
+    /// <summary>
+    /// The five answer-engine arms Task 1 named and pinned with an empty figure array — wired up,
+    /// unmeasured, and deliberately excluded from the default arm selection because they cost real
+    /// API calls and have no recorded figure to check a re-measurement against.
+    /// </summary>
+    private static readonly string[] UnmeasuredEngineArms =
+        [AnswerArm.ChatEngine, AnswerArm.MapReduce, AnswerArm.Refine, AnswerArm.Flare, AnswerArm.FlareFixed];
+
+    /// <summary>
+    /// Asserts the five answer-engine arms stay unmeasured and excluded from <paramref name="arms"/>
+    /// together: if one gets a real figure pinned without <see cref="UnmeasuredEngineArms"/> being
+    /// updated to match, this fails and points back here instead of the default selection's shape
+    /// changing silently.
+    /// </summary>
+    private static void AssertEngineArmsStayUnmeasuredAndExcluded(IReadOnlyList<string> arms)
+    {
+        foreach (var engineArm in UnmeasuredEngineArms)
+        {
+            Assert.False(
+                MultiHopRagAnswerReproduction.HasRecordedFigure("multihop-rag", engineArm),
+                $"{engineArm} now has a recorded figure; update UnmeasuredEngineArms and this " +
+                "test's expectations rather than leaving it excluded from the default by accident.");
+            Assert.DoesNotContain(engineArm, arms, StringComparer.Ordinal);
         }
     }
 
@@ -801,7 +862,22 @@ public sealed class BeirGraphRagAnswerTests
     }
 
     /// <summary>The answering client: fill mode with a real model when asked for, refuse-on-miss otherwise.</summary>
-    private static CachedGraphRagClient OpenAnsweringClient(string cacheDirectory, out bool generating)
+    /// <param name="cacheDirectory">The cache root the answer directory hangs off.</param>
+    /// <param name="generating">Whether <see cref="GenerateVariable"/> put this run in fill mode.</param>
+    /// <param name="model">
+    /// The live model the returned client fills misses from, or <see langword="null"/> on a replay
+    /// run. Handed back so <see cref="EngineArmClients"/> can build one sibling
+    /// <see cref="CachedGraphRagClient"/> per engine arm over the <b>same</b> cache and the
+    /// <b>same</b> model — which is what makes each engine arm's <c>Calls</c>, <c>InputTokens</c>
+    /// and <c>OutputTokens</c> that arm's alone rather than a share of one global counter.
+    /// <para>
+    /// The returned client owns and disposes it; the sibling clients borrow it (see
+    /// <see cref="BorrowedChatClient"/>), so nothing disposes it twice and the pinned non-engine
+    /// path keeps the exact client, cache and temperature it had before.
+    /// </para>
+    /// </param>
+    private static CachedGraphRagClient OpenAnsweringClient(
+        string cacheDirectory, out bool generating, out IChatClient? model)
     {
         generating = IsOn(GenerateVariable);
         var identity = GraphExtractionModelIdentity.For(GraphExtractionModelIdentity.ExtractionTemperature);
@@ -812,6 +888,7 @@ public sealed class BeirGraphRagAnswerTests
 
         if (!generating)
         {
+            model = null;
             return new CachedGraphRagClient(cache, inner: null, GraphExtractionModelIdentity.ExtractionTemperature);
         }
 
@@ -820,7 +897,7 @@ public sealed class BeirGraphRagAnswerTests
             string.IsNullOrWhiteSpace(apiKey),
             $"{GenerateVariable} is set but {ApiKeyVariable} is not; nothing can be generated without a key.");
 
-        var model = new OpenAIClient(new ApiKeyCredential(apiKey), new OpenAIClientOptions { Endpoint = OpenRouterEndpoint })
+        model = new OpenAIClient(new ApiKeyCredential(apiKey), new OpenAIClientOptions { Endpoint = OpenRouterEndpoint })
             .GetChatClient(GraphExtractionModelIdentity.ModelName)
             .AsIChatClient();
         return new CachedGraphRagClient(cache, model, GraphExtractionModelIdentity.ExtractionTemperature);
@@ -867,6 +944,64 @@ public sealed class BeirGraphRagAnswerTests
         return store;
     }
 
+    /// <summary>
+    /// The <c>AddRagNet</c> container <see cref="AnswerArm.Flare"/>'s lookahead retriever is
+    /// resolved from — or <see langword="null"/> when <c>flare</c> is not selected, the same economy
+    /// the <see cref="RaptorRun"/> builds get.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Built the way <see cref="PipelineParity.RetrieveThroughPipelineAsync"/> builds it, and that
+    /// is the whole point: <see cref="PipelineParityTests"/> holds a default <c>AddRagNet</c>
+    /// container over a shared store to this harness's own dense row and proves the two return
+    /// identical rankings. So <c>flare</c>'s mid-generation lookahead reads the <b>same corpus,
+    /// through the same rankings</b>, that <c>flare − flarefixed</c> is differenced over. A
+    /// hand-rolled adapter would retrieve from somewhere whose equivalence to the harness nothing
+    /// asserts, and the arm's one claim would rest on that.
+    /// </para>
+    /// <para>
+    /// <paramref name="articles"/> is handed over as an instance and shared by identity — the same
+    /// store the dense arm searches, not a rebuild of it. Microsoft DI does not dispose instances it
+    /// did not create, so the caller's <c>using</c> on the store stays the only disposal.
+    /// <see cref="CachingEmbeddingGenerator"/> is what puts the pipeline on the harness's cached
+    /// vectors rather than live ONNX output, for the reason
+    /// <see cref="PipelineParityTests.DefaultPipeline_ReturnsWhatTheHarnessDenseRowReturns_OnSciFact"/>
+    /// gives.
+    /// </para>
+    /// <para>
+    /// <b>One difference from <see cref="PipelineParity"/>, deliberately.</b> That type builds a
+    /// fresh container per call so a warm <c>ResultCacheBehavior</c> or <c>EmbeddingCacheBehavior</c>
+    /// cannot make a re-run agree where a first run did not; this one is built once and shared by
+    /// every query. The difference is inert here because neither behaviour has anything to warm:
+    /// both take <c>HybridCache</c> and <c>CachingOptions</c> as optional injections and return
+    /// <c>next(...)</c> untouched when either is <see langword="null"/>, and the container below
+    /// registers neither. Register a cache here and that reasoning lapses — the shared container
+    /// would then carry state across queries and <c>flare</c>'s lookahead would stop reading the
+    /// live store.
+    /// </para>
+    /// </remarks>
+    private static ServiceProvider? BuildEnginePipeline(
+        IReadOnlyList<string> arms,
+        InMemoryVectorStore articles,
+        OnnxEmbeddingGenerator generator,
+        EmbeddingCache embeddings)
+    {
+        // Only flare needs this. flarefixed's retriever is EngineRetrievers' stub and never comes
+        // from here, so an unselected flare costs nothing whether or not flarefixed is running.
+        if (!arms.Contains(AnswerArm.Flare, StringComparer.Ordinal))
+        {
+            return null;
+        }
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IVectorStore>(articles);
+        services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
+            new CachingEmbeddingGenerator(generator, embeddings));
+        services.AddRagNet();
+
+        return services.BuildServiceProvider();
+    }
+
     // ── Answering ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -887,6 +1022,7 @@ public sealed class BeirGraphRagAnswerTests
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         CachedGraphRagClient answering,
+        EngineArmClients engineClients,
         IReadOnlyDictionary<string, MultiHopRagAnswer> gold,
         CancellationToken ct)
     {
@@ -896,10 +1032,1056 @@ public sealed class BeirGraphRagAnswerTests
         await EmbedEveryQueryAsync(selection, generator, embeddings, ct);
 
         // Local search retrieval, sequentially, for every query that needs it.
+        var graphContexts = await CollectGraphStoreContextsIfNeededAsync(run, selection, arms, startedAt, ct);
+
+        using var enginePipeline = BuildEnginePipeline(arms, articles, generator, embeddings);
+        var retrievers = new EngineRetrievers(enginePipeline?.GetRequiredService<IRetriever>());
+        var failures = new AnswerEngineArms.FailureLog();
+        var pass = new AnswerPass(
+            arms, AnyEngineArm(arms), run, articles, corpusRun, perDocumentRun, generator, embeddings,
+            answering, engineClients, retrievers, failures, graphContexts, gold, tallies);
+
+        // Dense and global retrieval, and every answer, in parallel under the same bound.
+        var done = 0;
+        await Parallel.ForEachAsync(
+            selection.Queries,
+            new ParallelOptions { MaxDegreeOfParallelism = AnswerConcurrency, CancellationToken = ct },
+            async (query, token) =>
+            {
+                await AnswerOneQueryAsync(query, pass, token);
+                ReportProgress(Interlocked.Increment(ref done), selection, arms, startedAt, answering);
+            });
+
+        RunEngineGatesAndReportCosts(arms, selection.Count, engineClients, retrievers, failures, answering, tallies);
+        return tallies;
+    }
+
+    /// <summary>
+    /// The three post-answering gates, and the cost block that is written whether they pass or not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every counter read here is read after <c>Parallel.ForEachAsync</c> has completed, so every
+    /// write to it happens-before the read.
+    /// </para>
+    /// <para>
+    /// <b>The cost block is written in a <c>finally</c>.</b> A failing gate is exactly the run whose
+    /// counters are worth reading — a paid pilot that spent real money and then tripped a gate used
+    /// to print no cost table at all, because the assert threw before the write and
+    /// <see cref="DescribeResults"/> is in the caller. The gate still fails the test; it no longer
+    /// takes the evidence with it.
+    /// </para>
+    /// </remarks>
+    private void RunEngineGatesAndReportCosts(
+        IReadOnlyList<string> arms,
+        int queries,
+        EngineArmClients engineClients,
+        EngineRetrievers retrievers,
+        AnswerEngineArms.FailureLog failures,
+        CachedGraphRagClient answering,
+        Dictionary<string, ArmTally> tallies)
+    {
+        try
+        {
+            retrievers.AssertLookaheadStayedOff();
+            retrievers.AssertLookaheadFired(arms, queries, _output);
+            failures.AssertNoExceptionWasSwallowed();
+        }
+        finally
+        {
+            var costs = DescribeEngineArmCosts(arms, engineClients, retrievers, failures, answering, tallies);
+            if (costs.Length > 0)
+            {
+                _output.WriteLine(costs);
+            }
+        }
+    }
+
+    /// <summary>Whether any selected arm generates through an <see cref="IAnswerEngine"/>.</summary>
+    private static bool AnyEngineArm(IReadOnlyList<string> arms)
+    {
+        for (var i = 0; i < arms.Count; i++)
+        {
+            if (AnswerEngineArms.IsEngineArm(arms[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// One query answered under every selected arm, and the two per-query pilot gates that go with
+    /// the engine arms.
+    /// </summary>
+    /// <remarks>
+    /// Extracted from the <c>Parallel.ForEachAsync</c> lambda it used to be (MA0051). The two
+    /// branches stay exactly as far apart as they were: <see cref="AnswerThroughPromptAsync"/> is
+    /// the pinned <see cref="PromptTemplate"/> path, byte for byte, and
+    /// <see cref="AnswerThroughEngineAsync"/> is the engines' own prompts, which are new cache keys.
+    /// </remarks>
+    private async Task AnswerOneQueryAsync(BeirQuery query, AnswerPass pass, CancellationToken token)
+    {
+        var expected = pass.Gold[query.Id];
+        var denseReference = await RetrieveDenseGateReferenceAsync(query, pass, token);
+
+        for (var i = 0; i < pass.Arms.Count; i++)
+        {
+            var arm = pass.Arms[i];
+            var answerText = AnswerEngineArms.IsEngineArm(arm)
+                ? await AnswerThroughEngineAsync(arm, query, denseReference!, pass, token)
+                : await AnswerThroughPromptAsync(arm, query, pass, token);
+
+            pass.Tallies[arm].Record(arm, query.Id, expected, answerText);
+        }
+    }
+
+    /// <summary>
+    /// The <c>dense</c> arm's own retrieval for this query, retrieved once and reused as Gate 1's
+    /// reference — or <see langword="null"/> when no engine arm is selected and there is nothing to
+    /// gate.
+    /// </summary>
+    /// <remarks>
+    /// Taken through <see cref="RetrieveContextAsync"/> with <see cref="AnswerArm.Dense"/> rather
+    /// than read off the <c>dense</c> arm's own answer, deliberately: the reference must be what
+    /// <b>that switch</b> returns for <c>dense</c>, so an edit moving an engine arm off the shared
+    /// <c>case AnswerArm.Dense:</c> body is caught even on a run where <c>dense</c> is not selected
+    /// at all — the pilot's arm selection names the engine arms and need not name <c>dense</c>.
+    /// <para>
+    /// The extra retrieval is one in-memory top-6 over <paramref name="pass"/>'s article store per
+    /// query, off a query vector <see cref="EmbedEveryQueryAsync"/> has already cached. No model
+    /// call, no store round trip beyond the in-process one, and nothing written.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyList<SearchResult>?> RetrieveDenseGateReferenceAsync(
+        BeirQuery query, AnswerPass pass, CancellationToken token)
+    {
+        if (!pass.HasEngineArm)
+        {
+            return null;
+        }
+
+        return await RetrieveContextAsync(
+            AnswerArm.Dense, query.Text, pass.Run, pass.Articles, pass.CorpusRun, pass.PerDocumentRun,
+            pass.Generator, pass.Embeddings, pass.Answering, _output, token);
+    }
+
+    /// <summary>
+    /// The non-engine arms' answer: the arm's rendered context substituted into
+    /// <see cref="PromptTemplate"/> and sent through the shared answering client.
+    /// </summary>
+    /// <remarks>
+    /// <b>Moved verbatim out of the parallel lambda; not one character of the prompt, the ordering
+    /// or the client changed.</b> This is the path every pinned <c>dense</c>, <c>global</c> and
+    /// RAPTOR figure's cache keys were generated under, and the answer cache is keyed on the
+    /// rendered prompt, so any edit here would miss every existing entry.
+    /// </remarks>
+    private async Task<string> AnswerThroughPromptAsync(
+        string arm, BeirQuery query, AnswerPass pass, CancellationToken token)
+    {
+        var rendered = string.Equals(arm, AnswerArm.LocalSpec, StringComparison.Ordinal)
+            ? pass.GraphContexts.LocalSpec[query.Id]
+            : RenderContext(arm switch
+            {
+                AnswerArm.Local => pass.GraphContexts.Local[query.Id],
+                AnswerArm.Control => pass.GraphContexts.Control[query.Id],
+                AnswerArm.Filtered => pass.GraphContexts.Filtered[query.Id],
+                _ => await RetrieveContextAsync(
+                    arm, query.Text, pass.Run, pass.Articles, pass.CorpusRun, pass.PerDocumentRun,
+                    pass.Generator, pass.Embeddings, pass.Answering, _output, token),
+            });
+
+        var prompt = PromptTemplate
+            .Replace("{question}", query.Text, StringComparison.Ordinal)
+            .Replace("{context}", rendered, StringComparison.Ordinal);
+
+        var response = await pass.Answering.GetResponseAsync(
+            [new ChatMessage(ChatRole.User, prompt)], cancellationToken: token);
+        return response.Text ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Which <see cref="IRetriever"/> each engine arm gets, and the one assertion that says
+    /// <see cref="AnswerArm.FlareFixed"/> held retrieval fixed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This type exists because the guarantee has been wrong three times.</b> The design gave
+    /// <c>flarefixed</c> a retriever that throws — but <c>FlareAnswerEngine.TryLookaheadRetrievalAsync</c>
+    /// catches and swallows every exception, so the throw proved nothing. That was fixed with
+    /// <see cref="AnswerEngineArms.UnreachableRetriever.WasCalled"/>, a flag set before the throw
+    /// and therefore immune to the swallow. Then the harness handed <c>flarefixed</c> the same real
+    /// retriever it built for <c>flare</c> — so <c>Create</c>'s <c>?? new UnreachableRetriever()</c>
+    /// never substituted the stub, and the flag was not merely unread but absent, in precisely the
+    /// run that matters: the one where both arms are selected, which is the only run
+    /// <c>flare − flarefixed</c> can be computed from.
+    /// </para>
+    /// <para>
+    /// So the whole chain is closed here rather than in one more link of it. The stub is
+    /// <b>installed</b> — <see cref="For"/> returns it for <c>flarefixed</c> and never returns the
+    /// real retriever for that arm, whatever else is selected. It is <b>one instance for the run</b>,
+    /// so a call from any query lands on the object this type holds. And it is <b>readable</b>:
+    /// <see cref="AssertLookaheadStayedOff"/> runs after the last answer and fails the test if the
+    /// flag is set. Passing <see langword="null"/> instead would reinstate the stub but leave it
+    /// unreachable — <c>Create</c> would build a fresh one per call and drop it — which is the same
+    /// unobservability in a different place.
+    /// </para>
+    /// </remarks>
+    private sealed class EngineRetrievers
+    {
+        private readonly AnswerEngineArms.UnreachableRetriever _flareFixed = new();
+        private readonly CountingRetriever? _flare;
+
+        /// <param name="flare">
+        /// The real pipeline retriever, or <see langword="null"/> when <c>flare</c> is not selected.
+        /// <see cref="AnswerEngineArms.Create"/> throws if <c>flare</c> is ever built without one,
+        /// so a mis-wiring fails loudly rather than quietly measuring a stub. Wrapped in a
+        /// <see cref="CountingRetriever"/> here so Gate 3 can read how often the lookahead fired
+        /// from the outside, without inspecting <c>FlareAnswerEngine</c>'s internals.
+        /// </param>
+        public EngineRetrievers(IRetriever? flare) =>
+            _flare = flare is null ? null : new CountingRetriever(flare);
+
+        /// <summary>How many times <c>flare</c>'s lookahead retrieved, across the whole run.</summary>
+        public int FlareLookaheads => _flare?.Calls ?? 0;
+
+        /// <summary>The retriever <paramref name="arm"/>'s engine is constructed with.</summary>
+        /// <remarks>
+        /// The three non-FLARE arms get <see langword="null"/> explicitly rather than the real
+        /// retriever they would ignore. <see cref="AnswerEngineArms.Create"/> does ignore it for
+        /// them today, so this changes nothing — but it makes "only <c>flare</c> is handed a live
+        /// retriever" a property of this method rather than a property of the factory it calls,
+        /// which is the sort of one-layer-away reasoning that put the wrong retriever in
+        /// <c>flarefixed</c>'s hands to begin with.
+        /// </remarks>
+        public IRetriever? For(string arm)
+        {
+            if (string.Equals(arm, AnswerArm.FlareFixed, StringComparison.Ordinal))
+            {
+                return _flareFixed;
+            }
+
+            return string.Equals(arm, AnswerArm.Flare, StringComparison.Ordinal) ? _flare : null;
+        }
+
+        /// <summary><c>flarefixed</c> never retrieved mid-generation.</summary>
+        /// <remarks>
+        /// Read after <c>Parallel.ForEachAsync</c> has completed, so every write to the flag
+        /// happens-before this read. Unconditional: when <c>flarefixed</c> is not selected the stub
+        /// is simply never handed out and the flag is trivially clear, which costs nothing and
+        /// removes a gate that could itself be wrong.
+        /// </remarks>
+        public void AssertLookaheadStayedOff() =>
+            Assert.False(
+                _flareFixed.WasCalled,
+                "flarefixed retrieved mid-generation. MaxRetrievals is 0, so this is unreachable " +
+                "unless FLARE's lookahead guard changed — the arm is no longer holding retrieval " +
+                "fixed and its comparison against mapreduce/refine is invalid.");
+
+        /// <summary>
+        /// <b>Gate 3.</b> <c>flare</c>'s lookahead retrieved at least once across the run.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Why this gate exists.</b> <c>SelfAssessmentConfidenceScorer</c> fails open: any error
+        /// or unparsable output returns <c>1.0</c>, which is above the <c>0.6</c> threshold, so no
+        /// lookahead fires. A run whose scorer calls all failed that way would degrade <c>flare</c>
+        /// into <c>flarefixed</c> while still labelling it <c>flare</c>, and
+        /// <c>flare − flarefixed ≈ 0</c> could no longer distinguish "the lookahead does nothing"
+        /// from "the lookahead never ran" — the two conclusions this arm pair exists to separate.
+        /// </para>
+        /// <para>
+        /// <b>Counted from outside the engine.</b> <see cref="CountingRetriever"/> wraps the
+        /// retriever <c>flare</c> is constructed with, so the figure is retrievals the engine
+        /// actually performed rather than anything read out of its internals.
+        /// </para>
+        /// <para>
+        /// <b>Applicability.</b> It asserts whenever <c>flare</c> is selected and at least one query
+        /// was answered, on a fill run and on a cache replay alike. A replay is not exempt: the
+        /// scorer's verdicts are themselves cached on their prompts, so a replay reproduces the
+        /// same scores, the same lookahead decisions and the same retrievals as the fill run it
+        /// replays — a replay in which the lookahead never fires is a replay of a fill run in which
+        /// it never fired, which is exactly the state this gate must not let pass. It is skipped,
+        /// out loud, only when there is nothing to observe: <c>flare</c> unselected, or no query
+        /// answered.
+        /// </para>
+        /// </remarks>
+        /// <param name="arms">The run's selected arms.</param>
+        /// <param name="queries">How many queries the run answered.</param>
+        /// <param name="output">Where the skip or the pass is reported.</param>
+        public void AssertLookaheadFired(IReadOnlyList<string> arms, int queries, ITestOutputHelper output)
+        {
+            ArgumentNullException.ThrowIfNull(arms);
+            ArgumentNullException.ThrowIfNull(output);
+
+            if (!arms.Contains(AnswerArm.Flare, StringComparer.Ordinal))
+            {
+                output.WriteLine(
+                    "GATE 3 (flare lookahead observed) NOT APPLICABLE: the flare arm was not selected.");
+                return;
+            }
+
+            if (queries == 0)
+            {
+                output.WriteLine(
+                    "GATE 3 (flare lookahead observed) NOT APPLICABLE: no query was answered.");
+                return;
+            }
+
+            Assert.True(
+                _flare is not null,
+                "flare was selected but no pipeline retriever was built for it, so its lookahead " +
+                "could not have run at all. BuildEnginePipeline returned null for a selection that " +
+                "contains flare.");
+
+            var fired = _flare!.Calls;
+            Assert.True(
+                fired > 0,
+                FormattableString.Invariant(
+                    $"GATE 3 FAILED: flare's lookahead never retrieved across {queries} queries, so this run measured flarefixed's behaviour under flare's name. SelfAssessmentConfidenceScorer fails open — every error and every unparsable reply scores 1.0, above the 0.6 threshold — so a scorer that is erroring, or replaying misses, silently turns the lookahead off. flare − flarefixed computed from this run cannot tell 'the lookahead does nothing' from 'the lookahead never ran'. Check the scorer's replies before spending anything on the full sweep."));
+
+            var rate = fired / (double)queries;
+            output.WriteLine(FormattableString.Invariant(
+                $"GATE 3 PASSED: flare's lookahead retrieved {fired} time(s) across {queries} queries ({rate:F3} per query)."));
+
+            if (rate < LowLookaheadRatePerQuery)
+            {
+                output.WriteLine(FormattableString.Invariant(
+                    $"WARNING: that is {rate:F3} lookahead retrievals per query, below {LowLookaheadRatePerQuery:F2}. The gate proves the lookahead CAN fire; at this rate almost every query still answered exactly the way flarefixed would, so the same fail-open the gate exists to catch may be happening on all but a handful of them and flare - flarefixed would still be close to a measurement of nothing. Read the scorer's replies before concluding the lookahead does not help."));
+            }
+        }
+
+        /// <summary>
+        /// The lookahead rate per query below which Gate 3 passes but says so loudly.
+        /// </summary>
+        /// <remarks>
+        /// <b>A smell, not a line, and deliberately not a hard bound.</b> Nobody has measured what
+        /// this corpus's lookahead rate should be, so failing a run against a number nobody has
+        /// established would be inventing a threshold and then enforcing it. What can be said
+        /// honestly is that one retrieval in fifty queries is not evidence the mechanism is working,
+        /// only evidence it is reachable — so the run reports it and the reader judges. The observed
+        /// rate is printed either way, so a future measurement can replace this guess with a figure.
+        /// </remarks>
+        private const double LowLookaheadRatePerQuery = 0.1;
+    }
+
+    /// <summary>
+    /// An <see cref="IRetriever"/> decorator that counts what it forwards — Gate 3's observation
+    /// point on <c>flare</c>'s lookahead.
+    /// </summary>
+    /// <remarks>
+    /// One instance for the run, wrapped around the single pipeline retriever
+    /// <see cref="BuildEnginePipeline"/> resolves, so a retrieval from any query on any thread lands
+    /// on the same counter. <see cref="Interlocked"/> because the answer loop is parallel.
+    /// </remarks>
+    private sealed class CountingRetriever : IRetriever
+    {
+        private readonly IRetriever _inner;
+        private int _calls;
+
+        public CountingRetriever(IRetriever inner)
+        {
+            ArgumentNullException.ThrowIfNull(inner);
+            _inner = inner;
+        }
+
+        /// <summary>How many retrievals have been forwarded.</summary>
+        public int Calls => Volatile.Read(ref _calls);
+
+        public Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
+            string query,
+            RetrievalOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            _ = Interlocked.Increment(ref _calls);
+            return _inner.RetrieveAsync(query, options, cancellationToken);
+        }
+    }
+
+    /// <summary>Every <see cref="ProgressEvery"/>th completed query, verbatim as it always was.</summary>
+    /// <remarks>
+    /// The cache counters it prints are whole without being summed anywhere: every engine arm's
+    /// client holds the <b>same</b> <c>GraphExtractionCache</c> instance this one does, so
+    /// <c>Hits</c> and <c>Misses</c> have already seen every arm's requests. That is why this line
+    /// needed no change when the per-arm clients split <c>Calls</c> and <c>Retries</c>.
+    /// </remarks>
+    private void ReportProgress(
+        int completed,
+        QuerySelection selection,
+        IReadOnlyList<string> arms,
+        long startedAt,
+        CachedGraphRagClient answering)
+    {
+        if (completed % ProgressEvery != 0)
+        {
+            return;
+        }
+
+        _output.WriteLine(FormattableString.Invariant(
+            $"  answered {completed} of {selection.Queries.Count} queries x {arms.Count} arms, {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s so far, {answering.Cache.Hits} cached / {answering.Cache.Misses} generated"));
+    }
+
+    /// <summary>
+    /// An engine arm's answer: the shared dense retrieval, then the arm's own engine over the
+    /// <see cref="SearchResult"/>s directly.
+    /// </summary>
+    /// <remarks>
+    /// <b><see cref="PromptTemplate"/> is not on this path at all.</b> The engine builds its own
+    /// prompts, so nothing here can reach — or perturb — the cache keys the pinned <c>dense</c>,
+    /// <c>global</c> and RAPTOR figures were generated under. That separation is the reason the two
+    /// branches in <see cref="AnswerAllAsync"/> are kept apart rather than folded together.
+    /// </remarks>
+    /// <param name="denseReference">
+    /// The <c>dense</c> arm's sources for this query, from
+    /// <see cref="RetrieveDenseGateReferenceAsync"/> — Gate 1's reference.
+    /// </param>
+    private async Task<string> AnswerThroughEngineAsync(
+        string arm,
+        BeirQuery query,
+        IReadOnlyList<SearchResult> denseReference,
+        AnswerPass pass,
+        CancellationToken ct)
+    {
+        // No engine arm is localspec and every one of them retrieves the dense way, so this lands
+        // on RetrieveContextAsync's shared Dense case.
+        var sources = await RetrieveContextAsync(
+            arm, query.Text, pass.Run, pass.Articles, pass.CorpusRun, pass.PerDocumentRun,
+            pass.Generator, pass.Embeddings, pass.Answering, _output, ct);
+
+        AssertContextIsIdenticalToDense(arm, query.Id, denseReference, sources);
+
+        // Gate 2's counter. One instance per (arm, query), wrapped around THIS arm's client, so
+        // what it reads is unambiguously this engine's own calls — see its remarks for why a
+        // before/after delta on any shared counter would not be.
+        using var counter = new EngineCallCountingChatClient(pass.EngineClients.For(arm));
+        var engine = AnswerEngineArms.Create(arm, counter, pass.Retrievers.For(arm), pass.Failures);
+        var response = await engine.AskAsync(query.Text, sources, cancellationToken: ct);
+
+        AssertCallShapeMatchesPrediction(arm, query.Id, sources.Count, counter.Calls);
+        return response.Answer;
+    }
+
+    // ── The pilot's gates ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// <b>Gate 1.</b> An engine arm's retrieved sources are identical to the <c>dense</c> arm's:
+    /// same chunks, same order, same depth.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Asserted even though it is true by construction.</b> The five engine arms share
+    /// <see cref="RetrieveContextAsync"/>'s <c>case AnswerArm.Dense:</c> body, so there is one
+    /// retrieval rather than two paths that have to agree — and "true by construction" is exactly
+    /// the claim that stops holding the day somebody edits that switch. Every engine result is
+    /// reported as a difference against <c>chatengine</c> or <c>dense</c>, and a difference in what
+    /// was retrieved would be published as a difference in what the engine does.
+    /// </para>
+    /// <para>
+    /// <b><c>flare</c> is gated on its initial sources only.</b> Its lookahead retrieves again
+    /// mid-generation, inside the engine and after this call, and those additions are the thing
+    /// <c>flare − flarefixed</c> prices. Gate 3 is what watches them.
+    /// </para>
+    /// <para>
+    /// <b>Applicability.</b> Retrieval only — no model, no cache, no tokens — so it asserts on
+    /// every run that selects an engine arm, replay and fill alike.
+    /// </para>
+    /// </remarks>
+    /// <param name="arm">The engine arm being checked.</param>
+    /// <param name="queryId">The query, named in any failure.</param>
+    /// <param name="dense">The <c>dense</c> arm's sources for this query.</param>
+    /// <param name="actual">The engine arm's sources for this query.</param>
+    private static void AssertContextIsIdenticalToDense(
+        string arm, string queryId, IReadOnlyList<SearchResult> dense, IReadOnlyList<SearchResult> actual)
+    {
+        var shared = Math.Min(dense.Count, actual.Count);
+        for (var rank = 0; rank < shared; rank++)
+        {
+            var expected = ChunkIdentityOf(dense[rank]);
+            var got = ChunkIdentityOf(actual[rank]);
+            if (!string.Equals(expected, got, StringComparison.Ordinal))
+            {
+                Assert.Fail(FormattableString.Invariant(
+                    $"GATE 1 FAILED (context identity): query '{queryId}', arm '{arm}' — the first difference is at rank {rank}, where this arm retrieved chunk '{got}' and the dense arm retrieved '{expected}'. The engine arms are supposed to share RetrieveContextAsync's case AnswerArm.Dense body, so a difference here means that switch was edited and '{arm} - chatengine' would now be a retrieval difference published as an engine difference."));
+            }
+        }
+
+        if (dense.Count != actual.Count)
+        {
+            Assert.Fail(FormattableString.Invariant(
+                $"GATE 1 FAILED (context identity): query '{queryId}', arm '{arm}' — the first {shared} chunk(s) match but this arm retrieved {actual.Count} chunk(s) where the dense arm retrieved {dense.Count}. Same chunks in the same order also means the same number of them."));
+        }
+    }
+
+    /// <summary>
+    /// A chunk's identity for Gate 1: its document plus its 0-based index within that document,
+    /// which <see cref="TextChunk.ChunkIndex"/> documents as the stable per-chunk key.
+    /// </summary>
+    /// <remarks>
+    /// Identity rather than text: two chunks can carry identical text (a repeated boilerplate
+    /// paragraph across two articles) and comparing the text would call those interchangeable when
+    /// the ranking had in fact changed.
+    /// </remarks>
+    private static string ChunkIdentityOf(SearchResult result) => FormattableString.Invariant(
+        $"{result.Chunk.DocumentId.Value}#{result.Chunk.ChunkIndex}");
+
+    /// <summary>
+    /// <b>Gate 2.</b> One engine's calls for one query match the shape its mechanism predicts.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The number checked here is the engine's own, not a delta.</b> Every query is answered
+    /// under <c>Parallel.ForEachAsync</c>, so snapshotting any counter shared across arms or queries
+    /// before and after one <c>AskAsync</c> and subtracting would fold in whatever the other seven
+    /// in-flight queries incremented in between. That produces a plausible number that is silently
+    /// wrong — worse than no gate. <see cref="EngineCallCountingChatClient"/> is instead constructed
+    /// per (arm, query) and handed to that one engine, so it can only ever have counted that
+    /// engine's calls.
+    /// </para>
+    /// <para>
+    /// <b>Applicability.</b> The calls are made whether they are served live or from cache — the
+    /// cache sits below the counter — so this asserts on every run that answers through an engine.
+    /// It is not skipped on a replay.
+    /// </para>
+    /// <para>
+    /// <b>The FLARE bound is derived from <c>FlareOptions</c>, not pinned as a literal.</b> The
+    /// sentence loop runs at most <c>MaxSentences</c> times and costs two calls per sentence (one to
+    /// generate it, one for the scorer), plus one regeneration per lookahead, capped at
+    /// <c>MaxRetrievals</c>. Reading the defaults keeps the bound correct if they change; a literal
+    /// would fail a run for a reason that has nothing to do with the arm.
+    /// </para>
+    /// </remarks>
+    /// <param name="arm">The engine arm.</param>
+    /// <param name="queryId">The query, named in any failure.</param>
+    /// <param name="contextChunks">How many chunks the engine was handed.</param>
+    /// <param name="calls">What this engine's own counter observed.</param>
+    private static void AssertCallShapeMatchesPrediction(
+        string arm, string queryId, int contextChunks, int calls)
+    {
+        Assert.True(
+            contextChunks == ContextChunks,
+            FormattableString.Invariant(
+                $"GATE 2 FAILED (call shape): query '{queryId}', arm '{arm}' was handed {contextChunks} context chunk(s) where the paper's depth is {ContextChunks}. The per-chunk engines' call counts are predicted from that depth, so a short context would make this gate assert the wrong number rather than catch anything."));
+
+        var (min, max, shape) = PredictedCallShape(arm, contextChunks);
+        Assert.True(
+            calls >= min && calls <= max,
+            FormattableString.Invariant(
+                $"GATE 2 FAILED (call shape): query '{queryId}', arm '{arm}' made {calls} model call(s); {shape} predicts {DescribeBound(min, max)} at a context depth of {contextChunks}. Either the engine is not doing what the arm's name says, or the full sweep is mispriced by the ratio between those two numbers."));
+    }
+
+    /// <summary>The call count one engine arm's mechanism predicts, and the words for it.</summary>
+    private static (int Min, int Max, string Shape) PredictedCallShape(string arm, int contextChunks)
+    {
+        if (string.Equals(arm, AnswerArm.ChatEngine, StringComparison.Ordinal))
+        {
+            return (1, 1, "a single-shot ChatAnswerEngine");
+        }
+
+        if (string.Equals(arm, AnswerArm.Refine, StringComparison.Ordinal))
+        {
+            return (contextChunks, contextChunks, "RefineAnswerEngine's one call per context chunk");
+        }
+
+        if (string.Equals(arm, AnswerArm.MapReduce, StringComparison.Ordinal))
+        {
+            return (contextChunks + 1, contextChunks + 1, "MapReduceAnswerEngine's one map call per context chunk plus one reduce");
+        }
+
+        var defaults = new FlareOptions();
+        var sentenceCalls = defaults.MaxSentences * 2;
+        if (string.Equals(arm, AnswerArm.FlareFixed, StringComparison.Ordinal))
+        {
+            return (1, sentenceCalls, FormattableString.Invariant(
+                $"FlareAnswerEngine at MaxRetrievals=0 (at most {defaults.MaxSentences} sentences x 2 calls, no regeneration)"));
+        }
+
+        if (string.Equals(arm, AnswerArm.Flare, StringComparison.Ordinal))
+        {
+            return (1, sentenceCalls + defaults.MaxRetrievals, FormattableString.Invariant(
+                $"FlareAnswerEngine as shipped (at most {defaults.MaxSentences} sentences x 2 calls, plus one regeneration per lookahead, capped at {defaults.MaxRetrievals})"));
+        }
+
+        throw new ArgumentOutOfRangeException(nameof(arm), arm, "Not an arm with a predicted call shape.");
+    }
+
+    private static string DescribeBound(int min, int max) => min == max
+        ? FormattableString.Invariant($"exactly {min}")
+        : FormattableString.Invariant($"between {min} and {max}");
+
+    // ── Proving the gates can fire ────────────────────────────────────────
+    //
+    // The gates themselves only run inside the paid answer theory, which needs an ONNX model, a
+    // downloaded corpus and an API key, and skips without them. A gate nobody has ever seen fail is
+    // a gate nobody knows works — the same reasoning that put
+    // RetrieveRaptorFilteredAsync_WarnsOnUnderFill_AndStaysSilentWhenFull in this file. These run
+    // on any machine, in milliseconds, with no model and no corpus.
+
+    /// <summary>Gate 1 passes on the identical ranking and fails on a reordered one, naming the rank.</summary>
+    [Fact]
+    public void AssertContextIsIdenticalToDense_FailsOnAReorderedRanking_AndPassesOnAnIdenticalOne()
+    {
+        var dense = GateFixtureSources("a", "b", "c");
+
+        AssertContextIsIdenticalToDense("chatengine", "q-1", dense, GateFixtureSources("a", "b", "c"));
+
+        var swapped = GateFixtureSources("a", "c", "b");
+        var error = Assert.ThrowsAny<Exception>(
+            () => AssertContextIsIdenticalToDense("mapreduce", "q-1", dense, swapped));
+
+        Assert.Contains("GATE 1 FAILED", error.Message, StringComparison.Ordinal);
+        Assert.Contains("q-1", error.Message, StringComparison.Ordinal);
+        Assert.Contains("mapreduce", error.Message, StringComparison.Ordinal);
+        Assert.Contains("rank 1", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>Gate 1 also catches a prefix-identical context of the wrong depth.</summary>
+    [Fact]
+    public void AssertContextIsIdenticalToDense_FailsWhenTheDepthsDiffer()
+    {
+        var error = Assert.ThrowsAny<Exception>(
+            () => AssertContextIsIdenticalToDense(
+                "refine", "q-2", GateFixtureSources("a", "b", "c"), GateFixtureSources("a", "b")));
+
+        Assert.Contains("GATE 1 FAILED", error.Message, StringComparison.Ordinal);
+        Assert.Contains("2 chunk(s) where the dense arm retrieved 3", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>Gate 2 accepts each engine's predicted shape and rejects a count off it.</summary>
+    [Fact]
+    public void AssertCallShapeMatchesPrediction_AcceptsThePredictedShapes_AndRejectsOthers()
+    {
+        AssertCallShapeMatchesPrediction(AnswerArm.ChatEngine, "q-3", ContextChunks, 1);
+        AssertCallShapeMatchesPrediction(AnswerArm.Refine, "q-3", ContextChunks, ContextChunks);
+        AssertCallShapeMatchesPrediction(AnswerArm.MapReduce, "q-3", ContextChunks, ContextChunks + 1);
+        AssertCallShapeMatchesPrediction(AnswerArm.Flare, "q-3", ContextChunks, 4);
+        AssertCallShapeMatchesPrediction(AnswerArm.FlareFixed, "q-3", ContextChunks, 2);
+
+        // The failure this gate exists for: an arm named mapreduce that answers in one call is not
+        // doing map-reduce, and the sweep priced against it would be out by ContextChunks.
+        var error = Assert.ThrowsAny<Exception>(
+            () => AssertCallShapeMatchesPrediction(AnswerArm.MapReduce, "q-3", ContextChunks, 1));
+        Assert.Contains("GATE 2 FAILED", error.Message, StringComparison.Ordinal);
+        Assert.Contains("exactly 7", error.Message, StringComparison.Ordinal);
+
+        // A FLARE arm that never stops is the other direction; the bound comes from FlareOptions.
+        var runaway = new FlareOptions();
+        var loop = Assert.ThrowsAny<Exception>(
+            () => AssertCallShapeMatchesPrediction(
+                AnswerArm.Flare, "q-3", ContextChunks, (runaway.MaxSentences * 2) + runaway.MaxRetrievals + 1));
+        Assert.Contains("GATE 2 FAILED", loop.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>Gate 2's precondition: a short context would make it assert the wrong number.</summary>
+    [Fact]
+    public void AssertCallShapeMatchesPrediction_FailsWhenTheContextIsNotThePapersDepth()
+    {
+        var error = Assert.ThrowsAny<Exception>(
+            () => AssertCallShapeMatchesPrediction(AnswerArm.Refine, "q-4", ContextChunks - 1, ContextChunks - 1));
+
+        Assert.Contains("GATE 2 FAILED", error.Message, StringComparison.Ordinal);
+        Assert.Contains("context chunk(s)", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// <b>The parallel-counter trap, demonstrated rather than asserted in prose.</b> Two engines
+    /// answering concurrently over one shared client each see exactly their own calls, while the
+    /// shared client underneath sees both — which is precisely why a before/after delta on the
+    /// shared counter cannot be Gate 2's number.
+    /// </summary>
+    [Fact]
+    public async Task EngineCallCountingChatClient_CountsOnlyItsOwnCalls_WhileTheSharedClientSeesBoth()
+    {
+        const int CallsEach = 200;
+        var shared = new SharedCallCountingChatClient();
+        var first = new EngineCallCountingChatClient(shared);
+        var second = new EngineCallCountingChatClient(shared);
+        var ct = TestContext.Current.CancellationToken;
+
+        await Task.WhenAll(
+            Task.Run(() => CallRepeatedlyAsync(first, CallsEach, ct), ct),
+            Task.Run(() => CallRepeatedlyAsync(second, CallsEach, ct), ct));
+
+        Assert.Equal(CallsEach, first.Calls);
+        Assert.Equal(CallsEach, second.Calls);
+        Assert.Equal(CallsEach * 2, shared.Calls);
+    }
+
+    private static async Task CallRepeatedlyAsync(IChatClient client, int times, CancellationToken ct)
+    {
+        for (var i = 0; i < times; i++)
+        {
+            _ = await client.GetResponseAsync([new ChatMessage(ChatRole.User, "q")], cancellationToken: ct);
+        }
+    }
+
+    /// <summary>
+    /// Gate 3 fails when <c>flare</c> ran without its lookahead ever firing, passes once it has
+    /// fired, and reports itself not applicable when <c>flare</c> was not selected.
+    /// </summary>
+    [Fact]
+    public async Task AssertLookaheadFired_FailsWhenFlareNeverRetrieved_PassesOnceItHas()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        string[] withFlare = [AnswerArm.Flare, AnswerArm.FlareFixed];
+        var retrievers = new EngineRetrievers(new EmptyRetriever());
+
+        var skipped = new CapturingTestOutputHelper();
+        retrievers.AssertLookaheadFired([AnswerArm.ChatEngine], queries: 50, skipped);
+        Assert.Contains(
+            skipped.Lines, line => line.Contains("NOT APPLICABLE", StringComparison.Ordinal));
+
+        var silent = new CapturingTestOutputHelper();
+        var error = Assert.ThrowsAny<Exception>(
+            () => retrievers.AssertLookaheadFired(withFlare, queries: 50, silent));
+        Assert.Contains("GATE 3 FAILED", error.Message, StringComparison.Ordinal);
+        Assert.Contains("fails open", error.Message, StringComparison.Ordinal);
+
+        _ = await retrievers.For(AnswerArm.Flare)!.RetrieveAsync("a lookahead", cancellationToken: ct);
+
+        var fired = new CapturingTestOutputHelper();
+        retrievers.AssertLookaheadFired(withFlare, queries: 50, fired);
+        Assert.Contains(fired.Lines, line => line.Contains("GATE 3 PASSED", StringComparison.Ordinal));
+        Assert.Equal(1, retrievers.FlareLookaheads);
+    }
+
+    /// <summary>
+    /// Gate 3 warns loudly when the lookahead only just fired, and stays silent once it is
+    /// commonplace — the case a bare "at least one" pass cannot distinguish from the failure the
+    /// gate exists to catch.
+    /// </summary>
+    [Fact]
+    public async Task AssertLookaheadFired_WarnsWhenTheLookaheadBarelyFired_AndIsSilentWhenItIsCommon()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        string[] withFlare = [AnswerArm.Flare];
+        var retrievers = new EngineRetrievers(new EmptyRetriever());
+        var flare = retrievers.For(AnswerArm.Flare)!;
+
+        // One retrieval in fifty queries: the gate passes, because it did fire, and says so loudly.
+        _ = await flare.RetrieveAsync("a lone lookahead", cancellationToken: ct);
+        var barely = new CapturingTestOutputHelper();
+        retrievers.AssertLookaheadFired(withFlare, queries: 50, barely);
+
+        Assert.Contains(barely.Lines, line => line.Contains("GATE 3 PASSED", StringComparison.Ordinal));
+        Assert.Contains(barely.Lines, line => line.Contains("WARNING", StringComparison.Ordinal));
+
+        // Twenty in fifty is 0.4 per query, comfortably clear of the warning.
+        for (var i = 0; i < 19; i++)
+        {
+            _ = await flare.RetrieveAsync("another lookahead", cancellationToken: ct);
+        }
+
+        var common = new CapturingTestOutputHelper();
+        retrievers.AssertLookaheadFired(withFlare, queries: 50, common);
+
+        Assert.Contains(common.Lines, line => line.Contains("GATE 3 PASSED", StringComparison.Ordinal));
+        Assert.DoesNotContain(common.Lines, line => line.Contains("WARNING", StringComparison.Ordinal));
+    }
+
+    /// <summary>Sources whose chunk identities are exactly <paramref name="documentIds"/>, in order.</summary>
+    private static IReadOnlyList<SearchResult> GateFixtureSources(params string[] documentIds)
+    {
+        var sources = new SearchResult[documentIds.Length];
+        for (var i = 0; i < documentIds.Length; i++)
+        {
+            sources[i] = new SearchResult
+            {
+                Chunk = new TextChunk
+                {
+                    Text = "context " + documentIds[i],
+                    DocumentId = new DocumentId(documentIds[i]),
+                    ChunkIndex = 0,
+                },
+                Score = 1.0 - (i * 0.01),
+            };
+        }
+
+        return sources;
+    }
+
+    /// <summary>Stands in for the client every arm shares, counting what reaches it.</summary>
+    private sealed class SharedCallCountingChatClient : IChatClient
+    {
+        private int _calls;
+
+        public int Calls => Volatile.Read(ref _calls);
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            _ = Interlocked.Increment(ref _calls);
+            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "an answer.")));
+        }
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("The arms use AskAsync, not streaming.");
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+            // Nothing to release.
+        }
+    }
+
+    /// <summary>A retriever that succeeds with nothing — enough for Gate 3 to have something to count.</summary>
+    private sealed class EmptyRetriever : IRetriever
+    {
+        public Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
+            string query,
+            RetrievalOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success([]));
+    }
+
+    /// <summary>
+    /// An <see cref="IChatClient"/> decorator that counts its own invocations and forwards
+    /// everything else — <b>one instance per (arm, query)</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This type exists to make Gate 2 possible at all.</b> The obvious implementation is to read
+    /// the shared client's <c>Calls</c> before and after one engine's <c>AskAsync</c> and take the
+    /// difference. Under <c>Parallel.ForEachAsync</c> at <see cref="AnswerConcurrency"/> = 8 that
+    /// difference also contains every call the other seven in-flight queries made in the same
+    /// window — a number that looks like a call count, is not one, and would let a mis-wired arm
+    /// pass while making the gate itself the thing reporting the wrong figure.
+    /// </para>
+    /// <para>
+    /// Serialising the run to make a global delta valid was the other option and is worse: it would
+    /// change the workload being measured to make the measurement easier. A fresh counter per
+    /// (arm, query), handed to exactly one engine, has neither problem — no other engine holds a
+    /// reference to it, so no other engine can increment it, whatever else is running.
+    /// <see cref="Interlocked"/> is still used because a single engine may itself fan out.
+    /// </para>
+    /// <para>
+    /// <see cref="Dispose"/> is a no-op: the client underneath is borrowed for the length of one
+    /// answer and outlives this decorator by the whole run.
+    /// </para>
+    /// </remarks>
+    private sealed class EngineCallCountingChatClient : IChatClient
+    {
+        private readonly IChatClient _inner;
+        private int _calls;
+
+        public EngineCallCountingChatClient(IChatClient inner)
+        {
+            ArgumentNullException.ThrowIfNull(inner);
+            _inner = inner;
+        }
+
+        /// <summary>How many requests this one engine made.</summary>
+        public int Calls => Volatile.Read(ref _calls);
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            _ = Interlocked.Increment(ref _calls);
+            return _inner.GetResponseAsync(messages, options, cancellationToken);
+        }
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException(
+                "The engine arms answer through AskAsync. CachedGraphRagClient refuses to stream " +
+                "for the same reason: a streaming call would be an uncached, uncounted model call.");
+
+        public object? GetService(Type serviceType, object? serviceKey = null)
+        {
+            ArgumentNullException.ThrowIfNull(serviceType);
+            return serviceType.IsInstanceOfType(this) ? this : _inner.GetService(serviceType, serviceKey);
+        }
+
+        public void Dispose()
+        {
+            // The client underneath belongs to EngineArmClients and lives for the whole run.
+        }
+    }
+
+    /// <summary>
+    /// A pass-through <see cref="IChatClient"/> whose <see cref="Dispose"/> does nothing, so a
+    /// second owner can be handed the live model without ever disposing it.
+    /// </summary>
+    /// <remarks>
+    /// <c>CachedGraphRagClient.Dispose</c> disposes the model it was constructed with. The run has
+    /// one model and, from <see cref="EngineArmClients"/>, several clients over it; without this the
+    /// first client disposed would take the model out from under the rest. The single owner stays
+    /// the client <see cref="OpenAnsweringClient"/> returns, which the theory holds in a
+    /// <c>using</c>.
+    /// </remarks>
+    private sealed class BorrowedChatClient : IChatClient
+    {
+        private readonly IChatClient _inner;
+
+        public BorrowedChatClient(IChatClient inner)
+        {
+            ArgumentNullException.ThrowIfNull(inner);
+            _inner = inner;
+        }
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _inner.GetResponseAsync(messages, options, cancellationToken);
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _inner.GetStreamingResponseAsync(messages, options, cancellationToken);
+
+        public object? GetService(Type serviceType, object? serviceKey = null)
+        {
+            ArgumentNullException.ThrowIfNull(serviceType);
+            return _inner.GetService(serviceType, serviceKey);
+        }
+
+        public void Dispose()
+        {
+            // Borrowed. The answering client returned by OpenAnsweringClient owns the model.
+        }
+    }
+
+    /// <summary>
+    /// One <see cref="CachedGraphRagClient"/> per selected engine arm, over the <b>shared</b> answer
+    /// cache and the <b>shared</b> model — the per-arm cost meters Step 4's counters are read from.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why an extra client rather than a delta on the shared one.</b> The token counters are the
+    /// same parallelism problem as Gate 2's call counts, and worse: usage is recorded inside
+    /// <c>CachedGraphRagClient</c> on the live call, so a decorator above it cannot see the figure
+    /// at all — <c>ChatResponse.Usage</c> is gone by the time the cache has answered. Giving each
+    /// arm its own instance of that class makes <c>Calls</c>, <c>InputTokens</c> and
+    /// <c>OutputTokens</c> exactly that arm's, using the same <see cref="Interlocked"/> counters
+    /// already trusted elsewhere, with no delta arithmetic anywhere.
+    /// </para>
+    /// <para>
+    /// <b>Nothing about the cache changes.</b> Every client here holds the <i>same</i>
+    /// <c>GraphExtractionCache</c> instance the shared client holds, at the same temperature, and
+    /// the key is the rendered prompt — so an engine arm's entries land in the same directory, under
+    /// the same identity, as they would have through one client. Only the counters are split, and
+    /// only for the five engine arms: the non-engine path keeps the shared client untouched.
+    /// </para>
+    /// </remarks>
+    private sealed class EngineArmClients : IDisposable
+    {
+        private readonly Dictionary<string, CachedGraphRagClient> _byArm = new(StringComparer.Ordinal);
+        private readonly List<string> _order = [];
+
+        /// <param name="arms">The run's selected arms; the non-engine ones are ignored.</param>
+        /// <param name="cache">The shared answer cache — the same instance, not a second one.</param>
+        /// <param name="model">The live model, or <see langword="null"/> on a replay run.</param>
+        /// <param name="temperature">The identity's temperature, shared with the answering client.</param>
+        public EngineArmClients(
+            IReadOnlyList<string> arms, GraphExtractionCache cache, IChatClient? model, float temperature)
+        {
+            ArgumentNullException.ThrowIfNull(arms);
+            ArgumentNullException.ThrowIfNull(cache);
+
+            for (var i = 0; i < arms.Count; i++)
+            {
+                var arm = arms[i];
+                if (!AnswerEngineArms.IsEngineArm(arm) || _byArm.ContainsKey(arm))
+                {
+                    continue;
+                }
+
+                _byArm[arm] = new CachedGraphRagClient(
+                    cache, model is null ? null : new BorrowedChatClient(model), temperature);
+                _order.Add(arm);
+            }
+        }
+
+        /// <summary>The engine arms that have a client here, in selection order.</summary>
+        public IReadOnlyList<string> Arms => _order;
+
+        /// <summary>Calls made through every engine arm's client, summed.</summary>
+        public long TotalCalls
+        {
+            get
+            {
+                long total = 0;
+                for (var i = 0; i < _order.Count; i++)
+                {
+                    total += _byArm[_order[i]].Calls;
+                }
+
+                return total;
+            }
+        }
+
+        /// <summary>Model attempts retried through every engine arm's client, summed.</summary>
+        /// <remarks>
+        /// <b>Read for the same reason <see cref="TotalCalls"/> is.</b> Every counter on
+        /// <c>CachedGraphRagClient</c> is per instance, so the moment the engine arms got clients of
+        /// their own, every whole-run figure taken from the shared client alone became the
+        /// non-engine share of itself. Retries is the one that matters most in practice: the engine
+        /// arms issue roughly seven times the request volume of a single-shot arm, so they are where
+        /// rate limiting shows up first, and a run reporting "0 retries" while
+        /// <c>mapreduce</c> is being throttled would send an operator looking in the wrong place.
+        /// </remarks>
+        public long TotalRetries
+        {
+            get
+            {
+                long total = 0;
+                for (var i = 0; i < _order.Count; i++)
+                {
+                    total += _byArm[_order[i]].Retries;
+                }
+
+                return total;
+            }
+        }
+
+        /// <summary>The client <paramref name="arm"/>'s engines are built over.</summary>
+        public CachedGraphRagClient For(string arm) =>
+            _byArm.TryGetValue(arm, out var client)
+                ? client
+                : throw new ArgumentOutOfRangeException(
+                    nameof(arm), arm,
+                    "No engine-arm client was built for this arm — it is not an engine arm, or it " +
+                    "was not in the selection this instance was constructed from.");
+
+        public void Dispose()
+        {
+            foreach (var client in _byArm.Values)
+            {
+                // Safe: each holds a BorrowedChatClient, so the run's one model is never disposed here.
+                client.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The three <see cref="SearchResult"/> context maps and the one rendered-string map the graph
+    /// arms read from — collected in one sequential pass when any of those arms is selected, and
+    /// left empty when none is, exactly as the inline gate this replaces did.
+    /// </summary>
+    private async Task<GraphStoreContexts> CollectGraphStoreContextsIfNeededAsync(
+        GraphRagRun run,
+        QuerySelection selection,
+        IReadOnlyList<string> arms,
+        long startedAt,
+        CancellationToken ct)
+    {
         var localContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
         var controlContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
         var filteredContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
         var localSpecContexts = new Dictionary<string, string>(StringComparer.Ordinal);
+
         if (arms.Contains(AnswerArm.Local, StringComparer.Ordinal)
             || arms.Contains(AnswerArm.Control, StringComparer.Ordinal)
             || arms.Contains(AnswerArm.Filtered, StringComparer.Ordinal)
@@ -910,45 +2092,7 @@ public sealed class BeirGraphRagAnswerTests
                 startedAt, ct);
         }
 
-        // Dense and global retrieval, and every answer, in parallel under the same bound.
-        var done = 0;
-        await Parallel.ForEachAsync(
-            selection.Queries,
-            new ParallelOptions { MaxDegreeOfParallelism = AnswerConcurrency, CancellationToken = ct },
-            async (query, token) =>
-            {
-                var expected = gold[query.Id];
-                foreach (var arm in arms)
-                {
-                    var rendered = string.Equals(arm, AnswerArm.LocalSpec, StringComparison.Ordinal)
-                        ? localSpecContexts[query.Id]
-                        : RenderContext(arm switch
-                        {
-                            AnswerArm.Local => localContexts[query.Id],
-                            AnswerArm.Control => controlContexts[query.Id],
-                            AnswerArm.Filtered => filteredContexts[query.Id],
-                            _ => await RetrieveContextAsync(
-                                arm, query.Text, run, articles, corpusRun, perDocumentRun,
-                                generator, embeddings, answering, _output, token),
-                        });
-
-                    var prompt = PromptTemplate
-                        .Replace("{question}", query.Text, StringComparison.Ordinal)
-                        .Replace("{context}", rendered, StringComparison.Ordinal);
-
-                    var response = await answering.GetResponseAsync([new ChatMessage(ChatRole.User, prompt)], cancellationToken: token);
-                    tallies[arm].Record(arm, query.Id, expected, response.Text ?? string.Empty);
-                }
-
-                var completed = Interlocked.Increment(ref done);
-                if (completed % ProgressEvery == 0)
-                {
-                    _output.WriteLine(FormattableString.Invariant(
-                        $"  answered {completed} of {selection.Queries.Count} queries x {arms.Count} arms, {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s so far, {answering.Cache.Hits} cached / {answering.Cache.Misses} generated"));
-                }
-            });
-
-        return tallies;
+        return new GraphStoreContexts(localContexts, controlContexts, filteredContexts, localSpecContexts);
     }
 
     /// <summary>Every selected query.s vector, once, sequentially, so the parallel phase reads them from the cache.</summary>
@@ -970,9 +2114,17 @@ public sealed class BeirGraphRagAnswerTests
     }
 
     /// <summary>
-    /// The six chunks the dense, global and RAPTOR arms hand the model, in the arm's own order.
+    /// The six chunks the dense, global, RAPTOR and engine arms hand the model, in the arm's own
+    /// order.
     /// </summary>
     /// <remarks>
+    /// The five engine arms share <see cref="AnswerArm.Dense"/>'s case body rather than restating
+    /// it. That sharing is what makes "the engine arms hold retrieval fixed at dense" true by
+    /// construction: there is one retrieval, not two paths that have to agree. <c>flare</c> is the
+    /// one exception, and it is an exception <i>after</i> this call — its lookahead retrieves again
+    /// mid-generation through its own retriever, which is exactly what <c>flare − flarefixed</c>
+    /// prices.
+    /// <para/>
     /// <c>raptorcorpus</c>, <c>raptor</c> and <c>raptorboost</c> each read straight from a
     /// <see cref="RaptorRun"/> built once for every query that needs it — never per query. See the
     /// <c>needsCorpus</c> / <c>needsPerDocument</c> gate and the single <see cref="RaptorRun.BuildAsync"/>
@@ -998,6 +2150,11 @@ public sealed class BeirGraphRagAnswerTests
         switch (arm)
         {
             case AnswerArm.Dense:
+            case AnswerArm.ChatEngine:
+            case AnswerArm.MapReduce:
+            case AnswerArm.Refine:
+            case AnswerArm.Flare:
+            case AnswerArm.FlareFixed:
                 var vectors = await BeirHarness.EmbedAsync(generator, embeddings, [query], ct);
                 return await articles.SearchAsync(vectors[0], new SearchOptions { TopK = ContextChunks }, ct);
             case AnswerArm.Global:
@@ -1351,12 +2508,20 @@ public sealed class BeirGraphRagAnswerTests
         QuerySelection selection,
         Dictionary<string, ArmTally> tallies,
         CachedGraphRagClient answering,
+        EngineArmClients engineClients,
         TimeSpan elapsed)
     {
+        // Every counter on CachedGraphRagClient is per instance, so each whole-run figure below has
+        // to be summed across the engine arms' clients as well as the shared one — answering.Calls
+        // and answering.Retries alone are only the non-engine share. The cache counters are the
+        // exception, and genuinely whole already: every client holds the SAME cache instance, so
+        // Hits and Misses have already seen every arm's requests.
+        var requests = answering.Calls + engineClients.TotalCalls;
+        var retries = answering.Retries + engineClients.TotalRetries;
         var builder = new StringBuilder();
         builder.Append(FormattableString.Invariant($"""
 
-            === {descriptor.Name} ACCURACY AGAINST THE GOLD ANSWERS — {elapsed.TotalSeconds:F1} s, {answering.Calls} answer requests, {answering.Cache.Hits} cached / {answering.Cache.Misses} generated, {answering.Retries} retries ===
+            === {descriptor.Name} ACCURACY AGAINST THE GOLD ANSWERS — {elapsed.TotalSeconds:F1} s, {requests} answer requests ({engineClients.TotalCalls} of them through the engine arms), {answering.Cache.Hits} cached / {answering.Cache.Misses} generated, {retries} retries ({engineClients.TotalRetries} of them on the engine arms) ===
             paper = qa_evaluate.py's any-shared-word rule over punctuation-stripped tokens (headline); raw = that rule with punctuation attached, as the script wrote it; strict = normalised equality
             over the {selection.JudgedCount} judged queries; the null queries are an abstention rate and are reported separately
 
@@ -1376,6 +2541,116 @@ public sealed class BeirGraphRagAnswerTests
         }
 
         return builder.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// <b>Step 4.</b> What the run actually cost, per engine arm — the figures that price the full
+    /// sweep.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured, not derived, and it supersedes the design document's dollar table.</b> That
+    /// table was arithmetic over an assumed call shape; this is the shape the run performed. For
+    /// <c>flare</c> in particular the calls-per-query figure is what settles a roughly tenfold cost
+    /// range — the engine's loop can stop after one sentence or run to <c>MaxSentences</c>, and
+    /// nothing short of running it says which.
+    /// </para>
+    /// <para>
+    /// <b>Tokens are billed on live calls only.</b> <c>CachedGraphRagClient</c> accumulates usage
+    /// where the model answers, so a replay run legitimately reports zero tokens against non-zero
+    /// calls — that is the cache working, not a counter failing, and the line below says so rather
+    /// than leaving a reader to wonder. A non-zero <c>CallsWithoutUsage</c> means the token figures
+    /// are a floor; it is printed for the same reason.
+    /// </para>
+    /// <para>
+    /// Only the engine arms appear per-arm: they are the arms this phase added and the only ones
+    /// with a client of their own. Everything else — <c>dense</c>, <c>global</c>, the graph and
+    /// RAPTOR arms, and RAPTOR summarisation — shares one client and is reported as one line, which
+    /// is deliberate: splitting it would mean re-wiring the path every pinned figure was generated
+    /// through.
+    /// </para>
+    /// </remarks>
+    private static string DescribeEngineArmCosts(
+        IReadOnlyList<string> arms,
+        EngineArmClients engineClients,
+        EngineRetrievers retrievers,
+        AnswerEngineArms.FailureLog failures,
+        CachedGraphRagClient answering,
+        Dictionary<string, ArmTally> tallies)
+    {
+        // Nothing to price when no engine arm ran, and a header over an empty table is worse than
+        // no header: every ordinary ten-arm run used to print one and invite the reader to wonder
+        // which arm's costs had gone missing.
+        var engineArms = engineClients.Arms;
+        if (engineArms.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine().AppendLine(
+            "=== ENGINE-ARM COST COUNTERS — what prices the full sweep ===");
+        builder.AppendLine(
+            "Measured per arm through that arm's own CachedGraphRagClient over the shared cache and");
+        builder.AppendLine(
+            "model, so no other arm's calls or tokens can land in these figures. Tokens are billed on");
+        builder.AppendLine(
+            "LIVE calls only: a cache replay reports zero tokens against non-zero calls, correctly.");
+        builder.AppendLine(FormattableString.Invariant(
+            $"{"arm",-14}{"queries",9}{"calls",9}{"calls/query",14}{"in tokens",14}{"out tokens",14}{"tokens/query",15}"));
+
+        long engineCalls = 0;
+        long engineInput = 0;
+        long engineOutput = 0;
+        long engineWithoutUsage = 0;
+        for (var i = 0; i < engineArms.Count; i++)
+        {
+            var arm = engineArms[i];
+            var client = engineClients.For(arm);
+            engineCalls += client.Calls;
+            engineInput += client.InputTokens;
+            engineOutput += client.OutputTokens;
+            engineWithoutUsage += client.CallsWithoutUsage;
+            AppendArmCostRow(
+                builder, arm, tallies.TryGetValue(arm, out var tally) ? tally.Answered : 0, client);
+        }
+
+        builder.AppendLine(FormattableString.Invariant(
+            $"shared client (every non-engine arm, plus RAPTOR summarisation): {answering.Calls} calls, {answering.InputTokens:N0} in, {answering.OutputTokens:N0} out, {answering.Retries} retries"));
+
+        // Printed explicitly rather than left for a reader to add up. Every counter on
+        // CachedGraphRagClient is per instance, so the shared line above is the non-engine share of
+        // the run and nothing else — reading it as the bill is the exact mistake this line removes.
+        builder.AppendLine(FormattableString.Invariant(
+            $"RUN TOTAL (shared + every engine arm): {answering.Calls + engineCalls} calls, {answering.InputTokens + engineInput:N0} in, {answering.OutputTokens + engineOutput:N0} out, {answering.Retries + engineClients.TotalRetries} retries"));
+        builder.AppendLine(FormattableString.Invariant(
+            $"calls that reported no usage, and are therefore absent from the token totals: {answering.CallsWithoutUsage} on the shared client, {engineWithoutUsage} across the engine arms — any non-zero figure here makes the tokens above a floor"));
+
+        if (arms.Contains(AnswerArm.Flare, StringComparer.Ordinal))
+        {
+            builder.AppendLine(FormattableString.Invariant(
+                $"flare lookahead retrievals across the run: {retrievers.FlareLookaheads}"));
+        }
+
+        // Printed as well as asserted. The assert is what stops a degraded figure being published;
+        // this line is what tells a reader which engine degraded and on what.
+        builder.AppendLine(failures.Describe());
+
+        return builder.ToString().TrimEnd();
+    }
+
+    /// <summary>One arm's row in the cost table.</summary>
+    private static void AppendArmCostRow(
+        StringBuilder builder, string arm, int queries, CachedGraphRagClient client)
+    {
+        var calls = client.Calls;
+        var input = client.InputTokens;
+        var output = client.OutputTokens;
+        var callsPerQuery = queries == 0 ? double.NaN : calls / (double)queries;
+        var tokensPerQuery = queries == 0 ? double.NaN : (input + output) / (double)queries;
+
+        builder.AppendLine(FormattableString.Invariant(
+            $"{arm,-14}{queries,9}{calls,9}{callsPerQuery,14:F2}{input,14:N0}{output,14:N0}{tokensPerQuery,15:F2}"));
     }
 
     private static string DescribeType(ArmTally t, string type, string label) => FormattableString.Invariant(
@@ -1424,6 +2699,50 @@ public sealed class BeirGraphRagAnswerTests
     {
         public int Count => Queries.Count;
     }
+
+    /// <summary>
+    /// The four contexts <see cref="CollectGraphStoreContextsAsync"/>'s one sequential pass
+    /// produces, keyed by query id — empty when no arm that reads them is selected.
+    /// </summary>
+    private sealed record GraphStoreContexts(
+        Dictionary<string, IReadOnlyList<SearchResult>> Local,
+        Dictionary<string, IReadOnlyList<SearchResult>> Control,
+        Dictionary<string, IReadOnlyList<SearchResult>> Filtered,
+        Dictionary<string, string> LocalSpec);
+
+    /// <summary>
+    /// Everything the parallel answer loop needs that does not vary per query, carried as one value
+    /// so <see cref="AnswerOneQueryAsync"/> and the two arm paths can be methods rather than a
+    /// lambda too long for MA0051.
+    /// </summary>
+    /// <param name="Arms">The run's selected arms, in the order they are answered.</param>
+    /// <param name="HasEngineArm">
+    /// Whether any selected arm is an engine arm — the condition under which Gate 1's dense
+    /// reference is worth retrieving at all. Computed once rather than per query.
+    /// </param>
+    /// <param name="EngineClients">The per-arm cost meters; only engine arms have one.</param>
+    /// <param name="Retrievers">The engine retrievers, and the two lookahead gates over them.</param>
+    /// <param name="Failures">
+    /// Where the engines' swallowed failures are counted — one instance for the run, so the whole
+    /// answering phase reduces to the single number the gate asserts on.
+    /// </param>
+    /// <param name="Tallies">Where each arm's scored answers accumulate; internally locked.</param>
+    private sealed record AnswerPass(
+        IReadOnlyList<string> Arms,
+        bool HasEngineArm,
+        GraphRagRun Run,
+        InMemoryVectorStore Articles,
+        RaptorRun? CorpusRun,
+        RaptorRun? PerDocumentRun,
+        OnnxEmbeddingGenerator Generator,
+        EmbeddingCache Embeddings,
+        CachedGraphRagClient Answering,
+        EngineArmClients EngineClients,
+        EngineRetrievers Retrievers,
+        AnswerEngineArms.FailureLog Failures,
+        GraphStoreContexts GraphContexts,
+        IReadOnlyDictionary<string, MultiHopRagAnswer> Gold,
+        Dictionary<string, ArmTally> Tallies);
 
     /// <summary>The three rules an answer is scored under.</summary>
     private enum Rule
