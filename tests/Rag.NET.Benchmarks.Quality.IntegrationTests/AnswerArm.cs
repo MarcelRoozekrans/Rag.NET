@@ -114,6 +114,53 @@ internal static class AnswerArm
     /// </remarks>
     public const string RaptorBoost = "raptorboost";
 
+    /// <summary>
+    /// Dense retrieval, answered by the shipped <c>ChatAnswerEngine</c> in one call — <b>the
+    /// control for every other engine arm</b>.
+    /// <para>
+    /// Each engine builds its own prompts, so differencing an engine against <see cref="Dense"/>
+    /// would bundle the mechanism with a prompt change and no result could say which caused what.
+    /// This arm is single-shot through the same routing, so <c>chatengine − dense</c> is the prompt
+    /// effect alone and <c>&lt;engine&gt; − chatengine</c> is the mechanism alone.
+    /// </para>
+    /// </summary>
+    public const string ChatEngine = "chatengine";
+
+    /// <summary>
+    /// Dense retrieval, answered by <c>MapReduceAnswerEngine</c>: one call per context chunk, then
+    /// one reduce over their outputs. Seven calls at top-6, but roughly a single-shot answer's token
+    /// count, because each map call carries one chunk rather than all six.
+    /// </summary>
+    public const string MapReduce = "mapreduce";
+
+    /// <summary>
+    /// Dense retrieval, answered by <c>RefineAnswerEngine</c>: an initial answer from the first
+    /// chunk, then one sequential rewrite per remaining chunk. Six calls at top-6.
+    /// </summary>
+    public const string Refine = "refine";
+
+    /// <summary>
+    /// Dense retrieval, answered by <c>FlareAnswerEngine</c> <b>as shipped</b> — sentence by
+    /// sentence, re-retrieving mid-generation whenever a sentence scores below
+    /// <c>ConfidenceThreshold</c>.
+    /// <para>
+    /// <b>This arm does not hold retrieval fixed</b>, which is why <see cref="FlareFixed"/> exists
+    /// beside it: <c>flare − flarefixed</c> is what the lookahead buys, and it is the only
+    /// difference here that is not purely a generation difference.
+    /// </para>
+    /// </summary>
+    public const string Flare = "flare";
+
+    /// <summary>
+    /// Dense retrieval, answered by <c>FlareAnswerEngine</c> with <c>MaxRetrievals = 0</c> — the
+    /// sentence-by-sentence mechanism with lookahead off, so retrieval is held fixed and the arm is
+    /// comparable to <see cref="MapReduce"/> and <see cref="Refine"/>.
+    /// </summary>
+    public const string FlareFixed = "flarefixed";
+
     public static readonly IReadOnlyList<string> All =
-        [Dense, Control, Local, Global, Filtered, LocalSpec, RaptorCorpus, Raptor, RaptorFiltered, RaptorBoost];
+        [
+            Dense, Control, Local, Global, Filtered, LocalSpec, RaptorCorpus, Raptor, RaptorFiltered, RaptorBoost,
+            ChatEngine, MapReduce, Refine, Flare, FlareFixed
+        ];
 }

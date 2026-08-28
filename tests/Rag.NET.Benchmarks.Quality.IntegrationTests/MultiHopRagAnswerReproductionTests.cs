@@ -57,6 +57,6 @@ public sealed class MultiHopRagAnswerReproductionTests
     [Fact]
     public void TheArmsAndTheTableAgreeOnHowManyThereAre()
     {
-        Assert.Equal(10, AnswerArm.All.Count);
+        Assert.Equal(15, AnswerArm.All.Count);
     }
 }
