@@ -711,9 +711,12 @@ public sealed class BeirGraphRagAnswerTests
 
     /// <summary>
     /// C1's fix: the default selection (<see cref="ArmsVariable"/> unset) must skip every arm
-    /// <see cref="MultiHopRagAnswerReproduction"/> has not actually measured yet — today, the four
-    /// RAPTOR arms, each pinned with an empty figure array — while every measured arm stays in, and
-    /// the run says out loud what it skipped and why.
+    /// <see cref="MultiHopRagAnswerReproduction"/> has not actually measured yet — the four RAPTOR
+    /// arms were the original case, pinned with an empty figure array until Task 5 measured them;
+    /// the five answer-engine arms added afterward are the same situation again, wired up and
+    /// pinned empty, deliberately left out of the default because they cost real API calls and
+    /// have no figure yet — while every measured arm stays in, and the run says out loud what it
+    /// skipped and why.
     /// </summary>
     [Fact]
     public void SelectArms_DefaultSelection_ContainsOnlyArmsWithARecordedFigure()
@@ -733,12 +736,18 @@ public sealed class BeirGraphRagAnswerTests
                     $"the default selection included '{arm}', which has no recorded figure.");
             }
 
-            // Every arm is measured as of Task 5 (2026-08-25), so the filter has nothing to remove
-            // and the default selection is all of them. This assertion is what makes the state
-            // explicit rather than incidental: adding an arm without pinning a figure — or with an
-            // empty one — drops it out of the default silently, and this fails when that happens.
-            Assert.Equal(AnswerArm.All.OrderBy(a => a, StringComparer.Ordinal),
+            // The four RAPTOR arms were measured as of Task 5 (2026-08-25); the five engine arms
+            // (chatengine, mapreduce, refine, flare, flarefixed) were added after that with empty
+            // figure arrays and are not measured yet, so the default selection is AnswerArm.All
+            // minus those five — not all of AnswerArm.All the way it was before they existed. This
+            // assertion is what makes the state explicit rather than incidental: adding an arm
+            // without pinning a figure — or with an empty one — drops it out of the default
+            // silently, and this fails when that happens.
+            Assert.Equal(
+                AnswerArm.All.Except(UnmeasuredEngineArms, StringComparer.Ordinal).OrderBy(a => a, StringComparer.Ordinal),
                 arms.OrderBy(a => a, StringComparer.Ordinal));
+
+            AssertEngineArmsStayUnmeasuredAndExcluded(arms);
 
             // The four RAPTOR arms were the unmeasured ones this test was written around; they are
             // pinned now, and are asserted here so their removal from the default would be caught.
@@ -756,6 +765,32 @@ public sealed class BeirGraphRagAnswerTests
         finally
         {
             Environment.SetEnvironmentVariable(ArmsVariable, previous);
+        }
+    }
+
+    /// <summary>
+    /// The five answer-engine arms Task 1 named and pinned with an empty figure array — wired up,
+    /// unmeasured, and deliberately excluded from the default arm selection because they cost real
+    /// API calls and have no recorded figure to check a re-measurement against.
+    /// </summary>
+    private static readonly string[] UnmeasuredEngineArms =
+        [AnswerArm.ChatEngine, AnswerArm.MapReduce, AnswerArm.Refine, AnswerArm.Flare, AnswerArm.FlareFixed];
+
+    /// <summary>
+    /// Asserts the five answer-engine arms stay unmeasured and excluded from <paramref name="arms"/>
+    /// together: if one gets a real figure pinned without <see cref="UnmeasuredEngineArms"/> being
+    /// updated to match, this fails and points back here instead of the default selection's shape
+    /// changing silently.
+    /// </summary>
+    private static void AssertEngineArmsStayUnmeasuredAndExcluded(IReadOnlyList<string> arms)
+    {
+        foreach (var engineArm in UnmeasuredEngineArms)
+        {
+            Assert.False(
+                MultiHopRagAnswerReproduction.HasRecordedFigure("multihop-rag", engineArm),
+                $"{engineArm} now has a recorded figure; update UnmeasuredEngineArms and this " +
+                "test's expectations rather than leaving it excluded from the default by accident.");
+            Assert.DoesNotContain(engineArm, arms, StringComparer.Ordinal);
         }
     }
 
