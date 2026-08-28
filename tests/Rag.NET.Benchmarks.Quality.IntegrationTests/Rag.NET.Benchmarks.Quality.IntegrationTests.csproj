@@ -60,6 +60,11 @@
     <ProjectReference Include="..\..\src\Rag.NET.Raptor\Rag.NET.Raptor.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Raptor.Store\Rag.NET.Raptor.Store.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <!-- MapReduceAnswerEngine, RefineAnswerEngine, FlareAnswerEngine and
+         SelfAssessmentConfidenceScorer live here (namespace Rag.NET.AnswerGeneration, same as
+         ChatAnswerEngine in Rag.NET.csproj above) — needed by the AnswerEngineArms factory. No
+         other referenced project brings this one in transitively. -->
+    <ProjectReference Include="..\..\src\Rag.NET.AnswerEngines\Rag.NET.AnswerEngines.csproj" />
     <!-- The Phase 3.14 Semantic Kernel entrant's pins, exactly as
          docs/reference/library-comparison-defaults.md records them (read 2026-08-02, before the
          entrant was written): Microsoft.SemanticKernel 1.78.0 is the latest stable and the version
