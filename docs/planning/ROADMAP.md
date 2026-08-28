@@ -4264,7 +4264,7 @@ test for parity. What it does not promise: that any of them are good. Measured i
 
 **Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; ~~#247 is fixed
 and re-measured~~ (met 2026-08-18); ~~the pipeline-parity test is in the fast tier~~ (met
-2026-08-27 — the fast leg only; the real leg has never run on this machine, see below); the
+2026-08-27 — **both legs now run and pass as of 2026-08-28**, see below); the
 guards' allowlist is empty.
 
 **Open threads, 2026-08-20** — what is actually left, now that #247 and the local-search work have
@@ -4274,7 +4274,7 @@ three answer engines as arms~~ (**built 2026-08-28** on `feat/answer-engine-arms
 five arms, `flare` included; no pilot run; see below); every vector store through the SciFact parity
 leg; ~~the
 pipeline-parity test~~ (**fast leg complete 2026-08-27**, in the fast tier and green on every push;
-real leg written but never run; see below); ~~**#176** at its re-measured 78.8%~~ (**answered
+both legs measured 2026-08-28; see below); ~~**#176** at its re-measured 78.8%~~ (**answered
 2026-08-26 in #405** — not
 a defect worth fixing; see below); **local search's yes/no abstention** — it
 commits on 8.8% of comparison and 4.3% of temporal questions where global search scores 0.4953 and
@@ -4358,10 +4358,23 @@ equally spaced angles, so adjacent documents carry cosine similarity ≈0.975 �
 `RedundancyFilterBehavior`'s default 0.95 threshold — and enabling the filter genuinely changes both
 the count and the order the pipeline returns against the harness's untouched ranking.
 
-**The real leg has never run.** It skipped on the machine that built it — no ONNX model, no BEIR
-dataset cache provisioned — and is verified by reading only. This project has recorded exactly this
-caveat honestly before (RAPTOR's E2E GraphRag tests, 6.2.1 above) and it applies again here: nothing
-should be read as a pass that did not happen.
+~~**The real leg has never run.**~~ **IT RAN, 2026-08-28, AND IT PASSED** — 20 SciFact queries, the
+real ONNX embedder, `AblationRow.Dense` against a real `AddRagNet` pipeline over one shared store,
+chunk ids and exact scores identical at every rank. Both parity legs green, **zero skipped**, 90.5 s.
+
+**The claim it had never run was true but the reason given for it was wrong, and the correction
+matters more than the result.** The entry above said the machine had "no ONNX model, no BEIR dataset
+cache provisioned". The cache was there the whole time, at `~/.cache/ragnet-beir`, with
+`model.onnx`, `vocab.txt`, the SciFact corpus and 256 embedding shards. **The tests skip because no
+environment variable points at it**, and the cache ships an `env.sh` that sets them. Three sessions
+read "SKIPPED" as "this machine cannot measure" and wrote that conclusion into the planning record;
+the harness was reporting the absence of a *variable*, and the sessions heard the absence of a
+*corpus*. **Read a skip's reason, not its colour.**
+
+**So the central claim of this thread is now measured rather than argued:** the sixteen retrieval
+behaviours that run before `VectorStoreBehavior` really are no-ops at shipped defaults, on a real
+corpus with a real embedder. Every pinned figure in this project is produced by the harness; this is
+the first evidence that a user's `AddRagNet` pipeline reproduces it.
 
 **A review caught the real leg passing vacuously, before merge.** With zero hits on both sides,
 `AssertSame` would agree on all 20 queries and pass regardless of whether retrieval worked at all —
@@ -4427,8 +4440,8 @@ phase is the sweep itself, which was never about those four.
   `PageRankWeight = 0` they were a no-op. → **delete once 6.x.7 publishes the replacement
   figure**, in the same phase.
 
-**The answer-engine arms are built, 2026-08-28, on `feat/answer-engine-arms` — not yet merged, and
-no pilot has run.** Five new arms share the existing `AnswerArm.Dense` retrieval case verbatim, so
+**The answer-engine arms are built and merged 2026-08-28 in #416, and a 10-query pilot has now RUN
+— all three gates passed on the first attempt.** Five new arms share the existing `AnswerArm.Dense` retrieval case verbatim, so
 retrieval is held fixed by construction, and vary only generation: `chatengine`, `mapreduce`,
 `refine`, `flarefixed`, `flare`. `chatengine` is the control — single-shot through
 `ChatAnswerEngine` over the same routing as the others — so `chatengine − dense` is the prompt
@@ -4460,12 +4473,45 @@ run, nothing adjusted. FLARE's upper bound is **33** per query (`MaxSentences = 
 generation and scoring, plus up to `MaxRetrievals = 3` regenerations), corrected during review from
 an initial 30 that missed the regeneration calls.
 
-**Cost is derived, not measured, from chunk size and prompt structure — ~$4 realistically, ~$21
-worst case for the 2,556-query sweep; the 50-query pilot is 6–40 cents.** The whole range is FLARE's
-sentence count: at one to three sentences — plausible, given MultiHop-RAG's few-word gold answers —
-FLARE lands near the bottom; at the full fifteen it is 80% of the bill on its own. The pilot's own
-call and token counters, printed by `DescribeEngineArmCosts` once a run exists, supersede this table
-the moment they do.
+~~**Cost is derived, not measured**~~ — **the 10-query pilot measured it, 2026-08-28, and FLARE's
+sentence count is the thing that collapsed.** 323 new answer-cache entries: 126 are the known
+non-FLARE arms (`chatengine` 9, `refine` 54, `mapreduce` 63 — the fake client's call shapes
+reproducing exactly against a real model), leaving **197 for the two FLARE arms over 9 queries, about
+11 per query per arm against a ceiling of 33**. FLARE stops at roughly a third of `MaxSentences`,
+which is what MultiHop-RAG's few-word gold answers predicted.
+
+**So the full 2,556-query sweep is ~36 calls per query across all six arms — roughly 92,000 calls,
+on the order of $5–10**, against a derived range of ~$4 to ~$21. The middle, not the ceiling.
+
+**Two caveats on that number.** Cache entries are a **lower bound** on calls — identical prompts
+collapse to one entry — so 11 is "about a third of the ceiling" rather than a precise count; the
+per-arm counters printed by `DescribeEngineArmCosts` remain the authority and were not captured here
+because xunit does not print a passing test's output. And nine queries is a thin basis for a
+per-query rate: longer questions may generate more sentences.
+
+**The pilot cost pennies.**
+
+**THE PILOT'S REAL FINDING IS THE CONFOUND THE DESIGN PREDICTED, AND IT IS VISIBLE IN THE ANSWERS.**
+The design warned that the scoring rule "may punish format rather than reasoning, and that would look
+exactly like a finding", and required the pilot to read answers rather than scores. On the inference
+query whose gold answer is `Donald Trump`, the `dense` arm answers **"Trump"** and scores correct;
+**every engine arm** answers *"The individual implicated in both inflating the value of a Manhattan
+apartment…"* and scores wrong. The engines never receive the terse instruction the inline
+`PromptTemplate` carries, so they answer discursively and the any-shared-word rule marks them down.
+**Any eventual figure that does not account for this measures prompt style, not engine mechanism** —
+and `chatengine − dense` is the term that bounds it.
+
+**No accuracy headline is published from this pilot, deliberately.** Nine judged queries: `dense`
+3/9, `chatengine` 3/9, `mapreduce` 5/9, `refine` 5/9, `flarefixed` 5/9, `flare` 4/9 — **underpowered,
+not a result**, recorded only so the next reader knows what was seen. RAPTOR's 50-query pilot put its
+headline at +0.0000 where the full sweep found −0.0146 at p=0.0247. The one line worth keeping is
+that the control landed exactly on the incumbent, which is what a sound routing should do.
+
+**Gate 3 earned its place on the first real run.** `flare`'s lookahead was observed firing, so the
+fail-open scorer did **not** silently degrade it into `flarefixed`. That guarantee was wrong in four
+successive versions — a throwing stub FLARE swallows, a flag made unreadable by the stub not being
+installed in the run that matters, a fresh stub allocated per call and dropped, and finally a shared
+holder asserted after the run — and it is the one that has now proven itself against real data.
 
 **A caveat on what the eventual figures will mean, carried forward rather than fixed:**
 `CachedGraphRagClient.GetResponseAsync` ignores its `options` argument, so FLARE's

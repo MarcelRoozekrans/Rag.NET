@@ -445,10 +445,56 @@ much larger than answer generation's.
 
 ## Working State
 
-**Branch:** `feat/answer-engine-arms`, cut from `origin/main` (`891e49c4`) on 2026-08-28 —
-deliberately not stacked on #414, which merged mid-implementation as `641e27f0` and was rebased onto
-instead. Five tasks built the five arms; this task: `docs/planning/ROADMAP.md` and this file only,
-recording the thread — no code.
+> **This section no longer records a branch name, and that is the fix for the defect described
+> below.** A branch name is a *mutable pointer*: it is correct only while its branch is unmerged,
+> and it goes wrong at the exact moment the branch merges — which is the one moment nobody is
+> editing this file. It went stale **seven times out of seven**, every single time, and three
+> separate sessions "fixed" it by writing a fresh name that was itself stale within the day.
+>
+> **Derive the branch instead — `git branch --show-current`.** It is one command, it is always
+> right, and it cannot rot.
+>
+> What this section records now is **immutable**: what last landed on `main`, as a commit SHA, with
+> a symbol to verify it by content. Commits do not move. If you need to know whether that work is
+> really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
+> here before.
+
+**Last landed on `main`:** **#416** as `d2d96b0d` (2026-08-28) — the five answer-engine arms and
+their pilot gates. Verify by content: `AnswerEngineArms.cs` and `AnswerEngineArmsTests.cs` exist
+under `tests/Rag.NET.Benchmarks.Quality.IntegrationTests/`, and `chatengine` appears in
+`AnswerArm.cs`.
+
+Before it, **#414** as `641e27f0` — pipeline parity (`PipelineParity.cs`); and **#412** as
+`ab87d156` — RAPTOR Task 6 (`## Measured` in `docs/guide/raptor.md`,
+`<VerifiedBy>benchmark</VerifiedBy>` in `Rag.NET.Raptor.csproj`).
+
+**Nothing here needs updating when a branch merges** — only when new work lands, which is the moment
+someone is already editing this file.
+
+## Measured 2026-08-28 — the machine was provisioned all along
+
+**Both things this session called unmeasurable were measurable.** `~/.cache/ragnet-beir` holds the
+corpus, `model.onnx`, `vocab.txt` and 256 embedding shards, and ships an `env.sh` that points the
+harness at them. The tests skip because **no environment variable is set**, not because anything is
+missing — and three sessions read that skip as "this machine cannot measure" and wrote it into the
+record. Source `env.sh` before writing *unprovisioned* anywhere.
+
+- **Pipeline parity, both legs: PASS**, zero skipped, 90.5 s. The SciFact leg ran for the first time —
+  20 queries, real ONNX embedder, `AblationRow.Dense` against a real `AddRagNet` pipeline over one
+  shared store, chunk ids and exact scores identical at every rank. **The sixteen default retrieval
+  behaviours are no-ops on real data**, which until now was asserted only by reading.
+- **Answer-engine pilot, 10 queries, 6 arms: PASS**, 15 tests, 0 failed, 0 skipped, 41 m (most of it
+  cache-replayed graph construction). All three gates held first time, including the lookahead gate
+  whose guarantee had been wrong in four successive versions.
+- **FLARE measured at ~11 calls per query against a ceiling of 33**, so the full sweep is on the
+  order of $5–10 rather than the derived $4–$21. Full reading in `ROADMAP.md`'s 6.2.1 entry.
+- **The predicted format-versus-reasoning confound is real and visible in the answers**: `dense`
+  answers "Trump" and scores correct where every engine answers discursively and scores wrong. No
+  accuracy headline is published from nine queries.
+
+**The seven occurrences are recorded below and are left as written.** They are the evidence that
+the field was structurally broken rather than repeatedly forgotten, and the reason it was replaced
+above rather than re-filled an eighth time.
 
 **It was stale again when this session opened, for the sixth time.** The field named
 `chore/reconcile-408-and-raptor-task-6` while the checkout was already on
