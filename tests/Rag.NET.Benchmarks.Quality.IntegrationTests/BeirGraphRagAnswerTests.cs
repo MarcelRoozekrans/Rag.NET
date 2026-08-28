@@ -4,9 +4,12 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using OpenAI;
+using Rag.NET.Abstractions;
 using Rag.NET.Benchmarks.Quality;
 using Rag.NET.Benchmarks.Quality.GraphExtractions;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Embeddings.Onnx;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -902,6 +905,53 @@ public sealed class BeirGraphRagAnswerTests
         return store;
     }
 
+    /// <summary>
+    /// The <c>AddRagNet</c> container <see cref="AnswerArm.Flare"/>'s lookahead retriever is
+    /// resolved from — or <see langword="null"/> when <c>flare</c> is not selected, the same economy
+    /// the <see cref="RaptorRun"/> builds get.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Built the way <see cref="PipelineParity.RetrieveThroughPipelineAsync"/> builds it, and that
+    /// is the whole point: <see cref="PipelineParityTests"/> holds a default <c>AddRagNet</c>
+    /// container over a shared store to this harness's own dense row and proves the two return
+    /// identical rankings. So <c>flare</c>'s mid-generation lookahead reads the <b>same corpus,
+    /// through the same rankings</b>, that <c>flare − flarefixed</c> is differenced over. A
+    /// hand-rolled adapter would retrieve from somewhere whose equivalence to the harness nothing
+    /// asserts, and the arm's one claim would rest on that.
+    /// </para>
+    /// <para>
+    /// <paramref name="articles"/> is handed over as an instance and shared by identity — the same
+    /// store the dense arm searches, not a rebuild of it. Microsoft DI does not dispose instances it
+    /// did not create, so the caller's <c>using</c> on the store stays the only disposal.
+    /// <see cref="CachingEmbeddingGenerator"/> is what puts the pipeline on the harness's cached
+    /// vectors rather than live ONNX output, for the reason
+    /// <see cref="PipelineParityTests.DefaultPipeline_ReturnsWhatTheHarnessDenseRowReturns_OnSciFact"/>
+    /// gives.
+    /// </para>
+    /// </remarks>
+    private static ServiceProvider? BuildEnginePipeline(
+        IReadOnlyList<string> arms,
+        InMemoryVectorStore articles,
+        OnnxEmbeddingGenerator generator,
+        EmbeddingCache embeddings)
+    {
+        // flarefixed deliberately gets null: AnswerEngineArms substitutes a recording stub that
+        // proves lookahead never fired. Handing it a working retriever would destroy that proof.
+        if (!arms.Contains(AnswerArm.Flare, StringComparer.Ordinal))
+        {
+            return null;
+        }
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IVectorStore>(articles);
+        services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
+            new CachingEmbeddingGenerator(generator, embeddings));
+        services.AddRagNet();
+
+        return services.BuildServiceProvider();
+    }
+
     // ── Answering ─────────────────────────────────────────────────────────
 
     /// <summary>
@@ -931,19 +981,12 @@ public sealed class BeirGraphRagAnswerTests
         await EmbedEveryQueryAsync(selection, generator, embeddings, ct);
 
         // Local search retrieval, sequentially, for every query that needs it.
-        var localContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
-        var controlContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
-        var filteredContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
-        var localSpecContexts = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (arms.Contains(AnswerArm.Local, StringComparer.Ordinal)
-            || arms.Contains(AnswerArm.Control, StringComparer.Ordinal)
-            || arms.Contains(AnswerArm.Filtered, StringComparer.Ordinal)
-            || arms.Contains(AnswerArm.LocalSpec, StringComparer.Ordinal))
-        {
-            await CollectGraphStoreContextsAsync(
-                run, selection, arms, localContexts, controlContexts, filteredContexts, localSpecContexts,
-                startedAt, ct);
-        }
+        var (localContexts, controlContexts, filteredContexts, localSpecContexts) =
+            await CollectGraphStoreContextsIfNeededAsync(run, selection, arms, startedAt, ct);
+
+        // One retriever for the whole run, built outside the query loop: see BuildEnginePipeline.
+        using var enginePipeline = BuildEnginePipeline(arms, articles, generator, embeddings);
+        var engineRetriever = enginePipeline?.GetRequiredService<IRetriever>();
 
         // Dense and global retrieval, and every answer, in parallel under the same bound.
         var done = 0;
@@ -955,35 +998,128 @@ public sealed class BeirGraphRagAnswerTests
                 var expected = gold[query.Id];
                 foreach (var arm in arms)
                 {
-                    var rendered = string.Equals(arm, AnswerArm.LocalSpec, StringComparison.Ordinal)
-                        ? localSpecContexts[query.Id]
-                        : RenderContext(arm switch
-                        {
-                            AnswerArm.Local => localContexts[query.Id],
-                            AnswerArm.Control => controlContexts[query.Id],
-                            AnswerArm.Filtered => filteredContexts[query.Id],
-                            _ => await RetrieveContextAsync(
-                                arm, query.Text, run, articles, corpusRun, perDocumentRun,
-                                generator, embeddings, answering, _output, token),
-                        });
+                    string answerText;
+                    if (AnswerEngineArms.IsEngineArm(arm))
+                    {
+                        answerText = await AnswerThroughEngineAsync(
+                            arm, query.Text, engineRetriever, run, articles, corpusRun,
+                            perDocumentRun, generator, embeddings, answering, _output, token);
+                    }
+                    else
+                    {
+                        var rendered = string.Equals(arm, AnswerArm.LocalSpec, StringComparison.Ordinal)
+                            ? localSpecContexts[query.Id]
+                            : RenderContext(arm switch
+                            {
+                                AnswerArm.Local => localContexts[query.Id],
+                                AnswerArm.Control => controlContexts[query.Id],
+                                AnswerArm.Filtered => filteredContexts[query.Id],
+                                _ => await RetrieveContextAsync(
+                                    arm, query.Text, run, articles, corpusRun, perDocumentRun,
+                                    generator, embeddings, answering, _output, token),
+                            });
 
-                    var prompt = PromptTemplate
-                        .Replace("{question}", query.Text, StringComparison.Ordinal)
-                        .Replace("{context}", rendered, StringComparison.Ordinal);
+                        var prompt = PromptTemplate
+                            .Replace("{question}", query.Text, StringComparison.Ordinal)
+                            .Replace("{context}", rendered, StringComparison.Ordinal);
 
-                    var response = await answering.GetResponseAsync([new ChatMessage(ChatRole.User, prompt)], cancellationToken: token);
-                    tallies[arm].Record(arm, query.Id, expected, response.Text ?? string.Empty);
+                        var response = await answering.GetResponseAsync([new ChatMessage(ChatRole.User, prompt)], cancellationToken: token);
+                        answerText = response.Text ?? string.Empty;
+                    }
+
+                    tallies[arm].Record(arm, query.Id, expected, answerText);
                 }
 
-                var completed = Interlocked.Increment(ref done);
-                if (completed % ProgressEvery == 0)
-                {
-                    _output.WriteLine(FormattableString.Invariant(
-                        $"  answered {completed} of {selection.Queries.Count} queries x {arms.Count} arms, {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s so far, {answering.Cache.Hits} cached / {answering.Cache.Misses} generated"));
-                }
+                ReportProgress(Interlocked.Increment(ref done), selection, arms, startedAt, answering);
             });
 
         return tallies;
+    }
+
+    /// <summary>Every <see cref="ProgressEvery"/>th completed query, verbatim as it always was.</summary>
+    private void ReportProgress(
+        int completed,
+        QuerySelection selection,
+        IReadOnlyList<string> arms,
+        long startedAt,
+        CachedGraphRagClient answering)
+    {
+        if (completed % ProgressEvery != 0)
+        {
+            return;
+        }
+
+        _output.WriteLine(FormattableString.Invariant(
+            $"  answered {completed} of {selection.Queries.Count} queries x {arms.Count} arms, {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s so far, {answering.Cache.Hits} cached / {answering.Cache.Misses} generated"));
+    }
+
+    /// <summary>
+    /// An engine arm's answer: the shared dense retrieval, then the arm's own engine over the
+    /// <see cref="SearchResult"/>s directly.
+    /// </summary>
+    /// <remarks>
+    /// <b><see cref="PromptTemplate"/> is not on this path at all.</b> The engine builds its own
+    /// prompts, so nothing here can reach — or perturb — the cache keys the pinned <c>dense</c>,
+    /// <c>global</c> and RAPTOR figures were generated under. That separation is the reason the two
+    /// branches in <see cref="AnswerAllAsync"/> are kept apart rather than folded together.
+    /// </remarks>
+    private static async Task<string> AnswerThroughEngineAsync(
+        string arm,
+        string query,
+        IRetriever? engineRetriever,
+        GraphRagRun run,
+        InMemoryVectorStore articles,
+        RaptorRun? corpusRun,
+        RaptorRun? perDocumentRun,
+        OnnxEmbeddingGenerator generator,
+        EmbeddingCache embeddings,
+        CachedGraphRagClient answering,
+        ITestOutputHelper output,
+        CancellationToken ct)
+    {
+        // No engine arm is localspec and every one of them retrieves the dense way, so this lands
+        // on RetrieveContextAsync's shared Dense case.
+        var sources = await RetrieveContextAsync(
+            arm, query, run, articles, corpusRun, perDocumentRun,
+            generator, embeddings, answering, output, ct);
+
+        var engine = AnswerEngineArms.Create(arm, answering, engineRetriever);
+        var response = await engine.AskAsync(query, sources, cancellationToken: ct);
+        return response.Answer;
+    }
+
+    /// <summary>
+    /// The three <see cref="SearchResult"/> context maps and the one rendered-string map the graph
+    /// arms read from — collected in one sequential pass when any of those arms is selected, and
+    /// left empty when none is, exactly as the inline gate this replaces did.
+    /// </summary>
+    private async Task<(
+        Dictionary<string, IReadOnlyList<SearchResult>> Local,
+        Dictionary<string, IReadOnlyList<SearchResult>> Control,
+        Dictionary<string, IReadOnlyList<SearchResult>> Filtered,
+        Dictionary<string, string> LocalSpec)> CollectGraphStoreContextsIfNeededAsync(
+        GraphRagRun run,
+        QuerySelection selection,
+        IReadOnlyList<string> arms,
+        long startedAt,
+        CancellationToken ct)
+    {
+        var localContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
+        var controlContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
+        var filteredContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
+        var localSpecContexts = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (arms.Contains(AnswerArm.Local, StringComparer.Ordinal)
+            || arms.Contains(AnswerArm.Control, StringComparer.Ordinal)
+            || arms.Contains(AnswerArm.Filtered, StringComparer.Ordinal)
+            || arms.Contains(AnswerArm.LocalSpec, StringComparer.Ordinal))
+        {
+            await CollectGraphStoreContextsAsync(
+                run, selection, arms, localContexts, controlContexts, filteredContexts, localSpecContexts,
+                startedAt, ct);
+        }
+
+        return (localContexts, controlContexts, filteredContexts, localSpecContexts);
     }
 
     /// <summary>Every selected query.s vector, once, sequentially, so the parallel phase reads them from the cache.</summary>
@@ -1005,9 +1141,17 @@ public sealed class BeirGraphRagAnswerTests
     }
 
     /// <summary>
-    /// The six chunks the dense, global and RAPTOR arms hand the model, in the arm's own order.
+    /// The six chunks the dense, global, RAPTOR and engine arms hand the model, in the arm's own
+    /// order.
     /// </summary>
     /// <remarks>
+    /// The five engine arms share <see cref="AnswerArm.Dense"/>'s case body rather than restating
+    /// it. That sharing is what makes "the engine arms hold retrieval fixed at dense" true by
+    /// construction: there is one retrieval, not two paths that have to agree. <c>flare</c> is the
+    /// one exception, and it is an exception <i>after</i> this call — its lookahead retrieves again
+    /// mid-generation through its own retriever, which is exactly what <c>flare − flarefixed</c>
+    /// prices.
+    /// <para/>
     /// <c>raptorcorpus</c>, <c>raptor</c> and <c>raptorboost</c> each read straight from a
     /// <see cref="RaptorRun"/> built once for every query that needs it — never per query. See the
     /// <c>needsCorpus</c> / <c>needsPerDocument</c> gate and the single <see cref="RaptorRun.BuildAsync"/>
@@ -1033,6 +1177,11 @@ public sealed class BeirGraphRagAnswerTests
         switch (arm)
         {
             case AnswerArm.Dense:
+            case AnswerArm.ChatEngine:
+            case AnswerArm.MapReduce:
+            case AnswerArm.Refine:
+            case AnswerArm.Flare:
+            case AnswerArm.FlareFixed:
                 var vectors = await BeirHarness.EmbedAsync(generator, embeddings, [query], ct);
                 return await articles.SearchAsync(vectors[0], new SearchOptions { TopK = ContextChunks }, ct);
             case AnswerArm.Global:
