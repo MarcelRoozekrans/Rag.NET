@@ -64,8 +64,44 @@ Read off the implementations rather than estimated. At top-6 context over the sw
 | `flarefixed` | up to 15 generation **+ up to 15 scoring** = 30 | up to ~76,600 |
 | `flare` | up to 30, plus lookahead retrievals | up to ~76,600+ |
 
-**Worst case ≈ 189,000 calls — roughly 34× the RAPTOR full sweep's ~5,600 answers**, with larger
-prompts, since each carries top-6 context.
+**Worst case ≈ 189,000 calls — roughly 34× the RAPTOR full sweep's ~5,600 answers.**
+
+**Calls are not the cost, though, and reading them as cost is misleading.** Two facts flatten the
+money:
+
+- **`ChunkingOptions.MaxChunkSize` is 512 *characters*, not tokens** (its doc comment says so), so a
+  chunk is ~128 tokens and top-6 context is **~770 tokens** — not the multi-thousand-token context a
+  call count invites you to assume.
+- **MapReduce and Refine send one chunk per call, not six.** Their token totals land close to a
+  single-shot answer despite 6–7× the calls.
+
+At `gpt-4o-mini` rates ($0.15/M input, $0.60/M output):
+
+| Arm | Input tokens/query | Output | Cost/query | Over 2,556 |
+| --- | --- | --- | --- | --- |
+| `chatengine` | ~850 | ~30 | $0.00015 | ~$0.40 |
+| `refine` | ~1,750 | ~240 | $0.00041 | ~$1.05 |
+| `mapreduce` | ~1,950 | ~390 | $0.00053 | ~$1.35 |
+| `flarefixed` | ~1,350 → 20,250 | ~40 → 600 | $0.0002 → $0.0034 | ~$0.60 → $8.70 |
+| `flare` | as above, plus growing context | | | ~$0.60 → $9+ |
+
+**Realistically ~$4; worst case ~$21. The 50-query pilot is 6–40 cents.**
+
+**The whole range is FLARE's sentence count.** `MaxSentences = 15` is a ceiling, not a prediction,
+and each sentence costs a generation call carrying the full context plus a scorer call.
+MultiHop-RAG's gold answers are a few words, so FLARE plausibly stops after one to three sentences
+and lands at the low end — but if it runs to fifteen, FLARE alone is 80% of the bill. That single
+unknown swings the total roughly tenfold.
+
+**These figures are derived, not measured**, from chunk size and prompt structure. The project's one
+real anchor — ~$9 for 24.3M tokens of extraction and community reports — implies a blended $0.37/M,
+but that workload is output-heavy while these arms are input-heavy with tiny answers, so the blended
+rate here should be lower. OpenRouter's exact `gpt-4o-mini` rate card was not checked against the
+standard $0.15/$0.60 used above.
+
+**So money was never the reason for the gate.** At these numbers the sweep is affordable on any
+reading. The gate exists for correctness reasons — that lookahead can silently not fire, and that a
+mis-wired arm produces numbers meaning nothing.
 
 **The doubling is `SelfAssessmentConfidenceScorer`**, FLARE's default `IConfidenceScorer`, which
 makes its own LLM call per sentence. A first pass at this estimate omitted it entirely and put the
@@ -115,7 +151,10 @@ gates and explicitly refuses to publish accuracy.
 
 The pilot emits calls-per-query and tokens-per-query per arm; the sweep's cost is those numbers times
 2,556. **Never a rate observed elsewhere** — that is the specific mistake behind RAPTOR's "~8 hours",
-taken from tree summarisation, whose prompts are far larger than answer generation's.
+taken from tree summarisation, whose prompts are far larger than answer generation's. It also
+supersedes the dollar table above, which is derived rather than measured and exists only to show the
+order of magnitude. In particular the pilot settles **FLARE's sentence count**, the one unknown that
+moves the total tenfold.
 
 ### And the pilot publishes no accuracy headline
 
