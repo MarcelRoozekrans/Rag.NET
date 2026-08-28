@@ -134,6 +134,49 @@ git commit -m "test(arms): add the five answer-engine arm names"
 
 ### Task 2: The engine factory and the throwing stub retriever
 
+> **AS BUILT — this task's design was wrong, three times over. The code below is kept as the record
+> of what was planned; what shipped differs, and the differences are the point.**
+>
+> The plan is not rewritten in place, because the sequence of failures is more instructive than any
+> one of the corrections. The steps below still show the first version.
+>
+> 1. **A stub that throws is not a guarantee.** `FlareAnswerEngine.TryLookaheadRetrievalAsync` wraps
+>    the retriever call in a catch-all that logs and returns as if the lookahead found nothing. The
+>    `InvalidOperationException` below vanishes into it; the engine answers, the call count is
+>    unchanged, and a test asserting "it threw" or "no extra calls happened" passes while lookahead
+>    has actually fired. **Correction:** `UnreachableRetriever.WasCalled`, set *before* the throw and
+>    therefore immune to the swallow. The throw stays, because it is still right anywhere it is not
+>    caught, but it proves nothing on its own.
+> 2. **A flag nobody can read is not a guarantee either.** The harness then handed `flarefixed` the
+>    same real retriever it built for `flare`, so `Create`'s `retriever ?? new UnreachableRetriever()`
+>    never substituted the stub. The flag was not merely unread but absent — in exactly the run that
+>    matters, the one with both arms selected, which is the only run `flare − flarefixed` can be
+>    computed from. **Correction:** an `EngineRetrievers` holder in `BeirGraphRagAnswerTests`, which
+>    owns *one* stub instance for the run, returns it for `flarefixed` and never returns the real
+>    retriever for that arm whatever else is selected, and exposes `AssertLookaheadStayedOff()` to
+>    read the flag after the last answer.
+> 3. **The `??` fallback itself was the hazard.** Even once dead in-repo, `retriever ?? new
+>    UnreachableRetriever()` would, if ever taken, build a stub nobody held a reference to —
+>    reinstating precisely the unobservability of (2). **Correction:** `Create` now calls
+>    `ArgumentNullException.ThrowIfNull(retriever)` for `flarefixed` as it already did for `flare`,
+>    and uses the passed instance. `FlareFixed_RequiresARetriever` pins that.
+>
+> Two further departures from the code below, from the same review:
+>
+> - **`NullLogger` is gone.** Every engine is built with `AnswerEngineArms.FailureLog`, a counting
+>   `ILogger`. `MapReduceAnswerEngine`, `RefineAnswerEngine` and `SelfAssessmentConfidenceScorer` all
+>   swallow failures into their logger and answer from less than they were given, so with a null
+>   logger a missing cache entry on a replay would silently degrade an arm's accuracy figure — and
+>   Gate 2 would still pass, because its counter increments before the request is forwarded. The
+>   harness now asserts **no exception was swallowed** and prints both counts in the cost block.
+>   Warnings that carry no exception — an unparsable confidence score, an error result from
+>   retrieval — are counted and printed but do not fail the run: they are the model's output rather
+>   than a fault, and an unparsable reply is itself cached, so failing on one would make every
+>   subsequent replay fail identically.
+> - **`Create`'s signature gained that counter**, and is
+>   `Create(string arm, IChatClient chatClient, IRetriever? retriever, FailureLog failures)`. It is
+>   required rather than defaulted: a caller that could omit it would be back to discarding the logs.
+
 **Files:**
 - Create: `tests/Rag.NET.Benchmarks.Quality.IntegrationTests/AnswerEngineArms.cs`
 

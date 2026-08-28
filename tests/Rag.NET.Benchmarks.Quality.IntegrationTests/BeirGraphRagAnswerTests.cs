@@ -1036,9 +1036,10 @@ public sealed class BeirGraphRagAnswerTests
 
         using var enginePipeline = BuildEnginePipeline(arms, articles, generator, embeddings);
         var retrievers = new EngineRetrievers(enginePipeline?.GetRequiredService<IRetriever>());
+        var failures = new AnswerEngineArms.FailureLog();
         var pass = new AnswerPass(
             arms, AnyEngineArm(arms), run, articles, corpusRun, perDocumentRun, generator, embeddings,
-            answering, engineClients, retrievers, graphContexts, gold, tallies);
+            answering, engineClients, retrievers, failures, graphContexts, gold, tallies);
 
         // Dense and global retrieval, and every answer, in parallel under the same bound.
         var done = 0;
@@ -1051,12 +1052,49 @@ public sealed class BeirGraphRagAnswerTests
                 ReportProgress(Interlocked.Increment(ref done), selection, arms, startedAt, answering);
             });
 
-        // Both retriever gates read after Parallel.ForEachAsync completes, so every write to the
-        // counters they read happens-before the read.
-        retrievers.AssertLookaheadStayedOff();
-        retrievers.AssertLookaheadFired(arms, selection.Count, _output);
-        _output.WriteLine(DescribeEngineArmCosts(arms, engineClients, retrievers, answering, tallies));
+        RunEngineGatesAndReportCosts(arms, selection.Count, engineClients, retrievers, failures, answering, tallies);
         return tallies;
+    }
+
+    /// <summary>
+    /// The three post-answering gates, and the cost block that is written whether they pass or not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every counter read here is read after <c>Parallel.ForEachAsync</c> has completed, so every
+    /// write to it happens-before the read.
+    /// </para>
+    /// <para>
+    /// <b>The cost block is written in a <c>finally</c>.</b> A failing gate is exactly the run whose
+    /// counters are worth reading — a paid pilot that spent real money and then tripped a gate used
+    /// to print no cost table at all, because the assert threw before the write and
+    /// <see cref="DescribeResults"/> is in the caller. The gate still fails the test; it no longer
+    /// takes the evidence with it.
+    /// </para>
+    /// </remarks>
+    private void RunEngineGatesAndReportCosts(
+        IReadOnlyList<string> arms,
+        int queries,
+        EngineArmClients engineClients,
+        EngineRetrievers retrievers,
+        AnswerEngineArms.FailureLog failures,
+        CachedGraphRagClient answering,
+        Dictionary<string, ArmTally> tallies)
+    {
+        try
+        {
+            retrievers.AssertLookaheadStayedOff();
+            retrievers.AssertLookaheadFired(arms, queries, _output);
+            failures.AssertNoExceptionWasSwallowed();
+        }
+        finally
+        {
+            var costs = DescribeEngineArmCosts(arms, engineClients, retrievers, failures, answering, tallies);
+            if (costs.Length > 0)
+            {
+                _output.WriteLine(costs);
+            }
+        }
     }
 
     /// <summary>Whether any selected arm generates through an <see cref="IAnswerEngine"/>.</summary>
@@ -1417,7 +1455,7 @@ public sealed class BeirGraphRagAnswerTests
         // what it reads is unambiguously this engine's own calls — see its remarks for why a
         // before/after delta on any shared counter would not be.
         using var counter = new EngineCallCountingChatClient(pass.EngineClients.For(arm));
-        var engine = AnswerEngineArms.Create(arm, counter, pass.Retrievers.For(arm));
+        var engine = AnswerEngineArms.Create(arm, counter, pass.Retrievers.For(arm), pass.Failures);
         var response = await engine.AskAsync(query.Text, sources, cancellationToken: ct);
 
         AssertCallShapeMatchesPrediction(arm, query.Id, sources.Count, counter.Calls);
@@ -2536,9 +2574,19 @@ public sealed class BeirGraphRagAnswerTests
         IReadOnlyList<string> arms,
         EngineArmClients engineClients,
         EngineRetrievers retrievers,
+        AnswerEngineArms.FailureLog failures,
         CachedGraphRagClient answering,
         Dictionary<string, ArmTally> tallies)
     {
+        // Nothing to price when no engine arm ran, and a header over an empty table is worse than
+        // no header: every ordinary ten-arm run used to print one and invite the reader to wonder
+        // which arm's costs had gone missing.
+        var engineArms = engineClients.Arms;
+        if (engineArms.Count == 0)
+        {
+            return string.Empty;
+        }
+
         var builder = new StringBuilder();
         builder.AppendLine().AppendLine(
             "=== ENGINE-ARM COST COUNTERS — what prices the full sweep ===");
@@ -2551,7 +2599,6 @@ public sealed class BeirGraphRagAnswerTests
         builder.AppendLine(FormattableString.Invariant(
             $"{"arm",-14}{"queries",9}{"calls",9}{"calls/query",14}{"in tokens",14}{"out tokens",14}{"tokens/query",15}"));
 
-        var engineArms = engineClients.Arms;
         long engineCalls = 0;
         long engineInput = 0;
         long engineOutput = 0;
@@ -2584,6 +2631,10 @@ public sealed class BeirGraphRagAnswerTests
             builder.AppendLine(FormattableString.Invariant(
                 $"flare lookahead retrievals across the run: {retrievers.FlareLookaheads}"));
         }
+
+        // Printed as well as asserted. The assert is what stops a degraded figure being published;
+        // this line is what tells a reader which engine degraded and on what.
+        builder.AppendLine(failures.Describe());
 
         return builder.ToString().TrimEnd();
     }
@@ -2671,6 +2722,10 @@ public sealed class BeirGraphRagAnswerTests
     /// </param>
     /// <param name="EngineClients">The per-arm cost meters; only engine arms have one.</param>
     /// <param name="Retrievers">The engine retrievers, and the two lookahead gates over them.</param>
+    /// <param name="Failures">
+    /// Where the engines' swallowed failures are counted — one instance for the run, so the whole
+    /// answering phase reduces to the single number the gate asserts on.
+    /// </param>
     /// <param name="Tallies">Where each arm's scored answers accumulate; internally locked.</param>
     private sealed record AnswerPass(
         IReadOnlyList<string> Arms,
@@ -2684,6 +2739,7 @@ public sealed class BeirGraphRagAnswerTests
         CachedGraphRagClient Answering,
         EngineArmClients EngineClients,
         EngineRetrievers Retrievers,
+        AnswerEngineArms.FailureLog Failures,
         GraphStoreContexts GraphContexts,
         IReadOnlyDictionary<string, MultiHopRagAnswer> Gold,
         Dictionary<string, ArmTally> Tallies);

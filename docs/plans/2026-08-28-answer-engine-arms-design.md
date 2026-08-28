@@ -167,7 +167,7 @@ produces goes into the notes as *"underpowered, not a result"*.
 | File | Change |
 | --- | --- |
 | `AnswerArm.cs` | five new arm constants, added to `All` |
-| `AnswerEngineArms.cs` *(new)* | builds each engine over the shared `CachedGraphRagClient`; owns the throwing stub retriever |
+| `AnswerEngineArms.cs` *(new)* | builds each engine over the shared `CachedGraphRagClient`; owns the recording stub retriever and the failure counter the engines log into |
 | `AnswerEngineArmsTests.cs` *(new)* | fast-tier call-shape assertions |
 | `BeirGraphRagAnswerTests.cs` | engine arms reuse the `Dense` retrieval case; a generation switch; the three gates |
 
@@ -175,9 +175,10 @@ produces goes into the notes as *"underpowered, not a result"*.
 
 **The cost model becomes a fast-tier test rather than a hope.** A counting fake `IChatClient` over six
 synthetic sources asserts each engine's call shape with no corpus, no model and no spend:
-`chatengine` exactly 1, `refine` 6, `mapreduce` 7, `flarefixed` ≤ 30 with **zero** retrievals. The
-number that decides whether a ~189,000-call sweep is affordable is therefore checked before anyone
-provisions anything.
+`chatengine` exactly 1, `refine` 6, `mapreduce` 7, `flarefixed` at least 1 with **zero** retrievals.
+The number that decides whether a ~189,000-call sweep is affordable is therefore checked before
+anyone provisions anything. (FLARE's own count is left unbounded on purpose — see the Definition of
+done for why `≤30` would pin the fake's canned answer rather than the arm's claim.)
 
 **`flarefixed`'s zero-retrieval claim is asserted by a recording stub.** Its `IRetriever` records
 that it was called, and the test asserts it was not.
@@ -223,10 +224,36 @@ concurrency-aware and the pilot's cost counters will not be corrupted by paralle
 prompts also differ from one another (different chunks), so concurrent cache *writes* land in
 different files rather than contending for one.
 
-**What remains to confirm during implementation** is the cache read/write path itself under
-concurrency — the counters being safe does not prove the file I/O is. The plan carries a step for
-it. If it turns out unsafe, the fix is to bound `MapReduceOptions`' concurrency to 1 for the arm,
-which changes wall-clock but not the call count and therefore not the figure.
+**The cache read/write path itself under concurrency** — the counters being safe does not prove the
+file I/O is — was left open here as something to confirm during implementation. It is closed now, by
+reading rather than by measurement, and the conclusion is recorded here rather than left as a
+promise nobody kept: no step in the implementation plan ever carried it.
+
+Read at `src/Rag.NET.Benchmarks.Quality/GraphExtractionCache.cs`, the path is **read, generate,
+write, with no per-key lock**: `GetOrAddAsync` calls `TryRead`, and on a miss generates and then
+writes, with nothing serialising two callers on one key. What that costs, and what it does not:
+
+- **The file I/O is safe on its own.** `WriteAsync` writes to `path + "." + Guid + ".partial"` and
+  then `PublishRename.ReplaceFileAsync`s it into place, so each writer has its own scratch file and
+  publication is a single atomic replace. Two writers on one key cannot tear a file or interleave
+  bytes; one replace simply wins, and both wrote the same generated text anyway.
+- **What the missing lock actually costs is a duplicate generation.** Two concurrent misses on the
+  same key both call the model — the arm pays twice for one cache entry. That is a billing and
+  wall-clock cost, not a correctness one.
+- **`TryRead` treats an `IOException` as a miss**, so a read landing mid-replace returns `null`. On
+  a fill run that is one extra generation; on a replay it would be a spurious `MissingEntry`. It
+  cannot arise here: a replay writes nothing, so there is no replace to collide with.
+
+None of that bites this arm, for one reason: **the six map prompts differ from one another**,
+because each embeds a different chunk. Six concurrent map calls are six distinct keys and six
+distinct files, so there is no same-key concurrency at all. The reduce call happens strictly after
+`Task.WhenAll` and does not overlap them either.
+
+That is a property of the workload, not of the cache. If a future change ever gives two concurrent
+map calls the same prompt — identical chunks in one context, or a map prompt that stops embedding
+the chunk — the duplicate-generation cost returns, and the fix is the one this section already
+named: bound `MapReduceOptions.MapConcurrency` to 1 for the arm, which changes wall-clock but not
+the call count and therefore not the figure.
 
 ## The risk nobody had named
 
@@ -252,9 +279,37 @@ misattribution, and it is caught by looking at the artifact rather than the aggr
 
 ## Definition of done
 
-- Five arms build and register; fast-tier tests pin each one's call shape (1 / 6 / 7 /
-  ≤30-with-zero-retrievals).
-- `flarefixed`'s retriever stub throws if reached.
+- Five arms build and register; fast-tier tests pin each one's call shape: `chatengine` exactly 1,
+  `refine` exactly 6, `mapreduce` exactly 7, and `flarefixed` **at least 1, with zero retrievals**.
+  - *As built, and deliberately looser than the `≤30` this document first promised.* FLARE's call
+    count is `2 × sentences` and the sentence count is hostage to prompt wording — the fake client's
+    fixed reply never emits the done-token, so the loop runs to `FlareOptions.MaxSentences` and the
+    observed figure is 30 only because that default is 15. Pinning `≤30` would pin a default of the
+    library under test and a property of the fake's canned answer, neither of which is this arm's
+    claim; it would fail on a `MaxSentences` change that costs nothing and pass on a lookahead
+    regression that costs everything. The number that matters is the second half of the pair, and it
+    is asserted exactly: **zero retrievals**. The observed 30 is recorded in the test's remarks as an
+    upper-bound signal rather than asserted as a bound.
+- `flarefixed`'s retriever stub **records that it was called, and the run asserts the flag is
+  clear** — in the fast-tier test and again in the harness after the last answer.
+  - *The stub still throws, but the throw is not the guarantee.*
+    `FlareAnswerEngine.TryLookaheadRetrievalAsync` swallows every exception the retriever raises, so
+    a test watching for the throw would pass while lookahead fired. `WasCalled` is set before the
+    throw and survives the swallow. The harness installs one stub instance for the run and reads its
+    flag; the factory refuses to build the arm without one, so the flag can never be on an object
+    nobody holds.
+- Every engine is built with a **counting logger, never `NullLogger`**, and the run asserts that
+  **no exception was swallowed**. `MapReduceAnswerEngine`, `RefineAnswerEngine` and
+  `SelfAssessmentConfidenceScorer` each answer through a catch-all that logs and continues, so a
+  missing cache entry on a replay would otherwise degrade an arm's answer silently — and the
+  call-shape gate cannot see it, since its counter increments before the request is forwarded.
+  - *Exceptions fail the run; warnings without one are printed, not asserted.*
+    `ConfidenceScoreUnparsable` (the model's self-assessment did not parse) and
+    `FlareLookaheadFailed` (retrieval returned an error result) are output, not faults, and failing
+    on them would be self-perpetuating — the unparsable reply is itself cached, so every replay
+    would reproduce it and `flare` could never run again without a code change. Both counts appear
+    in the cost block, where a total far above the exception count is the signal that the scorer is
+    failing open; Gate 3 backs that up by asserting the lookahead fired at all.
 - All three pilot gates implemented: context identity against `dense`, call counts matching shape,
   and **lookahead observed firing** in `flare`.
 - The pilot emits calls-per-query and tokens-per-query per arm, so the sweep is priced from
