@@ -445,10 +445,35 @@ much larger than answer generation's.
 
 ## Working State
 
-**Branch:** `feat/answer-engine-arms`, cut from `origin/main` (`891e49c4`) on 2026-08-28 —
-deliberately not stacked on #414, which merged mid-implementation as `641e27f0` and was rebased onto
-instead. Five tasks built the five arms; this task: `docs/planning/ROADMAP.md` and this file only,
-recording the thread — no code.
+> **This section no longer records a branch name, and that is the fix for the defect described
+> below.** A branch name is a *mutable pointer*: it is correct only while its branch is unmerged,
+> and it goes wrong at the exact moment the branch merges — which is the one moment nobody is
+> editing this file. It went stale **seven times out of seven**, every single time, and three
+> separate sessions "fixed" it by writing a fresh name that was itself stale within the day.
+>
+> **Derive the branch instead — `git branch --show-current`.** It is one command, it is always
+> right, and it cannot rot.
+>
+> What this section records now is **immutable**: what last landed on `main`, as a commit SHA, with
+> a symbol to verify it by content. Commits do not move. If you need to know whether that work is
+> really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
+> here before.
+
+**Last landed on `main`:** **#416** as `d2d96b0d` (2026-08-28) — the five answer-engine arms and
+their pilot gates. Verify by content: `AnswerEngineArms.cs` and `AnswerEngineArmsTests.cs` exist
+under `tests/Rag.NET.Benchmarks.Quality.IntegrationTests/`, and `chatengine` appears in
+`AnswerArm.cs`.
+
+Before it, **#414** as `641e27f0` — pipeline parity (`PipelineParity.cs`); and **#412** as
+`ab87d156` — RAPTOR Task 6 (`## Measured` in `docs/guide/raptor.md`,
+`<VerifiedBy>benchmark</VerifiedBy>` in `Rag.NET.Raptor.csproj`).
+
+**Nothing here needs updating when a branch merges** — only when new work lands, which is the moment
+someone is already editing this file.
+
+**The seven occurrences are recorded below and are left as written.** They are the evidence that
+the field was structurally broken rather than repeatedly forgotten, and the reason it was replaced
+above rather than re-filled an eighth time.
 
 **It was stale again when this session opened, for the sixth time.** The field named
 `chore/reconcile-408-and-raptor-task-6` while the checkout was already on
