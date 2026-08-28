@@ -1456,11 +1456,46 @@ public sealed class BeirGraphRagAnswerTests
         // before/after delta on any shared counter would not be.
         using var counter = new EngineCallCountingChatClient(pass.EngineClients.For(arm));
         var engine = AnswerEngineArms.Create(arm, counter, pass.Retrievers.For(arm), pass.Failures);
-        var response = await engine.AskAsync(query.Text, sources, cancellationToken: ct);
+        var response = await engine.AskAsync(query.Text, sources, EngineAnswerOptions, ct);
 
         AssertCallShapeMatchesPrediction(arm, query.Id, sources.Count, counter.Calls);
         return response.Answer;
     }
+
+    /// <summary>
+    /// What every engine arm answers under: the <b>extraction contract</b>
+    /// <see cref="MultiHopRagAnswerJudge.AnswerInstruction"/>, passed as the system prompt.
+    /// </summary>
+    /// <remarks>
+    /// <b>Without this the engine arms do not measure engines.</b> The judge reads the answer out of
+    /// the sentence that instruction asks for, and <b>falls back to the whole reply trimmed</b> when
+    /// it is absent — so an engine that was never told the contract gets a discursive paragraph
+    /// scored against a few-word gold answer by a shared-word rule. The 2026-08-28 pilot measured
+    /// exactly that: <c>dense</c> met the contract on 9 of 9 queries and <b>every engine arm on 0 of
+    /// 9</b>, which makes the engine accuracy figures from that run uninterpretable.
+    /// <para>
+    /// The instruction belongs to the <b>measurement apparatus, not the product</b>. A real
+    /// <c>MapReduceAnswerEngine</c> user has no reason to end with that sentence; this harness's
+    /// judge has to be able to find the answer, and the <c>dense</c> arm has always carried the same
+    /// instruction inside <see cref="PromptTemplate"/>. Passing it here puts every arm under one
+    /// output contract so the comparison is about the mechanism.
+    /// </para>
+    /// <para>
+    /// All four engines honour <see cref="RagOptions.SystemPrompt"/> — <c>ChatAnswerEngine</c> and
+    /// <c>FlareAnswerEngine</c> as <c>opts.SystemPrompt ?? DefaultSystemPrompt</c>, MapReduce and
+    /// Refine by prepending a system message when it is non-null — so this reaches every call each
+    /// engine makes, including MapReduce's per-chunk maps and Refine's rewrites.
+    /// </para>
+    /// <para>
+    /// <b>It changes every engine prompt, and therefore every engine cache key.</b> The 323 entries
+    /// the 2026-08-28 pilot wrote are orphaned by it. That is the right trade: they answer a
+    /// question nobody asked.
+    /// </para>
+    /// </remarks>
+    private static readonly RagOptions EngineAnswerOptions = new()
+    {
+        SystemPrompt = MultiHopRagAnswerJudge.AnswerInstruction,
+    };
 
     // ── The pilot's gates ─────────────────────────────────────────────────
 
