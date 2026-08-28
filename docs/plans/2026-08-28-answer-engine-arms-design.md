@@ -179,10 +179,20 @@ synthetic sources asserts each engine's call shape with no corpus, no model and 
 number that decides whether a ~189,000-call sweep is affordable is therefore checked before anyone
 provisions anything.
 
-**`flarefixed`'s zero-retrieval claim is structural, not observed.** Its `IRetriever` is a stub that
-**throws if called**. At `MaxRetrievals = 0` the retriever is unreachable, so the stub never fires;
-if a future change ever reaches it, the test fails loudly instead of quietly retrieving. A counter
-reading zero and a code path that cannot execute are different guarantees.
+**`flarefixed`'s zero-retrieval claim is asserted by a recording stub.** Its `IRetriever` records
+that it was called, and the test asserts it was not.
+
+**An earlier draft of this design said the stub should simply *throw*, and that was wrong.**
+`FlareAnswerEngine.TryLookaheadRetrievalAsync` wraps the retriever call in
+`catch (Exception ex) { …log…; return null; }`, so a thrown exception is **swallowed and logged**.
+Had a future change broken the `retrievalsUsed < MaxRetrievals` guard, the throw would have vanished
+into that catch, the engine would still have returned an answer, and the test would have passed
+silently while lookahead fired. The guarantee read well and did not hold — which is the exact defect
+class this thread exists to catch, found in the design that proposed the catcher.
+
+The stub still throws, because that is correct anywhere the exception is not swallowed, but the
+durable check is the recorded flag. A counter reading zero, a code path that cannot execute, and an
+exception that is caught and discarded are three different things.
 
 ### The `flare` arm's dependency on #414
 
