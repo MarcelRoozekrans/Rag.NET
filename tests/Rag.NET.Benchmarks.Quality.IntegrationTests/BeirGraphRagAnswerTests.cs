@@ -406,6 +406,14 @@ public sealed class BeirGraphRagAnswerTests
     /// <see cref="RaptorRun"/> was actually built — otherwise a run with no RAPTOR arm selected
     /// would print zeroes into every transcript for a cost nothing paid.
     /// </summary>
+    /// <remarks>
+    /// <b>Reads <paramref name="answering"/> alone, and is still the whole figure.</b> Every counter
+    /// on <c>CachedGraphRagClient</c> is per instance, so since the engine arms got clients of their
+    /// own (<see cref="EngineArmClients"/>) most whole-run figures have to be summed across those
+    /// too. Not this one: both <see cref="RaptorRun"/>s summarise through this client and nothing
+    /// else, and this is called before <see cref="AnswerAllAsync"/>, so the engine clients have made
+    /// no call yet and have nothing to contribute.
+    /// </remarks>
     private static void LogRaptorSummarisationCostSoFar(
         ITestOutputHelper output, CachedGraphRagClient answering, RaptorRun? corpusRun, RaptorRun? perDocumentRun)
     {
@@ -1295,9 +1303,29 @@ public sealed class BeirGraphRagAnswerTests
                 FormattableString.Invariant(
                     $"GATE 3 FAILED: flare's lookahead never retrieved across {queries} queries, so this run measured flarefixed's behaviour under flare's name. SelfAssessmentConfidenceScorer fails open — every error and every unparsable reply scores 1.0, above the 0.6 threshold — so a scorer that is erroring, or replaying misses, silently turns the lookahead off. flare − flarefixed computed from this run cannot tell 'the lookahead does nothing' from 'the lookahead never ran'. Check the scorer's replies before spending anything on the full sweep."));
 
+            var rate = fired / (double)queries;
             output.WriteLine(FormattableString.Invariant(
-                $"GATE 3 PASSED: flare's lookahead retrieved {fired} time(s) across {queries} queries ({fired / (double)queries:F2} per query)."));
+                $"GATE 3 PASSED: flare's lookahead retrieved {fired} time(s) across {queries} queries ({rate:F3} per query)."));
+
+            if (rate < LowLookaheadRatePerQuery)
+            {
+                output.WriteLine(FormattableString.Invariant(
+                    $"WARNING: that is {rate:F3} lookahead retrievals per query, below {LowLookaheadRatePerQuery:F2}. The gate proves the lookahead CAN fire; at this rate almost every query still answered exactly the way flarefixed would, so the same fail-open the gate exists to catch may be happening on all but a handful of them and flare - flarefixed would still be close to a measurement of nothing. Read the scorer's replies before concluding the lookahead does not help."));
+            }
         }
+
+        /// <summary>
+        /// The lookahead rate per query below which Gate 3 passes but says so loudly.
+        /// </summary>
+        /// <remarks>
+        /// <b>A smell, not a line, and deliberately not a hard bound.</b> Nobody has measured what
+        /// this corpus's lookahead rate should be, so failing a run against a number nobody has
+        /// established would be inventing a threshold and then enforcing it. What can be said
+        /// honestly is that one retrieval in fifty queries is not evidence the mechanism is working,
+        /// only evidence it is reachable — so the run reports it and the reader judges. The observed
+        /// rate is printed either way, so a future measurement can replace this guess with a figure.
+        /// </remarks>
+        private const double LowLookaheadRatePerQuery = 0.1;
     }
 
     /// <summary>
@@ -1334,6 +1362,12 @@ public sealed class BeirGraphRagAnswerTests
     }
 
     /// <summary>Every <see cref="ProgressEvery"/>th completed query, verbatim as it always was.</summary>
+    /// <remarks>
+    /// The cache counters it prints are whole without being summed anywhere: every engine arm's
+    /// client holds the <b>same</b> <c>GraphExtractionCache</c> instance this one does, so
+    /// <c>Hits</c> and <c>Misses</c> have already seen every arm's requests. That is why this line
+    /// needed no change when the per-arm clients split <c>Calls</c> and <c>Retries</c>.
+    /// </remarks>
     private void ReportProgress(
         int completed,
         QuerySelection selection,
@@ -1673,6 +1707,40 @@ public sealed class BeirGraphRagAnswerTests
         Assert.Equal(1, retrievers.FlareLookaheads);
     }
 
+    /// <summary>
+    /// Gate 3 warns loudly when the lookahead only just fired, and stays silent once it is
+    /// commonplace — the case a bare "at least one" pass cannot distinguish from the failure the
+    /// gate exists to catch.
+    /// </summary>
+    [Fact]
+    public async Task AssertLookaheadFired_WarnsWhenTheLookaheadBarelyFired_AndIsSilentWhenItIsCommon()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        string[] withFlare = [AnswerArm.Flare];
+        var retrievers = new EngineRetrievers(new EmptyRetriever());
+        var flare = retrievers.For(AnswerArm.Flare)!;
+
+        // One retrieval in fifty queries: the gate passes, because it did fire, and says so loudly.
+        _ = await flare.RetrieveAsync("a lone lookahead", cancellationToken: ct);
+        var barely = new CapturingTestOutputHelper();
+        retrievers.AssertLookaheadFired(withFlare, queries: 50, barely);
+
+        Assert.Contains(barely.Lines, line => line.Contains("GATE 3 PASSED", StringComparison.Ordinal));
+        Assert.Contains(barely.Lines, line => line.Contains("WARNING", StringComparison.Ordinal));
+
+        // Twenty in fifty is 0.4 per query, comfortably clear of the warning.
+        for (var i = 0; i < 19; i++)
+        {
+            _ = await flare.RetrieveAsync("another lookahead", cancellationToken: ct);
+        }
+
+        var common = new CapturingTestOutputHelper();
+        retrievers.AssertLookaheadFired(withFlare, queries: 50, common);
+
+        Assert.Contains(common.Lines, line => line.Contains("GATE 3 PASSED", StringComparison.Ordinal));
+        Assert.DoesNotContain(common.Lines, line => line.Contains("WARNING", StringComparison.Ordinal));
+    }
+
     /// <summary>Sources whose chunk identities are exactly <paramref name="documentIds"/>, in order.</summary>
     private static IReadOnlyList<SearchResult> GateFixtureSources(params string[] documentIds)
     {
@@ -1910,6 +1978,30 @@ public sealed class BeirGraphRagAnswerTests
                 for (var i = 0; i < _order.Count; i++)
                 {
                     total += _byArm[_order[i]].Calls;
+                }
+
+                return total;
+            }
+        }
+
+        /// <summary>Model attempts retried through every engine arm's client, summed.</summary>
+        /// <remarks>
+        /// <b>Read for the same reason <see cref="TotalCalls"/> is.</b> Every counter on
+        /// <c>CachedGraphRagClient</c> is per instance, so the moment the engine arms got clients of
+        /// their own, every whole-run figure taken from the shared client alone became the
+        /// non-engine share of itself. Retries is the one that matters most in practice: the engine
+        /// arms issue roughly seven times the request volume of a single-shot arm, so they are where
+        /// rate limiting shows up first, and a run reporting "0 retries" while
+        /// <c>mapreduce</c> is being throttled would send an operator looking in the wrong place.
+        /// </remarks>
+        public long TotalRetries
+        {
+            get
+            {
+                long total = 0;
+                for (var i = 0; i < _order.Count; i++)
+                {
+                    total += _byArm[_order[i]].Retries;
                 }
 
                 return total;
@@ -2381,14 +2473,17 @@ public sealed class BeirGraphRagAnswerTests
         EngineArmClients engineClients,
         TimeSpan elapsed)
     {
-        // The engine arms request through their own clients, so answering.Calls alone would
-        // under-report the run by exactly their share; the cache counters are unaffected because
-        // every client holds the same cache instance.
+        // Every counter on CachedGraphRagClient is per instance, so each whole-run figure below has
+        // to be summed across the engine arms' clients as well as the shared one — answering.Calls
+        // and answering.Retries alone are only the non-engine share. The cache counters are the
+        // exception, and genuinely whole already: every client holds the SAME cache instance, so
+        // Hits and Misses have already seen every arm's requests.
         var requests = answering.Calls + engineClients.TotalCalls;
+        var retries = answering.Retries + engineClients.TotalRetries;
         var builder = new StringBuilder();
         builder.Append(FormattableString.Invariant($"""
 
-            === {descriptor.Name} ACCURACY AGAINST THE GOLD ANSWERS — {elapsed.TotalSeconds:F1} s, {requests} answer requests ({engineClients.TotalCalls} of them through the engine arms), {answering.Cache.Hits} cached / {answering.Cache.Misses} generated, {answering.Retries} retries ===
+            === {descriptor.Name} ACCURACY AGAINST THE GOLD ANSWERS — {elapsed.TotalSeconds:F1} s, {requests} answer requests ({engineClients.TotalCalls} of them through the engine arms), {answering.Cache.Hits} cached / {answering.Cache.Misses} generated, {retries} retries ({engineClients.TotalRetries} of them on the engine arms) ===
             paper = qa_evaluate.py's any-shared-word rule over punctuation-stripped tokens (headline); raw = that rule with punctuation attached, as the script wrote it; strict = normalised equality
             over the {selection.JudgedCount} judged queries; the null queries are an abstention rate and are reported separately
 
@@ -2457,18 +2552,32 @@ public sealed class BeirGraphRagAnswerTests
             $"{"arm",-14}{"queries",9}{"calls",9}{"calls/query",14}{"in tokens",14}{"out tokens",14}{"tokens/query",15}"));
 
         var engineArms = engineClients.Arms;
+        long engineCalls = 0;
+        long engineInput = 0;
+        long engineOutput = 0;
+        long engineWithoutUsage = 0;
         for (var i = 0; i < engineArms.Count; i++)
         {
             var arm = engineArms[i];
+            var client = engineClients.For(arm);
+            engineCalls += client.Calls;
+            engineInput += client.InputTokens;
+            engineOutput += client.OutputTokens;
+            engineWithoutUsage += client.CallsWithoutUsage;
             AppendArmCostRow(
-                builder, arm, tallies.TryGetValue(arm, out var tally) ? tally.Answered : 0,
-                engineClients.For(arm));
+                builder, arm, tallies.TryGetValue(arm, out var tally) ? tally.Answered : 0, client);
         }
 
         builder.AppendLine(FormattableString.Invariant(
-            $"shared client (every non-engine arm, plus RAPTOR summarisation): {answering.Calls} calls, {answering.InputTokens:N0} in, {answering.OutputTokens:N0} out"));
+            $"shared client (every non-engine arm, plus RAPTOR summarisation): {answering.Calls} calls, {answering.InputTokens:N0} in, {answering.OutputTokens:N0} out, {answering.Retries} retries"));
+
+        // Printed explicitly rather than left for a reader to add up. Every counter on
+        // CachedGraphRagClient is per instance, so the shared line above is the non-engine share of
+        // the run and nothing else — reading it as the bill is the exact mistake this line removes.
         builder.AppendLine(FormattableString.Invariant(
-            $"calls that reported no usage, and are therefore absent from the token totals: {answering.CallsWithoutUsage} on the shared client{DescribeEngineCallsWithoutUsage(engineClients)}"));
+            $"RUN TOTAL (shared + every engine arm): {answering.Calls + engineCalls} calls, {answering.InputTokens + engineInput:N0} in, {answering.OutputTokens + engineOutput:N0} out, {answering.Retries + engineClients.TotalRetries} retries"));
+        builder.AppendLine(FormattableString.Invariant(
+            $"calls that reported no usage, and are therefore absent from the token totals: {answering.CallsWithoutUsage} on the shared client, {engineWithoutUsage} across the engine arms — any non-zero figure here makes the tokens above a floor"));
 
         if (arms.Contains(AnswerArm.Flare, StringComparer.Ordinal))
         {
@@ -2491,19 +2600,6 @@ public sealed class BeirGraphRagAnswerTests
 
         builder.AppendLine(FormattableString.Invariant(
             $"{arm,-14}{queries,9}{calls,9}{callsPerQuery,14:F2}{input,14:N0}{output,14:N0}{tokensPerQuery,15:F2}"));
-    }
-
-    /// <summary>The engine arms' share of the no-usage warning, summed across their clients.</summary>
-    private static string DescribeEngineCallsWithoutUsage(EngineArmClients engineClients)
-    {
-        long total = 0;
-        var engineArms = engineClients.Arms;
-        for (var i = 0; i < engineArms.Count; i++)
-        {
-            total += engineClients.For(engineArms[i]).CallsWithoutUsage;
-        }
-
-        return FormattableString.Invariant($", {total} across the engine arms");
     }
 
     private static string DescribeType(ArmTally t, string type, string label) => FormattableString.Invariant(
