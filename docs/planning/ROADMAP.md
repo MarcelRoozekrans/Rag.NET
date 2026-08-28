@@ -4491,15 +4491,42 @@ per-query rate: longer questions may generate more sentences.
 
 **The pilot cost pennies.**
 
-**THE PILOT'S REAL FINDING IS THE CONFOUND THE DESIGN PREDICTED, AND IT IS VISIBLE IN THE ANSWERS.**
+**THE PILOT FOUND A DEFECT IN THE DESIGN, AND IT IS WORSE THAN THE CONFOUND THAT WAS PREDICTED.**
 The design warned that the scoring rule "may punish format rather than reasoning, and that would look
-exactly like a finding", and required the pilot to read answers rather than scores. On the inference
-query whose gold answer is `Donald Trump`, the `dense` arm answers **"Trump"** and scores correct;
-**every engine arm** answers *"The individual implicated in both inflating the value of a Manhattan
-apartment…"* and scores wrong. The engines never receive the terse instruction the inline
-`PromptTemplate` carries, so they answer discursively and the any-shared-word rule marks them down.
-**Any eventual figure that does not account for this measures prompt style, not engine mechanism** —
-and `chatengine − dense` is the term that bounds it.
+exactly like a finding", and required the pilot to read answers rather than scores. It was right to,
+but the mechanism is sharper than *style*: **the inline `PromptTemplate` carries an extraction
+contract the judge depends on, and the engines were never given it.**
+
+`MultiHopRagAnswerJudge.AnswerInstruction` asks the model to *"End your reply with exactly this
+sentence, filling in the answer: The answer to the question is \"...\""*, and the judge reads the
+answer out of that sentence — **falling back to the whole reply trimmed when it is absent**. Measured
+over the 9-query pilot:
+
+| arm | met the extraction contract |
+| --- | --- |
+| `dense` | **9 of 9** |
+| `chatengine`, `mapreduce`, `refine`, `flarefixed`, `flare` | **0 of 9, every one** |
+
+So on the inference query whose gold is `Donald Trump`, `dense` answers **"Trump"** and scores
+correct while every engine answers *"The individual implicated in both inflating the value of a
+Manhattan apartment…"* and scores wrong. **The engine arms were not measuring engines.** They were
+measuring whether a gold word happened to appear anywhere in a discursive paragraph, and their
+accuracy figures from that run are uninterpretable.
+
+**The instruction belongs to the measurement apparatus, not the product.** A real
+`MapReduceAnswerEngine` user has no reason to end with that sentence; this harness's judge has to be
+able to find the answer, and the `dense` arm has carried the same instruction inside `PromptTemplate`
+all along. **Fixed 2026-08-28** by passing it as `RagOptions.SystemPrompt` to every engine arm — all
+four engines honour it, so it reaches every call each makes, including MapReduce's per-chunk maps and
+Refine's rewrites. It changes every engine prompt and therefore every engine cache key, orphaning the
+323 entries the first pilot wrote; that is the right trade, because they answer a question nobody
+asked.
+
+**The design missed this because it treated the inline prompt as untouchable and never asked what was
+in it.** "Do not edit `PromptTemplate`" was correct — it is a cache key — but it was read as "the
+engines need nothing from it", when half its content is the contract the judge runs on. The rule that
+generalises: **when one arm is exempted from a shared apparatus, check what the apparatus was doing
+for it.**
 
 **No accuracy headline is published from this pilot, deliberately.** Nine judged queries: `dense`
 3/9, `chatengine` 3/9, `mapreduce` 5/9, `refine` 5/9, `flarefixed` 5/9, `flare` 4/9 — **underpowered,
