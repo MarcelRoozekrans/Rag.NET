@@ -326,15 +326,40 @@ public sealed class CachedGraphRagClient : IChatClient
     /// </summary>
     /// <remarks>
     /// Empty is the faithful encoding of every entry written before this existed, which is what lets
-    /// all 86,510 of them keep their keys. Only fields that can change the response text are
-    /// rendered, in a fixed order, so the same request always renders the same string.
+    /// all 86,510 of them keep their keys. <b>Exactly three fields are rendered</b> —
+    /// <see cref="ChatOptions.MaxOutputTokens"/>, <see cref="ChatOptions.TopP"/> and
+    /// <see cref="ChatOptions.Seed"/> — in that fixed order, so the same request always renders the
+    /// same string. <see cref="ChatOptions.Temperature"/> is the one other field <see cref="Merge"/>
+    /// forwards and is deliberately never rendered here: the baseline overwrites it before the call
+    /// is sent, so nothing the caller passes there ever reaches the model.
+    /// <para>
+    /// <b>Every other field throws instead of being silently forwarded unkeyed.</b> <see cref="Merge"/>
+    /// sends the caller's <em>whole</em> <see cref="ChatOptions"/> to the model, and a field this
+    /// method does not render — <see cref="ChatOptions.ResponseFormat"/>,
+    /// <see cref="ChatOptions.StopSequences"/>, <see cref="ChatOptions.FrequencyPenalty"/>,
+    /// <see cref="ChatOptions.PresencePenalty"/>, <see cref="ChatOptions.Tools"/>,
+    /// <see cref="ChatOptions.TopK"/>, <see cref="ChatOptions.Reasoning"/>,
+    /// <see cref="ChatOptions.ModelId"/>, <see cref="ChatOptions.ConversationId"/>,
+    /// <see cref="ChatOptions.ToolMode"/>, <see cref="ChatOptions.AllowMultipleToolCalls"/>,
+    /// <see cref="ChatOptions.AllowBackgroundResponses"/>, <see cref="ChatOptions.ContinuationToken"/>,
+    /// <see cref="ChatOptions.RawRepresentationFactory"/> or
+    /// <see cref="ChatOptions.AdditionalProperties"/> — can change the response text just as surely
+    /// as the three that are rendered. Two materially different requests that both left one of these
+    /// set and unkeyed would silently collide on one cache entry and serve the wrong answer, so
+    /// <see cref="ThrowIfUnkeyable"/> refuses the request instead.
+    /// </para>
     /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// A field that can change the response text is set and this method has no rendering for it.
+    /// </exception>
     private static string RenderOptionsKey(ChatOptions? callerOptions)
     {
         if (callerOptions is null)
         {
             return string.Empty;
         }
+
+        ThrowIfUnkeyable(callerOptions);
 
         var parts = new List<string>(3);
         if (callerOptions.MaxOutputTokens is { } maxTokens)
@@ -354,6 +379,71 @@ public sealed class CachedGraphRagClient : IChatClient
 
         return string.Join(";", parts);
     }
+
+    /// <summary>
+    /// Refuses a request that sets a response-affecting field <see cref="RenderOptionsKey"/> cannot
+    /// render, rather than letting <see cref="Merge"/> forward it to the model unkeyed.
+    /// </summary>
+    /// <remarks>
+    /// This is the repo's fail-loud posture applied to cache identity: an unkeyable request must
+    /// fail rather than silently share a cache entry with a materially different one. Every field
+    /// checked here is one <see cref="Merge"/> forwards verbatim from the caller's
+    /// <see cref="ChatOptions"/> to the inner <see cref="IChatClient"/>.
+    /// </remarks>
+    private static void ThrowIfUnkeyable(ChatOptions options)
+    {
+        ThrowIfSet(options.Instructions is { Length: > 0 }, nameof(options.Instructions),
+            "it is sent to the model as additional system-level guidance and can change the response text");
+        ThrowIfSet(options.ResponseFormat is not null, nameof(options.ResponseFormat),
+            "it constrains the shape of the model's reply (for example, forcing JSON)");
+        ThrowIfSet(options.StopSequences is { Count: > 0 }, nameof(options.StopSequences),
+            "it truncates the model's reply at a caller-chosen point");
+        ThrowIfSet(options.FrequencyPenalty is not null, nameof(options.FrequencyPenalty),
+            "it changes the sampled token distribution");
+        ThrowIfSet(options.PresencePenalty is not null, nameof(options.PresencePenalty),
+            "it changes the sampled token distribution");
+        ThrowIfSet(options.Tools is { Count: > 0 }, nameof(options.Tools),
+            "it can make the model reply with a tool call instead of text");
+        ThrowIfSet(options.TopK is not null, nameof(options.TopK),
+            "it changes the sampled token distribution");
+        ThrowIfSet(options.Reasoning is not null, nameof(options.Reasoning),
+            "it changes how much, and what kind of, reasoning the model does before replying");
+        ThrowIfSet(options.ModelId is { Length: > 0 }, nameof(options.ModelId),
+            "it can route the request to a different model than the one this client's identity names");
+        ThrowIfSet(options.ConversationId is { Length: > 0 }, nameof(options.ConversationId),
+            "it continues a specific server-side conversation, which the rendered messages alone do not capture");
+        ThrowIfSet(options.ToolMode is not null, nameof(options.ToolMode),
+            "it constrains whether and how the model must call a tool");
+        ThrowIfSet(options.AllowMultipleToolCalls is not null, nameof(options.AllowMultipleToolCalls),
+            "it changes whether the model may reply with more than one tool call");
+        ThrowIfSet(options.AllowBackgroundResponses is not null, nameof(options.AllowBackgroundResponses),
+            "it changes how the provider delivers the response");
+        ThrowIfSet(options.ContinuationToken is not null, nameof(options.ContinuationToken),
+            "it resumes a specific prior response rather than starting a new one");
+        ThrowIfSet(options.RawRepresentationFactory is not null, nameof(options.RawRepresentationFactory),
+            "it can rewrite the provider-specific request arbitrarily, which cannot be rendered into a key at all");
+        ThrowIfSet(options.AdditionalProperties is { Count: > 0 }, nameof(options.AdditionalProperties),
+            "it carries provider-specific settings this client has no way to enumerate or render");
+    }
+
+    /// <summary>Throws <see cref="Unkeyable"/> for <paramref name="field"/> when <paramref name="isSet"/>.</summary>
+    private static void ThrowIfSet(bool isSet, string field, string reason)
+    {
+        if (isSet)
+        {
+            throw Unkeyable(field, reason);
+        }
+    }
+
+    private static InvalidOperationException Unkeyable(string field, string reason) =>
+        new(
+            "ChatOptions." + field + " was set, but CachedGraphRagClient.RenderOptionsKey does not " +
+            "render it into the cache key, and " + reason + ". Sending it to the model unkeyed risks " +
+            "two materially different requests silently colliding on one cache entry and serving the " +
+            "wrong answer. Only MaxOutputTokens, TopP and Seed are keyed today (Temperature is " +
+            "baseline-authoritative and is overwritten before the call is sent) — extend " +
+            "RenderOptionsKey to cover " + field + " before setting it on a call that reaches this " +
+            "client.");
 
     /// <summary>
     /// Accumulates one live response's token usage. Called on every attempt, including retried
