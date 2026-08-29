@@ -1494,7 +1494,7 @@ public sealed class BeirGraphRagAnswerTests
     /// output contract so the comparison is about the mechanism.
     /// </para>
     /// <para>
-    /// All four non-FLARE engines honour <see cref="RagOptions.SystemPrompt"/> —
+    /// All three non-FLARE engines honour <see cref="RagOptions.SystemPrompt"/> —
     /// <c>ChatAnswerEngine</c> as <c>opts.SystemPrompt ?? DefaultSystemPrompt</c>, MapReduce and
     /// Refine by prepending a system message when it is non-null — so this reaches every call each
     /// engine makes, including MapReduce's per-chunk maps and Refine's rewrites.
