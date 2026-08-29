@@ -192,7 +192,9 @@ public sealed class CachedGraphRagClient : IChatClient
         RecordPromptLength(sent);
 
         var text = await _cache.GetOrAddAsync(
-            GraphExtractionPrompt.Render(sent), ct => CallModelAsync(sent, ct), cancellationToken);
+            GraphExtractionPrompt.Render(sent),
+            ct => CallModelAsync(sent, ct),
+            cancellationToken: cancellationToken);
 
         return new ChatResponse(new ChatMessage(ChatRole.Assistant, text));
     }
