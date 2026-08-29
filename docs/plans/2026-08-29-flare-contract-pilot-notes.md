@@ -28,7 +28,14 @@ question #418 was meant to settle.
 
 Every assertion inside `Accuracy_AgainstTheGoldAnswers_ThreeArms` held: context identity against
 `dense`, call shape per arm (including the FLARE arms' extra post-loop contract call, under the
-widened bounds), and the lookahead-firing gate. That is real evidence the fixes hold structurally.
+widened bounds), and the lookahead-firing gate. That is real evidence Fixes 2 and 3 — options
+forwarding and the post-loop contract call — hold structurally.
+
+**Fix 1 is not exercised by this run.** The harness hands every FLARE arm `FlareLoopOptions = new()`
+— no system prompt at all — so there is never a caller instruction for FLARE to compose with its
+fragment protocol. This pilot validates the harness's *avoidance* of the terminal-instruction
+conflict, not FLARE's own *composition* fix; Fix 1 stands on its unit test,
+`ACallerSystemPrompt_DoesNotDisplaceTheFragmentProtocol`, alone.
 
 **It is not evidence the extraction contract is met.** `MultiHopRagAnswerJudge.UsedTheAnswerSentence`
 is recorded and reported by the test, never asserted (`BeirGraphRagAnswerTests.cs:2896`), and xunit

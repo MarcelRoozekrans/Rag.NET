@@ -4540,13 +4540,20 @@ successive versions — a throwing stub FLARE swallows, a flag made unreadable b
 installed in the run that matters, a fresh stub allocated per call and dropped, and finally a shared
 holder asserted after the run — and it is the one that has now proven itself against real data.
 
-**A caveat on what the eventual figures will mean, carried forward rather than fixed:**
-`CachedGraphRagClient.GetResponseAsync` ignores its `options` argument, so FLARE's
-`MaxOutputTokens = 150` and the engines' temperatures are discarded before a call is made. The pilot
-will therefore price *the harness's* configuration — which is what the sweep would run — but not
-what a shipped engine would send with its own options honoured. Deliberately not fixed: `options`
-are not part of the cache key, so honouring them now would silently change what every already-cached
-entry means.
+**A caveat on what the eventual figures will mean, ~~carried forward rather than fixed~~ superseded
+2026-08-29 on `fix/flare-contract-and-cached-options`:** ~~`CachedGraphRagClient.GetResponseAsync`
+ignores its `options` argument, so FLARE's `MaxOutputTokens = 150` and the engines' temperatures are
+discarded before a call is made. The pilot will therefore price *the harness's* configuration — which
+is what the sweep would run — but not what a shipped engine would send with its own options honoured.
+Deliberately not fixed: `options` are not part of the cache key, so honouring them now would silently
+change what every already-cached entry means.~~ **Options are now forwarded and keyed as of
+2026-08-29** — `CachedGraphRagClient` merges and forwards the caller's `ChatOptions`, and
+`GraphExtractionCache`'s optional third key field is omitted rather than emptied when the caller
+passes none, so the cache-key worry above proved unfounded: the key change orphaned nothing, and all
+86,510 pre-existing entries keep their keys (see the 2026-08-29 fix below). **Still true:** `Merge`
+(`CachedGraphRagClient.cs:319`) overwrites the caller's temperature with the baseline, so the engines'
+*temperatures* remain deliberately discarded — the model identity carries the baseline temperature
+into every cache key.
 
 **One finding worth carrying as a lesson.** The guarantee that `flarefixed` holds retrieval fixed —
 the whole point of pairing it against `flare` — was wrong three times in three different places
@@ -4582,7 +4589,8 @@ caller's on every per-sentence call (`FlareAnswerEngine.cs:302`), so a terminal 
 reached the model. Disarming that guard is why a bad prompt became an 86 KB runaway and a timeout
 instead of a 150-token oddity.
 
-**Three fixes, `d8b86bba`..`1d9f4f2b`.** (1) `FlareAnswerEngine` now composes a caller `SystemPrompt`
+**Three fixes, `d8b86bba`..`1d9f4f2b`, on `fix/flare-contract-and-cached-options` (not yet
+merged).** (1) `FlareAnswerEngine` now composes a caller `SystemPrompt`
 with its own fragment protocol instead of being replaced by it — a defect in a **shipped package**,
 reachable by any user whose `SystemPrompt` carries a terminal instruction, the same shape as #333. (2)
 `GraphExtractionCache` gained an optional third key field for caller options, **omitted rather than
@@ -4591,6 +4599,11 @@ existing hash, so all 86,510 pre-existing entries keep their keys with zero rege
 `CachedGraphRagClient` merges and forwards the caller's `ChatOptions` instead of discarding them, and
 the harness applies the extraction contract once to FLARE's assembled answer after its loop rather
 than to each fragment, with the call-shape gate's bounds widened to carry the extra call.
+
+**Fix (1) is not exercised by this pilot.** The harness hands every FLARE arm `FlareLoopOptions =
+new()` — no system prompt at all — so the run below validates the harness's *avoidance* of the
+terminal-instruction conflict (by never handing FLARE one), not FLARE's own *composition* fix. Fix
+(1) stands on its unit test, `ACallerSystemPrompt_DoesNotDisplaceTheFragmentProtocol`, alone.
 
 **The re-run pilot, 2026-08-29: 15 tests, 0 failed, 0 skipped, 172.968 s, 469 new answer-cache
 entries — generated, not replayed.** Every engine arm moved from 0 of 9 to 8 or 9 of 9 on the judge's

@@ -55,7 +55,7 @@ Lookahead retrievals default to a **plain** retrieval — HyDE and multi-query e
 
 **Best for:** Long-form answers and multi-step reasoning where a single up-front retrieval misses information needed mid-answer. Costs roughly 2 LLM calls per sentence (generation + scoring) plus up to `MaxRetrievals` plain retrievals and one regeneration call each.
 
-**Limitations:** FLARE does not consult `IConversationMemory` (unlike Chat/MapReduce/Refine) — routing a call to Flare via the dispatching engine drops the processed conversation history from the prompt.
+**Limitations:** FLARE does not consult `IConversationMemory` (unlike Chat/MapReduce/Refine) — routing a call to Flare via the dispatching engine drops the processed conversation history from the prompt. FLARE also always appends its own fragment protocol (roughly 60 words instructing the model to reply with exactly one sentence, or `<DONE>`) after any `RagOptions.SystemPrompt` you supply — it cannot be displaced, because a caller instruction written for a complete reply (e.g. "end with exactly this sentence") is actively harmful applied per fragment: the model would satisfy it every call and never emit `<DONE>`.
 
 **Registration:**
 ```csharp
