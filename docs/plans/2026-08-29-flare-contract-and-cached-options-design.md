@@ -94,18 +94,52 @@ are rendered canonically and **render empty when the caller passed no options**.
 
 Every one of the 86,510 existing entries — 47,322 answers, 35,176 extractions, 4,012 reports — was
 written by a call that passed no caller options, so an empty rendering is a *faithful* encoding of
-what those entries are, not a compatibility accommodation. Model and temperature are already pinned
-in the cache's identity by `GraphExtractionModelIdentity` (`openai/gpt-4o-mini@t0.0`), so they do not
-belong in the per-entry key either. Existing entries keep their keys and their meaning; **zero
-regeneration**.
+what those entries are, not a compatibility accommodation. Existing entries keep their keys and
+their meaning; **zero regeneration**.
 
 FLARE's calls acquire new keys, which is correct: with `MaxOutputTokens` honoured they are
 genuinely different requests than the ones cached under the old semantics.
 
-*(The alternative considered and not taken: put complete effective options in every key. That
-orphans all 86,510 entries — roughly $9 and several hours to rebuild extractions and reports, plus
-answer regeneration — and buys nothing, because the only difference it would record for existing
-entries is a baseline already recorded elsewhere.)*
+#### Why this is not a compromise (verified, not assumed)
+
+`GraphExtractionCache.ComputeKey` already hashes **two length-prefixed, NUL-terminated fields**:
+
+```text
+SHA256( len(identity) ‖ identity ‖ NUL ‖ len(prompt) ‖ prompt ‖ NUL )
+```
+
+`identity` is `openai/gpt-4o-mini@t0.0` — **model and temperature are already in every key.** The
+constructor's own documentation states the guarantee: *"Hashed into every key, so two identities
+never share an entry."*
+
+A cache key needs exactly one property: injectivity over everything that can change the response.
+Measured against that, the two candidate designs are **equally injective**. The "full key"
+alternative would add model and temperature — which are already there — so it buys no additional
+safety and costs roughly $9 and several hours to regenerate all 86,510 entries. Baseline-relative
+adds the one input genuinely missing after Fix 2: the caller's options.
+
+This also refutes the hazard that motivated considering the full key. A baseline-relative key does
+**not** risk silently reusing entries after a baseline change: altering the temperature alters
+`_modelIdentity`, which alters every key, and the cache partitions on it already.
+
+#### Implementation constraint: omit the field, never append it empty
+
+**Appending a zero-length third field still orphans the whole cache.** The buffer is sized
+`(2 * (sizeof(int) + 1)) + identity.Length + promptBytes.Length`; a third field adds 5 bytes — an
+`int32` length plus the NUL — even when the field is empty, changing the hash of *every* entry.
+
+So the options field must be **omitted entirely** when the caller passed no options: two fields when
+unconstrained, three when constrained.
+
+The variable field count is safe, and for a reason this code already relies on: fields are
+length-prefixed *and* NUL-terminated, so a buffer parses to exactly one field sequence and a
+two-field buffer can never be byte-identical to a three-field one. `ComputeKey`'s existing remarks
+reason about precisely this class of bug — *"identity `ab` with prompt `c` and identity `a` with
+prompt `bc` hash the same bytes"*.
+
+Done naively — appending an empty field — this fix would have invalidated 86,510 entries while
+appearing to work. A test asserting that existing keys are unchanged is what catches it, and is why
+it is in the definition of done.
 
 ### Fix 3 — the extraction contract applies to FLARE's completed answer, not to each fragment
 
