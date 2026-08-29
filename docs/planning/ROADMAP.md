@@ -4562,6 +4562,70 @@ second-corpus RAPTOR arm, and local search's unexplained yes/no abstention. The 
 clause — *"the three answer engines through the 5.2.2 harness against MultiHop-RAG's gold
 answers"* — is **not** met by building the arms; it needs the run, and the run has not happened.
 
+**#418's fix broke FLARE, and this is the third time in this phase a fix has caused the next
+defect.** 6.2.12 had #390's fix deadlock Blazor (#396), whose fix hung on host singletons (#400); now
+#418 — itself the fix that finally gave every engine arm the judge's extraction contract — caused
+this one. The 2026-08-29 pilot re-run, meant only to confirm #418, failed twice in a row with four
+`TaskCanceledException`s each, every one inside `FlareAnswerEngine.GenerateSentenceAsync`, deterministic
+rather than flaky. Neither run reached judging, so #418's own question — do the arms actually meet the
+contract — stayed unanswered for a full extra day.
+
+**The mechanism, confirmed by cached evidence rather than inferred.** One cached response from the
+first failed run is **86,091 bytes**, the contract sentence *"End your reply with exactly this
+sentence…"* repeated **256 times**, against a **3,747-byte** maximum across the 47,151 answer-cache
+entries written before that day — 23× the historical worst case. Three things compose: #418 gives
+every arm a *terminal* system prompt; `FlareAnswerEngine` replaces its own system prompt with the
+caller's on every per-sentence call (`FlareAnswerEngine.cs:302`), so a terminal instruction fights the
+"continue with exactly one sentence, or reply `<DONE>`" protocol the model never resolves toward
+`<DONE>`; and `CachedGraphRagClient` discarded the caller's `ChatOptions` entirely, so FLARE's own
+`MaxOutputTokens = 150` — written, by its own comment, to bound exactly this kind of rambling — never
+reached the model. Disarming that guard is why a bad prompt became an 86 KB runaway and a timeout
+instead of a 150-token oddity.
+
+**Three fixes, `d8b86bba`..`1d9f4f2b`.** (1) `FlareAnswerEngine` now composes a caller `SystemPrompt`
+with its own fragment protocol instead of being replaced by it — a defect in a **shipped package**,
+reachable by any user whose `SystemPrompt` carries a terminal instruction, the same shape as #333. (2)
+`GraphExtractionCache` gained an optional third key field for caller options, **omitted rather than
+emptied** when the caller passes none — appending an empty field would still have changed every
+existing hash, so all 86,510 pre-existing entries keep their keys with zero regeneration. (3)
+`CachedGraphRagClient` merges and forwards the caller's `ChatOptions` instead of discarding them, and
+the harness applies the extraction contract once to FLARE's assembled answer after its loop rather
+than to each fragment, with the call-shape gate's bounds widened to carry the extra call.
+
+**The re-run pilot, 2026-08-29: 15 tests, 0 failed, 0 skipped, 172.968 s, 469 new answer-cache
+entries — generated, not replayed.** Every engine arm moved from 0 of 9 to 8 or 9 of 9 on the judge's
+extraction contract:
+
+| arm | this run | 2026-08-28 |
+| --- | --- | --- |
+| `dense` | 9 of 9 | 9 of 9 |
+| `chatengine` | 8 of 9 | 0 of 9 |
+| `mapreduce` | 9 of 9 | 0 of 9 |
+| `refine` | 9 of 9 | 0 of 9 |
+| `flarefixed` | 8 of 9 | 0 of 9 |
+| `flare` | 8 of 9 | 0 of 9 |
+
+**Three arms sit at 8 of 9, not 9 — stated as measured, not rounded up to "all arms now comply."** The
+contract is met on the large majority of queries, not universally, and nothing in this run explains
+the three misses. The longest prediction across all 54 records is **890 characters**, against the
+86,091-byte response that killed the two prior runs. No accuracy headline is published from nine
+judged queries (`dense` 3/9, `chatengine` 7/9, `mapreduce` 3/9, `refine` 4/9, `flarefixed` 4/9, `flare`
+4/9, paper rule) — RAPTOR's 50-query pilot put its own headline at +0.0000 where the full sweep found
+−0.0146 at p=0.0247, and `chatengine` at 7/9 against `dense`'s 3/9 here is exactly the kind of gap a
+pilot invents.
+
+**One finding worth recording in its own right: a passing test does not prove the contract.**
+`MultiHopRagAnswerJudge.UsedTheAnswerSentence` is recorded and reported, never asserted
+(`BeirGraphRagAnswerTests.cs:2896`), and xunit prints nothing for a passing test — so the per-arm
+figures above were recovered from the run's own results file
+(`graph-answers-results/pilot-20260829T171523Z.jsonl`), not read off the console. Full account in
+`docs/plans/2026-08-29-flare-contract-pilot-notes.md`.
+
+**This does not complete the phase, and the DoD's answer-engine clause is still not met.** The clause
+needs the full 2,556-query sweep, and this pilot is not it. The phase still owes HyDE, reranking,
+hybrid BM25, late chunking, SPLADE, every vector store through the SciFact parity leg, the
+second-corpus RAPTOR arm, and local search's unexplained yes/no abstention.
+
 ### Phase 6.2.2: Requested Features [status: complete 2026-08-16 — #252 built and exercised; the phase stays open in spirit for any further request filed before the tag]
 **Goal:** the feature requests reported against the shipped packages, built and exercised to this
 milestone's bar rather than deferred past the tag. This phase exists because Milestone 6 is the
