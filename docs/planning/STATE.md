@@ -74,14 +74,28 @@ on `main`** — corrected 2026-08-25. Statuses are written when a phase is plann
 editing this file at the moment its PR merges, which is the same failure the Working State branch
 field has now had three times.
 
-**Last completed:** **the answer-engine arms, 2026-08-28, on `feat/answer-engine-arms` (not yet
-merged)** — five arms sharing dense retrieval and varying only generation (`chatengine` the control,
-`mapreduce`, `refine`, `flarefixed`, `flare`), three pilot gates (context identity, call shape,
-lookahead firing), and a corrected cost model (~$4 realistic / ~$21 worst case for the 2,556-query
-sweep, dominated by FLARE's sentence count). `flare` shipped with a real retriever because #414
-merged mid-implementation as `641e27f0`. **No pilot has run** — this machine has no ONNX model, no
-BEIR cache and no API key — so every gate and every figure is verified by reading only; full account
-in `ROADMAP.md`'s 6.2.1 block. Before it, **the pipeline-parity test's fast leg, 2026-08-27** — now
+**Last completed:** **the FLARE contract-and-cache fix, 2026-08-29, on
+`fix/flare-contract-and-cached-options` (not yet merged, no PR yet)** — #418 (merged to `main`
+2026-08-29 as `e7563873`) gave every engine arm the judge's extraction contract and broke FLARE doing
+it: a terminal `SystemPrompt` fighting FLARE's own one-sentence-at-a-time protocol produced an
+86,091-byte runaway (23× the historical maximum), reachable because `CachedGraphRagClient` also
+discarded FLARE's `MaxOutputTokens` guard. **The third time in this phase a fix has caused the next
+defect** (6.2.12 had #390 → #396 → #400). Five commits (`d8b86bba`..`1d9f4f2b`) fix FLARE's fragment
+protocol, the cache key (new optional field, omitted not emptied, zero regeneration across 86,510
+entries), the client's option-forwarding, and the harness's contract application. A re-run pilot,
+2026-08-29 — 15 tests, 0 failed, 0 skipped, 469 new cache entries — found every engine arm meeting the
+extraction contract on 8 or 9 of 9 queries (up from 0 of 9), three arms at 8 rather than 9. **This
+does not close Phase 6.2.1's answer-engine DoD clause**, which still needs the full 2,556-query sweep.
+Full account in `ROADMAP.md`'s 6.2.1 block and `docs/plans/2026-08-29-flare-contract-pilot-notes.md`.
+
+Before it, **the answer-engine arms, 2026-08-28, merged in #416 (`d2d96b0d`)** — five arms sharing
+dense retrieval and varying only generation (`chatengine` the control, `mapreduce`, `refine`,
+`flarefixed`, `flare`), three pilot gates (context identity, call shape, lookahead firing), and a
+corrected cost model (~$4 realistic / ~$21 worst case for the 2,556-query sweep, dominated by FLARE's
+sentence count). `flare` shipped with a real retriever because #414 merged mid-implementation as
+`641e27f0`. A 10-query pilot then ran 2026-08-28 and found every non-`dense` arm missing the judge's
+extraction contract entirely (0 of 9) — the defect #418 fixed, and the fix that broke FLARE above.
+Before that, **the pipeline-parity test's fast leg, 2026-08-27** — now
 merged as **#414** (`641e27f0`), verified on `main` by content (`PipelineParity.cs` present) rather
 than by the PR's label — `OrderingEmbeddingGenerator`, `PipelineParity` and `PipelineParityTests`
 compare a real `AddRagNet` pipeline against the harness's dense row with exact score equality; the
@@ -191,13 +205,14 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**The answer-engine arms are built, 2026-08-28, on `feat/answer-engine-arms` — get it merged, then
-run the pilot.** Five arms, three gates and a cost model exist; none of it has executed, because this
-machine has no ONNX model, no BEIR cache and no API key. **The recommended next step is the 50-query
-pilot itself** — 6–40 cents, dominated by FLARE's sentence count — on a machine that has all three,
-to find out whether the three gates (context identity, call shape, lookahead firing) actually hold
-rather than merely read correctly. Until that machine exists, **HyDE and reranking's re-measurement
-under the Real protocol remains the cheapest thread open in the phase that needs no money and no
+**`fix/flare-contract-and-cached-options` is built and re-run-piloted, 2026-08-29 — open the PR and
+get it merged.** #418 shipped the extraction contract and broke FLARE doing it (the third fix-causes-
+defect in this phase); five commits here fix the fragment protocol, the cache key, the client's
+option-forwarding, and the harness's contract application, and a re-run pilot found every engine arm
+meeting the contract on 8 or 9 of 9 queries. **After it merges, the recommended next step is the full
+2,556-query sweep** — the pilot is nine queries and does not close Phase 6.2.1's answer-engine DoD
+clause; only the sweep does. Until the sweep runs, **HyDE and reranking's re-measurement under the
+Real protocol remains the cheapest thread open in the phase that needs no money and no
 provisioning** (see below) — it can proceed in parallel with waiting for the pilot machine, not
 instead of the pilot.
 
@@ -459,14 +474,28 @@ much larger than answer generation's.
 > really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
 > here before.
 
-**Last landed on `main`:** **#416** as `d2d96b0d` (2026-08-28) — the five answer-engine arms and
-their pilot gates. Verify by content: `AnswerEngineArms.cs` and `AnswerEngineArmsTests.cs` exist
-under `tests/Rag.NET.Benchmarks.Quality.IntegrationTests/`, and `chatengine` appears in
-`AnswerArm.cs`.
+**Last landed on `main`:** **#418** as `e7563873` (2026-08-29) — gives every engine arm the judge's
+extraction contract as `RagOptions.SystemPrompt`. Verify by content:
+`SystemPrompt = MultiHopRagAnswerJudge.AnswerInstruction` appears in
+`tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirGraphRagAnswerTests.cs`. This field was stale
+by two PRs (#417 `b5a48a94`, #418 `e7563873`) when this session opened; corrected here.
 
-Before it, **#414** as `641e27f0` — pipeline parity (`PipelineParity.cs`); and **#412** as
-`ab87d156` — RAPTOR Task 6 (`## Measured` in `docs/guide/raptor.md`,
-`<VerifiedBy>benchmark</VerifiedBy>` in `Rag.NET.Raptor.csproj`).
+Before it, **#417** as `b5a48a94` — fixed this field the previous time and recorded what the
+provisioned machine measured. Before that, **#416** as `d2d96b0d` (2026-08-28) — the five
+answer-engine arms and their pilot gates (`AnswerEngineArms.cs`, `AnswerEngineArmsTests.cs` under
+`tests/Rag.NET.Benchmarks.Quality.IntegrationTests/`, `chatengine` in `AnswerArm.cs`).
+
+**Not on `main`: `fix/flare-contract-and-cached-options` is open, in flight, not merged.** #418 broke
+FLARE — a terminal `SystemPrompt` fighting FLARE's own fragment protocol produced an 86,091-byte
+runaway, 23× the historical maximum, because `CachedGraphRagClient` also discarded FLARE's
+`MaxOutputTokens` guard. Five commits (`d8b86bba`..`1d9f4f2b`) fix the fragment protocol, the cache
+key (a new optional field, omitted rather than emptied, so all 86,510 existing entries keep their
+keys), the client's option-forwarding, and the harness's contract application. A re-run pilot,
+2026-08-29, passed 15/15 with 0 skipped, and every engine arm now meets the judge's extraction
+contract on 8 or 9 of 9 queries (up from 0 of 9). **This branch has no PR yet and does not land on
+`main` until one merges** — do not read this paragraph as "landed"; re-check `git branch
+--show-current` and diff against `origin/main` by content before trusting it. Full account in
+`docs/planning/ROADMAP.md`'s 6.2.1 block and `docs/plans/2026-08-29-flare-contract-pilot-notes.md`.
 
 **Nothing here needs updating when a branch merges** — only when new work lands, which is the moment
 someone is already editing this file.

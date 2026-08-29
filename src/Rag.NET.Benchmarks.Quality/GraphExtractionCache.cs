@@ -223,6 +223,11 @@ public sealed class GraphExtractionCache
     /// Calls the model on a fill-mode miss. Never invoked on a hit, and never invoked at all in
     /// refuse-on-miss mode.
     /// </param>
+    /// <param name="optionsKey">
+    /// Canonical rendering of the caller's request options, or <see langword="null"/> when the
+    /// caller constrained nothing. Forwarded to <see cref="ComputeKey"/> unchanged; see its
+    /// remarks for why an absent value must never become an empty field.
+    /// </param>
     /// <param name="cancellationToken">Cancels the generation call.</param>
     /// <returns>The response text, exactly as first generated.</returns>
     /// <exception cref="InvalidOperationException">
@@ -233,12 +238,13 @@ public sealed class GraphExtractionCache
     public async Task<string> GetOrAddAsync(
         string prompt,
         Func<CancellationToken, Task<string>> generateAsync,
+        string? optionsKey = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(prompt);
         ArgumentNullException.ThrowIfNull(generateAsync);
 
-        var key = ComputeKey(prompt);
+        var key = ComputeKey(prompt, optionsKey);
         var cached = TryRead(key);
         if (cached is not null)
         {
@@ -300,7 +306,8 @@ public sealed class GraphExtractionCache
     }
 
     /// <summary>
-    /// The entry key: SHA-256 over the model identity and the rendered prompt, lower-case hex.
+    /// The entry key: SHA-256 over the model identity, the rendered prompt, and — when the caller
+    /// constrained the request — the options that constrained it, lower-case hex.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -314,18 +321,45 @@ public sealed class GraphExtractionCache
     /// SHA-256 for collision resistance over thousands of prompts, not as a security boundary:
     /// nothing here is adversarial.
     /// </para>
+    /// <para>
+    /// The field count itself varies — two when <paramref name="optionsKey"/> is absent, three when
+    /// it is not — and that is unambiguous rather than a second source of collisions, because every
+    /// field is both length-prefixed and NUL-terminated: a two-field buffer carries exactly two
+    /// length prefixes and two NULs, so it can never be byte-identical to a three-field buffer over
+    /// any inputs, whatever bytes those fields contain.
+    /// </para>
     /// </remarks>
-    private string ComputeKey(string prompt)
+    /// <param name="prompt">The rendered prompt, exactly as it would be sent.</param>
+    /// <param name="optionsKey">
+    /// Canonical rendering of the caller's request options, or <see langword="null"/>/empty when the
+    /// caller constrained nothing.
+    /// <b>Omitted from the buffer entirely when absent, never appended as an empty field</b> — an
+    /// empty field still costs an int32 length and a NUL, which would change every key ever written
+    /// and orphan the whole cache while appearing to work.
+    /// </param>
+    private string ComputeKey(string prompt, string? optionsKey = null)
     {
         var identity = Encoding.UTF8.GetBytes(_modelIdentity);
         var promptBytes = Encoding.UTF8.GetBytes(prompt);
+        var hasOptions = !string.IsNullOrEmpty(optionsKey);
+        var optionsBytes = hasOptions ? Encoding.UTF8.GetBytes(optionsKey!) : [];
 
-        var buffer = new byte[(2 * (sizeof(int) + 1)) + identity.Length + promptBytes.Length];
+        var fields = hasOptions ? 3 : 2;
+        var buffer = new byte[
+            (fields * (sizeof(int) + 1)) + identity.Length + promptBytes.Length + optionsBytes.Length];
+
         var offset = AppendField(buffer, 0, identity);
-        _ = AppendField(buffer, offset, promptBytes);
+        offset = AppendField(buffer, offset, promptBytes);
+        if (hasOptions)
+        {
+            _ = AppendField(buffer, offset, optionsBytes);
+        }
 
         return Convert.ToHexStringLower(SHA256.HashData(buffer));
     }
+
+    /// <summary>Test-only seam onto <see cref="ComputeKey"/>.</summary>
+    internal string KeyForTesting(string prompt, string? optionsKey = null) => ComputeKey(prompt, optionsKey);
 
     /// <summary>Writes one length-prefixed, NUL-terminated field and returns the next offset.</summary>
     private static int AppendField(byte[] buffer, int offset, byte[] field)

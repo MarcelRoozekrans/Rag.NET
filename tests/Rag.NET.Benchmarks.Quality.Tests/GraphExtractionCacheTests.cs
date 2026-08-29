@@ -56,6 +56,44 @@ public sealed class GraphExtractionCacheTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// A prompt with no caller options must hash to exactly the key it hashed to before options
+    /// existed.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is what makes "zero regeneration" a checked claim.</b> All 86,510 entries on disk —
+    /// 47,322 answers, 35,176 extractions, 4,012 reports — were written by calls that passed no
+    /// options. Appending a zero-length third field to the key buffer would add an int32 length and
+    /// a NUL, change every hash, and orphan the lot while appearing to work.
+    /// </remarks>
+    [Fact]
+    public void AKeyWithNoOptions_IsUnchangedFromBeforeOptionsExisted()
+    {
+        var cache = Fill();
+
+        Assert.Equal(
+            "e1c045862bd53afba2af1cbca9efafea06df61495eea5ac03f5e395670814460",
+            cache.KeyForTesting("golden-prompt"));
+    }
+
+    /// <summary>Two option strings over one prompt are two entries.</summary>
+    [Fact]
+    public void DifferentOptions_DoNotShareAnEntry()
+    {
+        var cache = Fill();
+
+        Assert.NotEqual(
+            cache.KeyForTesting("p", "maxOutputTokens=150"),
+            cache.KeyForTesting("p", "maxOutputTokens=300"),
+            StringComparer.Ordinal);
+        Assert.NotEqual(
+            cache.KeyForTesting("p"),
+            cache.KeyForTesting("p", "maxOutputTokens=150"),
+            StringComparer.Ordinal);
+        Assert.Equal(
+            cache.KeyForTesting("p"), cache.KeyForTesting("p", optionsKey: ""), StringComparer.Ordinal);
+    }
+
     [Fact]
     public void WithNoSubdirectoryNamed_EntriesGoWhereTheyAlwaysWent()
     {
@@ -91,12 +129,12 @@ public sealed class GraphExtractionCacheTests : IDisposable
         // the directory did not, a community report could be served as an extraction — which parses
         // to an empty graph and is swallowed silently by GraphEntityExtractionBehavior.
         var generator = new RecordingGenerator(Response);
-        _ = await Fill().GetOrAddAsync(Prompt, generator.GenerateAsync, Ct);
+        _ = await Fill().GetOrAddAsync(Prompt, generator.GenerateAsync, cancellationToken: Ct);
 
         var reports = Fill(subdirectory: GraphExtractionCache.ReportsDirectoryName);
         var other = new RecordingGenerator("a community report");
 
-        var text = await reports.GetOrAddAsync(Prompt, other.GenerateAsync, Ct);
+        var text = await reports.GetOrAddAsync(Prompt, other.GenerateAsync, cancellationToken: Ct);
 
         Assert.Equal("a community report", text);
         Assert.Equal(1, other.Calls);
@@ -111,15 +149,15 @@ public sealed class GraphExtractionCacheTests : IDisposable
         // The stronger form of the case above: after both directories hold an entry for the same
         // prompt, each hands back its own. One overwriting the other would satisfy the miss
         // assertion and still be wrong.
-        _ = await Fill().GetOrAddAsync(Prompt, new RecordingGenerator(Response).GenerateAsync, Ct);
+        _ = await Fill().GetOrAddAsync(Prompt, new RecordingGenerator(Response).GenerateAsync, cancellationToken: Ct);
         _ = await Fill(subdirectory: GraphExtractionCache.ReportsDirectoryName)
-            .GetOrAddAsync(Prompt, new RecordingGenerator("a community report").GenerateAsync, Ct);
+            .GetOrAddAsync(Prompt, new RecordingGenerator("a community report").GenerateAsync, cancellationToken: Ct);
 
-        Assert.Equal(Response, await Fill().GetOrAddAsync(Prompt, Explode, Ct));
+        Assert.Equal(Response, await Fill().GetOrAddAsync(Prompt, Explode, cancellationToken: Ct));
         Assert.Equal(
             "a community report",
             await Fill(subdirectory: GraphExtractionCache.ReportsDirectoryName)
-                .GetOrAddAsync(Prompt, Explode, Ct));
+                .GetOrAddAsync(Prompt, Explode, cancellationToken: Ct));
     }
 
     [Fact]
@@ -132,7 +170,7 @@ public sealed class GraphExtractionCacheTests : IDisposable
         var generator = new RecordingGenerator("must never be produced");
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => reports.GetOrAddAsync(Prompt, generator.GenerateAsync, Ct));
+            () => reports.GetOrAddAsync(Prompt, generator.GenerateAsync, cancellationToken: Ct));
 
         Assert.Contains(
             GraphExtractionCache.ReportsDirectoryName, exception.Message, StringComparison.Ordinal);
@@ -148,7 +186,7 @@ public sealed class GraphExtractionCacheTests : IDisposable
         // Named as the key, not merely as "a key": store the entry so its name is knowable, delete
         // it — the shape a half-finished generation run leaves — and refuse-on-miss must name it.
         _ = await Fill(subdirectory: GraphExtractionCache.ReportsDirectoryName)
-            .GetOrAddAsync(Prompt, new RecordingGenerator("a report").GenerateAsync, Ct);
+            .GetOrAddAsync(Prompt, new RecordingGenerator("a report").GenerateAsync, cancellationToken: Ct);
 
         var entry = Assert.Single(EntryFiles(GraphExtractionCache.ReportsDirectoryName));
         var key = Path.GetFileNameWithoutExtension(entry);
@@ -156,7 +194,7 @@ public sealed class GraphExtractionCacheTests : IDisposable
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => Refuse(subdirectory: GraphExtractionCache.ReportsDirectoryName)
-                .GetOrAddAsync(Prompt, Explode, Ct));
+                .GetOrAddAsync(Prompt, Explode, cancellationToken: Ct));
 
         Assert.Contains(key, exception.Message, StringComparison.Ordinal);
     }
@@ -165,10 +203,10 @@ public sealed class GraphExtractionCacheTests : IDisposable
     public async Task AHitInTheReportDirectory_IsServedWithoutGenerating()
     {
         _ = await Fill(subdirectory: GraphExtractionCache.ReportsDirectoryName)
-            .GetOrAddAsync(Prompt, new RecordingGenerator("a report").GenerateAsync, Ct);
+            .GetOrAddAsync(Prompt, new RecordingGenerator("a report").GenerateAsync, cancellationToken: Ct);
 
         var cache = Refuse(subdirectory: GraphExtractionCache.ReportsDirectoryName);
-        var text = await cache.GetOrAddAsync(Prompt, Explode, Ct);
+        var text = await cache.GetOrAddAsync(Prompt, Explode, cancellationToken: Ct);
 
         Assert.Equal("a report", text);
         Assert.Equal(1L, cache.Hits);
@@ -196,13 +234,13 @@ public sealed class GraphExtractionCacheTests : IDisposable
         // The directory separates the stages; the identity separates the models. Neither subsumes
         // the other, and regenerating the reports under a new model must not hit the old ones.
         _ = await Fill(subdirectory: GraphExtractionCache.ReportsDirectoryName)
-            .GetOrAddAsync(Prompt, new RecordingGenerator("mini's report").GenerateAsync, Ct);
+            .GetOrAddAsync(Prompt, new RecordingGenerator("mini's report").GenerateAsync, cancellationToken: Ct);
 
         var newer = new RecordingGenerator("a better model's report");
         var cache = Fill("openai/gpt-4o@t0.0", GraphExtractionCache.ReportsDirectoryName);
 
         Assert.Equal(
-            "a better model's report", await cache.GetOrAddAsync(Prompt, newer.GenerateAsync, Ct));
+            "a better model's report", await cache.GetOrAddAsync(Prompt, newer.GenerateAsync, cancellationToken: Ct));
         Assert.Equal(2, EntryFiles(GraphExtractionCache.ReportsDirectoryName).Count);
     }
 
@@ -212,7 +250,7 @@ public sealed class GraphExtractionCacheTests : IDisposable
         // What an interrupted report run leaves behind. A truncated report embeds and retrieves
         // like a whole one, so nothing downstream would ever object to it.
         _ = await Fill(subdirectory: GraphExtractionCache.ReportsDirectoryName)
-            .GetOrAddAsync(Prompt, new RecordingGenerator("a whole report").GenerateAsync, Ct);
+            .GetOrAddAsync(Prompt, new RecordingGenerator("a whole report").GenerateAsync, cancellationToken: Ct);
 
         var entry = Assert.Single(EntryFiles(GraphExtractionCache.ReportsDirectoryName));
         var bytes = await File.ReadAllBytesAsync(entry, Ct);
@@ -221,7 +259,7 @@ public sealed class GraphExtractionCacheTests : IDisposable
         var cache = Fill(subdirectory: GraphExtractionCache.ReportsDirectoryName);
         var generator = new RecordingGenerator("a whole report");
 
-        Assert.Equal("a whole report", await cache.GetOrAddAsync(Prompt, generator.GenerateAsync, Ct));
+        Assert.Equal("a whole report", await cache.GetOrAddAsync(Prompt, generator.GenerateAsync, cancellationToken: Ct));
         Assert.Equal(1, generator.Calls);
         Assert.Equal(1L, cache.Misses);
     }
@@ -234,7 +272,7 @@ public sealed class GraphExtractionCacheTests : IDisposable
         var cache = Fill(subdirectory: GraphExtractionCache.ReportsDirectoryName);
 
         _ = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => cache.GetOrAddAsync(Prompt, _ => Task.FromResult("   "), Ct));
+            () => cache.GetOrAddAsync(Prompt, _ => Task.FromResult("   "), cancellationToken: Ct));
 
         Assert.Empty(EntryFiles(GraphExtractionCache.ReportsDirectoryName));
     }

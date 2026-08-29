@@ -1456,14 +1456,27 @@ public sealed class BeirGraphRagAnswerTests
         // before/after delta on any shared counter would not be.
         using var counter = new EngineCallCountingChatClient(pass.EngineClients.For(arm));
         var engine = AnswerEngineArms.Create(arm, counter, pass.Retrievers.For(arm), pass.Failures);
-        var response = await engine.AskAsync(query.Text, sources, EngineAnswerOptions, ct);
+
+        // FLARE's fragments are not complete replies, so the extraction contract cannot ride on
+        // them — applied per fragment it makes the model close the answer on every call and never
+        // emit <DONE> (2026-08-29: one response carried the closing sentence 256 times). Every
+        // other arm emits one complete reply and takes the contract directly.
+        var isFlare = string.Equals(arm, AnswerArm.Flare, StringComparison.Ordinal)
+            || string.Equals(arm, AnswerArm.FlareFixed, StringComparison.Ordinal);
+
+        var response = await engine.AskAsync(
+            query.Text, sources, isFlare ? FlareLoopOptions : EngineAnswerOptions, ct);
+
+        var answer = isFlare
+            ? await ApplyExtractionContractAsync(counter, query.Text, response.Answer, ct)
+            : response.Answer;
 
         AssertCallShapeMatchesPrediction(arm, query.Id, sources.Count, counter.Calls);
-        return response.Answer;
+        return answer;
     }
 
     /// <summary>
-    /// What every engine arm answers under: the <b>extraction contract</b>
+    /// What every engine arm except FLARE answers under: the <b>extraction contract</b>
     /// <see cref="MultiHopRagAnswerJudge.AnswerInstruction"/>, passed as the system prompt.
     /// </summary>
     /// <remarks>
@@ -1481,10 +1494,21 @@ public sealed class BeirGraphRagAnswerTests
     /// output contract so the comparison is about the mechanism.
     /// </para>
     /// <para>
-    /// All four engines honour <see cref="RagOptions.SystemPrompt"/> — <c>ChatAnswerEngine</c> and
-    /// <c>FlareAnswerEngine</c> as <c>opts.SystemPrompt ?? DefaultSystemPrompt</c>, MapReduce and
+    /// All three non-FLARE engines honour <see cref="RagOptions.SystemPrompt"/> —
+    /// <c>ChatAnswerEngine</c> as <c>opts.SystemPrompt ?? DefaultSystemPrompt</c>, MapReduce and
     /// Refine by prepending a system message when it is non-null — so this reaches every call each
     /// engine makes, including MapReduce's per-chunk maps and Refine's rewrites.
+    /// </para>
+    /// <para>
+    /// <b>The two FLARE arms are excluded.</b> FLARE generates one sentence per call and feeds the
+    /// growing answer back in as "answer so far", stopping only when the model emits
+    /// <c>&lt;DONE&gt;</c>. A terminal instruction applied to every fragment makes the model close
+    /// the answer on every call — the closing sentence becomes part of "answer so far" and the model
+    /// closes it again, never reaching <c>&lt;DONE&gt;</c> (2026-08-29: one response held the same
+    /// sentence 256 times, 86,091 bytes, and two benchmark runs died on HTTP timeouts). FLARE instead
+    /// runs its sentence loop under <see cref="FlareLoopOptions"/> — no contract — and
+    /// <see cref="ApplyExtractionContractAsync"/> puts the assembled answer under this same contract
+    /// once, after the loop.
     /// </para>
     /// <para>
     /// <b>It changes every engine prompt, and therefore every engine cache key.</b> The 323 entries
@@ -1496,6 +1520,30 @@ public sealed class BeirGraphRagAnswerTests
     {
         SystemPrompt = MultiHopRagAnswerJudge.AnswerInstruction,
     };
+
+    /// <summary>What FLARE's sentence loop runs under: no contract, because fragments are not replies.</summary>
+    private static readonly RagOptions FlareLoopOptions = new();
+
+    /// <summary>
+    /// Puts FLARE's assembled answer under the same extraction contract every other arm answers
+    /// under, in one call after the loop.
+    /// </summary>
+    /// <remarks>
+    /// Counted by Gate 2 like any other call — it goes through the same counting client — so
+    /// <see cref="PredictedCallShape"/> carries it in the FLARE bounds rather than the gate being
+    /// loosened to hide it.
+    /// </remarks>
+    private static async Task<string> ApplyExtractionContractAsync(
+        IChatClient client, string question, string draft, CancellationToken ct)
+    {
+        var prompt =
+            MultiHopRagAnswerJudge.AnswerInstruction + "\n\n" +
+            "Question: " + question + "\n\n" +
+            "Draft answer:\n" + draft;
+
+        var response = await client.GetResponseAsync([new ChatMessage(ChatRole.User, prompt)], null, ct);
+        return response.Text;
+    }
 
     // ── The pilot's gates ─────────────────────────────────────────────────
 
@@ -1625,16 +1673,19 @@ public sealed class BeirGraphRagAnswerTests
 
         var defaults = new FlareOptions();
         var sentenceCalls = defaults.MaxSentences * 2;
+
+        // +1 for the post-loop extraction-contract call the arm makes through the same counting
+        // client; min 2 because that call is unconditional.
         if (string.Equals(arm, AnswerArm.FlareFixed, StringComparison.Ordinal))
         {
-            return (1, sentenceCalls, FormattableString.Invariant(
-                $"FlareAnswerEngine at MaxRetrievals=0 (at most {defaults.MaxSentences} sentences x 2 calls, no regeneration)"));
+            return (2, sentenceCalls + 1, FormattableString.Invariant(
+                $"FlareAnswerEngine at MaxRetrievals=0 (at most {defaults.MaxSentences} sentences x 2 calls, no regeneration, plus one contract call)"));
         }
 
         if (string.Equals(arm, AnswerArm.Flare, StringComparison.Ordinal))
         {
-            return (1, sentenceCalls + defaults.MaxRetrievals, FormattableString.Invariant(
-                $"FlareAnswerEngine as shipped (at most {defaults.MaxSentences} sentences x 2 calls, plus one regeneration per lookahead, capped at {defaults.MaxRetrievals})"));
+            return (2, sentenceCalls + defaults.MaxRetrievals + 1, FormattableString.Invariant(
+                $"FlareAnswerEngine as shipped (at most {defaults.MaxSentences} sentences x 2 calls, plus one regeneration per lookahead capped at {defaults.MaxRetrievals}, plus one contract call)"));
         }
 
         throw new ArgumentOutOfRangeException(nameof(arm), arm, "Not an arm with a predicted call shape.");
@@ -1699,11 +1750,19 @@ public sealed class BeirGraphRagAnswerTests
         Assert.Contains("GATE 2 FAILED", error.Message, StringComparison.Ordinal);
         Assert.Contains("exactly 7", error.Message, StringComparison.Ordinal);
 
-        // A FLARE arm that never stops is the other direction; the bound comes from FlareOptions.
+        // The FLARE minimum is 2, not 1: the post-loop extraction-contract call is unconditional,
+        // so a FLARE arm that made only 1 call skipped it — a single sentence call with no contract
+        // applied is not a shape either FLARE arm can produce.
+        var tooFew = Assert.ThrowsAny<Exception>(
+            () => AssertCallShapeMatchesPrediction(AnswerArm.FlareFixed, "q-3", ContextChunks, 1));
+        Assert.Contains("GATE 2 FAILED", tooFew.Message, StringComparison.Ordinal);
+
+        // A FLARE arm that never stops is the other direction; the bound comes from FlareOptions,
+        // plus the one post-loop extraction-contract call every FLARE arm makes.
         var runaway = new FlareOptions();
         var loop = Assert.ThrowsAny<Exception>(
             () => AssertCallShapeMatchesPrediction(
-                AnswerArm.Flare, "q-3", ContextChunks, (runaway.MaxSentences * 2) + runaway.MaxRetrievals + 1));
+                AnswerArm.Flare, "q-3", ContextChunks, (runaway.MaxSentences * 2) + runaway.MaxRetrievals + 2));
         Assert.Contains("GATE 2 FAILED", loop.Message, StringComparison.Ordinal);
     }
 
