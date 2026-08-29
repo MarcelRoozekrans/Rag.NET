@@ -74,8 +74,8 @@ on `main`** — corrected 2026-08-25. Statuses are written when a phase is plann
 editing this file at the moment its PR merges, which is the same failure the Working State branch
 field has now had three times.
 
-**Last completed:** **the FLARE contract-and-cache fix, 2026-08-29, on
-`fix/flare-contract-and-cached-options` (not yet merged, no PR yet)** — #418 (merged to `main`
+**Last completed:** **the FLARE contract-and-cache fix, 2026-08-29, merged to `main` as `50221812`
+in #419** — #418 (merged to `main`
 2026-08-29 as `e7563873`) gave every engine arm the judge's extraction contract and broke FLARE doing
 it: a terminal `SystemPrompt` fighting FLARE's own one-sentence-at-a-time protocol produced an
 86,091-byte runaway (23× the historical maximum), reachable because `CachedGraphRagClient` also
@@ -205,13 +205,16 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**`fix/flare-contract-and-cached-options` is built and re-run-piloted, 2026-08-29 — open the PR and
-get it merged.** #418 shipped the extraction contract and broke FLARE doing it (the third fix-causes-
-defect in this phase); five commits here fix the fragment protocol, the cache key, the client's
-option-forwarding, and the harness's contract application, and a re-run pilot found every engine arm
-meeting the contract on 8 or 9 of 9 queries. **After it merges, the recommended next step is the full
-2,556-query sweep** — the pilot is nine queries and does not close Phase 6.2.1's answer-engine DoD
-clause; only the sweep does. Until the sweep runs, **HyDE and reranking's re-measurement under the
+**The FLARE contract-and-cache fix merged 2026-08-29 as `50221812` (#419), so the recommended next
+step is the full 2,556-query answer-engine sweep.** #418 shipped the extraction contract and broke
+FLARE doing it (the third fix-causes-defect in this phase); #419 fixes the fragment protocol, the
+cache key, the client's option-forwarding, and the harness's contract application, and a re-run pilot
+found every engine arm meeting the contract on 8 or 9 of 9 queries — up from 0 of 9. **The pilot is
+nine queries and does not close Phase 6.2.1's answer-engine DoD clause; only the sweep does**, at
+roughly $5–10 and ~92,000 calls. Two things the sweep should settle that the pilot could not: why
+three arms sit at 8 of 9 rather than 9, and whether any accuracy difference between the engines is
+real — `chatengine` scored 7/9 against `dense`'s 3/9 on nine queries, which is exactly the kind of
+gap a pilot invents. Until the sweep runs, **HyDE and reranking's re-measurement under the
 Real protocol remains the cheapest thread open in the phase that needs no money and no
 provisioning** (see below) — it can proceed in parallel with waiting for the pilot machine, not
 instead of the pilot.
@@ -474,28 +477,38 @@ much larger than answer generation's.
 > really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
 > here before.
 
-**Last landed on `main`:** **#418** as `e7563873` (2026-08-29) — gives every engine arm the judge's
+**Last landed on `main`:** **#419** as `50221812` (2026-08-29) — the FLARE contract-and-cache fix.
+Verify by content: `FragmentProtocol` in `src/Rag.NET.AnswerEngines/FlareAnswerEngine.cs`,
+`ThrowIfUnkeyable` in
+`benchmarks/Rag.NET.Benchmarks.Quality.GraphExtractions/CachedGraphRagClient.cs`.
+
+Before it, **#418** as `e7563873` (2026-08-29) — gives every engine arm the judge's
 extraction contract as `RagOptions.SystemPrompt`. Verify by content:
 `SystemPrompt = MultiHopRagAnswerJudge.AnswerInstruction` appears in
 `tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirGraphRagAnswerTests.cs`. This field was stale
-by two PRs (#417 `b5a48a94`, #418 `e7563873`) when this session opened; corrected here.
+by two PRs (#417 `b5a48a94`, #418 `e7563873`) when this session opened; corrected then.
 
 Before it, **#417** as `b5a48a94` — fixed this field the previous time and recorded what the
 provisioned machine measured. Before that, **#416** as `d2d96b0d` (2026-08-28) — the five
 answer-engine arms and their pilot gates (`AnswerEngineArms.cs`, `AnswerEngineArmsTests.cs` under
 `tests/Rag.NET.Benchmarks.Quality.IntegrationTests/`, `chatengine` in `AnswerArm.cs`).
 
-**Not on `main`: `fix/flare-contract-and-cached-options` is open, in flight, not merged.** #418 broke
+**#419 landed on `main` 2026-08-29 as `50221812`, verified by content** — `FragmentProtocol` and
+`ThrowIfUnkeyable` are both present there — **rather than by the PR's MERGED label.** #418 broke
 FLARE — a terminal `SystemPrompt` fighting FLARE's own fragment protocol produced an 86,091-byte
 runaway, 23× the historical maximum, because `CachedGraphRagClient` also discarded FLARE's
-`MaxOutputTokens` guard. Five commits (`d8b86bba`..`1d9f4f2b`) fix the fragment protocol, the cache
+`MaxOutputTokens` guard. Twelve commits fix the fragment protocol, the cache
 key (a new optional field, omitted rather than emptied, so all 86,510 existing entries keep their
 keys), the client's option-forwarding, and the harness's contract application. A re-run pilot,
 2026-08-29, passed 15/15 with 0 skipped, and every engine arm now meets the judge's extraction
-contract on 8 or 9 of 9 queries (up from 0 of 9). **This branch has no PR yet and does not land on
-`main` until one merges** — do not read this paragraph as "landed"; re-check `git branch
---show-current` and diff against `origin/main` by content before trusting it. Full account in
+contract on 8 or 9 of 9 queries (up from 0 of 9). Full account in
 `docs/planning/ROADMAP.md`'s 6.2.1 block and `docs/plans/2026-08-29-flare-contract-pilot-notes.md`.
+
+**This paragraph said "Not on `main`… in flight, not merged" until #419 merged, which is the eighth
+time a claim in this file has been falsified at the exact moment its branch landed.** It was true
+when written and inverted an hour later. The Working State field above was redesigned to be immutable
+for precisely this reason; prose elsewhere in the file is not, so a merge-status sentence anywhere
+but that field is a liability with a short shelf life.
 
 **Nothing here needs updating when a branch merges** — only when new work lands, which is the moment
 someone is already editing this file.
