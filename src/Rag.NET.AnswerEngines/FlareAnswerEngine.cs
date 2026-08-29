@@ -31,6 +31,22 @@ public sealed class FlareAnswerEngine : IAnswerEngine
 
     private const string DoneToken = "<DONE>";
 
+    /// <summary>
+    /// FLARE's own framing, always appended after any caller system prompt.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is mechanism, not style, which is why a caller cannot displace it.</b> FLARE emits one
+    /// sentence per call and feeds the growing answer back in, so an instruction written for a complete
+    /// reply — "end with this sentence", "reply in JSON" — is actively harmful applied per fragment: the
+    /// model satisfies it every time, the satisfied text becomes "answer so far", and it never emits
+    /// <see cref="DoneToken"/>. Appended last so it is the most recent instruction the model reads.
+    /// </remarks>
+    private const string FragmentProtocol =
+        "You are writing ONE sentence at a time as part of a longer answer that is assembled from " +
+        "your replies. Reply with exactly one sentence, or with only " + DoneToken + " if the answer " +
+        "is complete. These replies are fragments, not a complete reply: do not add closing or " +
+        "summary sentences, and do not apply any end-of-reply formatting instruction to them.";
+
     private readonly IChatClient _chatClient;
     private readonly IRetriever _retriever;
     private readonly IConfidenceScorer _scorer;
@@ -299,10 +315,14 @@ public sealed class FlareAnswerEngine : IAnswerEngine
 
         return
         [
-            new(ChatRole.System, opts.SystemPrompt ?? DefaultSystemPrompt),
+            new(ChatRole.System, BuildSystemPrompt(opts)),
             new(ChatRole.User, userText),
         ];
     }
+
+    /// <summary>The caller's system prompt, if any, followed by FLARE's fragment protocol.</summary>
+    private static string BuildSystemPrompt(RagOptions opts) =>
+        $"{opts.SystemPrompt ?? DefaultSystemPrompt}\n\n{FragmentProtocol}";
 
     private static ChatOptions BuildChatOptions(RagOptions opts)
     {

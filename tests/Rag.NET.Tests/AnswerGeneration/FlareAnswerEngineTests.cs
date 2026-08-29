@@ -352,4 +352,36 @@ public class FlareAnswerEngineTests
         Assert.Same(sources, updates[0].Sources);
         Assert.Equal("Only sentence.", updates[1].TextDelta);
     }
+
+    /// <summary>
+    /// A caller's <see cref="RagOptions.SystemPrompt"/> must not displace FLARE's fragment protocol.
+    /// </summary>
+    /// <remarks>
+    /// Regression test for the 2026-08-29 runaway. FLARE generates one sentence per call and feeds the
+    /// growing answer back in; a caller instruction such as "End your reply with exactly this sentence"
+    /// is a <b>terminal</b> instruction, and applied per fragment it makes the model emit the closing
+    /// sentence forever and never emit the DONE token, so the loop also loses its early exit. One
+    /// observed response held the same sentence 256 times, 86,091 bytes, against a 3,747-byte maximum
+    /// across the 47,151 entries written before that day.
+    /// </remarks>
+    [Fact]
+    public async Task ACallerSystemPrompt_DoesNotDisplaceTheFragmentProtocol()
+    {
+        var sources = new List<SearchResult> { MakeSource("ctx") };
+        var captured = new List<ChatMessage>();
+        _chatClient.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ChatReply("<DONE>"))
+            .AndDoes(callInfo => captured.AddRange(callInfo.Arg<IList<ChatMessage>>()));
+
+        _ = await CreateSut().AskAsync(
+            "q",
+            sources,
+            new RagOptions { SystemPrompt = "End your reply with exactly: The answer is \"...\"" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var system = Assert.Single(captured, m => m.Role == ChatRole.System);
+        Assert.Contains("End your reply with exactly", system.Text, StringComparison.Ordinal);
+        Assert.Contains("exactly one sentence", system.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("<DONE>", system.Text, StringComparison.Ordinal);
+    }
 }
