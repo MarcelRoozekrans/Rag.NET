@@ -4541,7 +4541,7 @@ installed in the run that matters, a fresh stub allocated per call and dropped, 
 holder asserted after the run — and it is the one that has now proven itself against real data.
 
 **A caveat on what the eventual figures will mean, ~~carried forward rather than fixed~~ superseded
-2026-08-29 on `fix/flare-contract-and-cached-options`:** ~~`CachedGraphRagClient.GetResponseAsync`
+2026-08-29 by #419 (`50221812`):** ~~`CachedGraphRagClient.GetResponseAsync`
 ignores its `options` argument, so FLARE's `MaxOutputTokens = 150` and the engines' temperatures are
 discarded before a call is made. The pilot will therefore price *the harness's* configuration — which
 is what the sweep would run — but not what a shipped engine would send with its own options honoured.
@@ -4589,8 +4589,9 @@ caller's on every per-sentence call (`FlareAnswerEngine.cs:302`), so a terminal 
 reached the model. Disarming that guard is why a bad prompt became an 86 KB runaway and a timeout
 instead of a 150-token oddity.
 
-**Three fixes, `d8b86bba`..`1d9f4f2b`, on `fix/flare-contract-and-cached-options` (not yet
-merged).** (1) `FlareAnswerEngine` now composes a caller `SystemPrompt`
+**Three fixes, merged to `main` 2026-08-29 as `50221812` in #419** — verified on `main` by content
+(`FragmentProtocol` in `FlareAnswerEngine.cs`, `ThrowIfUnkeyable` in `CachedGraphRagClient.cs`)
+rather than by the PR's MERGED label. **(1)** `FlareAnswerEngine` now composes a caller `SystemPrompt`
 with its own fragment protocol instead of being replaced by it — a defect in a **shipped package**,
 reachable by any user whose `SystemPrompt` carries a terminal instruction, the same shape as #333. (2)
 `GraphExtractionCache` gained an optional third key field for caller options, **omitted rather than
