@@ -191,10 +191,12 @@ public sealed class CachedGraphRagClient : IChatClient
         _ = Interlocked.Increment(ref _calls);
         RecordPromptLength(sent);
 
+        var merged = Merge(options);
         var text = await _cache.GetOrAddAsync(
             GraphExtractionPrompt.Render(sent),
-            ct => CallModelAsync(sent, ct),
-            cancellationToken: cancellationToken);
+            ct => CallModelAsync(sent, merged, ct),
+            RenderOptionsKey(options),
+            cancellationToken);
 
         return new ChatResponse(new ChatMessage(ChatRole.Assistant, text));
     }
@@ -258,7 +260,7 @@ public sealed class CachedGraphRagClient : IChatClient
     /// </remarks>
     /// <exception cref="InvalidOperationException">There is no model to call.</exception>
     private async Task<string> CallModelAsync(
-        List<ChatMessage> messages, CancellationToken cancellationToken)
+        List<ChatMessage> messages, ChatOptions options, CancellationToken cancellationToken)
     {
         if (_inner is null)
         {
@@ -273,7 +275,7 @@ public sealed class CachedGraphRagClient : IChatClient
         {
             try
             {
-                return await CallOnceAsync(messages, cancellationToken);
+                return await CallOnceAsync(messages, options, cancellationToken);
             }
             catch (OperationCanceledException)
             {
@@ -292,14 +294,65 @@ public sealed class CachedGraphRagClient : IChatClient
 
     /// <summary>One attempt, refusing blank text.</summary>
     private async Task<string> CallOnceAsync(
-        List<ChatMessage> messages, CancellationToken cancellationToken)
+        List<ChatMessage> messages, ChatOptions options, CancellationToken cancellationToken)
     {
-        var response = await _inner!.GetResponseAsync(messages, _options, cancellationToken);
+        var response = await _inner!.GetResponseAsync(messages, options, cancellationToken);
         RecordUsage(response);
         return string.IsNullOrWhiteSpace(response.Text)
             ? throw new InvalidOperationException(
                 "The model returned blank text; retrying rather than caching it.")
             : response.Text;
+    }
+
+    /// <summary>
+    /// The caller's options over this client's baseline: the baseline's temperature stays
+    /// authoritative because the model identity carries it into every cache key.
+    /// </summary>
+    private ChatOptions Merge(ChatOptions? callerOptions)
+    {
+        if (callerOptions is null)
+        {
+            return _options;
+        }
+
+        var merged = callerOptions.Clone();
+        merged.Temperature = _options.Temperature;
+        return merged;
+    }
+
+    /// <summary>
+    /// What the caller constrained beyond the baseline, canonically rendered, or an empty string
+    /// when it constrained nothing.
+    /// </summary>
+    /// <remarks>
+    /// Empty is the faithful encoding of every entry written before this existed, which is what lets
+    /// all 86,510 of them keep their keys. Only fields that can change the response text are
+    /// rendered, in a fixed order, so the same request always renders the same string.
+    /// </remarks>
+    private static string RenderOptionsKey(ChatOptions? callerOptions)
+    {
+        if (callerOptions is null)
+        {
+            return string.Empty;
+        }
+
+        var parts = new List<string>(3);
+        if (callerOptions.MaxOutputTokens is { } maxTokens)
+        {
+            parts.Add(FormattableString.Invariant($"maxOutputTokens={maxTokens}"));
+        }
+
+        if (callerOptions.TopP is { } topP)
+        {
+            parts.Add(FormattableString.Invariant($"topP={topP}"));
+        }
+
+        if (callerOptions.Seed is { } seed)
+        {
+            parts.Add(FormattableString.Invariant($"seed={seed}"));
+        }
+
+        return string.Join(";", parts);
     }
 
     /// <summary>

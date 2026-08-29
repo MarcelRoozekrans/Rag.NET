@@ -12,6 +12,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Benchmarks.Quality\Rag.NET.Benchmarks.Quality.csproj" />
+    <!-- CachedGraphRagClient, for CachedGraphRagClientOptionsTests. It is an IChatClient decorator
+         with no BEIR-cache or network dependency of its own, so it stays in this fast gating tier
+         rather than moving to Rag.NET.Benchmarks.Quality.IntegrationTests alongside the tests that
+         need RAGNET_ONNX_EMBED_MODEL and friends. -->
+    <ProjectReference Include="..\..\benchmarks\Rag.NET.Benchmarks.Quality.GraphExtractions\Rag.NET.Benchmarks.Quality.GraphExtractions.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
