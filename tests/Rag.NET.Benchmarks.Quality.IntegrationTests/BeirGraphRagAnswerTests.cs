@@ -106,13 +106,51 @@ public sealed class BeirGraphRagAnswerTests
     private static readonly Uri OpenRouterEndpoint = new("https://openrouter.ai/api/v1");
 
     /// <summary>
+    /// The instruction set <b>every</b> arm answers under — three separable contracts in one string.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It carries <b>grounding</b> ("using only the context below"), <b>abstention</b> ("answer
+    /// exactly: Insufficient information") and the <b>extraction contract</b>
+    /// (<see cref="MultiHopRagAnswerJudge.AnswerInstruction"/>, which the judge reads the answer out
+    /// of). Extracted from <see cref="PromptTemplate"/> on 2026-08-30 so the engine arms can be
+    /// handed the same three rather than a subset of them.
+    /// </para>
+    /// <para>
+    /// <b>Why it exists as its own constant.</b> The 2026-08-30 full sweep measured
+    /// <c>chatengine</c> — a control that shares <c>dense</c>'s retrieval verbatim — at +0.4204 paper
+    /// and −0.0541 raw against it, which no control should do. The cause was that #418 gave the
+    /// engines only the extraction contract: <c>dense</c> abstained on <b>61.8%</b> of answerable
+    /// queries because it was told to, and every engine arm abstained <b>0 of 301</b> on the
+    /// unanswerable ones because nothing ever told them to. The comparison measured one sentence of
+    /// prompt. #418's own rule — check what the shared apparatus was doing for the exempted arm —
+    /// was followed and came back incomplete, because the symptom pointed at extraction and the
+    /// check stopped there. A single <c>const string</c> holding three contracts is what made it
+    /// look like one decision; naming it is what stops that recurring.
+    /// </para>
+    /// <para>
+    /// <b>"the context below" is kept verbatim</b> even though the engines receive their context
+    /// structurally rather than inline. Paraphrasing it for elegance would put the arms back under
+    /// different instructions, which is the whole defect. Identical wording is the point.
+    /// </para>
+    /// </remarks>
+    private const string AnswerContract =
+        "Answer the question using only the context below. If the context does not contain enough " +
+        "information to answer, answer exactly: Insufficient information\n" +
+        MultiHopRagAnswerJudge.AnswerInstruction;
+
+    /// <summary>
     /// The one prompt every arm answers with. Versioned in its text: changing a character changes
     /// every cache key and the run refuses on the first miss until regenerated.
     /// </summary>
+    /// <remarks>
+    /// <b>This composes to the same characters it always has.</b> Extracting
+    /// <see cref="AnswerContract"/> out of it was deliberately byte-neutral: <c>dense</c>'s 2,556
+    /// cached answers survive and its pinned 0.3499 / 0.2603 / 0.3242 still reproduces, which is
+    /// Gate 0 of the sweep protocol. Only the engine arms re-key, which they must.
+    /// </remarks>
     private const string PromptTemplate =
-        "Answer the question using only the context below. If the context does not contain enough " +
-        "information to answer, answer exactly: Insufficient information\n" +
-        MultiHopRagAnswerJudge.AnswerInstruction + "\n\n" +
+        AnswerContract + "\n\n" +
         "Question: {question}\n\nContext:\n{context}";
 
     private readonly ITestOutputHelper _output;
@@ -708,6 +746,52 @@ public sealed class BeirGraphRagAnswerTests
             new Dictionary<string, IReadOnlyDictionary<string, int>>(StringComparer.Ordinal));
 
         return (dataset, gold);
+    }
+
+    /// <summary>
+    /// The engine arms answer under <b>exactly</b> the instruction set <c>dense</c> answers under.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the guard the 2026-08-30 sweep earned, and it fails against what shipped before
+    /// it.</b> <see cref="PromptTemplate"/> carries three separable contracts — grounding,
+    /// abstention, extraction — and #418 handed the engines only the third. Nothing failed: the
+    /// suite was green, the pilot passed, and the full 2,556-query sweep completed with every gate
+    /// holding. What it produced was a comparison in which <c>dense</c> abstained on 61.8% of
+    /// answerable queries because it was instructed to, and every engine arm abstained <b>0 of
+    /// 301</b> on the unanswerable ones because nothing had instructed them to — so a control that
+    /// shares <c>dense</c>'s retrieval verbatim came out +0.4204 ahead on the paper rule.
+    /// <para>
+    /// Costing that discovery a 6.5-hour paid run is the reason this assertion is cheap, runs on
+    /// every push, and needs no model, corpus or API key. A prompt divergence between arms is now a
+    /// millisecond failure rather than a finding recovered from a results file afterwards.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EngineArmsAnswerUnderTheSameContractAsDense()
+    {
+        var engineContract = EngineAnswerOptions.SystemPrompt;
+
+        Assert.NotNull(engineContract);
+        Assert.StartsWith(engineContract, PromptTemplate, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The shared contract still carries all three instructions by name, not just by composition.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="EngineArmsAnswerUnderTheSameContractAsDense"/> proves the arms agree with each
+    /// other; it cannot notice both losing the same rule at once. This one names what the rules are,
+    /// so deleting the abstention sentence — the instruction whose absence the sweep measured —
+    /// fails here even if every arm loses it together.
+    /// </remarks>
+    [Fact]
+    public void TheSharedContract_CarriesGroundingAbstentionAndExtraction()
+    {
+        Assert.Contains("using only the context", AnswerContract, StringComparison.Ordinal);
+        Assert.Contains(
+            "answer exactly: Insufficient information", AnswerContract, StringComparison.Ordinal);
+        Assert.Contains(
+            MultiHopRagAnswerJudge.AnswerInstruction, AnswerContract, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1515,10 +1599,20 @@ public sealed class BeirGraphRagAnswerTests
     /// the 2026-08-28 pilot wrote are orphaned by it. That is the right trade: they answer a
     /// question nobody asked.
     /// </para>
+    /// <para>
+    /// <b>Corrected 2026-08-30: this now carries the whole of <see cref="AnswerContract"/>, not just
+    /// the extraction instruction.</b> Passing only the extraction contract left the engines without
+    /// the grounding and abstention rules <c>dense</c> answers under, and the full sweep measured
+    /// what that costs: <c>dense</c> abstained on <b>61.8%</b> of answerable queries and every engine
+    /// arm abstained <b>0 of 301</b> on the unanswerable ones, making <c>chatengine</c>'s +0.4204
+    /// paper-rule lead a measurement of one sentence of prompt rather than of any engine mechanism.
+    /// <see cref="EngineArmsAnswerUnderTheSameContractAsDense"/> is the guard that keeps the arms
+    /// aligned; it fails against the previous value.
+    /// </para>
     /// </remarks>
     private static readonly RagOptions EngineAnswerOptions = new()
     {
-        SystemPrompt = MultiHopRagAnswerJudge.AnswerInstruction,
+        SystemPrompt = AnswerContract,
     };
 
     /// <summary>What FLARE's sentence loop runs under: no contract, because fragments are not replies.</summary>
