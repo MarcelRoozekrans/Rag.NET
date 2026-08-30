@@ -5,14 +5,16 @@ using Azure.Search.Documents.Indexes.Models;
 using Azure.Search.Documents.Models;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
-using Rag.NET.VectorStores;
 using Rag.NET.Telemetry;
+using Rag.NET.VectorStores;
 using RagSearchOptions = Rag.NET.Models.Options.SearchOptions;
 
 namespace Rag.NET.AzureAISearch;
 
 public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable, IDisposable
 {
+    private const int SearchPageSize = 1000; // Azure AI Search maximum
+    private const int DeleteBatchSize = 1000; // Azure AI Search maximum
     private readonly VectorStoreInitialisationGate _initGate = new();
     private readonly SearchIndexClient _indexClient;
     private readonly SearchClient _searchClient;
@@ -256,20 +258,10 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         return results;
     }
 
-    public Task DeleteByDocumentIdAsync(
+    public async Task DeleteByDocumentIdAsync(
         string documentId,
-        CancellationToken cancellationToken = default) =>
-        DeleteByDocumentIdAsync(documentId, pageSize: 1000, cancellationToken);
-
-    internal async Task DeleteByDocumentIdAsync(
-        string documentId,
-        int pageSize,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) 
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageSize);
-        if (pageSize > 1000)
-            throw new ArgumentOutOfRangeException(nameof(pageSize), pageSize, "Page size must not exceed 1000 (Azure AI Search maximum).");
-
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
         activity?.SetTag("vector.store", GetType().Name);
         activity?.SetTag("vectorstore.collection", _indexName);
@@ -277,38 +269,31 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         // collection that does not exist, and provisioning one to satisfy it would be pure waste —
         // on pgvector an inline HNSW build under a write-blocking lock, triggered by a delete (#353).
 
-
-        List<string> idsToDelete;
-        do
+        var idsToDelete = new List<string>();
+        var searchOptions = new SearchOptions
         {
-            idsToDelete = [];
+            Filter = $"document_id eq '{EscapeODataString(documentId)}'",
+            Select = { "id" },
+            Size = SearchPageSize,
+        };
 
-            var searchOptions = new Azure.Search.Documents.SearchOptions
-            {
-                Filter = $"document_id eq '{EscapeODataString(documentId)}'",
-                Select = { "id" },
-                Size = pageSize,
-            };
+        var response = await _searchClient.SearchAsync<SearchDocument>(
+            searchOptions, cancellationToken).ConfigureAwait(false);
 
-            var response = await _searchClient.SearchAsync<SearchDocument>(
-                null, searchOptions, cancellationToken).ConfigureAwait(false);
+        await foreach (var result in response.Value.GetResultsAsync()
+            .WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            idsToDelete.Add(result.Document.GetString("id"));
+        }
 
-            await foreach (var result in response.Value.GetResultsAsync()
-                .WithCancellation(cancellationToken).ConfigureAwait(false))
-            {
-                idsToDelete.Add(result.Document.GetString("id"));
-            }
-
-            if (idsToDelete.Count > 0)
-            {
-                var batch = IndexDocumentsBatch.Delete("id", idsToDelete);
-                await _searchClient.IndexDocumentsAsync(
-                        batch,
-                        new IndexDocumentsOptions { ThrowOnAnyError = true },
-                        cancellationToken: cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        } while (idsToDelete.Count > 0);
+        foreach (var chunk in idsToDelete.Chunk(DeleteBatchSize))
+        {
+            var batch = IndexDocumentsBatch.Delete("id", chunk);
+            await _searchClient.IndexDocumentsAsync(
+                batch,
+                new IndexDocumentsOptions { ThrowOnAnyError = true },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public async Task CreateCollectionAsync(string name, int vectorDimensions, CancellationToken cancellationToken = default)

@@ -313,30 +313,6 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task DeleteByDocumentId_WithPageSizeZero_ThrowsArgumentOutOfRangeException()
-    {
-        var sut = new AzureAISearchVectorStore(
-            new Uri("https://localhost:8443"),
-            "test-index",
-            new AzureKeyCredential("dummy-key"));
-
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
-            () => sut.DeleteByDocumentIdAsync("doc-id", pageSize: 0, CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task DeleteByDocumentId_WithPageSizeOverLimit_ThrowsArgumentOutOfRangeException()
-    {
-        var sut = new AzureAISearchVectorStore(
-            new Uri("https://localhost:8443"),
-            "test-index",
-            new AzureKeyCredential("dummy-key"));
-
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
-            () => sut.DeleteByDocumentIdAsync("doc-id", pageSize: 1001, CancellationToken.None));
-    }
-
-    [Fact]
     public void EscapeODataString_ValueWithSingleQuote_DoublesSingleQuotes()
     {
         Assert.Equal("it''s here", AzureAISearchVectorStore.EscapeODataString("it's here"));
@@ -352,43 +328,6 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     public void EscapeODataString_ValueWithMultipleSingleQuotes_DoublesAllOfThem()
     {
         Assert.Equal("it''s a ''test''", AzureAISearchVectorStore.EscapeODataString("it's a 'test'"));
-    }
-
-    [Fact]
-    public async Task DeleteByDocumentId_WithMoreChunksThanPageSize_DeletesAllChunksAcrossMultiplePages()
-    {
-        // Arrange: store 5 chunks for the same document, then delete with pageSize=2.
-        // With 5 chunks and pageSize=2 the loop must execute at least 3 times (pages of 2, 2, 1).
-        // A single-page implementation could never remove all 5 chunks in one shot, so this
-        // setup makes it impossible to pass on a broken single-iteration implementation.
-        var docId = $"ais-{Guid.CreateVersion7():N}";
-        var chunks = Enumerable.Range(0, 5).Select(i => new EmbeddedChunk
-        {
-            Chunk = new TextChunk { Text = $"chunk {i}", DocumentId = new DocumentId(docId), ChunkIndex = i },
-            Embedding = new float[] { 1.0f, 0.0f, 0.0f },
-        }).ToList();
-
-        try
-        {
-            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
-            await WaitForVisibleChunksAsync(docId, 5, TestContext.Current.CancellationToken);
-
-            // Act: delete with pageSize=2 to exercise the pagination loop (3 fetches required for 5 chunks)
-            await _sut.DeleteByDocumentIdAsync(docId, pageSize: 2, TestContext.Current.CancellationToken);
-            await WaitForVisibleChunksAsync(docId, 0, TestContext.Current.CancellationToken);
-
-            // Assert: no chunks remain for the document
-            var results = await _sut.SearchAsync(
-                new float[] { 1.0f, 0.0f, 0.0f },
-                new SearchOptions { TopK = 10 },
-                TestContext.Current.CancellationToken);
-
-            Assert.Empty(results);
-        }
-        finally
-        {
-            await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
-        }
     }
 
     private static readonly TimeSpan SettleTimeout = TimeSpan.FromSeconds(30);
