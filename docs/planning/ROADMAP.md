@@ -4640,6 +4640,51 @@ needs the full 2,556-query sweep, and this pilot is not it. The phase still owes
 hybrid BM25, late chunking, SPLADE, every vector store through the SciFact parity leg, the
 second-corpus RAPTOR arm, and local search's unexplained yes/no abstention.
 
+**The full 2,556-query sweep RAN, 2026-08-30 — and its accuracy figures are not an engine
+comparison.** 15,336 records across six arms, 6.5 hours, 15 tests, 0 failed, 0 skipped. Protocol in
+`docs/plans/2026-08-29-answer-engine-sweep-protocol.md`; full account in
+`docs/plans/2026-08-30-answer-engine-sweep-findings.md`.
+
+**Gate 0 held exactly:** `dense` reproduced its pinned **0.3499 / 0.2603 / 0.3242** to four decimals
+over the 2,255 judged queries, so the corpora did not diverge and the run is sound as a measurement.
+Gates 1-3 held across roughly 15,000 assertions, and #419's fixes held at scale — no runaway.
+
+**Then the control moved, which is the tell.** `chatengine` shares `dense`'s retrieval verbatim and
+varies only the generation path, so `chatengine − dense` should be a small prompt effect. It is
+**+0.4204 paper and −0.0541 raw** — enormous, and signed opposite ways by rule. Reading the answers
+rather than the scores explains it: **`PromptTemplate` carries three instructions — grounding
+("using only the context"), abstention ("answer exactly: Insufficient information"), and the
+extraction contract — and `EngineAnswerOptions` passes only the third.** #418 found one of three and
+restored it.
+
+**The measurement is not subtle.** On the 2,255 judged queries, with context asserted identical
+chunk-for-chunk, `dense` abstains **1,394 times (61.8%)** against 1-17 for the engines. On the 301
+null queries, `dense` correctly abstains **146 (48.5%** — the figure already in the record,
+reproduced independently**)** while **every engine arm abstains 0 of 301, five times over.** So the
++0.42 measures one sentence of prompt, not any engine mechanism. The raw-rule inversion is likewise
+mundane: the engines end ~2,150 of 2,255 answers with a period where `dense` ends 513, and the raw
+rule counts punctuation.
+
+**Nothing is pinned.** `MultiHopRagAnswerReproduction` keeps the five engine arms at empty figure
+arrays; pinning these would enshrine an invalid comparison as the published result, which is the
+Milestone 5.2 failure exactly. **The clause remains unmet — the sweep produced a defect, not a
+comparison.**
+
+**Fourth fix-leaves-an-adjacent-gap in this phase** (#390 → #396 → #400, and now #418 → this), and
+the lesson is sharper than #418's. Its rule — *"when one arm is exempted from a shared apparatus,
+check what the apparatus was doing for it"* — **was followed, and came back incomplete**, because the
+symptom pointed at the extraction contract and the check stopped there. The rule that generalises:
+**when the shared apparatus is an inline blob of prose, enumerate every instruction in it** before
+deciding what the exempted arm needs. `PromptTemplate` is one `const string` holding three separable
+contracts, and being one string is what made it look like one decision.
+
+**The re-run is deferred by the operator, 2026-08-30.** Giving the engines the full contract changes
+every engine prompt and cache key, orphaning this run: ~$5-10 and ~6.5 hours again. A guard test
+asserting the arms share one instruction set belongs to that re-run — it would fail today, which is
+the point. Also recorded: the protocol's 3-4 hour estimate, extrapolated from the nine-query pilot's
+rate, was wrong by ~2× — the second time here that a pilot rate has failed to survive extrapolation,
+after RAPTOR's factor of eight.
+
 ### Phase 6.2.2: Requested Features [status: complete 2026-08-16 — #252 built and exercised; the phase stays open in spirit for any further request filed before the tag]
 **Goal:** the feature requests reported against the shipped packages, built and exercised to this
 milestone's bar rather than deferred past the tag. This phase exists because Milestone 6 is the

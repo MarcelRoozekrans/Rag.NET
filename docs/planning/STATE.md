@@ -74,7 +74,19 @@ on `main`** — corrected 2026-08-25. Statuses are written when a phase is plann
 editing this file at the moment its PR merges, which is the same failure the Working State branch
 field has now had three times.
 
-**Last completed:** **the FLARE contract-and-cache fix, 2026-08-29, merged to `main` as `50221812`
+**Last completed:** **the full 2,556-query answer-engine sweep, 2026-08-30 — it ran, and its accuracy
+figures are not an engine comparison.** 15,336 records, 6.5 hours, 15 tests / 0 failed / 0 skipped.
+**Gate 0 held exactly** — `dense` reproduced its pinned 0.3499 / 0.2603 / 0.3242 to four decimals, so
+the corpora did not diverge and the run is sound. Then the control moved: `chatengine` shares
+`dense`'s retrieval verbatim yet scored **+0.4204 paper and −0.0541 raw** against it. The cause is
+that **`PromptTemplate` carries three instructions — grounding, abstention, extraction — and
+`EngineAnswerOptions` passes only the third**; #418 found one of three. `dense` abstains on 61.8% of
+answerable queries because it was told to, and **every engine arm abstains 0 of 301 on the
+unanswerable ones**, five times over. Nothing is pinned; the DoD's answer-engine clause is still
+unmet. The re-run is deferred — see Recommended Next Step. Full account in
+`docs/plans/2026-08-30-answer-engine-sweep-findings.md`.
+
+Before it, **the FLARE contract-and-cache fix, 2026-08-29, merged to `main` as `50221812`
 in #419** — #418 (merged to `main`
 2026-08-29 as `e7563873`) gave every engine arm the judge's extraction contract and broke FLARE doing
 it: a terminal `SystemPrompt` fighting FLARE's own one-sentence-at-a-time protocol produced an
@@ -205,16 +217,25 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**The FLARE contract-and-cache fix merged 2026-08-29 as `50221812` (#419), so the recommended next
-step is the full 2,556-query answer-engine sweep.** #418 shipped the extraction contract and broke
-FLARE doing it (the third fix-causes-defect in this phase); #419 fixes the fragment protocol, the
-cache key, the client's option-forwarding, and the harness's contract application, and a re-run pilot
-found every engine arm meeting the contract on 8 or 9 of 9 queries — up from 0 of 9. **The pilot is
-nine queries and does not close Phase 6.2.1's answer-engine DoD clause; only the sweep does**, at
-roughly $5–10 and ~92,000 calls. Two things the sweep should settle that the pilot could not: why
-three arms sit at 8 of 9 rather than 9, and whether any accuracy difference between the engines is
-real — `chatengine` scored 7/9 against `dense`'s 3/9 on nine queries, which is exactly the kind of
-gap a pilot invents. Until the sweep runs, **HyDE and reranking's re-measurement under the
+**The sweep ran on 2026-08-30 and found a confound rather than a comparison, and the operator
+deferred the re-run the same day. So the answer-engine thread is parked, and the cheapest open
+threads are what to pick up next.**
+
+**When the re-run is funded, the fix is one line and the guard is the valuable part.**
+`EngineAnswerOptions` must carry the whole of `PromptTemplate`'s contract — grounding ("using only
+the context"), abstention ("answer exactly: Insufficient information") and the extraction
+instruction — not just the third. **Add a test asserting the engine arms and the `dense` path answer
+under the same instruction set**; it fails today, which is exactly why it is worth having. Cost:
+~$5–10 and ~6.5 hours, because it changes every engine prompt and therefore every engine cache key.
+**Do not re-run without the guard** — this is the fourth fix in the phase to leave an adjacent gap,
+and the previous three were each found by running rather than by reading.
+
+**Budget the re-run at 6.5 hours, not 3–4.** The protocol's estimate came from extrapolating the
+nine-query pilot's rate and was wrong by ~2×. That is the second time here a pilot rate has failed
+to survive extrapolation, after RAPTOR's factor of eight; the pattern is now well enough evidenced
+to plan against.
+
+Until then, **HyDE and reranking's re-measurement under the
 Real protocol remains the cheapest thread open in the phase that needs no money and no
 provisioning** (see below) — it can proceed in parallel with waiting for the pilot machine, not
 instead of the pilot.
