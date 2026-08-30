@@ -74,7 +74,21 @@ on `main`** — corrected 2026-08-25. Statuses are written when a phase is plann
 editing this file at the moment its PR merges, which is the same failure the Working State branch
 field has now had three times.
 
-**Last completed:** **the engine contract fix and its 400-query validation subset, 2026-08-30 — it
+**Last completed:** **the contract split three ways by granularity, and its 400-query validation,
+2026-08-30 — four arms became comparable and `mapreduce` was proven not measurable here.** Grounding
+to every arm, abstention to `dense` alone, terminal extraction reaching FLARE only after assembly.
+**`PromptTemplate`'s byte-identity is proven**: `dense` returned 0.3484 / 0.2635 / 0.3201 with
+222/353 and 21/47 abstentions, identical to the previous subset digit for digit, replayed wholly from
+cache — pin and Gate 0 intact. Against a properly-instructed `chatengine` control: `flare` +0.1417,
+`flarefixed` +0.1332, `refine` −0.0680, `mapreduce` −0.4249; FLARE moved for the first time now that
+grounding reaches it. **`mapreduce` stays broken for a structural reason** — grounding is no more
+portable to per-chunk maps than abstention was, because those calls *extract facts* rather than
+answer the question, so no "answer the question" instruction fits them. Third instance of the
+granularity class, and the one proving it is not about any particular rule. **A clean full sweep on
+this basis does NOT close the DoD clause**, which names MapReduce among the three engines. Full
+account in `docs/plans/2026-08-30-engine-granularity-findings.md`.
+
+Before it, **the engine contract fix and its first 400-query validation subset, 2026-08-30 — it
 fixed two arms, broke a third and missed a fourth.** `AnswerContract` names all three of
 `PromptTemplate`'s instructions and `EngineAnswerOptions` passes the whole of it; `PromptTemplate`
 composes to the same bytes so `dense`'s cache and pin survive. **For `chatengine`, `mapreduce` and

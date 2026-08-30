@@ -4719,7 +4719,50 @@ part*. **Fifth occurrence of this shape in the phase** — #418's terminal instr
 fragment loop was the same error with a different instruction. The rule to carry: **before sharing an
 instruction across arms, ask at what granularity each arm will apply it.**
 
-**The full sweep must not be funded until the arms are under equivalent treatment** — ~$20 would buy
+**The contract was then split three ways by granularity, and a second 400-query subset settled what
+that buys, 2026-08-30.** Grounding goes to every arm (true of a sentence as of an answer), abstention
+to `dense` alone (a statement about *the answer*, false of a part), and the terminal extraction rule
+to every arm but reaching FLARE only *after* assembly. Full account in
+`docs/plans/2026-08-30-engine-granularity-findings.md`.
+
+**`PromptTemplate`'s byte-identity is now proven rather than argued:** `dense` returned
+0.3484 / 0.2635 / 0.3201 with 222/353 and 21/47 abstentions — **identical to the previous subset,
+digit for digit**, replayed wholly from cache. Its 2,556 answers, its pinned 0.3499 and Gate 0 are
+intact.
+
+**Four arms became comparable.** Against a properly-instructed `chatengine` control, with every
+instruction fixed and only the mechanism varying: `flare` +0.1417, `flarefixed` +0.1332, `refine`
+−0.0680, `mapreduce` −0.4249. FLARE moved for the first time (0.6572 → 0.7479) now that grounding
+reaches it at all. Not pinned and not published — a 400-query subset is a validation run, and this
+thread has three times shown a small sample not surviving scale.
+
+**`mapreduce` is not measurable under this apparatus, and the reason is structural.** It recovered
+from 0.0142 to 0.1898 with the worst contract compliance of any arm (368/400), answering *"The
+TechCrunch article … does not provide any information"* and *"not found"*. **Grounding is also not
+portable to per-chunk maps**: applied to one chunk of six it correctly elicits "this chunk does not
+answer it", and the reduce aggregates those into nothing. Removing abstention was necessary and
+nowhere near sufficient. **MapReduce's per-chunk calls are not answering the question — they are
+extracting facts**, so no instruction phrased *"answer the question"* is right for them, and the map
+step and the final step are simply doing different jobs.
+
+**Third instance of the granularity class, and the one proving it is not about a particular rule** —
+terminal/extraction per sentence gave FLARE an 86,091-byte runaway; abstention per chunk gave
+MapReduce 0.0142; grounding per chunk gives it 0.1898. FLARE escaped only via bespoke handling, which
+works because its sentence calls genuinely *are* answering. MapReduce and Refine would need the same
+per-engine synthesis seam — **product work in `Rag.NET.AnswerEngines`**, not a harness change.
+
+**A residual asymmetry, stated rather than left implicit:** FLARE now gets a dedicated post-loop
+formatting call no other arm receives, and part of its +0.14 may be that second pass rather than the
+mechanism. The apparatus cannot separate them.
+
+**Consequence for the DoD clause: a clean full sweep on this basis does NOT close it.** The clause
+names *"the three answer engines"* — MapReduce, Refine and FLARE — and MapReduce cannot be measured
+here without the synthesis seam. The sweep can deliver a valid comparison for `refine`, `flare` and
+`flarefixed` against the control, plus MapReduce documented at scale as not-measurable with the
+evidence. That is partial completion, worth having, and **the clause must not be marked met on the
+strength of it**.
+
+~~**The full sweep must not be funded until the arms are under equivalent treatment**~~ — ~$20 would buy
 three differently broken arms measured at higher precision. Nothing is pinned. The DoD's
 answer-engine clause remains unmet.
 
