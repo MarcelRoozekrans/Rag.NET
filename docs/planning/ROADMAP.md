@@ -4762,6 +4762,46 @@ here without the synthesis seam. The sweep can deliver a valid comparison for `r
 evidence. That is partial completion, worth having, and **the clause must not be marked met on the
 strength of it**.
 
+**The full sweep ran on the corrected apparatus, 2026-08-30, and produced two clean findings.**
+15,336 records, 5.5 hours, 18 tests / 0 failed / 0 skipped. **Gate 0 held on all three rules** —
+`dense` reproduced 0.3499 / 0.2603 / 0.3242 exactly, so the corpora did not diverge and
+`PromptTemplate` is byte-identical for the third run running. Full account in
+`docs/plans/2026-08-30-answer-engine-sweep-results.md`.
+
+**Finding 1 — sequential refinement is significantly worse than answering once.**
+`refine − chatengine` = **−0.1055**, McNemar p<0.0001, losing 370 queries and winning 132. The
+comparison is uncontaminated: identical system prompt, identical single call path, no extra passes,
+so the difference is the mechanism. Read as a *completion* — a feature measured and found wanting is
+this milestone's stated bar. One caveat travels with it: `refine` rewrites per chunk, a weaker
+instance of the granularity problem, and some of the deficit may be that rather than the mechanism.
+
+**Finding 2 — FLARE's lookahead helps, by under one percentage point.**
+`flare − flarefixed` = **+0.0075**, p=0.0135, 31 wins to 14. The cleanest measurement in the set and
+the only direct one of FLARE's mechanism: identical engine, differing only in whether the
+mid-generation lookahead may fire. Significant, and small — both belong in any statement of it.
+
+**Labelled as not clean:** the FLARE arms' ~+0.11 over `chatengine` is confounded by a post-loop
+formatting call no other arm receives (`flare − flarefixed` is unaffected, since both get it);
+`chatengine − dense` = +0.2843 is one sentence of prompt, not an engine result; and `mapreduce`'s
+−0.4333 is the apparatus failure confirmed at scale, with the worst contract compliance of any arm
+at 2,333/2,556.
+
+**The 400-query subset predicted every sign correctly** and no magnitude — moves of 0.008 to 0.038.
+Fourth pilot-versus-scale data point in this phase and **the first where the direction survived**.
+A ~$3 subset predicted a ~$20 sweep's direction on all four arms; it did not predict the sizes, and
+should not be trusted to.
+
+**Pinned in `MultiHopRagAnswerReproduction`:** `chatengine` 0.6341, `refine` 0.5286, `flarefixed`
+0.7428, `flare` 0.7503, each carrying its caveats in the entry. All four rejoined the default replay
+set automatically — the data-driven selection working —
+and `SelectArms_DefaultSelection_ContainsOnlyArmsWithARecordedFigure` failed on the pin and named the
+list to update, so the movement was deliberate rather than silent. **`mapreduce` is not pinned**: it
+ran, and its figure measures a known-broken setup.
+
+**Two of the three named engines now have a pinned figure with a control. The DoD clause is still
+not met** — MapReduce cannot be measured until `MapReduceAnswerEngine` applies caller instructions to
+its reduce step rather than to every map, which is product work in `Rag.NET.AnswerEngines`.
+
 ~~**The full sweep must not be funded until the arms are under equivalent treatment**~~ — ~$20 would buy
 three differently broken arms measured at higher precision. Nothing is pinned. The DoD's
 answer-engine clause remains unmet.

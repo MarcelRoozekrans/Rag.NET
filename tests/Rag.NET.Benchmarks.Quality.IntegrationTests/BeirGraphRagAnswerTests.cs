@@ -932,13 +932,14 @@ public sealed class BeirGraphRagAnswerTests
                     $"the default selection included '{arm}', which has no recorded figure.");
             }
 
-            // The four RAPTOR arms were measured as of Task 5 (2026-08-25); the five engine arms
-            // (chatengine, mapreduce, refine, flare, flarefixed) were added after that with empty
-            // figure arrays and are not measured yet, so the default selection is AnswerArm.All
-            // minus those five — not all of AnswerArm.All the way it was before they existed. This
-            // assertion is what makes the state explicit rather than incidental: adding an arm
-            // without pinning a figure — or with an empty one — drops it out of the default
-            // silently, and this fails when that happens.
+            // The four RAPTOR arms were measured as of Task 5 (2026-08-25). Four of the five engine
+            // arms were measured by the full sweep on 2026-08-30 and pinned, so they rejoined the
+            // default set automatically — the selection is data-driven, and this assertion is what
+            // makes that movement explicit rather than incidental. Only mapreduce is still out, and
+            // for a different reason from the one this list started with: it HAS run, and is
+            // deliberately unpinned because the apparatus cannot measure it. Adding an arm without
+            // pinning a figure — or with an empty one — drops it out of the default silently, and
+            // this fails when that happens.
             Assert.Equal(
                 AnswerArm.All.Except(UnmeasuredEngineArms, StringComparer.Ordinal).OrderBy(a => a, StringComparer.Ordinal),
                 arms.OrderBy(a => a, StringComparer.Ordinal));
@@ -969,15 +970,33 @@ public sealed class BeirGraphRagAnswerTests
     /// unmeasured, and deliberately excluded from the default arm selection because they cost real
     /// API calls and have no recorded figure to check a re-measurement against.
     /// </summary>
-    private static readonly string[] UnmeasuredEngineArms =
-        [AnswerArm.ChatEngine, AnswerArm.MapReduce, AnswerArm.Refine, AnswerArm.Flare, AnswerArm.FlareFixed];
+    /// <summary>
+    /// The engine arms still outside the default selection. <b>One remains as of 2026-08-30.</b>
+    /// </summary>
+    /// <remarks>
+    /// Four of the five were measured by the full sweep on 2026-08-30 and pinned, so they rejoined
+    /// the default set — which is the mechanism working: an arm returns the moment it has a figure,
+    /// with no code change beyond this list. <c>mapreduce</c> stays out for a different reason from
+    /// the one this list was created for: it <b>has</b> been run, and its figure is deliberately not
+    /// pinned because the apparatus cannot measure it. Its per-chunk maps extract facts rather than
+    /// answer the question, so any instruction phrased "answer the question" is false of a single
+    /// chunk and every map reports that its chunk does not answer it. See its entry in
+    /// <see cref="MultiHopRagAnswerReproduction"/> and
+    /// <c>docs/plans/2026-08-30-engine-granularity-findings.md</c>.
+    /// </remarks>
+    private static readonly string[] UnmeasuredEngineArms = [AnswerArm.MapReduce];
 
     /// <summary>
-    /// Asserts the five answer-engine arms stay unmeasured and excluded from <paramref name="arms"/>
-    /// together: if one gets a real figure pinned without <see cref="UnmeasuredEngineArms"/> being
-    /// updated to match, this fails and points back here instead of the default selection's shape
-    /// changing silently.
+    /// Asserts every arm still listed in <see cref="UnmeasuredEngineArms"/> stays unpinned and
+    /// excluded from <paramref name="arms"/>: if one gets a real figure pinned without that list
+    /// being updated to match, this fails and points back here instead of the default selection's
+    /// shape changing silently.
     /// </summary>
+    /// <remarks>
+    /// It did exactly that on 2026-08-30, when four of the five engine arms were pinned — the
+    /// failure named the arm and the list to update, which is why the default set moved
+    /// deliberately rather than by accident.
+    /// </remarks>
     private static void AssertEngineArmsStayUnmeasuredAndExcluded(IReadOnlyList<string> arms)
     {
         foreach (var engineArm in UnmeasuredEngineArms)
