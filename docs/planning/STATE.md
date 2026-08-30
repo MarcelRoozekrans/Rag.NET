@@ -74,7 +74,21 @@ on `main`** — corrected 2026-08-25. Statuses are written when a phase is plann
 editing this file at the moment its PR merges, which is the same failure the Working State branch
 field has now had three times.
 
-**Last completed:** **the full 2,556-query answer-engine sweep, 2026-08-30 — it ran, and its accuracy
+**Last completed:** **the engine contract fix and its 400-query validation subset, 2026-08-30 — it
+fixed two arms, broke a third and missed a fourth.** `AnswerContract` names all three of
+`PromptTemplate`'s instructions and `EngineAnswerOptions` passes the whole of it; `PromptTemplate`
+composes to the same bytes so `dense`'s cache and pin survive. **For `chatengine`, `mapreduce` and
+`refine` it worked** — abstentions appeared where there had been none (0 of 301 before, 13-26 of 47
+now) and `chatengine − dense` collapsed from **+0.4204 to −0.1104**. **But `mapreduce` fell to
+0.0142**, answering the literal `"not found"`: the abstention rule reaches its per-chunk maps, and a
+single chunk lacks the answer even when six together contain it. **And the FLARE arms never received
+the contract at all** (0 of 47) — a gap in #419's own Task 4. **The finding, named as a class:
+there is no single instruction string that means the same thing to a single-shot engine and to one
+that decomposes its context.** Fifth occurrence of that shape in this phase. The 400-query subset
+cost ~$3 against ~$20 and found three problems, two of them new. Full account in
+`docs/plans/2026-08-30-engine-contract-subset-findings.md`.
+
+Before it, **the full 2,556-query answer-engine sweep, 2026-08-30 — it ran, and its accuracy
 figures are not an engine comparison.** 15,336 records, 6.5 hours, 15 tests / 0 failed / 0 skipped.
 **Gate 0 held exactly** — `dense` reproduced its pinned 0.3499 / 0.2603 / 0.3242 to four decimals, so
 the corpora did not diverge and the run is sound. Then the control moved: `chatengine` shares
@@ -221,14 +235,22 @@ the extraction cache was replayed refuse-on-miss.
 deferred the re-run the same day. So the answer-engine thread is parked, and the cheapest open
 threads are what to pick up next.**
 
-**When the re-run is funded, the fix is one line and the guard is the valuable part.**
-`EngineAnswerOptions` must carry the whole of `PromptTemplate`'s contract — grounding ("using only
-the context"), abstention ("answer exactly: Insufficient information") and the extraction
-instruction — not just the third. **Add a test asserting the engine arms and the `dense` path answer
-under the same instruction set**; it fails today, which is exactly why it is worth having. Cost:
-~$5–10 and ~6.5 hours, because it changes every engine prompt and therefore every engine cache key.
-**Do not re-run without the guard** — this is the fourth fix in the phase to leave an adjacent gap,
-and the previous three were each found by running rather than by reading.
+**That fix is built and merged into the branch, with its guard** — `EngineArmsAnswerUnderTheSameContractAsDense`,
+mutation-checked: restoring the previous value compiles at 0 warnings and fails on a string-start
+mismatch, in 0.5 s rather than a 6.5-hour paid run. **But the 400-query subset showed the fix is not
+sufficient**, so the decision that matters now is which of three ways to make the arms comparable:
+
+1. **Apply grounding and abstention only at each engine's final synthesis step**, leaving fragment
+   calls under fragment-appropriate instructions. Correct, and the engines do not expose that seam —
+   real work in `Rag.NET.AnswerEngines`, on product surface rather than in the harness.
+2. **Drop abstention from the shared contract** (keep grounding and extraction) and score abstention
+   separately as its own metric. Smallest change that makes the comparison mean something; slightly
+   redefines what the DoD clause measures.
+3. **Compare engines only against `chatengine`**, accepting that engine-vs-`dense` mixes in prompt
+   effects. Cheapest, and leaves `mapreduce`'s per-chunk problem untouched.
+
+**Validate any of them on a 400-query subset before funding the full sweep.** That pattern has now
+paid for itself once: ~$3 found three problems that ~$20 would have found no faster.
 
 **Budget the re-run at 6.5 hours, not 3–4.** The protocol's estimate came from extrapolating the
 nine-query pilot's rate and was wrong by ~2×. That is the second time here a pilot rate has failed

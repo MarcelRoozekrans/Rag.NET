@@ -4685,6 +4685,44 @@ the point. Also recorded: the protocol's 3-4 hour estimate, extrapolated from th
 rate, was wrong by ~2× — the second time here that a pilot rate has failed to survive extrapolation,
 after RAPTOR's factor of eight.
 
+**The contract fix was built and validated on a 400-query subset, 2026-08-30 — it fixed two arms,
+broke a third and missed a fourth.** `AnswerContract` now names all three instructions and
+`EngineAnswerOptions` passes the whole of it; `PromptTemplate` composes to the same bytes, so
+`dense`'s cache and its pin survive. Full account in
+`docs/plans/2026-08-30-engine-contract-subset-findings.md`.
+
+**A 400-query subset ran instead of the full sweep, and paid for itself immediately.** The check was
+categorical — do abstentions appear where there were zero — and a categorical check does not need
+2,556 queries. ~$3 against ~$20, and it found three problems, two of them new.
+
+**What worked:** for `chatengine`, `mapreduce` and `refine`, abstentions appeared where there had
+been none — **0 of 301 before, now 13-26 of 47** — and the control anomaly collapsed:
+`chatengine − dense` moved from **+0.4204 to −0.1104**. Contract compliance is 393-400 of 400 across
+every arm.
+
+**What broke: `mapreduce` collapsed to 0.0142**, answering the literal string `"not found"` while
+meeting the extraction contract 400 of 400. #418's own note records that the system prompt reaches
+*"MapReduce's per-chunk maps"* — so the abstention rule is applied **per chunk**, and a single chunk
+legitimately lacks the answer even when the six together contain it, so every map abstains and the
+reduce finds nothing. `refine` at 0.2521 is the same failure in weaker form across its rewrites.
+
+**What was missed: the FLARE arms never received the contract at all** — 3 of 353 judged and **0 of
+47** nulls, unchanged. A gap in #419's own Task 4 design, which hands FLARE `FlareLoopOptions =
+new()` for the loop (deliberately — a terminal instruction per fragment is what caused the runaway)
+and only `AnswerInstruction` for the post-loop call, so grounding and abstention reach it nowhere.
+
+**The finding, named as a class for the first time: there is no single instruction string that means
+the same thing to a single-shot engine and to an engine that decomposes its context.** The apparatus
+assumed one shared prompt makes arms comparable; that holds for `dense` and `chatengine`, and fails
+for `mapreduce`, `refine` and `flare`, because a rule written about *the answer* is applied to *a
+part*. **Fifth occurrence of this shape in the phase** — #418's terminal instruction in FLARE's
+fragment loop was the same error with a different instruction. The rule to carry: **before sharing an
+instruction across arms, ask at what granularity each arm will apply it.**
+
+**The full sweep must not be funded until the arms are under equivalent treatment** — ~$20 would buy
+three differently broken arms measured at higher precision. Nothing is pinned. The DoD's
+answer-engine clause remains unmet.
+
 ### Phase 6.2.2: Requested Features [status: complete 2026-08-16 — #252 built and exercised; the phase stays open in spirit for any further request filed before the tag]
 **Goal:** the feature requests reported against the shipped packages, built and exercised to this
 milestone's bar rather than deferred past the tag. This phase exists because Milestone 6 is the
