@@ -932,14 +932,13 @@ public sealed class BeirGraphRagAnswerTests
                     $"the default selection included '{arm}', which has no recorded figure.");
             }
 
-            // The four RAPTOR arms were measured as of Task 5 (2026-08-25). Four of the five engine
-            // arms were measured by the full sweep on 2026-08-30 and pinned, so they rejoined the
-            // default set automatically — the selection is data-driven, and this assertion is what
-            // makes that movement explicit rather than incidental. Only mapreduce is still out, and
-            // for a different reason from the one this list started with: it HAS run, and is
-            // deliberately unpinned because the apparatus cannot measure it. Adding an arm without
-            // pinning a figure — or with an empty one — drops it out of the default silently, and
-            // this fails when that happens.
+            // As of 2026-08-31 every arm has a pinned figure, so UnmeasuredEngineArms is empty and
+            // the default selection is the whole of AnswerArm.All. Getting here took three separate
+            // failures of this assertion — the four RAPTOR arms at Task 5, four engine arms on the
+            // 2026-08-30 sweep, and mapreduce on 2026-08-31 — and each time it named the arm and
+            // pointed at the list to update, so the default set moved deliberately rather than
+            // drifting. Adding an arm without pinning a figure, or with an empty one, drops it out
+            // of the default silently; this fails when that happens.
             Assert.Equal(
                 AnswerArm.All.Except(UnmeasuredEngineArms, StringComparer.Ordinal).OrderBy(a => a, StringComparer.Ordinal),
                 arms.OrderBy(a => a, StringComparer.Ordinal));
@@ -971,20 +970,25 @@ public sealed class BeirGraphRagAnswerTests
     /// API calls and have no recorded figure to check a re-measurement against.
     /// </summary>
     /// <summary>
-    /// The engine arms still outside the default selection. <b>One remains as of 2026-08-30.</b>
+    /// The engine arms still outside the default selection. <b>Empty as of 2026-08-31 — every arm
+    /// is measured.</b>
     /// </summary>
     /// <remarks>
-    /// Four of the five were measured by the full sweep on 2026-08-30 and pinned, so they rejoined
-    /// the default set — which is the mechanism working: an arm returns the moment it has a figure,
-    /// with no code change beyond this list. <c>mapreduce</c> stays out for a different reason from
-    /// the one this list was created for: it <b>has</b> been run, and its figure is deliberately not
-    /// pinned because the apparatus cannot measure it. Its per-chunk maps extract facts rather than
-    /// answer the question, so any instruction phrased "answer the question" is false of a single
-    /// chunk and every map reports that its chunk does not answer it. See its entry in
-    /// <see cref="MultiHopRagAnswerReproduction"/> and
-    /// <c>docs/plans/2026-08-30-engine-granularity-findings.md</c>.
+    /// <para>
+    /// Four of the five were pinned by the full sweep on 2026-08-30; <c>mapreduce</c> followed on
+    /// 2026-08-31 once the refusal-filter defect that had been depressing it was fixed. Each rejoined
+    /// the default set the moment it had a figure, with no change beyond this list — the selection is
+    /// data-driven and this list is the only place the exception lives.
+    /// </para>
+    /// <para>
+    /// <b>Empty is a real state, not a dead constant.</b> It is what
+    /// <see cref="SelectArms_DefaultSelection_ContainsOnlyArmsWithARecordedFigure"/> asserts against:
+    /// with nothing excluded, the default selection must be the whole of
+    /// <see cref="AnswerArm.All"/>, and any future arm added without a pinned figure drops out of
+    /// the default silently — which that test then catches, naming the arm and pointing here.
+    /// </para>
     /// </remarks>
-    private static readonly string[] UnmeasuredEngineArms = [AnswerArm.MapReduce];
+    private static readonly string[] UnmeasuredEngineArms = [];
 
     /// <summary>
     /// Asserts every arm still listed in <see cref="UnmeasuredEngineArms"/> stays unpinned and

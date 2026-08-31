@@ -83,3 +83,64 @@ caveat should be read as a live question, not a hedge.
 figure and all three were measuring the same defect. When a result is surprising, the cheapest
 decisive move is to read what the model actually sent and received — not to run it again at higher
 precision.
+
+---
+
+## The full measurement, 2026-08-31 — and it is a null result
+
+**Run:** `graph-answers-results/full-20260831T083906Z.jsonl`, 15,336 records, 1,817 s (**30 min**),
+18 tests / 0 failed / 0 skipped, 14,867 new cache entries (~$2).
+
+**Both controls held**, and both replayed from cache so neither cost anything:
+
+| arm | measured | pinned |
+| --- | --- | --- |
+| `dense` | 0.3499 / 0.2603 / 0.3242 | 0.3499 / 0.2603 / 0.3242 |
+| `chatengine` | 0.6341 / 0.2262 / 0.5933 | 0.6341 |
+
+Nothing drifted underneath the measurement.
+
+**`mapreduce`: 0.6483 paper** (raw 0.1157, strict 0.6137), contract met on **2,553 of 2,556** — up
+from 2,333 before the fix, and from a pre-fix accuracy of 0.2009.
+
+### `mapreduce − chatengine` = +0.0142, p = 0.2955 — not significant
+
+462 wins against 430, across 892 discordant pairs. **The map/reduce mechanism buys nothing
+measurable over a single call on this corpus.**
+
+That is the finding. Not a defect, not a win — a null result, and this milestone's bar treats a
+feature measured and found unremarkable as a completion, exactly as 5.2 was.
+
+### How close this came to being published as a win
+
+The 400-query validation subset put the same difference at **+0.0340**, which reads as a real gain.
+At full scale it is **+0.0142 at p=0.2955**.
+
+Earlier pilot-to-scale misses in this phase moved a *magnitude*. This one moves the *conclusion*: a
+subset can carry a direction and **cannot carry a significance**. Had the pin been taken from the
+subset — which was affordable, fast, and had just been vindicated — the record would now claim
+MapReduce beats a single-shot call.
+
+**Third timing miss, too.** ~6.4 hours was projected from the 400-query run's 60 minutes; it took 30.
+Every extrapolated timing estimate in this phase has been wrong, in both directions.
+
+## The DoD clause closes
+
+All three named engines now have a pinned figure against a properly-instructed control:
+
+| engine | vs `chatengine` | verdict |
+| --- | --- | --- |
+| MapReduce | +0.0142, p=0.2955 | no measurable difference |
+| Refine | −0.1055, `p<0.0001` | significantly worse |
+| FLARE | +0.1162, `p<0.0001` (confounded); `flare − flarefixed` +0.0075, p=0.0135 | lookahead helps, slightly |
+
+`UnmeasuredEngineArms` is now **empty** — every arm in `AnswerArm.All` carries a figure. Reaching
+that took three separate failures of
+`SelectArms_DefaultSelection_ContainsOnlyArmsWithARecordedFigure`, each naming the arm and the list
+to update, so the default replay set moved deliberately rather than drifting.
+
+**`refine` remains the open question.** Its −0.1055 was pinned with a caveat that some deficit may be
+structural rather than mechanism, and MapReduce has now shown that a per-chunk shape can hide a
+defect worth 0.45. That caveat should be read as a live question, and a transcript is the cheap way
+to settle it — transcripts resolved the last two of these where aggregate scores misled at three
+sample sizes.

@@ -258,10 +258,22 @@ internal static class MultiHopRagAnswerReproduction
         new(
             "multihop-rag",
             AnswerArm.MapReduce,
-            [],
-            "NOT YET PINNED -- the 2026-08-30 figure measured a defect, which was found and fixed " +
-            "on 2026-08-31, and the replacement figure needs a full run. " +
-            "**The earlier reading here was wrong and is retired.** It said 0.2009 was 'an " +
+            [0.6483],
+            "Dense retrieval answered by MapReduceAnswerEngine -- one call per context chunk, then " +
+            "one reduce over their outputs -- measured 2026-08-31 after the refusal-filter defect " +
+            "was fixed. **Paper-rule accuracy 0.6483 over the 2,255 judged queries** (raw 0.1157, " +
+            "strict 0.6137); abstains on 0 of 301 nulls; contract met on 2,553 of 2,556. " +
+            "**mapreduce - chatengine = +0.0142, McNemar p=0.2955 on 462 wins against 430 across " +
+            "892 discordant pairs -- NOT significant.** The map/reduce mechanism buys nothing " +
+            "measurable over a single call on this corpus. That is the finding: not a defect, not " +
+            "a win, a null result, and this milestone's bar treats a feature measured and found " +
+            "unremarkable as a completion. " +
+            "**Read alongside how nearly this was published as a win.** The 400-query validation " +
+            "subset put the same difference at +0.0340, which would have read as a real gain; at " +
+            "full scale it is +0.0142 at p=0.2955. A subset can carry a direction and cannot carry " +
+            "a significance. " +
+            "**The previous reading here was wrong and is retired.** It said 0.2009 was " +
+            "'an " +
             "apparatus failure rather than a property of the engine', that MapReduce 'cannot be " +
             "measured by an apparatus that shares one instruction across arms', and that its " +
             "per-chunk calls 'extract facts rather than answering the question'. Elaborate, fitted " +
@@ -275,11 +287,10 @@ internal static class MultiHopRagAnswerReproduction
             "**Fixed in MapReduceAnswerEngine** by appending its map protocol after the caller's " +
             "prompt on map calls only. Validated on 400 queries 2026-08-31: **0.1898 -> 0.6487** " +
             "paper, contract compliance to 400/400, 'not found' answers from the majority to 1 of " +
-            "353, and mapreduce - chatengine = **+0.0340** -- ahead of the single-shot control " +
-            "rather than 0.43 behind it. No evidence remains that MapReduce is bad at multi-hop " +
-            "questions. " +
-            "**A figure belongs here after a full 2,556-query run**; 400 is a validation sample and " +
-            "no magnitude has survived pilot-to-scale in this phase. Full account in " +
+            "353. No evidence remains that MapReduce is bad at multi-hop questions. " +
+            "**Both controls held on the run this figure comes from**: dense reproduced 0.3499 / " +
+            "0.2603 / 0.3242 and chatengine returned exactly its pinned 0.6341, both replaying " +
+            "from cache, so nothing drifted underneath the measurement. Full account in " +
             "docs/plans/2026-08-31-mapreduce-refusal-filter-findings.md."),
         new(
             "multihop-rag",
