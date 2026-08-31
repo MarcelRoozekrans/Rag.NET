@@ -258,23 +258,40 @@ internal static class MultiHopRagAnswerReproduction
         new(
             "multihop-rag",
             AnswerArm.MapReduce,
-            [],
-            "RUN 2026-08-30 AND DELIBERATELY NOT PINNED -- it measured 0.2009 paper (raw 0.1539, " +
-            "strict 0.1681), mapreduce - chatengine = -0.4333 with McNemar p<0.0001 on 37 wins " +
-            "against 1,014, and **that number is an apparatus failure rather than a property of " +
-            "the engine**. Pinning it would publish a measurement of a known-broken setup. " +
-            "**MapReduce cannot be measured by an apparatus that shares one instruction across " +
-            "arms.** It makes one call per context chunk and then one reduce, and its per-chunk " +
-            "calls are extracting facts rather than answering the question -- so an instruction " +
-            "phrased 'answer the question using only the context' is false of a single chunk of " +
-            "six, and every map dutifully reports that its chunk does not answer it. Measured " +
-            "twice on 2026-08-30: with the abstention rule it scored 0.0142 answering the literal " +
-            "string 'not found'; with abstention removed and only grounding left, 0.2009 -- and " +
-            "the worst extraction-contract compliance of any arm, 2,333 of 2,556. Removing " +
-            "abstention was necessary and nowhere near sufficient. " +
-            "**A figure belongs here once MapReduceAnswerEngine can apply caller instructions to " +
-            "its reduce step rather than to every map** -- product work, not a harness change. " +
-            "Full account in docs/plans/2026-08-30-engine-granularity-findings.md."),
+            [0.6483],
+            "Dense retrieval answered by MapReduceAnswerEngine -- one call per context chunk, then " +
+            "one reduce over their outputs -- measured 2026-08-31 after the refusal-filter defect " +
+            "was fixed. **Paper-rule accuracy 0.6483 over the 2,255 judged queries** (raw 0.1157, " +
+            "strict 0.6137); abstains on 0 of 301 nulls; contract met on 2,553 of 2,556. " +
+            "**mapreduce - chatengine = +0.0142, McNemar p=0.2955 on 462 wins against 430 across " +
+            "892 discordant pairs -- NOT significant.** The map/reduce mechanism buys nothing " +
+            "measurable over a single call on this corpus. That is the finding: not a defect, not " +
+            "a win, a null result, and this milestone's bar treats a feature measured and found " +
+            "unremarkable as a completion. " +
+            "**Read alongside how nearly this was published as a win.** The 400-query validation " +
+            "subset put the same difference at +0.0340, which would have read as a real gain; at " +
+            "full scale it is +0.0142 at p=0.2955. A subset can carry a direction and cannot carry " +
+            "a significance. " +
+            "**The previous reading here was wrong and is retired.** It said 0.2009 was " +
+            "'an " +
+            "apparatus failure rather than a property of the engine', that MapReduce 'cannot be " +
+            "measured by an apparatus that shares one instruction across arms', and that its " +
+            "per-chunk calls 'extract facts rather than answering the question'. Elaborate, fitted " +
+            "the evidence, and wrong. It was **one defect**: map partials saying 'not found' are " +
+            "dropped by an EXACT match before the reduce, and a caller system prompt that reshapes " +
+            "replies defeats it -- under the extraction contract, refusals arrived as 'Not found. " +
+            "The answer to the question is \"not found\".', survived the filter, and the reduce " +
+            "discarded the one correct partial as contradicted. A logged transcript caught a map " +
+            "returning 'The answer to the question is \"Microsoft\".' and the reduce throwing it " +
+            "away. " +
+            "**Fixed in MapReduceAnswerEngine** by appending its map protocol after the caller's " +
+            "prompt on map calls only. Validated on 400 queries 2026-08-31: **0.1898 -> 0.6487** " +
+            "paper, contract compliance to 400/400, 'not found' answers from the majority to 1 of " +
+            "353. No evidence remains that MapReduce is bad at multi-hop questions. " +
+            "**Both controls held on the run this figure comes from**: dense reproduced 0.3499 / " +
+            "0.2603 / 0.3242 and chatengine returned exactly its pinned 0.6341, both replaying " +
+            "from cache, so nothing drifted underneath the measurement. Full account in " +
+            "docs/plans/2026-08-31-mapreduce-refusal-filter-findings.md."),
         new(
             "multihop-rag",
             AnswerArm.Refine,
