@@ -32,6 +32,42 @@ public sealed class MapReduceAnswerEngine(
         "Partial answers:\n{partials}\n\nQuestion: {query}";
 
     /// <summary>
+    /// The map step's own protocol, appended after a caller's <see cref="RagOptions.SystemPrompt"/>
+    /// so that a caller's formatting instruction cannot reshape the refusal sentinel.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The refusal sentinel is load-bearing.</b> A map that finds nothing relevant replies
+    /// <c>not found</c>, and those partials are dropped by an <b>exact</b> match before the reduce
+    /// runs — see the filter in <see cref="AskAsync"/>. A caller system prompt that changes the
+    /// shape of a reply defeats that match, and the refusals then reach the reduce as if they were
+    /// content.
+    /// </para>
+    /// <para>
+    /// <b>Measured 2026-08-30, with a transcript.</b> Under a caller prompt ending "end your reply
+    /// with exactly this sentence: The answer to the question is …", six maps produced one correct
+    /// answer and five refusals — but three of those refusals came back as
+    /// <c>Not found. The answer to the question is "not found".</c>, which is not equal to
+    /// <c>not found</c> and so survived the filter. The reduce saw one answer against three
+    /// refusals, called it a contradiction, and <b>discarded the correct answer</b>. The engine had
+    /// the answer and threw it away.
+    /// </para>
+    /// <para>
+    /// Appended <b>last</b> so it is the most recent instruction the model reads, and applied to the
+    /// map calls only — the reduce produces the reply the caller actually asked for, so a caller's
+    /// formatting instruction belongs there untouched. This mirrors <c>FlareAnswerEngine</c>'s
+    /// fragment protocol, which exists for the same reason: an engine's internal protocol must not
+    /// be displaceable by an instruction written about the final answer.
+    /// </para>
+    /// </remarks>
+    private const string MapProtocol =
+        "You are reading ONE excerpt of several, and your reply is an intermediate result rather " +
+        "than the final answer. If this text contains nothing relevant to the question, reply with " +
+        "exactly: not found\n" +
+        "Those two words alone — no preamble, no closing sentence, and do not apply any " +
+        "end-of-reply formatting instruction to a \"not found\" reply.";
+
+    /// <summary>
     /// Factory that constructs a <see cref="MapReduceAnswerEngine"/> by resolving all dependencies
     /// from the provided <see cref="IServiceProvider"/>. Centralizes dependency wiring so new
     /// optional dependencies added to the constructor are threaded through automatically at
@@ -79,7 +115,9 @@ public sealed class MapReduceAnswerEngine(
             .Replace("{partials}", string.Join("\n\n---\n\n", partials!))
             .Replace("{query}", query);
 
-        var reduceMessages = BuildMessages(reduceText, opts, processedHistory);
+        // The reduce produces the reply the caller asked for, so their system prompt applies here as
+        // written — unlike the maps, whose protocol must survive it (see MapProtocol).
+        var reduceMessages = BuildMessages(reduceText, opts.SystemPrompt, processedHistory);
         var reduceResponse = await chatClient.GetResponseAsync(reduceMessages, chatOptions, cancellationToken).ConfigureAwait(false);
 
         return new RagResponse
@@ -137,7 +175,7 @@ public sealed class MapReduceAnswerEngine(
                 .Replace("{chunk}", source.CompressedText ?? source.Chunk.Text)
                 .Replace("{query}", query);
 
-            var messages = BuildMessages(prompt, opts, processedHistory);
+            var messages = BuildMessages(prompt, MapSystemPrompt(opts), processedHistory);
             var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false);
             return response.Text;
         }
@@ -169,11 +207,24 @@ public sealed class MapReduceAnswerEngine(
         return await memory.ProcessAsync(history, cancellationToken).ConfigureAwait(false);
     }
 
-    private static List<ChatMessage> BuildMessages(string userText, RagOptions opts, IReadOnlyList<ChatMessage>? processedHistory)
+    /// <summary>
+    /// What a map call answers under: the caller's system prompt with <see cref="MapProtocol"/>
+    /// appended, or <see langword="null"/> when the caller supplied none.
+    /// </summary>
+    /// <remarks>
+    /// <b>Null stays null deliberately.</b> With no caller system prompt there is nothing that can
+    /// reshape the refusal sentinel — the map prompt already asks for <c>not found</c> — so adding
+    /// the protocol would change the prompt, and therefore the output and any prompt-keyed cache,
+    /// for every existing caller in order to fix a problem they do not have.
+    /// </remarks>
+    private static string? MapSystemPrompt(RagOptions opts) =>
+        opts.SystemPrompt is null ? null : opts.SystemPrompt + "\n\n" + MapProtocol;
+
+    private static List<ChatMessage> BuildMessages(string userText, string? systemPrompt, IReadOnlyList<ChatMessage>? processedHistory)
     {
         var messages = new List<ChatMessage>();
-        if (opts.SystemPrompt is not null)
-            messages.Add(new ChatMessage(ChatRole.System, opts.SystemPrompt));
+        if (systemPrompt is not null)
+            messages.Add(new ChatMessage(ChatRole.System, systemPrompt));
         if (processedHistory is { Count: > 0 })
             messages.AddRange(processedHistory);
         messages.Add(new ChatMessage(ChatRole.User, userText));

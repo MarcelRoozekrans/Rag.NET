@@ -74,7 +74,79 @@ on `main`** — corrected 2026-08-25. Statuses are written when a phase is plann
 editing this file at the moment its PR merges, which is the same failure the Working State branch
 field has now had three times.
 
-**Last completed:** **the full 2,556-query answer-engine sweep, 2026-08-30 — it ran, and its accuracy
+**Last completed:** **`mapreduce` measured and pinned at 0.6483, 2026-08-31 — a null result, and the
+DoD's answer-engine clause now closes.** Both controls held on the run (`dense` 0.3499 / 0.2603 /
+0.3242, `chatengine` exactly its pinned 0.6341, both replaying from cache), so nothing drifted.
+**`mapreduce − chatengine` = +0.0142, McNemar p=0.2955 on 462 wins against 430 — not significant.**
+The map/reduce mechanism buys nothing measurable over a single call on this corpus; a feature
+measured and found unremarkable is a completion, as 5.2 was. **The 400-query subset put the same
+difference at +0.0340**, which would have read as a win: earlier pilot-to-scale misses moved a
+magnitude, this one moves the conclusion — **a subset can carry a direction and cannot carry a
+significance.** Contract compliance 2,553/2,556, up from 2,333. `UnmeasuredEngineArms` is now
+**empty**: every arm carries a figure, reached through three separate failures of the guard that each
+named the arm and the list to update. Third timing miss too — 30 minutes against a projected 6.4
+hours. Full account in `docs/plans/2026-08-31-mapreduce-refusal-filter-findings.md`.
+
+Before it, **the MapReduce refusal-filter defect, found and fixed 2026-08-31 — and it
+overturns what the sweep concluded about that engine.** MapReduce drops `not found` partials by an
+**exact** match before the reduce; a caller system prompt that reshapes replies defeats it, so under
+the extraction contract refusals arrived as `Not found. The answer to the question is "not found".`,
+survived the filter, and the reduce **discarded the one correct partial** as contradicted. A logged
+transcript shows a map returning `The answer to the question is "Microsoft".` and the reduce throwing
+it away. Fixed by appending a map protocol after the caller's prompt on **map calls only**; two
+fast-tier regression tests, mutation-checked. **Validated on 400 queries: `mapreduce` 0.1898 →
+0.6487, contract compliance to 400/400, "not found" answers from the majority to 1 of 353, and
+`mapreduce − chatengine` = +0.0340** — ahead of the single-shot control rather than 0.43 behind.
+**This retires the "apparatus failure / cannot be measured / per-chunk calls extract rather than
+answer" reading**, which was elaborate and wrong; it was one defect. **The DoD clause is now
+closable** — MapReduce was the only blocker. **Not yet pinned**: 400 queries is validation, and the
+pin needs the full 2,556. **And `refine`'s pinned −0.1055 needs re-examination** — it shares the
+per-chunk shape that just hid a 0.46 defect. Full account in
+`docs/plans/2026-08-31-mapreduce-refusal-filter-findings.md`.
+
+Before it, **the full answer-engine sweep on the corrected apparatus, 2026-08-30 — two clean
+findings, and the phase's first real engine result.** 15,336 records, 5.5 hours, 18 tests / 0 failed.
+**Gate 0 held on all three rules** (`dense` reproduced 0.3499 / 0.2603 / 0.3242 exactly).
+**(1) Sequential refinement is significantly worse than answering once** — `refine − chatengine` =
+**−0.1055**, `p<0.0001`, 132 wins against 370, on an uncontaminated comparison (identical prompt, path
+and passes). **(2) FLARE's lookahead helps by under a percentage point** — `flare − flarefixed` =
+**+0.0075**, p=0.0135, the only direct measurement of FLARE's mechanism. Labelled not-clean: the
+FLARE arms' ~+0.11 over `chatengine` is confounded by a post-loop formatting call no other arm gets,
+and `chatengine − dense` = +0.2843 is one sentence of prompt. **Pinned:** `chatengine` 0.6341,
+`refine` 0.5286, `flarefixed` 0.7428, `flare` 0.7503. **`mapreduce` is not pinned** — it ran, and its
+figure measures a known-broken setup. **Two of three named engines now have a figure with a control;
+the DoD clause is still not met.** Full account in
+`docs/plans/2026-08-30-answer-engine-sweep-results.md`.
+
+Before it, **the contract split three ways by granularity, and its 400-query validation,
+2026-08-30 — four arms became comparable and `mapreduce` was proven not measurable here.** Grounding
+to every arm, abstention to `dense` alone, terminal extraction reaching FLARE only after assembly.
+**`PromptTemplate`'s byte-identity is proven**: `dense` returned 0.3484 / 0.2635 / 0.3201 with
+222/353 and 21/47 abstentions, identical to the previous subset digit for digit, replayed wholly from
+cache — pin and Gate 0 intact. Against a properly-instructed `chatengine` control: `flare` +0.1417,
+`flarefixed` +0.1332, `refine` −0.0680, `mapreduce` −0.4249; FLARE moved for the first time now that
+grounding reaches it. **`mapreduce` stays broken for a structural reason** — grounding is no more
+portable to per-chunk maps than abstention was, because those calls *extract facts* rather than
+answer the question, so no "answer the question" instruction fits them. Third instance of the
+granularity class, and the one proving it is not about any particular rule. **A clean full sweep on
+this basis does NOT close the DoD clause**, which names MapReduce among the three engines. Full
+account in `docs/plans/2026-08-30-engine-granularity-findings.md`.
+
+Before it, **the engine contract fix and its first 400-query validation subset, 2026-08-30 — it
+fixed two arms, broke a third and missed a fourth.** `AnswerContract` names all three of
+`PromptTemplate`'s instructions and `EngineAnswerOptions` passes the whole of it; `PromptTemplate`
+composes to the same bytes so `dense`'s cache and pin survive. **For `chatengine`, `mapreduce` and
+`refine` it worked** — abstentions appeared where there had been none (0 of 301 before, 13-26 of 47
+now) and `chatengine − dense` collapsed from **+0.4204 to −0.1104**. **But `mapreduce` fell to
+0.0142**, answering the literal `"not found"`: the abstention rule reaches its per-chunk maps, and a
+single chunk lacks the answer even when six together contain it. **And the FLARE arms never received
+the contract at all** (0 of 47) — a gap in #419's own Task 4. **The finding, named as a class:
+there is no single instruction string that means the same thing to a single-shot engine and to one
+that decomposes its context.** Fifth occurrence of that shape in this phase. The 400-query subset
+cost ~$3 against ~$20 and found three problems, two of them new. Full account in
+`docs/plans/2026-08-30-engine-contract-subset-findings.md`.
+
+Before it, **the full 2,556-query answer-engine sweep, 2026-08-30 — it ran, and its accuracy
 figures are not an engine comparison.** 15,336 records, 6.5 hours, 15 tests / 0 failed / 0 skipped.
 **Gate 0 held exactly** — `dense` reproduced its pinned 0.3499 / 0.2603 / 0.3242 to four decimals, so
 the corpora did not diverge and the run is sound. Then the control moved: `chatengine` shares
@@ -217,18 +289,41 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**The sweep ran on 2026-08-30 and found a confound rather than a comparison, and the operator
-deferred the re-run the same day. So the answer-engine thread is parked, and the cheapest open
-threads are what to pick up next.**
+**The answer-engine thread has delivered what it can without product work. The next step is
+`MapReduceAnswerEngine`, as a shipped-package defect rather than a benchmark chore.**
 
-**When the re-run is funded, the fix is one line and the guard is the valuable part.**
-`EngineAnswerOptions` must carry the whole of `PromptTemplate`'s contract — grounding ("using only
-the context"), abstention ("answer exactly: Insufficient information") and the extraction
-instruction — not just the third. **Add a test asserting the engine arms and the `dense` path answer
-under the same instruction set**; it fails today, which is exactly why it is worth having. Cost:
-~$5–10 and ~6.5 hours, because it changes every engine prompt and therefore every engine cache key.
-**Do not re-run without the guard** — this is the fourth fix in the phase to leave an adjacent gap,
-and the previous three were each found by running rather than by reading.
+A caller who sets `RagOptions.SystemPrompt` has it applied to **every per-chunk map**. Instructions
+written about the answer — "say so if you don't know", "answer in one word", "end with X" — are false
+of a single chunk, and the engine degrades badly: measured at **0.0142** with an abstention rule and
+**0.2009** with grounding alone, with the worst extraction-contract compliance of any arm. **This is
+the same defect class as the FLARE one fixed in #419**, which was scoped as a shipped-package defect
+reachable by any user with a terminal `SystemPrompt`. MapReduce has the identical vulnerability,
+unprotected, and a plain user prompt triggers it.
+
+Fixing it protects real users, makes MapReduce measurable, and closes the DoD clause the sweep could
+not. `refine` likely needs the same treatment, and its −0.1055 carries a caveat until it gets it.
+**Cost: ~$2.50 to re-measure, because only the changed arm re-keys** — 7 calls/query over 2,556
+queries. The $20 sweeps are behind, not ahead.
+
+**Validate on a 400-query subset before any full run.** That pattern has now paid for itself twice:
+~$3 caught three problems the first time, and predicted every sign of the ~$20 sweep the second.
+
+**That fix is built and merged into the branch, with its guard** — `EngineArmsAnswerUnderTheSameContractAsDense`,
+mutation-checked: restoring the previous value compiles at 0 warnings and fails on a string-start
+mismatch, in 0.5 s rather than a 6.5-hour paid run. **But the 400-query subset showed the fix is not
+sufficient**, so the decision that matters now is which of three ways to make the arms comparable:
+
+1. **Apply grounding and abstention only at each engine's final synthesis step**, leaving fragment
+   calls under fragment-appropriate instructions. Correct, and the engines do not expose that seam —
+   real work in `Rag.NET.AnswerEngines`, on product surface rather than in the harness.
+2. **Drop abstention from the shared contract** (keep grounding and extraction) and score abstention
+   separately as its own metric. Smallest change that makes the comparison mean something; slightly
+   redefines what the DoD clause measures.
+3. **Compare engines only against `chatengine`**, accepting that engine-vs-`dense` mixes in prompt
+   effects. Cheapest, and leaves `mapreduce`'s per-chunk problem untouched.
+
+**Validate any of them on a 400-query subset before funding the full sweep.** That pattern has now
+paid for itself once: ~$3 found three problems that ~$20 would have found no faster.
 
 **Budget the re-run at 6.5 hours, not 3–4.** The protocol's estimate came from extrapolating the
 nine-query pilot's rate and was wrong by ~2×. That is the second time here a pilot rate has failed
@@ -498,7 +593,12 @@ much larger than answer generation's.
 > really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
 > here before.
 
-**Last landed on `main`:** **#419** as `50221812` (2026-08-29) — the FLARE contract-and-cache fix.
+**Last landed on `main`:** **#429** as `1a4d5364` (2026-08-30) — the engine arms made comparable and
+measured. Verify by content: `AnswerContract`, `EngineContract` and `GroundingRule` in
+`tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirGraphRagAnswerTests.cs`, and the pinned
+`0.7503` in `MultiHopRagAnswerReproduction.cs`.
+
+Before it, **#419** as `50221812` (2026-08-29) — the FLARE contract-and-cache fix.
 Verify by content: `FragmentProtocol` in `src/Rag.NET.AnswerEngines/FlareAnswerEngine.cs`,
 `ThrowIfUnkeyable` in
 `benchmarks/Rag.NET.Benchmarks.Quality.GraphExtractions/CachedGraphRagClient.cs`.

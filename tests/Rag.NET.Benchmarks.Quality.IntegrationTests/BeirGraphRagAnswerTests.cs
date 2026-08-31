@@ -106,13 +106,97 @@ public sealed class BeirGraphRagAnswerTests
     private static readonly Uri OpenRouterEndpoint = new("https://openrouter.ai/api/v1");
 
     /// <summary>
+    /// The instruction set <b>every</b> arm answers under — three separable contracts in one string.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It carries <b>grounding</b> ("using only the context below"), <b>abstention</b> ("answer
+    /// exactly: Insufficient information") and the <b>extraction contract</b>
+    /// (<see cref="MultiHopRagAnswerJudge.AnswerInstruction"/>, which the judge reads the answer out
+    /// of). Extracted from <see cref="PromptTemplate"/> on 2026-08-30 so the engine arms can be
+    /// handed the same three rather than a subset of them.
+    /// </para>
+    /// <para>
+    /// <b>Why it exists as its own constant.</b> The 2026-08-30 full sweep measured
+    /// <c>chatengine</c> — a control that shares <c>dense</c>'s retrieval verbatim — at +0.4204 paper
+    /// and −0.0541 raw against it, which no control should do. The cause was that #418 gave the
+    /// engines only the extraction contract: <c>dense</c> abstained on <b>61.8%</b> of answerable
+    /// queries because it was told to, and every engine arm abstained <b>0 of 301</b> on the
+    /// unanswerable ones because nothing ever told them to. The comparison measured one sentence of
+    /// prompt. #418's own rule — check what the shared apparatus was doing for the exempted arm —
+    /// was followed and came back incomplete, because the symptom pointed at extraction and the
+    /// check stopped there. A single <c>const string</c> holding three contracts is what made it
+    /// look like one decision; naming it is what stops that recurring.
+    /// </para>
+    /// <para>
+    /// <b>"the context below" is kept verbatim</b> even though the engines receive their context
+    /// structurally rather than inline. Paraphrasing it for elegance would put the arms back under
+    /// different instructions, which is the whole defect. Identical wording is the point.
+    /// </para>
+    /// <para>
+    /// <b>Split three ways on 2026-08-30, by the granularity each rule is safe at.</b> The 400-query
+    /// subset showed that handing every arm all three is wrong: <c>mapreduce</c> fell to 0.0142,
+    /// answering the literal <c>"not found"</c>, because the abstention rule reaches its per-chunk
+    /// maps and a single chunk lacks the answer even when the six together contain it. The rule this
+    /// file now encodes: <b>before sharing an instruction across arms, ask at what granularity each
+    /// arm will apply it.</b>
+    /// </para>
+    /// </remarks>
+    private const string GroundingRule =
+        "Answer the question using only the context below. ";
+
+    /// <summary>
+    /// <b>Whole-answer only.</b> Tells the model to abstain when the context is insufficient.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not portable to an engine that decomposes its context, which is why no engine arm gets
+    /// it.</b> It is a statement about *the answer*; applied to *a part* it is simply false, because
+    /// one chunk of six routinely lacks what the six jointly contain. Measured on 2026-08-30:
+    /// handing it to <c>mapreduce</c> took it to <b>0.0142</b> — every per-chunk map abstained and
+    /// the reduce concluded nothing was found — and <c>refine</c> to 0.2521 for the same reason
+    /// across its rewrites.
+    /// <para>
+    /// <c>dense</c> keeps it, because <see cref="PromptTemplate"/> is frozen: its 2,556 cached
+    /// answers and its pinned 0.3499 / 0.2603 / 0.3242 depend on the text not changing by a
+    /// character. <b>The consequence, stated rather than hidden: <c>dense</c> abstains and the
+    /// engines do not, so <c>dense</c> is not a fair control for them.</b> The engine comparison of
+    /// record is <c>&lt;engine&gt; − chatengine</c>, which holds every instruction fixed and varies
+    /// only the mechanism. <c>dense</c> remains the retrieval baseline, and any
+    /// <c>chatengine − dense</c> gap is reported as a prompt effect — abstention included — never as
+    /// an engine finding. Abstention itself is reported per arm as its own metric.
+    /// </para>
+    /// </remarks>
+    private const string AbstentionRule =
+        "If the context does not contain enough " +
+        "information to answer, answer exactly: Insufficient information\n";
+
+    /// <summary>What the engine arms answer under: grounding plus the extraction contract.</summary>
+    /// <remarks>
+    /// Both are safe for an engine that makes one call over the whole context.
+    /// <b><see cref="MultiHopRagAnswerJudge.AnswerInstruction"/> is itself terminal</b> ("end your
+    /// reply with exactly this sentence"), so it is safe here but <b>must never enter FLARE's
+    /// per-sentence loop</b> — doing so produced an 86,091-byte runaway that killed two runs on
+    /// 2026-08-29. See <see cref="FlareLoopOptions"/>.
+    /// </remarks>
+    private const string EngineContract =
+        GroundingRule + MultiHopRagAnswerJudge.AnswerInstruction;
+
+    /// <summary>What <c>dense</c> answers under: grounding, abstention and extraction.</summary>
+    private const string AnswerContract =
+        GroundingRule + AbstentionRule + MultiHopRagAnswerJudge.AnswerInstruction;
+
+    /// <summary>
     /// The one prompt every arm answers with. Versioned in its text: changing a character changes
     /// every cache key and the run refuses on the first miss until regenerated.
     /// </summary>
+    /// <remarks>
+    /// <b>This composes to the same characters it always has.</b> Extracting
+    /// <see cref="AnswerContract"/> out of it was deliberately byte-neutral: <c>dense</c>'s 2,556
+    /// cached answers survive and its pinned 0.3499 / 0.2603 / 0.3242 still reproduces, which is
+    /// Gate 0 of the sweep protocol. Only the engine arms re-key, which they must.
+    /// </remarks>
     private const string PromptTemplate =
-        "Answer the question using only the context below. If the context does not contain enough " +
-        "information to answer, answer exactly: Insufficient information\n" +
-        MultiHopRagAnswerJudge.AnswerInstruction + "\n\n" +
+        AnswerContract + "\n\n" +
         "Question: {question}\n\nContext:\n{context}";
 
     private readonly ITestOutputHelper _output;
@@ -711,6 +795,92 @@ public sealed class BeirGraphRagAnswerTests
     }
 
     /// <summary>
+    /// The engine arms answer under <b>exactly</b> the instruction set <c>dense</c> answers under.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the guard the 2026-08-30 sweep earned, and it fails against what shipped before
+    /// it.</b> <see cref="PromptTemplate"/> carries three separable contracts — grounding,
+    /// abstention, extraction — and #418 handed the engines only the third. Nothing failed: the
+    /// suite was green, the pilot passed, and the full 2,556-query sweep completed with every gate
+    /// holding. What it produced was a comparison in which <c>dense</c> abstained on 61.8% of
+    /// answerable queries because it was instructed to, and every engine arm abstained <b>0 of
+    /// 301</b> on the unanswerable ones because nothing had instructed them to — so a control that
+    /// shares <c>dense</c>'s retrieval verbatim came out +0.4204 ahead on the paper rule.
+    /// <para>
+    /// Costing that discovery a 6.5-hour paid run is the reason this assertion is cheap, runs on
+    /// every push, and needs no model, corpus or API key. A prompt divergence between arms is now a
+    /// millisecond failure rather than a finding recovered from a results file afterwards.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EngineArmsAnswerUnderTheSameContractAsDense()
+    {
+        var engineContract = EngineAnswerOptions.SystemPrompt;
+
+        Assert.NotNull(engineContract);
+        Assert.Equal(EngineContract, engineContract, StringComparer.Ordinal);
+
+        // The ONLY difference between what dense answers under and what the engines answer under is
+        // the abstention rule, which is a whole-answer statement and therefore not portable to an
+        // engine that decomposes its context. Any other divergence is the 2026-08-30 defect
+        // returning, and fails here in milliseconds instead of in a paid run.
+        Assert.Equal(
+            EngineContract,
+            AnswerContract.Replace(AbstentionRule, string.Empty, StringComparison.Ordinal),
+            StringComparer.Ordinal);
+
+        // dense's prompt is frozen: its cached answers and its pinned 0.3499 depend on the text.
+        Assert.StartsWith(AnswerContract, PromptTemplate, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// FLARE's sentence loop is grounded, and is <b>never</b> handed the terminal extraction rule.
+    /// </summary>
+    /// <remarks>
+    /// Both halves have been wrong in production. The loop carried the extraction contract before
+    /// #419 and produced an 86,091-byte runaway; it carried <i>nothing</i> until 2026-08-30, so the
+    /// FLARE arms abstained 0 of 47 and measured "always guess" while every other arm had been
+    /// corrected. This pins both at once.
+    /// </remarks>
+    [Fact]
+    public void FlareLoop_IsGrounded_ButNeverCarriesTheTerminalExtractionRule()
+    {
+        var loopPrompt = FlareLoopOptions.SystemPrompt;
+
+        Assert.Equal(GroundingRule, loopPrompt, StringComparer.Ordinal);
+        Assert.DoesNotContain(
+            MultiHopRagAnswerJudge.AnswerInstruction, loopPrompt!, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The shared contract still carries all three instructions by name, not just by composition.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="EngineArmsAnswerUnderTheSameContractAsDense"/> proves the arms agree with each
+    /// other; it cannot notice both losing the same rule at once. This one names what the rules are,
+    /// so deleting the abstention sentence — the instruction whose absence the sweep measured —
+    /// fails here even if every arm loses it together.
+    /// </remarks>
+    [Fact]
+    public void TheSharedContract_CarriesGroundingAbstentionAndExtraction()
+    {
+        // dense answers under all three.
+        Assert.Contains("using only the context", AnswerContract, StringComparison.Ordinal);
+        Assert.Contains(
+            "answer exactly: Insufficient information", AnswerContract, StringComparison.Ordinal);
+        Assert.Contains(
+            MultiHopRagAnswerJudge.AnswerInstruction, AnswerContract, StringComparison.Ordinal);
+
+        // The engines answer under grounding and extraction, and must NOT carry abstention — it is
+        // a whole-answer rule, and giving it to mapreduce took it to 0.0142 on 2026-08-30.
+        Assert.Contains("using only the context", EngineContract, StringComparison.Ordinal);
+        Assert.Contains(
+            MultiHopRagAnswerJudge.AnswerInstruction, EngineContract, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Insufficient information", EngineContract, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The four RAPTOR arms are selectable through <see cref="ArmsVariable"/> and are members of
     /// <see cref="AnswerArm.All"/> — checked without a model, a corpus or an API key, so a missing
     /// pin or a typo'd name fails here in milliseconds rather than at the end of a paid run.
@@ -762,13 +932,13 @@ public sealed class BeirGraphRagAnswerTests
                     $"the default selection included '{arm}', which has no recorded figure.");
             }
 
-            // The four RAPTOR arms were measured as of Task 5 (2026-08-25); the five engine arms
-            // (chatengine, mapreduce, refine, flare, flarefixed) were added after that with empty
-            // figure arrays and are not measured yet, so the default selection is AnswerArm.All
-            // minus those five — not all of AnswerArm.All the way it was before they existed. This
-            // assertion is what makes the state explicit rather than incidental: adding an arm
-            // without pinning a figure — or with an empty one — drops it out of the default
-            // silently, and this fails when that happens.
+            // As of 2026-08-31 every arm has a pinned figure, so UnmeasuredEngineArms is empty and
+            // the default selection is the whole of AnswerArm.All. Getting here took three separate
+            // failures of this assertion — the four RAPTOR arms at Task 5, four engine arms on the
+            // 2026-08-30 sweep, and mapreduce on 2026-08-31 — and each time it named the arm and
+            // pointed at the list to update, so the default set moved deliberately rather than
+            // drifting. Adding an arm without pinning a figure, or with an empty one, drops it out
+            // of the default silently; this fails when that happens.
             Assert.Equal(
                 AnswerArm.All.Except(UnmeasuredEngineArms, StringComparer.Ordinal).OrderBy(a => a, StringComparer.Ordinal),
                 arms.OrderBy(a => a, StringComparer.Ordinal));
@@ -799,15 +969,38 @@ public sealed class BeirGraphRagAnswerTests
     /// unmeasured, and deliberately excluded from the default arm selection because they cost real
     /// API calls and have no recorded figure to check a re-measurement against.
     /// </summary>
-    private static readonly string[] UnmeasuredEngineArms =
-        [AnswerArm.ChatEngine, AnswerArm.MapReduce, AnswerArm.Refine, AnswerArm.Flare, AnswerArm.FlareFixed];
+    /// <summary>
+    /// The engine arms still outside the default selection. <b>Empty as of 2026-08-31 — every arm
+    /// is measured.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Four of the five were pinned by the full sweep on 2026-08-30; <c>mapreduce</c> followed on
+    /// 2026-08-31 once the refusal-filter defect that had been depressing it was fixed. Each rejoined
+    /// the default set the moment it had a figure, with no change beyond this list — the selection is
+    /// data-driven and this list is the only place the exception lives.
+    /// </para>
+    /// <para>
+    /// <b>Empty is a real state, not a dead constant.</b> It is what
+    /// <see cref="SelectArms_DefaultSelection_ContainsOnlyArmsWithARecordedFigure"/> asserts against:
+    /// with nothing excluded, the default selection must be the whole of
+    /// <see cref="AnswerArm.All"/>, and any future arm added without a pinned figure drops out of
+    /// the default silently — which that test then catches, naming the arm and pointing here.
+    /// </para>
+    /// </remarks>
+    private static readonly string[] UnmeasuredEngineArms = [];
 
     /// <summary>
-    /// Asserts the five answer-engine arms stay unmeasured and excluded from <paramref name="arms"/>
-    /// together: if one gets a real figure pinned without <see cref="UnmeasuredEngineArms"/> being
-    /// updated to match, this fails and points back here instead of the default selection's shape
-    /// changing silently.
+    /// Asserts every arm still listed in <see cref="UnmeasuredEngineArms"/> stays unpinned and
+    /// excluded from <paramref name="arms"/>: if one gets a real figure pinned without that list
+    /// being updated to match, this fails and points back here instead of the default selection's
+    /// shape changing silently.
     /// </summary>
+    /// <remarks>
+    /// It did exactly that on 2026-08-30, when four of the five engine arms were pinned — the
+    /// failure named the arm and the list to update, which is why the default set moved
+    /// deliberately rather than by accident.
+    /// </remarks>
     private static void AssertEngineArmsStayUnmeasuredAndExcluded(IReadOnlyList<string> arms)
     {
         foreach (var engineArm in UnmeasuredEngineArms)
@@ -1515,14 +1708,52 @@ public sealed class BeirGraphRagAnswerTests
     /// the 2026-08-28 pilot wrote are orphaned by it. That is the right trade: they answer a
     /// question nobody asked.
     /// </para>
+    /// <para>
+    /// <b>Corrected 2026-08-30: this now carries the whole of <see cref="AnswerContract"/>, not just
+    /// the extraction instruction.</b> Passing only the extraction contract left the engines without
+    /// the grounding and abstention rules <c>dense</c> answers under, and the full sweep measured
+    /// what that costs: <c>dense</c> abstained on <b>61.8%</b> of answerable queries and every engine
+    /// arm abstained <b>0 of 301</b> on the unanswerable ones, making <c>chatengine</c>'s +0.4204
+    /// paper-rule lead a measurement of one sentence of prompt rather than of any engine mechanism.
+    /// <see cref="EngineArmsAnswerUnderTheSameContractAsDense"/> is the guard that keeps the arms
+    /// aligned; it fails against the previous value.
+    /// </para>
     /// </remarks>
     private static readonly RagOptions EngineAnswerOptions = new()
     {
-        SystemPrompt = MultiHopRagAnswerJudge.AnswerInstruction,
+        SystemPrompt = EngineContract,
     };
 
-    /// <summary>What FLARE's sentence loop runs under: no contract, because fragments are not replies.</summary>
-    private static readonly RagOptions FlareLoopOptions = new();
+    /// <summary>
+    /// What FLARE's sentence loop runs under: <b>grounding only</b>, because fragments are not
+    /// replies.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Corrected 2026-08-30.</b> This was previously an empty <see cref="RagOptions"/>, which the
+    /// 400-query subset exposed: the FLARE arms abstained on <b>0 of 47</b> null queries and
+    /// 3 of 353 judged ones, unchanged by the contract fix, because grounding reached them
+    /// <b>nowhere</b> — not in the loop, and not in the post-loop call, which carries only the
+    /// extraction instruction. They were the one pair of arms still measuring "always guess".
+    /// </para>
+    /// <para>
+    /// <b>Grounding is safe per fragment; the extraction contract is not.</b>
+    /// <see cref="GroundingRule"/> constrains where the content may come from, which is true of a
+    /// sentence as much as of a whole answer. <see cref="MultiHopRagAnswerJudge.AnswerInstruction"/>
+    /// is <b>terminal</b> — "end your reply with exactly this sentence" — and applied per fragment
+    /// it makes the model close the answer on every call, never emit <c>&lt;DONE&gt;</c>, and run
+    /// away: 86,091 bytes, the same sentence 256 times, two dead runs on 2026-08-29. It stays in
+    /// <see cref="ApplyExtractionContractAsync"/>, after the loop.
+    /// </para>
+    /// <para>
+    /// Abstention is deliberately absent here too, for the reason given on
+    /// <see cref="AbstentionRule"/>: it is a whole-answer rule and FLARE emits parts.
+    /// </para>
+    /// </remarks>
+    private static readonly RagOptions FlareLoopOptions = new()
+    {
+        SystemPrompt = GroundingRule,
+    };
 
     /// <summary>
     /// Puts FLARE's assembled answer under the same extraction contract every other arm answers

@@ -4685,6 +4685,194 @@ the point. Also recorded: the protocol's 3-4 hour estimate, extrapolated from th
 rate, was wrong by ~2× — the second time here that a pilot rate has failed to survive extrapolation,
 after RAPTOR's factor of eight.
 
+**The contract fix was built and validated on a 400-query subset, 2026-08-30 — it fixed two arms,
+broke a third and missed a fourth.** `AnswerContract` now names all three instructions and
+`EngineAnswerOptions` passes the whole of it; `PromptTemplate` composes to the same bytes, so
+`dense`'s cache and its pin survive. Full account in
+`docs/plans/2026-08-30-engine-contract-subset-findings.md`.
+
+**A 400-query subset ran instead of the full sweep, and paid for itself immediately.** The check was
+categorical — do abstentions appear where there were zero — and a categorical check does not need
+2,556 queries. ~$3 against ~$20, and it found three problems, two of them new.
+
+**What worked:** for `chatengine`, `mapreduce` and `refine`, abstentions appeared where there had
+been none — **0 of 301 before, now 13-26 of 47** — and the control anomaly collapsed:
+`chatengine − dense` moved from **+0.4204 to −0.1104**. Contract compliance is 393-400 of 400 across
+every arm.
+
+**What broke: `mapreduce` collapsed to 0.0142**, answering the literal string `"not found"` while
+meeting the extraction contract 400 of 400. #418's own note records that the system prompt reaches
+*"MapReduce's per-chunk maps"* — so the abstention rule is applied **per chunk**, and a single chunk
+legitimately lacks the answer even when the six together contain it, so every map abstains and the
+reduce finds nothing. `refine` at 0.2521 is the same failure in weaker form across its rewrites.
+
+**What was missed: the FLARE arms never received the contract at all** — 3 of 353 judged and **0 of
+47** nulls, unchanged. A gap in #419's own Task 4 design, which hands FLARE `FlareLoopOptions =
+new()` for the loop (deliberately — a terminal instruction per fragment is what caused the runaway)
+and only `AnswerInstruction` for the post-loop call, so grounding and abstention reach it nowhere.
+
+**The finding, named as a class for the first time: there is no single instruction string that means
+the same thing to a single-shot engine and to an engine that decomposes its context.** The apparatus
+assumed one shared prompt makes arms comparable; that holds for `dense` and `chatengine`, and fails
+for `mapreduce`, `refine` and `flare`, because a rule written about *the answer* is applied to *a
+part*. **Fifth occurrence of this shape in the phase** — #418's terminal instruction in FLARE's
+fragment loop was the same error with a different instruction. The rule to carry: **before sharing an
+instruction across arms, ask at what granularity each arm will apply it.**
+
+**The contract was then split three ways by granularity, and a second 400-query subset settled what
+that buys, 2026-08-30.** Grounding goes to every arm (true of a sentence as of an answer), abstention
+to `dense` alone (a statement about *the answer*, false of a part), and the terminal extraction rule
+to every arm but reaching FLARE only *after* assembly. Full account in
+`docs/plans/2026-08-30-engine-granularity-findings.md`.
+
+**`PromptTemplate`'s byte-identity is now proven rather than argued:** `dense` returned
+0.3484 / 0.2635 / 0.3201 with 222/353 and 21/47 abstentions — **identical to the previous subset,
+digit for digit**, replayed wholly from cache. Its 2,556 answers, its pinned 0.3499 and Gate 0 are
+intact.
+
+**Four arms became comparable.** Against a properly-instructed `chatengine` control, with every
+instruction fixed and only the mechanism varying: `flare` +0.1417, `flarefixed` +0.1332, `refine`
+−0.0680, `mapreduce` −0.4249. FLARE moved for the first time (0.6572 → 0.7479) now that grounding
+reaches it at all. Not pinned and not published — a 400-query subset is a validation run, and this
+thread has three times shown a small sample not surviving scale.
+
+**`mapreduce` is not measurable under this apparatus, and the reason is structural.** It recovered
+from 0.0142 to 0.1898 with the worst contract compliance of any arm (368/400), answering *"The
+TechCrunch article … does not provide any information"* and *"not found"*. **Grounding is also not
+portable to per-chunk maps**: applied to one chunk of six it correctly elicits "this chunk does not
+answer it", and the reduce aggregates those into nothing. Removing abstention was necessary and
+nowhere near sufficient. **MapReduce's per-chunk calls are not answering the question — they are
+extracting facts**, so no instruction phrased *"answer the question"* is right for them, and the map
+step and the final step are simply doing different jobs.
+
+**Third instance of the granularity class, and the one proving it is not about a particular rule** —
+terminal/extraction per sentence gave FLARE an 86,091-byte runaway; abstention per chunk gave
+MapReduce 0.0142; grounding per chunk gives it 0.1898. FLARE escaped only via bespoke handling, which
+works because its sentence calls genuinely *are* answering. MapReduce and Refine would need the same
+per-engine synthesis seam — **product work in `Rag.NET.AnswerEngines`**, not a harness change.
+
+**A residual asymmetry, stated rather than left implicit:** FLARE now gets a dedicated post-loop
+formatting call no other arm receives, and part of its +0.14 may be that second pass rather than the
+mechanism. The apparatus cannot separate them.
+
+**Consequence for the DoD clause: a clean full sweep on this basis does NOT close it.** The clause
+names *"the three answer engines"* — MapReduce, Refine and FLARE — and MapReduce cannot be measured
+here without the synthesis seam. The sweep can deliver a valid comparison for `refine`, `flare` and
+`flarefixed` against the control, plus MapReduce documented at scale as not-measurable with the
+evidence. That is partial completion, worth having, and **the clause must not be marked met on the
+strength of it**.
+
+**The full sweep ran on the corrected apparatus, 2026-08-30, and produced two clean findings.**
+15,336 records, 5.5 hours, 18 tests / 0 failed / 0 skipped. **Gate 0 held on all three rules** —
+`dense` reproduced 0.3499 / 0.2603 / 0.3242 exactly, so the corpora did not diverge and
+`PromptTemplate` is byte-identical for the third run running. Full account in
+`docs/plans/2026-08-30-answer-engine-sweep-results.md`.
+
+**Finding 1 — sequential refinement is significantly worse than answering once.**
+`refine − chatengine` = **−0.1055**, McNemar `p<0.0001`, losing 370 queries and winning 132. The
+comparison is uncontaminated: identical system prompt, identical single call path, no extra passes,
+so the difference is the mechanism. Read as a *completion* — a feature measured and found wanting is
+this milestone's stated bar. One caveat travels with it: `refine` rewrites per chunk, a weaker
+instance of the granularity problem, and some of the deficit may be that rather than the mechanism.
+
+**Finding 2 — FLARE's lookahead helps, by under one percentage point.**
+`flare − flarefixed` = **+0.0075**, p=0.0135, 31 wins to 14. The cleanest measurement in the set and
+the only direct one of FLARE's mechanism: identical engine, differing only in whether the
+mid-generation lookahead may fire. Significant, and small — both belong in any statement of it.
+
+**Labelled as not clean:** the FLARE arms' ~+0.11 over `chatengine` is confounded by a post-loop
+formatting call no other arm receives (`flare − flarefixed` is unaffected, since both get it);
+`chatengine − dense` = +0.2843 is one sentence of prompt, not an engine result; and `mapreduce`'s
+−0.4333 is the apparatus failure confirmed at scale, with the worst contract compliance of any arm
+at 2,333/2,556.
+
+**The 400-query subset predicted every sign correctly** and no magnitude — moves of 0.008 to 0.038.
+Fourth pilot-versus-scale data point in this phase and **the first where the direction survived**.
+A ~$3 subset predicted a ~$20 sweep's direction on all four arms; it did not predict the sizes, and
+should not be trusted to.
+
+**Pinned in `MultiHopRagAnswerReproduction`:** `chatengine` 0.6341, `refine` 0.5286, `flarefixed`
+0.7428, `flare` 0.7503, each carrying its caveats in the entry. All four rejoined the default replay
+set automatically — the data-driven selection working —
+and `SelectArms_DefaultSelection_ContainsOnlyArmsWithARecordedFigure` failed on the pin and named the
+list to update, so the movement was deliberate rather than silent. **`mapreduce` is not pinned**: it
+ran, and its figure measures a known-broken setup.
+
+**Two of the three named engines now have a pinned figure with a control. The DoD clause is still
+not met** — MapReduce cannot be measured until `MapReduceAnswerEngine` applies caller instructions to
+its reduce step rather than to every map, which is product work in `Rag.NET.AnswerEngines`.
+
+**That reading of MapReduce was wrong, and it was one defect rather than a structural limit —
+corrected 2026-08-31.** Full account in
+`docs/plans/2026-08-31-mapreduce-refusal-filter-findings.md`.
+
+MapReduce drops `not found` partials by an **exact** string match before the reduce. A caller system
+prompt that changes the shape of a reply defeats that match: under the extraction contract, refusals
+came back as `Not found. The answer to the question is "not found".` — not equal to `not found` — so
+they survived into the reduce, which treated them as contradicting the one correct partial and
+**discarded the correct answer**. A logged transcript shows a map returning
+`The answer to the question is "Microsoft".` and the reduce throwing it away in favour of three
+unfiltered refusals.
+
+**Fixed in `MapReduceAnswerEngine` by appending a map protocol after the caller's prompt on map calls
+only**, so the sentinel survives any caller formatting instruction; the reduce keeps the caller's
+prompt untouched, and a caller supplying no prompt gets no change at all. Two fast-tier regression
+tests, mutation-checked. **This is a shipped-package defect**: any caller who writes "always end with
+a summary line" hits it, and it is the same class as the FLARE protocol defect fixed in #419.
+
+**Validated on 400 queries, 2026-08-31:** `mapreduce` **0.1898 → 0.6487** paper, contract compliance
+from the worst of any arm to **400/400**, and answers containing "not found" from the majority to
+**1 of 353**. `dense` and `chatengine` returned figures identical to the previous subset, replaying
+wholly from cache. **`mapreduce − chatengine` = +0.0340** — it is now slightly ahead of the
+single-shot control rather than 0.43 behind it.
+
+**So three claims in the record above are retired:** that the number was an apparatus failure rather
+than a property of the engine; that MapReduce cannot be measured by an apparatus sharing one
+instruction; and that its per-chunk calls extract facts rather than answer, making any
+"answer the question" instruction false of a chunk. All three were elaborate, fitted the evidence
+available, and were wrong. **No evidence remains that MapReduce is bad at multi-hop questions.**
+
+**How the wrong reading survived two runs:** the full sweep and both subsets reported the same low
+figure, which read as corroboration. It was the same defect reproducing. **A number that reproduces
+is not a number that is right** — consistency measures reproducibility, not correctness. What broke
+it open was reading a transcript of what the model actually sent and received, about 20 calls, after
+aggregate scores had been examined at three different sample sizes.
+
+**`mapreduce` measured at full scale and pinned at 0.6483, 2026-08-31 — and it is a null result.**
+Both controls held on the run (`dense` 0.3499 / 0.2603 / 0.3242; `chatengine` exactly its pinned
+0.6341, both replaying from cache), so nothing drifted underneath it. Contract compliance
+**2,553 of 2,556**, up from 2,333 before the fix.
+
+**`mapreduce − chatengine` = +0.0142, McNemar p=0.2955 on 462 wins against 430 across 892 discordant
+pairs — not significant.** The map/reduce mechanism buys nothing measurable over a single call on
+this corpus. That is the finding: not a defect, not a win, and a feature measured and found
+unremarkable is a completion, exactly as 5.2 was.
+
+**How close it came to being published as a win, recorded because the lesson is sharper than the
+earlier ones.** The 400-query validation subset put the same difference at **+0.0340**, which reads
+as a real gain; at full scale it is +0.0142 at p=0.2955. Previous pilot-to-scale misses in this phase
+moved a *magnitude* — this one moves the *conclusion*. **A subset can carry a direction and cannot
+carry a significance**, and the subset had just been vindicated on direction, which is exactly what
+would have made trusting it feel safe. Third timing miss alongside it: 30 minutes against a projected
+6.4 hours.
+
+**The DoD's answer-engine clause now closes.** All three named engines have a pinned figure against a
+properly-instructed control: MapReduce +0.0142 (p=0.2955, no measurable difference), Refine −0.1055
+(`p<0.0001`, significantly worse), FLARE's lookahead +0.0075 (p=0.0135, helps slightly).
+`UnmeasuredEngineArms` is **empty** — every arm in `AnswerArm.All` carries a figure, reached through
+three separate failures of `SelectArms_DefaultSelection_ContainsOnlyArmsWithARecordedFigure`, each
+naming the arm and the list to update so the default replay set moved deliberately rather than
+drifting.
+
+**And `refine` needs re-examination.** It scored −0.1055 and was pinned with a caveat that some
+deficit *may* be structural rather than mechanism. It rewrites sequentially over chunks — a per-chunk
+shape — and MapReduce has just shown a per-chunk shape can hide a defect worth 0.46. Read that caveat
+as a live question rather than a hedge.
+
+~~**The full sweep must not be funded until the arms are under equivalent treatment**~~ — ~$20 would buy
+three differently broken arms measured at higher precision. Nothing is pinned. The DoD's
+answer-engine clause remains unmet.
+
 ### Phase 6.2.2: Requested Features [status: complete 2026-08-16 — #252 built and exercised; the phase stays open in spirit for any further request filed before the tag]
 **Goal:** the feature requests reported against the shipped packages, built and exercised to this
 milestone's bar rather than deferred past the tag. This phase exists because Milestone 6 is the

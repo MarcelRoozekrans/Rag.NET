@@ -159,9 +159,19 @@ public class MapReduceAnswerEngineTests
 
         await _sut.AskAsync("What?", sources, opts, TestContext.Current.CancellationToken);
 
-        // Both map call and reduce call should include the system message
+        // Both the map call and the reduce call carry the caller's system prompt.
+        //
+        // Containment rather than equality since 2026-08-30: map calls append MapProtocol after the
+        // caller's prompt, so that a caller instruction about the shape of a reply cannot reshape
+        // the "not found" sentinel the reduce filter matches exactly. This assertion's intent — the
+        // caller's prompt reaches both steps — is unchanged; only its strictness is, and
+        // AskAsync_WithACallerSystemPrompt_TellsTheMapsToKeepTheRefusalSentinel pins the difference
+        // between the two steps precisely.
         await _chatClient.Received(2).GetResponseAsync(
-            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m => m.Role == ChatRole.System && m.Text == "You are a helpful assistant.")),
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m =>
+                m.Role == ChatRole.System
+                && m.Text != null
+                && m.Text.Contains("You are a helpful assistant.", StringComparison.Ordinal))),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
@@ -194,6 +204,83 @@ public class MapReduceAnswerEngineTests
         // Verify the reduce call used the custom reduce template
         await _chatClient.Received(1).GetResponseAsync(
             Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m => m.Text != null && m.Text.Contains("Custom reduce:"))),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A caller system prompt must not be able to reshape the map step's refusal sentinel.
+    /// </summary>
+    /// <remarks>
+    /// <b>Regression test for a defect measured with a transcript on 2026-08-30.</b> Map partials
+    /// that say <c>not found</c> are dropped by an exact match before the reduce runs. Under a
+    /// caller prompt ending "end your reply with exactly this sentence: The answer to the question
+    /// is …", real maps returned <c>Not found. The answer to the question is "not found".</c> —
+    /// which is not equal to <c>not found</c>, so three such refusals survived into the reduce. The
+    /// reduce saw one correct answer against three refusals, called it a contradiction, and
+    /// discarded the answer. The engine had the answer and threw it away.
+    /// <para>
+    /// The fix appends <c>MapProtocol</c> after the caller's prompt on map calls only, so the
+    /// sentinel survives any caller formatting instruction. This asserts the instruction actually
+    /// reaches the maps and stays out of the reduce — the reduce produces the reply the caller
+    /// asked for, so their prompt applies there as written.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AskAsync_WithACallerSystemPrompt_TellsTheMapsToKeepTheRefusalSentinel()
+    {
+        var sources = new List<SearchResult> { MakeSource("chunk A", "doc-1") };
+
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ChatReply("partial"), ChatReply("final answer"));
+
+        var options = new RagOptions
+        {
+            SystemPrompt = "End your reply with exactly this sentence: The answer to the question is \"...\"",
+        };
+
+        _ = await _sut.AskAsync("What?", sources, options, TestContext.Current.CancellationToken);
+
+        // The map call carries the caller's prompt AND the protocol that protects the sentinel.
+        await _chatClient.Received(1).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m =>
+                m.Role == ChatRole.System
+                && m.Text != null
+                && m.Text.Contains("End your reply with exactly this sentence", StringComparison.Ordinal)
+                && m.Text.Contains("reply with exactly: not found", StringComparison.Ordinal))),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+
+        // The reduce call carries the caller's prompt alone — it produces the caller's reply.
+        await _chatClient.Received(1).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m =>
+                m.Role == ChatRole.System
+                && m.Text != null
+                && m.Text.Contains("End your reply with exactly this sentence", StringComparison.Ordinal)
+                && !m.Text.Contains("reply with exactly: not found", StringComparison.Ordinal))),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// With no caller system prompt, the map prompt is left exactly as it was.
+    /// </summary>
+    /// <remarks>
+    /// Nothing can reshape the sentinel when the caller supplies no prompt, so adding the protocol
+    /// would change the prompt — and therefore the output, and any prompt-keyed cache — for every
+    /// existing caller in order to fix a problem they do not have.
+    /// </remarks>
+    [Fact]
+    public async Task AskAsync_WithNoCallerSystemPrompt_SendsNoSystemMessageAtAll()
+    {
+        var sources = new List<SearchResult> { MakeSource("chunk A", "doc-1") };
+
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ChatReply("partial"), ChatReply("final answer"));
+
+        _ = await _sut.AskAsync("What?", sources, cancellationToken: TestContext.Current.CancellationToken);
+
+        await _chatClient.Received(2).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.All(m => m.Role != ChatRole.System)),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 }

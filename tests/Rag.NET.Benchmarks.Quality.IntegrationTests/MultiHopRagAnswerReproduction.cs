@@ -242,61 +242,107 @@ internal static class MultiHopRagAnswerReproduction
         new(
             "multihop-rag",
             AnswerArm.ChatEngine,
-            [],
-            "NEVER RUN -- Phase 6.2.1's answer-engine arms are wired but unmeasured; empty here " +
-            "per the guidance in RequireRecordedCase's own message, so the arm exists without a " +
-            "figure that would be a guess. Dense retrieval answered by ChatAnswerEngine in one " +
-            "call. This is the control for the four other engine arms: chatengine - dense is the " +
-            "prompt effect alone (the engine builds its own prompt), and each of mapreduce, " +
-            "refine, flare and flarefixed minus chatengine is that engine's mechanism alone, with " +
-            "the prompt effect already subtracted out. When somebody pays for the run, its figure " +
-            "belongs here."),
+            [0.6341],
+            "Dense retrieval answered by ChatAnswerEngine in one call, measured 2026-08-30 over " +
+            "the full 2,556 queries. **Paper-rule accuracy 0.6341 over the 2,255 judged queries** " +
+            "(raw 0.2262, strict 0.5933); abstains on 0 of the 301 nulls; meets the judge's " +
+            "extraction contract on 2,526 of 2,556. **This is the control the other engine arms " +
+            "are differenced against**, and the only one they may be differenced against: it " +
+            "answers under the same grounding-plus-extraction contract they do, in one call over " +
+            "the whole context. " +
+            "**It is NOT comparable to dense, and chatengine - dense = +0.2843 must not be read " +
+            "as an engine result.** dense answers under an additional abstention rule and declines " +
+            "1,394 of the 2,255 answerable queries; the engines carry no such rule and decline " +
+            "none. That gap is one sentence of prompt, and it is the defect the 2026-08-30 sweep " +
+            "was spent discovering -- see docs/plans/2026-08-30-answer-engine-sweep-findings.md."),
         new(
             "multihop-rag",
             AnswerArm.MapReduce,
-            [],
-            "NEVER RUN -- wired but unmeasured, same as the other four engine arms; empty per " +
-            "RequireRecordedCase's own guidance rather than a guessed figure. Dense retrieval " +
-            "answered by MapReduceAnswerEngine: one call per context chunk, then one reduce over " +
-            "their outputs. Differenced against chatengine, not dense: same retrieval, same " +
-            "prompt-building engine route, so mapreduce - chatengine is what the map/reduce " +
-            "mechanism buys over a single call, uncontaminated by a prompt difference. When " +
-            "somebody pays for the run, its figure belongs here."),
+            [0.6483],
+            "Dense retrieval answered by MapReduceAnswerEngine -- one call per context chunk, then " +
+            "one reduce over their outputs -- measured 2026-08-31 after the refusal-filter defect " +
+            "was fixed. **Paper-rule accuracy 0.6483 over the 2,255 judged queries** (raw 0.1157, " +
+            "strict 0.6137); abstains on 0 of 301 nulls; contract met on 2,553 of 2,556. " +
+            "**mapreduce - chatengine = +0.0142, McNemar p=0.2955 on 462 wins against 430 across " +
+            "892 discordant pairs -- NOT significant.** The map/reduce mechanism buys nothing " +
+            "measurable over a single call on this corpus. That is the finding: not a defect, not " +
+            "a win, a null result, and this milestone's bar treats a feature measured and found " +
+            "unremarkable as a completion. " +
+            "**Read alongside how nearly this was published as a win.** The 400-query validation " +
+            "subset put the same difference at +0.0340, which would have read as a real gain; at " +
+            "full scale it is +0.0142 at p=0.2955. A subset can carry a direction and cannot carry " +
+            "a significance. " +
+            "**The previous reading here was wrong and is retired.** It said 0.2009 was " +
+            "'an " +
+            "apparatus failure rather than a property of the engine', that MapReduce 'cannot be " +
+            "measured by an apparatus that shares one instruction across arms', and that its " +
+            "per-chunk calls 'extract facts rather than answering the question'. Elaborate, fitted " +
+            "the evidence, and wrong. It was **one defect**: map partials saying 'not found' are " +
+            "dropped by an EXACT match before the reduce, and a caller system prompt that reshapes " +
+            "replies defeats it -- under the extraction contract, refusals arrived as 'Not found. " +
+            "The answer to the question is \"not found\".', survived the filter, and the reduce " +
+            "discarded the one correct partial as contradicted. A logged transcript caught a map " +
+            "returning 'The answer to the question is \"Microsoft\".' and the reduce throwing it " +
+            "away. " +
+            "**Fixed in MapReduceAnswerEngine** by appending its map protocol after the caller's " +
+            "prompt on map calls only. Validated on 400 queries 2026-08-31: **0.1898 -> 0.6487** " +
+            "paper, contract compliance to 400/400, 'not found' answers from the majority to 1 of " +
+            "353. No evidence remains that MapReduce is bad at multi-hop questions. " +
+            "**Both controls held on the run this figure comes from**: dense reproduced 0.3499 / " +
+            "0.2603 / 0.3242 and chatengine returned exactly its pinned 0.6341, both replaying " +
+            "from cache, so nothing drifted underneath the measurement. Full account in " +
+            "docs/plans/2026-08-31-mapreduce-refusal-filter-findings.md."),
         new(
             "multihop-rag",
             AnswerArm.Refine,
-            [],
-            "NEVER RUN -- wired but unmeasured, same as the other four engine arms; empty per " +
-            "RequireRecordedCase's own guidance rather than a guessed figure. Dense retrieval " +
-            "answered by RefineAnswerEngine: an initial answer from the first chunk, then one " +
-            "sequential rewrite per remaining chunk. Differenced against chatengine for the same " +
-            "reason mapreduce is: refine - chatengine isolates the sequential-rewrite mechanism " +
-            "from the prompt effect chatengine already prices. When somebody pays for the run, " +
-            "its figure belongs here."),
+            [0.5286],
+            "Dense retrieval answered by RefineAnswerEngine -- an initial answer from the first " +
+            "chunk, then one sequential rewrite per remaining chunk -- measured 2026-08-30. " +
+            "**Paper-rule accuracy 0.5286 over the 2,255 judged queries** (raw 0.1800, strict " +
+            "0.4652); abstains on 0 of 301 nulls; contract met on 2,520 of 2,556. " +
+            "**refine - chatengine = -0.1055, McNemar p<0.0001 on 132 wins against 370. " +
+            "Sequential refinement over six chunks is significantly WORSE than answering once.** " +
+            "This comparison is clean: refine and chatengine receive an identical system prompt, " +
+            "an identical single call path and no extra passes, so the difference is the " +
+            "mechanism. Read it as a completion, not a defect -- a feature measured and found " +
+            "wanting is this milestone's stated bar. " +
+            "**One caveat, carried honestly:** refine rewrites per chunk, so it is a weaker " +
+            "instance of the granularity problem that makes mapreduce unmeasurable, and some of " +
+            "this deficit may be that rather than the mechanism. It is pinned because -- unlike " +
+            "mapreduce -- it still meets the extraction contract on 98.6% of queries and produces " +
+            "real answers rather than 'not found'."),
         new(
             "multihop-rag",
             AnswerArm.Flare,
-            [],
-            "NEVER RUN -- wired but unmeasured, same as the other four engine arms; empty per " +
-            "RequireRecordedCase's own guidance rather than a guessed figure. Dense retrieval " +
-            "answered by FlareAnswerEngine as shipped: sentence by sentence, re-retrieving " +
-            "mid-generation whenever a sentence scores below ConfidenceThreshold. This arm does " +
-            "not hold retrieval fixed, so it is not comparable to chatengine on mechanism alone -- " +
-            "flare - flarefixed is the number that isolates FLARE's mid-generation lookahead, " +
-            "since flarefixed runs the identical engine with the lookahead switched off. When " +
-            "somebody pays for the run, its figure belongs here."),
+            [0.7503],
+            "Dense retrieval answered by FlareAnswerEngine as shipped -- sentence by sentence, " +
+            "re-retrieving mid-generation whenever a sentence scores below ConfidenceThreshold -- " +
+            "measured 2026-08-30. **Paper-rule accuracy 0.7503 over the 2,255 judged queries** " +
+            "(raw 0.2075, strict 0.6284); abstains on 0 of 301 nulls; contract met on 2,546 of " +
+            "2,556. " +
+            "**flare - flarefixed = +0.0075, McNemar p=0.0135 on 31 wins against 14. This is the " +
+            "cleanest measurement in the set and the only direct one of FLARE's actual " +
+            "mechanism**: the two arms are the identical engine differing only in whether the " +
+            "mid-generation lookahead may fire. The lookahead helps, significantly, and by under " +
+            "one percentage point. " +
+            "**flare - chatengine = +0.1162 (p<0.0001, 379 against 117) is NOT a clean mechanism " +
+            "figure** -- the FLARE arms receive a post-loop formatting call that applies the " +
+            "extraction contract to the assembled answer, which no other arm gets, and the " +
+            "apparatus cannot separate that second pass from the mechanism. The +0.0075 above is " +
+            "unaffected, because both FLARE arms receive it."),
         new(
             "multihop-rag",
             AnswerArm.FlareFixed,
-            [],
-            "NEVER RUN -- wired but unmeasured, same as the other four engine arms; empty per " +
-            "RequireRecordedCase's own guidance rather than a guessed figure. Dense retrieval " +
-            "answered by FlareAnswerEngine with MaxRetrievals = 0: the sentence-by-sentence " +
-            "mechanism with lookahead off, so retrieval is held fixed. Differenced against " +
-            "chatengine like mapreduce and refine (flarefixed - chatengine isolates the " +
-            "sentence-by-sentence mechanism alone); differenced against flare for the lookahead's " +
-            "effect (see the flare entry). When somebody pays for the run, its figure belongs " +
-            "here."),
+            [0.7428],
+            "Dense retrieval answered by FlareAnswerEngine with MaxRetrievals = 0 -- the " +
+            "sentence-by-sentence mechanism with the lookahead off, so retrieval is held fixed -- " +
+            "measured 2026-08-30. **Paper-rule accuracy 0.7428 over the 2,255 judged queries** " +
+            "(raw 0.2080, strict 0.6213); abstains on 1 of 301 nulls; contract met on 2,543 of " +
+            "2,556. This is the control half of the pair that isolates the lookahead: see the " +
+            "flare entry for +0.0075 at p=0.0135. " +
+            "**flarefixed - chatengine = +0.1086 (p<0.0001, 364 against 119) carries the same " +
+            "caveat as flare's**: both FLARE arms receive a post-loop formatting call no other arm " +
+            "gets, so this number mixes the sentence-by-sentence mechanism with that second pass."),
     ];
 
     /// <summary>Asserts one arm's paper-rule accuracy reproduced what was last recorded, or records what it measured.</summary>
