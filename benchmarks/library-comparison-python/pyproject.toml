@@ -17,7 +17,7 @@ description = "Rag.NET library comparison, Stage 2: Python entrants that emit TR
 requires-python = "==3.14.*"
 dependencies = [
     "haystack-ai==3.1.0",
-    "langchain-core==1.6.0",
+    "langchain-core==1.6.1",
     "langchain-text-splitters==1.1.2",
     "llama-index-core==0.14.24",
     "numpy==2.5.2",
