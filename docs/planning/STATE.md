@@ -563,7 +563,12 @@ much larger than answer generation's.
 > really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
 > here before.
 
-**Last landed on `main`:** **#419** as `50221812` (2026-08-29) — the FLARE contract-and-cache fix.
+**Last landed on `main`:** **#429** as `1a4d5364` (2026-08-30) — the engine arms made comparable and
+measured. Verify by content: `AnswerContract`, `EngineContract` and `GroundingRule` in
+`tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirGraphRagAnswerTests.cs`, and the pinned
+`0.7503` in `MultiHopRagAnswerReproduction.cs`.
+
+Before it, **#419** as `50221812` (2026-08-29) — the FLARE contract-and-cache fix.
 Verify by content: `FragmentProtocol` in `src/Rag.NET.AnswerEngines/FlareAnswerEngine.cs`,
 `ThrowIfUnkeyable` in
 `benchmarks/Rag.NET.Benchmarks.Quality.GraphExtractions/CachedGraphRagClient.cs`.
