@@ -4769,7 +4769,7 @@ strength of it**.
 `docs/plans/2026-08-30-answer-engine-sweep-results.md`.
 
 **Finding 1 — sequential refinement is significantly worse than answering once.**
-`refine − chatengine` = **−0.1055**, McNemar p<0.0001, losing 370 queries and winning 132. The
+`refine − chatengine` = **−0.1055**, McNemar `p<0.0001`, losing 370 queries and winning 132. The
 comparison is uncontaminated: identical system prompt, identical single call path, no extra passes,
 so the difference is the mechanism. Read as a *completion* — a feature measured and found wanting is
 this milestone's stated bar. One caveat travels with it: `refine` rewrites per chunk, a weaker

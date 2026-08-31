@@ -34,17 +34,17 @@ McNemar over the paired judged queries, paper rule:
 
 | comparison | wins | losses | p |
 | --- | --- | --- | --- |
-| `flare` vs `chatengine` | 379 | 117 | <0.0001 |
-| `flarefixed` vs `chatengine` | 364 | 119 | <0.0001 |
-| `refine` vs `chatengine` | 132 | 370 | <0.0001 |
-| `mapreduce` vs `chatengine` | 37 | 1014 | <0.0001 |
+| `flare` vs `chatengine` | 379 | 117 | `<0.0001` |
+| `flarefixed` vs `chatengine` | 364 | 119 | `<0.0001` |
+| `refine` vs `chatengine` | 132 | 370 | `<0.0001` |
+| `mapreduce` vs `chatengine` | 37 | 1014 | `<0.0001` |
 | **`flare` vs `flarefixed`** | **31** | **14** | **0.0135** |
 
 ## The two clean findings
 
 ### 1. Sequential refinement is significantly worse than answering once
 
-**`refine − chatengine` = −0.1055, p<0.0001, losing on 370 queries and winning on 132.**
+**`refine − chatengine` = −0.1055, `p<0.0001`, losing on 370 queries and winning on 132.**
 
 This comparison is uncontaminated. `refine` and `chatengine` receive an identical system prompt, an
 identical single call path and no extra passes; the only difference is the mechanism. Rewriting an

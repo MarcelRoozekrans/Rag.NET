@@ -78,7 +78,7 @@ field has now had three times.
 findings, and the phase's first real engine result.** 15,336 records, 5.5 hours, 18 tests / 0 failed.
 **Gate 0 held on all three rules** (`dense` reproduced 0.3499 / 0.2603 / 0.3242 exactly).
 **(1) Sequential refinement is significantly worse than answering once** — `refine − chatengine` =
-**−0.1055**, p<0.0001, 132 wins against 370, on an uncontaminated comparison (identical prompt, path
+**−0.1055**, `p<0.0001`, 132 wins against 370, on an uncontaminated comparison (identical prompt, path
 and passes). **(2) FLARE's lookahead helps by under a percentage point** — `flare − flarefixed` =
 **+0.0075**, p=0.0135, the only direct measurement of FLARE's mechanism. Labelled not-clean: the
 FLARE arms' ~+0.11 over `chatengine` is confounded by a post-loop formatting call no other arm gets,
