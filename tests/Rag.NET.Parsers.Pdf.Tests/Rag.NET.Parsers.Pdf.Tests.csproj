@@ -29,18 +29,11 @@
 
   <ItemGroup>
     <!-- Single source of truth for PDF fixtures: linked from the integration test resources. -->
-    <EmbeddedResource Include="..\Rag.NET.Parsers.IntegrationTests\Resources\sample.pdf"
-                      Link="Resources\sample.pdf"
-                      LogicalName="Rag.NET.Parsers.Pdf.Tests.Resources.sample.pdf" />
-    <EmbeddedResource Include="..\Rag.NET.Parsers.IntegrationTests\Resources\sample-table.pdf"
-                      Link="Resources\sample-table.pdf"
-                      LogicalName="Rag.NET.Parsers.Pdf.Tests.Resources.sample-table.pdf" />
-    <EmbeddedResource Include="..\Rag.NET.Parsers.IntegrationTests\Resources\sample-scanned.pdf"
-                      Link="Resources\sample-scanned.pdf"
-                      LogicalName="Rag.NET.Parsers.Pdf.Tests.Resources.sample-scanned.pdf" />
+    <EmbeddedResource Include="..\Rag.NET.Parsers.IntegrationTests\Resources\sample.pdf" Link="Resources\sample.pdf" LogicalName="Rag.NET.Parsers.Pdf.Tests.Resources.sample.pdf" />
+    <EmbeddedResource Include="..\Rag.NET.Parsers.IntegrationTests\Resources\sample-table.pdf" Link="Resources\sample-table.pdf" LogicalName="Rag.NET.Parsers.Pdf.Tests.Resources.sample-table.pdf" />
+    <EmbeddedResource Include="..\Rag.NET.Parsers.IntegrationTests\Resources\sample-scanned.pdf" Link="Resources\sample-scanned.pdf" LogicalName="Rag.NET.Parsers.Pdf.Tests.Resources.sample-scanned.pdf" />
     <!-- Source image embedded in sample-scanned.pdf; used by ScannedFixtureGenerator. -->
-    <EmbeddedResource Include="Resources\ocr-sample.png"
-                      LogicalName="Rag.NET.Parsers.Pdf.Tests.Resources.ocr-sample.png" />
+    <EmbeddedResource Include="Resources\ocr-sample.png" LogicalName="Rag.NET.Parsers.Pdf.Tests.Resources.ocr-sample.png" />
   </ItemGroup>
 
 </Project>
