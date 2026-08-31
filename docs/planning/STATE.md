@@ -74,7 +74,20 @@ on `main`** — corrected 2026-08-25. Statuses are written when a phase is plann
 editing this file at the moment its PR merges, which is the same failure the Working State branch
 field has now had three times.
 
-**Last completed:** **the MapReduce refusal-filter defect, found and fixed 2026-08-31 — and it
+**Last completed:** **`mapreduce` measured and pinned at 0.6483, 2026-08-31 — a null result, and the
+DoD's answer-engine clause now closes.** Both controls held on the run (`dense` 0.3499 / 0.2603 /
+0.3242, `chatengine` exactly its pinned 0.6341, both replaying from cache), so nothing drifted.
+**`mapreduce − chatengine` = +0.0142, McNemar p=0.2955 on 462 wins against 430 — not significant.**
+The map/reduce mechanism buys nothing measurable over a single call on this corpus; a feature
+measured and found unremarkable is a completion, as 5.2 was. **The 400-query subset put the same
+difference at +0.0340**, which would have read as a win: earlier pilot-to-scale misses moved a
+magnitude, this one moves the conclusion — **a subset can carry a direction and cannot carry a
+significance.** Contract compliance 2,553/2,556, up from 2,333. `UnmeasuredEngineArms` is now
+**empty**: every arm carries a figure, reached through three separate failures of the guard that each
+named the arm and the list to update. Third timing miss too — 30 minutes against a projected 6.4
+hours. Full account in `docs/plans/2026-08-31-mapreduce-refusal-filter-findings.md`.
+
+Before it, **the MapReduce refusal-filter defect, found and fixed 2026-08-31 — and it
 overturns what the sweep concluded about that engine.** MapReduce drops `not found` partials by an
 **exact** match before the reduce; a caller system prompt that reshapes replies defeats it, so under
 the extraction contract refusals arrived as `Not found. The answer to the question is "not found".`,

@@ -4838,9 +4838,31 @@ is not a number that is right** — consistency measures reproducibility, not co
 it open was reading a transcript of what the model actually sent and received, about 20 calls, after
 aggregate scores had been examined at three different sample sizes.
 
-**Still to do: `mapreduce` is not pinned.** 400 queries is a validation run and this phase has never
-had a magnitude survive pilot-to-scale; the pin needs the full 2,556. **The DoD clause is now
-closable** — all three named engines are measurable, and MapReduce was the only blocker.
+**`mapreduce` measured at full scale and pinned at 0.6483, 2026-08-31 — and it is a null result.**
+Both controls held on the run (`dense` 0.3499 / 0.2603 / 0.3242; `chatengine` exactly its pinned
+0.6341, both replaying from cache), so nothing drifted underneath it. Contract compliance
+**2,553 of 2,556**, up from 2,333 before the fix.
+
+**`mapreduce − chatengine` = +0.0142, McNemar p=0.2955 on 462 wins against 430 across 892 discordant
+pairs — not significant.** The map/reduce mechanism buys nothing measurable over a single call on
+this corpus. That is the finding: not a defect, not a win, and a feature measured and found
+unremarkable is a completion, exactly as 5.2 was.
+
+**How close it came to being published as a win, recorded because the lesson is sharper than the
+earlier ones.** The 400-query validation subset put the same difference at **+0.0340**, which reads
+as a real gain; at full scale it is +0.0142 at p=0.2955. Previous pilot-to-scale misses in this phase
+moved a *magnitude* — this one moves the *conclusion*. **A subset can carry a direction and cannot
+carry a significance**, and the subset had just been vindicated on direction, which is exactly what
+would have made trusting it feel safe. Third timing miss alongside it: 30 minutes against a projected
+6.4 hours.
+
+**The DoD's answer-engine clause now closes.** All three named engines have a pinned figure against a
+properly-instructed control: MapReduce +0.0142 (p=0.2955, no measurable difference), Refine −0.1055
+(`p<0.0001`, significantly worse), FLARE's lookahead +0.0075 (p=0.0135, helps slightly).
+`UnmeasuredEngineArms` is **empty** — every arm in `AnswerArm.All` carries a figure, reached through
+three separate failures of `SelectArms_DefaultSelection_ContainsOnlyArmsWithARecordedFigure`, each
+naming the arm and the list to update so the default replay set moved deliberately rather than
+drifting.
 
 **And `refine` needs re-examination.** It scored −0.1055 and was pinned with a caveat that some
 deficit *may* be structural rather than mechanism. It rewrites sequentially over chunks — a per-chunk
