@@ -4802,6 +4802,51 @@ ran, and its figure measures a known-broken setup.
 not met** — MapReduce cannot be measured until `MapReduceAnswerEngine` applies caller instructions to
 its reduce step rather than to every map, which is product work in `Rag.NET.AnswerEngines`.
 
+**That reading of MapReduce was wrong, and it was one defect rather than a structural limit —
+corrected 2026-08-31.** Full account in
+`docs/plans/2026-08-31-mapreduce-refusal-filter-findings.md`.
+
+MapReduce drops `not found` partials by an **exact** string match before the reduce. A caller system
+prompt that changes the shape of a reply defeats that match: under the extraction contract, refusals
+came back as `Not found. The answer to the question is "not found".` — not equal to `not found` — so
+they survived into the reduce, which treated them as contradicting the one correct partial and
+**discarded the correct answer**. A logged transcript shows a map returning
+`The answer to the question is "Microsoft".` and the reduce throwing it away in favour of three
+unfiltered refusals.
+
+**Fixed in `MapReduceAnswerEngine` by appending a map protocol after the caller's prompt on map calls
+only**, so the sentinel survives any caller formatting instruction; the reduce keeps the caller's
+prompt untouched, and a caller supplying no prompt gets no change at all. Two fast-tier regression
+tests, mutation-checked. **This is a shipped-package defect**: any caller who writes "always end with
+a summary line" hits it, and it is the same class as the FLARE protocol defect fixed in #419.
+
+**Validated on 400 queries, 2026-08-31:** `mapreduce` **0.1898 → 0.6487** paper, contract compliance
+from the worst of any arm to **400/400**, and answers containing "not found" from the majority to
+**1 of 353**. `dense` and `chatengine` returned figures identical to the previous subset, replaying
+wholly from cache. **`mapreduce − chatengine` = +0.0340** — it is now slightly ahead of the
+single-shot control rather than 0.43 behind it.
+
+**So three claims in the record above are retired:** that the number was an apparatus failure rather
+than a property of the engine; that MapReduce cannot be measured by an apparatus sharing one
+instruction; and that its per-chunk calls extract facts rather than answer, making any
+"answer the question" instruction false of a chunk. All three were elaborate, fitted the evidence
+available, and were wrong. **No evidence remains that MapReduce is bad at multi-hop questions.**
+
+**How the wrong reading survived two runs:** the full sweep and both subsets reported the same low
+figure, which read as corroboration. It was the same defect reproducing. **A number that reproduces
+is not a number that is right** — consistency measures reproducibility, not correctness. What broke
+it open was reading a transcript of what the model actually sent and received, about 20 calls, after
+aggregate scores had been examined at three different sample sizes.
+
+**Still to do: `mapreduce` is not pinned.** 400 queries is a validation run and this phase has never
+had a magnitude survive pilot-to-scale; the pin needs the full 2,556. **The DoD clause is now
+closable** — all three named engines are measurable, and MapReduce was the only blocker.
+
+**And `refine` needs re-examination.** It scored −0.1055 and was pinned with a caveat that some
+deficit *may* be structural rather than mechanism. It rewrites sequentially over chunks — a per-chunk
+shape — and MapReduce has just shown a per-chunk shape can hide a defect worth 0.46. Read that caveat
+as a live question rather than a hedge.
+
 ~~**The full sweep must not be funded until the arms are under equivalent treatment**~~ — ~$20 would buy
 three differently broken arms measured at higher precision. Nothing is pinned. The DoD's
 answer-engine clause remains unmet.

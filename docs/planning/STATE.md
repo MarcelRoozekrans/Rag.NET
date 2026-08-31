@@ -74,7 +74,24 @@ on `main`** — corrected 2026-08-25. Statuses are written when a phase is plann
 editing this file at the moment its PR merges, which is the same failure the Working State branch
 field has now had three times.
 
-**Last completed:** **the full answer-engine sweep on the corrected apparatus, 2026-08-30 — two clean
+**Last completed:** **the MapReduce refusal-filter defect, found and fixed 2026-08-31 — and it
+overturns what the sweep concluded about that engine.** MapReduce drops `not found` partials by an
+**exact** match before the reduce; a caller system prompt that reshapes replies defeats it, so under
+the extraction contract refusals arrived as `Not found. The answer to the question is "not found".`,
+survived the filter, and the reduce **discarded the one correct partial** as contradicted. A logged
+transcript shows a map returning `The answer to the question is "Microsoft".` and the reduce throwing
+it away. Fixed by appending a map protocol after the caller's prompt on **map calls only**; two
+fast-tier regression tests, mutation-checked. **Validated on 400 queries: `mapreduce` 0.1898 →
+0.6487, contract compliance to 400/400, "not found" answers from the majority to 1 of 353, and
+`mapreduce − chatengine` = +0.0340** — ahead of the single-shot control rather than 0.43 behind.
+**This retires the "apparatus failure / cannot be measured / per-chunk calls extract rather than
+answer" reading**, which was elaborate and wrong; it was one defect. **The DoD clause is now
+closable** — MapReduce was the only blocker. **Not yet pinned**: 400 queries is validation, and the
+pin needs the full 2,556. **And `refine`'s pinned −0.1055 needs re-examination** — it shares the
+per-chunk shape that just hid a 0.46 defect. Full account in
+`docs/plans/2026-08-31-mapreduce-refusal-filter-findings.md`.
+
+Before it, **the full answer-engine sweep on the corrected apparatus, 2026-08-30 — two clean
 findings, and the phase's first real engine result.** 15,336 records, 5.5 hours, 18 tests / 0 failed.
 **Gate 0 held on all three rules** (`dense` reproduced 0.3499 / 0.2603 / 0.3242 exactly).
 **(1) Sequential refinement is significantly worse than answering once** — `refine − chatengine` =
@@ -563,7 +580,12 @@ much larger than answer generation's.
 > really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
 > here before.
 
-**Last landed on `main`:** **#419** as `50221812` (2026-08-29) — the FLARE contract-and-cache fix.
+**Last landed on `main`:** **#429** as `1a4d5364` (2026-08-30) — the engine arms made comparable and
+measured. Verify by content: `AnswerContract`, `EngineContract` and `GroundingRule` in
+`tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirGraphRagAnswerTests.cs`, and the pinned
+`0.7503` in `MultiHopRagAnswerReproduction.cs`.
+
+Before it, **#419** as `50221812` (2026-08-29) — the FLARE contract-and-cache fix.
 Verify by content: `FragmentProtocol` in `src/Rag.NET.AnswerEngines/FlareAnswerEngine.cs`,
 `ThrowIfUnkeyable` in
 `benchmarks/Rag.NET.Benchmarks.Quality.GraphExtractions/CachedGraphRagClient.cs`.

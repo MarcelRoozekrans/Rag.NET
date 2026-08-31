@@ -259,22 +259,28 @@ internal static class MultiHopRagAnswerReproduction
             "multihop-rag",
             AnswerArm.MapReduce,
             [],
-            "RUN 2026-08-30 AND DELIBERATELY NOT PINNED -- it measured 0.2009 paper (raw 0.1539, " +
-            "strict 0.1681), mapreduce - chatengine = -0.4333 with McNemar p<0.0001 on 37 wins " +
-            "against 1,014, and **that number is an apparatus failure rather than a property of " +
-            "the engine**. Pinning it would publish a measurement of a known-broken setup. " +
-            "**MapReduce cannot be measured by an apparatus that shares one instruction across " +
-            "arms.** It makes one call per context chunk and then one reduce, and its per-chunk " +
-            "calls are extracting facts rather than answering the question -- so an instruction " +
-            "phrased 'answer the question using only the context' is false of a single chunk of " +
-            "six, and every map dutifully reports that its chunk does not answer it. Measured " +
-            "twice on 2026-08-30: with the abstention rule it scored 0.0142 answering the literal " +
-            "string 'not found'; with abstention removed and only grounding left, 0.2009 -- and " +
-            "the worst extraction-contract compliance of any arm, 2,333 of 2,556. Removing " +
-            "abstention was necessary and nowhere near sufficient. " +
-            "**A figure belongs here once MapReduceAnswerEngine can apply caller instructions to " +
-            "its reduce step rather than to every map** -- product work, not a harness change. " +
-            "Full account in docs/plans/2026-08-30-engine-granularity-findings.md."),
+            "NOT YET PINNED -- the 2026-08-30 figure measured a defect, which was found and fixed " +
+            "on 2026-08-31, and the replacement figure needs a full run. " +
+            "**The earlier reading here was wrong and is retired.** It said 0.2009 was 'an " +
+            "apparatus failure rather than a property of the engine', that MapReduce 'cannot be " +
+            "measured by an apparatus that shares one instruction across arms', and that its " +
+            "per-chunk calls 'extract facts rather than answering the question'. Elaborate, fitted " +
+            "the evidence, and wrong. It was **one defect**: map partials saying 'not found' are " +
+            "dropped by an EXACT match before the reduce, and a caller system prompt that reshapes " +
+            "replies defeats it -- under the extraction contract, refusals arrived as 'Not found. " +
+            "The answer to the question is \"not found\".', survived the filter, and the reduce " +
+            "discarded the one correct partial as contradicted. A logged transcript caught a map " +
+            "returning 'The answer to the question is \"Microsoft\".' and the reduce throwing it " +
+            "away. " +
+            "**Fixed in MapReduceAnswerEngine** by appending its map protocol after the caller's " +
+            "prompt on map calls only. Validated on 400 queries 2026-08-31: **0.1898 -> 0.6487** " +
+            "paper, contract compliance to 400/400, 'not found' answers from the majority to 1 of " +
+            "353, and mapreduce - chatengine = **+0.0340** -- ahead of the single-shot control " +
+            "rather than 0.43 behind it. No evidence remains that MapReduce is bad at multi-hop " +
+            "questions. " +
+            "**A figure belongs here after a full 2,556-query run**; 400 is a validation sample and " +
+            "no magnitude has survived pilot-to-scale in this phase. Full account in " +
+            "docs/plans/2026-08-31-mapreduce-refusal-filter-findings.md."),
         new(
             "multihop-rag",
             AnswerArm.Refine,
