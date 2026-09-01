@@ -180,6 +180,58 @@ public static class BeirReproduction
             "The pre-fix run measured 0.56693 — history, not a figure to reproduce: a run " +
             "landing there again means the tokenizer regressed."),
         new(
+            "scifact",
+            BeirProtocol.RealHyde,
+            [],
+            "NEVER RUN -- Phase 6.2.1 wired this cell and has not measured it; empty rather than a " +
+            "guessed figure, so AssertReproduces reports instead of asserting until a run fills it. " +
+            "HyDE over Rag.NET's own chunking: the Real protocol's 20,155 chunks searched with the " +
+            "mean of 3 cached gpt-4o-mini@t0.8 hypotheticals instead of the query vector. " +
+            "**Its control is the Real cell's 0.67742 on this dataset**, not the parity Hyde cell's " +
+            "0.70001 -- units are held fixed and only the ranking row varies, so the difference is " +
+            "HyDE alone. Naming the control is not decoration: SemanticChunking's figure reads as a " +
+            "0.032 regression against one control and a 0.00042 wash against the other. " +
+            "Costs no model calls; the hypothetical cache is keyed on query rather than corpus, so " +
+            "the parity cell's entries replay unchanged."),
+        new(
+            "scifact",
+            BeirProtocol.RealReranked,
+            [0.69008],
+            "MEASURED 2026-09-01, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.69008, Recall@10 "
+            + "0.80928, MRR@10 0.66044 over the 300 judged queries; 20,155 units over 5,183 of 5,183 "
+            + "documents; embedding cache 20,455 hits and 0 misses, so no model calls. The reranker "
+            + "reordered 300 of 300 queries, which is the mechanism assertion's evidence and about as "
+            + "unambiguous as it gets. "
+            + "**Against its control, the Real cell's 0.67742, this is +0.01266.** Read that beside "
+            + "the parity pair: Reranked 0.68442 against a 0.645 dense anchor is +0.039. **Reranking "
+            + "buys roughly a third as much on the corpus this library actually produces as it does "
+            + "on whole documents** -- which is the hypothesis these cells were built to test, now "
+            + "carrying a number instead of an argument. "
+            + "Cost 1 h 47 m, against a derived estimate of ~4 m: see BeirRunBudget. "
+            + "SUPERSEDED TEXT: NEVER RUN -- wired by Phase 6.2.1, unmeasured, empty for the same reason as the " +
+            "RealHyde cell above. Cross-encoder ms-marco-MiniLM-L6-v2 rescoring dense candidates " +
+            "drawn from the Real protocol's chunked corpus. **Its control is the Real cell's " +
+            "0.67742**, not the parity Reranked cell's 0.68442. " +
+            "The parity/real distinction bites harder here than for HyDE: a cross-encoder scores a " +
+            "query against a PASSAGE, and a chunk is a different passage from a whole document " +
+            "truncated at 256 tokens -- of the techniques in this table, reranking is the one most " +
+            "likely to behave differently on the corpus the library actually produces. Costs no " +
+            "model calls; the reranker is a local ONNX model."),
+        new(
+            "fiqa",
+            BeirProtocol.RealReranked,
+            [0.34618],
+            "MEASURED 2026-09-01, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.34618, Recall@10 "
+            + "0.41859, MRR@10 0.41532 over 648 queries; embedding cache 121,884 hits and 0 misses. "
+            + "The reranker reordered 648 of 648 queries. Ran because RAGNET_BEIR_LONG_RUNS ungates "
+            + "every dataset rather than because it was scheduled — the figure is real, the "
+            + "mechanism is proven, and re-running 6 h 18 m to obtain it again would be waste. "
+            + "**Against its control, the Real cell's 0.35569, this is −0.00951: reranking makes "
+            + "FiQA WORSE.** Beside SciFact's +0.01266 that is a sign flip across two corpora, and "
+            + "it is the reason a technique cell is measured per dataset rather than once — the same "
+            + "lesson SemanticChunking recorded when it ran −0.00042 on SciFact and +0.06769 on "
+            + "TREC-COVID. Neither figure supports a claim about reranking in general."),
+        new(
             "fiqa",
             BeirProtocol.HybridBm25,
             [0.35665],

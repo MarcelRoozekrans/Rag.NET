@@ -488,6 +488,149 @@ public sealed class BeirAblationTests
             {run.Describe()}
             """);
 
+
+    /// <summary>
+    /// HyDE over Rag.NET's own chunking, against the <see cref="BeirProtocol.Real"/> figure on the
+    /// same dataset.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Its control is stated, not implied.</b> Units are held fixed — the same chunking, the same
+    /// max-pooling back to documents — and only the ranking row varies, so the difference is HyDE
+    /// and nothing else. <see cref="BeirProtocol.SemanticChunking"/> is why that sentence is here:
+    /// the same SciFact figure reads as a 0.032 regression against one control and a 0.00042 wash
+    /// against the other, so a cell that does not name its control is not a measurement.
+    /// </para>
+    /// <para>
+    /// <b>Why it exists next to the parity <see cref="BeirProtocol.Hyde"/> cell.</b> That one
+    /// measures HyDE over one chunk per document truncated at 256 tokens, which is not the corpus
+    /// this library produces. Rag.NET ships chunking, so the parity figure describes a
+    /// configuration no user runs.
+    /// </para>
+    /// <para>
+    /// <b>Run it with <c>-showLiveOutput</c>.</b> An unpinned protocol reports its figure through
+    /// <see cref="ITestOutputHelper"/>, and this project's runner suppresses that channel for tests
+    /// that pass — the mistake that measured four datasets in 4 h 18 m and printed the numbers
+    /// nowhere.
+    /// </para>
+    /// </remarks>
+    /// <param name="datasetName">The dataset to measure.</param>
+    [Theory]
+    [MemberData(nameof(Datasets))]
+    public async Task NdcgAt10_UnderCachedHydeOverRealChunking_MeasuresWithHydeProvablyDiverging(
+        string datasetName)
+    {
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.RealHyde),
+            $"{datasetName} does not declare the RealHyde protocol applicable, so measuring it " +
+            "would produce a number that means nothing.");
+
+        Assert.SkipUnless(
+            BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
+            BeirHarness.SkipReason);
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.RealHyde, out var budgetReason),
+            budgetReason);
+
+        var ct = TestContext.Current.CancellationToken;
+        var dataset = await BeirHarness.LoadAsync(descriptor, cacheDirectory, " ", ct);
+
+        using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
+        var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
+
+        // Refuse-on-miss, exactly as the parity cell opens it: the hypothetical cache is written by
+        // the generation tool alone and never committed, so a missing entry must fail loudly rather
+        // than quietly search with the query vector and report a dense run wearing a HyDE label.
+        var hydeOptions = new HydeOptions();
+        var hypotheticals = new HypotheticalCache(
+            cacheDirectory,
+            HypotheticalModelIdentity.For(hydeOptions.HypothesisTemperature),
+            hydeOptions.PromptTemplate,
+            HypotheticalCacheMode.RefuseOnMiss);
+        var row = new HydeAblationRow(hypotheticals, hydeOptions.HypothesisCount);
+
+        // The Real protocol's units — this is the whole difference from the parity Hyde cell.
+        var units = await BeirRealChunkingTests.ChunkAsync(dataset.Documents, ct);
+        var run = await BeirHarness.MeasureAsync(
+            descriptor, dataset, units, row, generator, embeddings, ct);
+
+        _output.WriteLine(Describe(descriptor, row, run));
+
+        // Before the number is trusted: if every hypothetical collapsed onto the query vector, this
+        // cell is the Real cell wearing a HyDE label and its nDCG would reproduce Real exactly.
+        row.AssertHydeDiverged(descriptor.Name);
+
+        BeirReproduction.AssertReproduces(
+            datasetName, BeirProtocol.RealHyde, run.NdcgAt10, _output);
+    }
+
+    /// <summary>
+    /// Cross-encoder reranking over Rag.NET's own chunking, against the
+    /// <see cref="BeirProtocol.Real"/> figure on the same dataset.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Control named for the reason given on the RealHyde cell above: units fixed, row varied.
+    /// </para>
+    /// <para>
+    /// <b>The parity/real distinction is sharper here than for HyDE.</b> A cross-encoder scores a
+    /// query against a <i>passage</i>, and a chunk is a different passage from a whole document
+    /// truncated at 256 tokens. Of the techniques in this table, reranking is the one most likely to
+    /// behave differently on the corpus the library actually produces.
+    /// </para>
+    /// <para><b>Run it with <c>-showLiveOutput</c></b>, for the reason given above.</para>
+    /// </remarks>
+    /// <param name="datasetName">The dataset to measure.</param>
+    [Theory]
+    [MemberData(nameof(Datasets))]
+    public async Task NdcgAt10_UnderCrossEncoderRerankOverRealChunking_MeasuresWithRerankerProvablyReordering(
+        string datasetName)
+    {
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.RealReranked),
+            $"{datasetName} does not declare the RealReranked protocol applicable, so measuring it " +
+            "would produce a number that means nothing.");
+
+        Assert.SkipUnless(
+            BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
+            BeirHarness.SkipReason);
+        Assert.SkipUnless(
+            BeirHarness.IsRerankerProvisioned(out var rerankModelPath, out var rerankVocabPath),
+            BeirHarness.RerankerSkipReason);
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.RealReranked, out var budgetReason),
+            budgetReason);
+
+        var ct = TestContext.Current.CancellationToken;
+        var dataset = await BeirHarness.LoadAsync(descriptor, cacheDirectory, " ", ct);
+
+        using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
+        var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
+
+        using var reranker = new OnnxReranker(new OnnxRerankerOptions
+        {
+            ModelPath = rerankModelPath,
+            VocabPath = rerankVocabPath,
+        });
+        var row = new RerankedAblationRow(reranker);
+
+        var units = await BeirRealChunkingTests.ChunkAsync(dataset.Documents, ct);
+        var run = await BeirHarness.MeasureAsync(
+            descriptor, dataset, units, row, generator, embeddings, ct);
+
+        _output.WriteLine(Describe(descriptor, row, run));
+
+        // If the cross-encoder returned its input order — all-equal scores, wrong output tensor —
+        // this cell is the Real cell wearing a reranker label.
+        row.AssertRerankerReordered(descriptor.Name);
+
+        BeirReproduction.AssertReproduces(
+            datasetName, BeirProtocol.RealReranked, run.NdcgAt10, _output);
+    }
     /// <summary>The HyDE cell, stating the evidence its guard judges.</summary>
     private static string Describe(
         BeirDatasetDescriptor descriptor, HydeAblationRow row, BeirRunResult run) =>

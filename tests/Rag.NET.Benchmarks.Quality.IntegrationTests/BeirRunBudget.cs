@@ -670,6 +670,73 @@ public static class BeirRunBudget
             + "more embedding work than the Real cell on the same dataset and no LLM calls at "
             + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
             + "new text and is not in any cache."),
+
+        // Phase 6.2.1: the RealHyde and RealReranked cells measure HyDE and cross-encoder reranking
+        // over Rag.NET's own chunking rather than parity's one-chunk-per-document units. Eight
+        // entries because both protocols apply to all four BEIR datasets; only SciFact is scheduled
+        // to run. Every figure below is DERIVED and says so — none has been measured, and this table
+        // exists precisely so an unmeasured case cannot silently join the nightly.
+        new(
+            "scifact",
+            BeirProtocol.RealHyde,
+            FitsTheNightly: false,
+            "NOT YET MEASURED. DERIVED: the Hyde cell on this dataset is ~1 m 30 s over parity's "
+            + "5,183 document units; this one runs the same row over the Real protocol's chunked "
+            + "corpus, which is the larger embedding side, so expect more than that and treat the "
+            + "difference as unknown until a run replaces this text. Pays NO model calls: the "
+            + "hypothetical cache is keyed on model identity, prompt template, query and hypothesis "
+            + "index — not the corpus — so the entries the parity cell generated replay unchanged. "
+            + "Without that cache the cell fails through refuse-on-miss rather than skipping, "
+            + "exactly as the parity Hyde cell does."),
+        new(
+            "scifact",
+            BeirProtocol.RealReranked,
+            FitsTheNightly: false,
+            "MEASURED 2026-09-01: 6,414.5 s -- 1 h 47 m, embedding cache 20,455 hits and 0 misses, so "
+            + "pure compute. This replaces a DERIVED estimate of ~4 m that was wrong by roughly "
+            + "27x. The error was reasoning from the parity cell: the cross-encoder scores "
+            + "candidates drawn from 20,155 chunks here rather than 5,183 documents, and it is that "
+            + "candidate count, not the corpus size, that sets the cost. Pays no model calls -- the "
+            + "reranker is a local ONNX model."),
+        new(
+            "fiqa",
+            BeirProtocol.RealHyde,
+            FitsTheNightly: false,
+            "NOT RUN. Phase 6.2.1 scheduled SciFact alone for the Real-protocol technique cells; "
+            + "FiQA is applicable and unscheduled. Its parity Hyde cell needs the hypothetical "
+            + "cache, which is never committed, so this one inherits that constraint too."),
+        new(
+            "fiqa",
+            BeirProtocol.RealReranked,
+            FitsTheNightly: false,
+            "MEASURED 2026-09-01: 22,674.7 s -- 6 h 18 m, embedding cache 121,884 hits and 0 misses. Ran "
+            + "because RAGNET_BEIR_LONG_RUNS ungates every dataset, not because it was scheduled; "
+            + "the figure is real and is pinned. 3.5x SciFact's cell, tracking the candidate count "
+            + "rather than anything else."),
+        new(
+            "arguana",
+            BeirProtocol.RealHyde,
+            FitsTheNightly: false,
+            "NOT RUN. Applicable and unscheduled, as FiQA's is."),
+        new(
+            "arguana",
+            BeirProtocol.RealReranked,
+            FitsTheNightly: false,
+            "NOT RUN. Applicable and unscheduled, as FiQA's is."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealHyde,
+            FitsTheNightly: false,
+            "NOT RUN. Applicable and unscheduled. It would also be the most expensive of the four: "
+            + "this corpus is 33x SciFact's, so the chunked side is larger again."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealReranked,
+            FitsTheNightly: false,
+            "NOT RUN. Applicable and unscheduled, and it inherits the parity Reranked cell's "
+            + "warning: TREC-COVID judges 50 queries against a densely judged corpus averaging "
+            + "493.5 relevant documents each, which is what makes its reranker cell the suite's "
+            + "most expensive."),
 ];
 
     /// <summary>

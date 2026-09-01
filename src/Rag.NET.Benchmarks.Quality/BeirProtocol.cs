@@ -134,6 +134,52 @@ public enum BeirProtocol
     SemanticChunking,
 
     /// <summary>
+    /// HyDE measured over <see cref="Real"/>'s units: Rag.NET's own chunking, max-pooled back to
+    /// documents, with the query replaced by its hypothetical documents.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Its control is <see cref="Real"/> on the same dataset.</b> Units are held fixed — the same
+    /// chunking, the same pooling — and only the ranking row varies, so the difference is HyDE and
+    /// nothing else. That is stated here rather than left to the reader because
+    /// <see cref="SemanticChunking"/> demonstrated what the alternative costs: the same SciFact
+    /// figure reads as a 0.032 regression against one control and a 0.00042 wash against the other.
+    /// A cell without a named control is not a measurement.
+    /// </para>
+    /// <para>
+    /// <b>Distinct from <see cref="Hyde"/>, which measures the same technique over parity units</b> —
+    /// one chunk per document, truncated at 256. This one exists because that is not the corpus
+    /// Rag.NET produces: the library ships chunking, so a HyDE figure over whole documents describes
+    /// a configuration no user runs.
+    /// </para>
+    /// <para>
+    /// Costs no model calls. The hypothetical cache is keyed on the model identity, the prompt
+    /// template, the query and the hypothesis index — <b>not the corpus</b> — so the entries the
+    /// parity cell generated replay unchanged here.
+    /// </para>
+    /// </remarks>
+    RealHyde,
+
+    /// <summary>
+    /// Cross-encoder reranking measured over <see cref="Real"/>'s units: Rag.NET's own chunking,
+    /// with the dense candidates rescored by <c>OnnxReranker</c> before the cut.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Its control is <see cref="Real"/> on the same dataset</b>, for the reason given on
+    /// <see cref="RealHyde"/>: units fixed, row varied, so the difference is the reranker alone.
+    /// </para>
+    /// <para>
+    /// <b>Distinct from <see cref="Reranked"/></b>, which rescores parity units. The distinction is
+    /// sharper here than for HyDE: a cross-encoder scores a query against a <i>passage</i>, and a
+    /// chunk is a different passage from a whole document truncated at 256 tokens. Reranking is the
+    /// technique most likely to behave differently on the corpus the library actually produces.
+    /// </para>
+    /// <para>Costs no model calls — the reranker is a local ONNX model.</para>
+    /// </remarks>
+    RealReranked,
+
+    /// <summary>
     /// The graph path: entities and relations extracted from the corpus into a graph, that graph
     /// partitioned into communities, and retrieval running over the result — local search out from
     /// the entities a query names, global search over the community summaries. <b>Applies to

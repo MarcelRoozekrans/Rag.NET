@@ -50,6 +50,14 @@ public sealed class ProtocolApplicabilityTests
             // remarks above warn against.
             "multihop-rag/SemanticChunking",
 
+            // Phase 6.2.1: RealHyde and RealReranked measure HyDE and cross-encoder reranking over
+            // Rag.NET's own chunking rather than over parity's one-chunk-per-document units. They
+            // apply to the same four BEIR datasets SemanticChunking does, and not to multihop-rag,
+            // which carries only the graph protocols. Two more pairs for the same reason as the line
+            // above: the enum grew.
+            "multihop-rag/RealHyde",
+            "multihop-rag/RealReranked",
+
             "scifact/GraphRag",
             "fiqa/GraphRag",
             "arguana/GraphRag",
