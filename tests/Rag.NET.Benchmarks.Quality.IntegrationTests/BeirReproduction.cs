@@ -234,8 +234,29 @@ public static class BeirReproduction
         new(
             "fiqa",
             BeirProtocol.RealHyde,
-            [],
-            "NOT RUN. Applicable and unscheduled; Phase 6.2.1 scheduled SciFact alone for the " +
+            [0.34683],
+            "MEASURED 2026-09-02, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.34683, Recall@10 "
+            + "0.42259, MRR@10 0.41304 over the 648 judged queries; 121,236 units over 57,600 of "
+            + "57,638 documents; embedding cache 123,828 hits and 0 misses, so no model calls. HyDE "
+            + "reordered 648 of 648 queries. "
+            + "**Against its control, the Real cell's 0.35569, this is −0.00886 — HyDE makes FiQA "
+            + "worse.** "
+            + "**This is the cell that settles what the SciFact one could not: HyDE's SIGN is a "
+            + "property of the corpus, not of the protocol.** FiQA's parity Hyde cell is already "
+            + "−0.00543 against its 0.37086 dense anchor, and the Real protocol takes it to "
+            + "−0.00886. SciFact is +0.05408 at parity and +0.03647 real. Positive stays positive "
+            + "and negative stays negative; what the chunked corpus changes is the magnitude, and "
+            + "NOT in a consistent direction — SciFact's advantage shrinks toward zero while FiQA's "
+            + "deficit grows away from it. **A single-dataset reading of these two cells would have "
+            + "produced 'HyDE buys two-thirds as much on real chunks', which two datasets do not "
+            + "support.** "
+            + "REPRODUCED: a second run returned all three metrics identical to five decimals, this "
+            + "time asserting against the pin rather than reporting. "
+            + "Cost 1,786.9 s (29 m 47 s) cold and 99.3 s warm -- 9.0x SciFact's cold 199.5 s over "
+            + "6.0x the units, so mildly superlinear in corpus size. **The warm/cold ratio is 18x "
+            + "here and 16x on SciFact, so it is a property of these cells rather than one odd "
+            + "run** -- budget against the cold figure. "
+            + "SUPERSEDED TEXT: NOT RUN. Applicable and unscheduled; Phase 6.2.1 scheduled SciFact alone for the " +
             "Real-protocol technique cells. FiQA's hypothetical cache exists -- its parity Hyde " +
             "cell ran in Phase 3.15 -- and its chunked corpus is already embedded by the " +
             "RealReranked cell below, so this is the cheapest of the four unrun RealHyde cells. " +
