@@ -158,6 +158,65 @@ public sealed class BeirRunBudgetTests
     }
 
     [Fact]
+    public void NoCellsDiscriminatorIsContainedInAnothers()
+    {
+        // The sibling test above asks whether a filter selects ANYTHING. This asks whether it
+        // selects only what it names, which is a different question and became a live one the
+        // moment a protocol was named as an extension of an existing one: RealHyde's method is
+        // NdcgAt10_UnderCachedHydeOverRealChunking, so the parity Hyde cell's discriminator
+        // "UnderCachedHyde" is a prefix of it and its printed filter now selects both cells.
+        //
+        // That is worse than selecting nothing, because it does not look like a failure. A reader
+        // who follows the parity cell's command gets two measurements, the expensive one of which
+        // they did not ask for and are not budgeted for -- and the run passes. The reranker pair
+        // has the same shape.
+        //
+        // Substring rather than equality, and pairwise rather than against a list, because the
+        // defect is containment: two discriminators can be distinct strings and still select
+        // overlapping sets. Alternations are excluded deliberately -- `|` separates independent
+        // discriminators and no cell emits one today, which the test below this one pins.
+        var discriminators = new Dictionary<BeirProtocol, string>();
+        foreach (var (_, protocol, filter) in BeirRunBudget.PrintedFilters())
+        {
+            if (filter.Contains('|', StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            discriminators[protocol] = filter.Split('&')[0].Replace(
+                "DisplayName~", string.Empty, StringComparison.Ordinal);
+        }
+
+        var failures = new List<string>();
+        foreach (var (protocol, discriminator) in discriminators)
+        {
+            foreach (var (otherProtocol, otherDiscriminator) in discriminators)
+            {
+                if (protocol == otherProtocol)
+                {
+                    continue;
+                }
+
+                if (otherDiscriminator.Contains(discriminator, StringComparison.Ordinal))
+                {
+                    failures.Add(
+                        $"{protocol} prints \"{discriminator}\", which is contained in " +
+                        $"{otherProtocol}'s \"{otherDiscriminator}\", so {protocol}'s command also " +
+                        $"selects every {otherProtocol} case.");
+                }
+            }
+        }
+
+        Assert.True(
+            failures.Count == 0,
+            $"{failures.Count} of the budget table's discriminators select more cells than they " +
+            "name. The reader follows a skip message, gets a measurement they did not ask for " +
+            "alongside the one they did, and the run reports success for both." +
+            Environment.NewLine + "  - " +
+            string.Join(Environment.NewLine + "  - ", failures));
+    }
+
+    [Fact]
     public void TheFilterParserReadsVstestsAlternationRatherThanSwallowingIt()
     {
         // Pinned here rather than left to the table, because no cell emits a `|` on this branch —

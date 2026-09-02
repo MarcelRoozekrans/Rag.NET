@@ -182,8 +182,22 @@ public static class BeirReproduction
         new(
             "scifact",
             BeirProtocol.RealHyde,
-            [],
-            "NEVER RUN -- Phase 6.2.1 wired this cell and has not measured it; empty rather than a " +
+            [0.71389],
+            "MEASURED 2026-09-02, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.71389, Recall@10 "
+            + "0.85856, MRR@10 0.67295 over the 300 judged queries; 20,155 units over 5,183 of 5,183 "
+            + "documents; embedding cache 21,355 hits and 0 misses, so no model calls. HyDE reranked "
+            + "differently from dense on 300 of 300 queries, which is the divergence assertion's "
+            + "evidence. "
+            + "**Against its control, the Real cell's 0.67742, this is +0.03647.** Read that beside "
+            + "the parity pair: Hyde 0.70001 against a 0.645 dense anchor is +0.055. **HyDE buys "
+            + "roughly two-thirds as much on the corpus this library actually produces as it does on "
+            + "whole documents** -- the same direction the reranker cell found at a third, and the "
+            + "hypothesis these cells were built to test. Unlike reranking, it stays clearly "
+            + "positive. "
+            + "REPRODUCED: a second run minutes later returned all three metrics identical to five "
+            + "decimals, this time asserting against the pin rather than reporting. Cost 199.5 s "
+            + "cold and 12.5 s warm -- see BeirRunBudget, and budget against the cold figure. "
+            + "SUPERSEDED TEXT: NEVER RUN -- Phase 6.2.1 wired this cell and has not measured it; empty rather than a " +
             "guessed figure, so AssertReproduces reports instead of asserting until a run fills it. " +
             "HyDE over Rag.NET's own chunking: the Real protocol's 20,155 chunks searched with the " +
             "mean of 3 cached gpt-4o-mini@t0.8 hypotheticals instead of the query vector. " +
@@ -217,6 +231,15 @@ public static class BeirReproduction
             "truncated at 256 tokens -- of the techniques in this table, reranking is the one most " +
             "likely to behave differently on the corpus the library actually produces. Costs no " +
             "model calls; the reranker is a local ONNX model."),
+        new(
+            "fiqa",
+            BeirProtocol.RealHyde,
+            [],
+            "NOT RUN. Applicable and unscheduled; Phase 6.2.1 scheduled SciFact alone for the " +
+            "Real-protocol technique cells. FiQA's hypothetical cache exists -- its parity Hyde " +
+            "cell ran in Phase 3.15 -- and its chunked corpus is already embedded by the " +
+            "RealReranked cell below, so this is the cheapest of the four unrun RealHyde cells. " +
+            "Empty rather than a guessed figure, so AssertReproduces reports instead of asserting."),
         new(
             "fiqa",
             BeirProtocol.RealReranked,
@@ -282,6 +305,22 @@ public static class BeirReproduction
             "Measured in Phase 3.15 (2026-08-01/02), Windows 11, .NET 10, CPU ONNX Runtime, " +
             "after commit a912187's WordPiece fix. The pre-fix run measured 0.41806 — history, " +
             "not a figure to reproduce."),
+        new(
+            "arguana",
+            BeirProtocol.RealHyde,
+            [],
+            "NOT RUN. Applicable and unscheduled; Phase 6.2.1 scheduled SciFact alone for the " +
+            "Real-protocol technique cells. ArguAna's hypothetical cache does exist -- its parity " +
+            "Hyde cell ran in Phase 3.15 -- so unlike TREC-COVID's this one could run today. Empty " +
+            "rather than a guessed figure, so AssertReproduces reports instead of asserting."),
+        new(
+            "arguana",
+            BeirProtocol.RealReranked,
+            [],
+            "NOT RUN. Applicable and unscheduled. ArguAna is the expensive reranker corpus because " +
+            "it judges every query -- 14,060 cross-encoder pairs at parity against FiQA's 6,480 -- " +
+            "and the Real protocol's chunking raises the candidate count that sets that cost. " +
+            "Empty rather than a guessed figure."),
         new(
             "scifact",
             BeirProtocol.Comparison,
@@ -490,6 +529,25 @@ public static class BeirReproduction
             "cross-encoder scores every retrieved candidate for each of 50 judged queries " +
             "against a corpus judged far more densely than the other three, averaging 493.5 " +
             "relevant documents per query."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealHyde,
+            [],
+            "NOT RUN. Applicable and unscheduled, and it would be the most expensive of the four " +
+            "RealHyde cells: this corpus is 33x SciFact's, so the chunked side is larger again. It " +
+            "also needs the hypothetical cache, which only the generation tool writes and which is " +
+            "never committed -- and no run has ever generated TREC-COVID's, so the cell would fail " +
+            "through refuse-on-miss AFTER paying for the chunking and embedding. Empty rather than " +
+            "a guessed figure, so AssertReproduces reports instead of asserting."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealReranked,
+            [],
+            "NOT RUN. Applicable and unscheduled. It inherits the parity Reranked cell's warning: " +
+            "TREC-COVID judges 50 queries against a densely judged corpus averaging 493.5 relevant " +
+            "documents each, and the Real protocol's chunking multiplies the candidate count that " +
+            "sets a cross-encoder's cost -- which SciFact measured at 27x its own derived estimate. " +
+            "Empty rather than a guessed figure."),
         new(
             "trec-covid",
             BeirProtocol.Comparison,
