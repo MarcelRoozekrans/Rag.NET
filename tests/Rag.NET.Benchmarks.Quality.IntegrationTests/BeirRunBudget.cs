@@ -670,6 +670,88 @@ public static class BeirRunBudget
             + "more embedding work than the Real cell on the same dataset and no LLM calls at "
             + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
             + "new text and is not in any cache."),
+
+        // Phase 6.2.1: the RealHyde and RealReranked cells measure HyDE and cross-encoder reranking
+        // over Rag.NET's own chunking rather than parity's one-chunk-per-document units. Eight
+        // entries because both protocols apply to all four BEIR datasets; only SciFact was
+        // scheduled to run. Three are now MEASURED and say so — SciFact's two and FiQA's reranker,
+        // which ran because the opt-in ungated every dataset; the other five are DERIVED or NOT RUN
+        // and say that. Each entry states which it is, because this table exists precisely so an
+        // unmeasured case cannot silently join the nightly, and a blanket claim about the whole
+        // block stops being true the first time one of them runs.
+        new(
+            "scifact",
+            BeirProtocol.RealHyde,
+            FitsTheNightly: false,
+            "MEASURED 2026-09-02, TWICE, and the two timings differ by 16x: 199.5 s on the first "
+            + "run and 12.5 s on the second, same machine, minutes apart, same binary, nothing "
+            + "changed. Both report the same 21,355 embedding-cache hits and 0 misses, and the same "
+            + "nDCG to five decimals. The candidate cause -- NOT a diagnosis -- is the OS page "
+            + "cache over the 21,355 shard files the embedding cache reads, cold on the first run "
+            + "and warm on the second; in-process chunking is redone either way, so it is not that. "
+            + "**Budget against 199.5 s, not 12.5 s.** A warm figure quoted as the cost is how a "
+            + "nightly gets scheduled against a number only a developer's second run can produce, "
+            + "and this repository has already published three false findings off a 23x page-cache "
+            + "artefact. "
+            + "This replaces a DERIVED estimate that declined to give a number at all -- it said "
+            + "only 'more than the parity cell's ~1 m 30 s, and treat the difference as unknown'. "
+            + "The cold truth is 2.2x that, which is roughly the ratio of the chunked corpus to the "
+            + "document one and nothing more surprising. Declining to name a figure is why this "
+            + "entry needed no correction, unlike the sibling RealReranked cell whose ~4 m estimate "
+            + "was wrong by 27x. Pays NO model calls: the hypothetical cache is "
+            + "keyed on model identity, prompt template, query and hypothesis index — not the "
+            + "corpus — so the entries the parity cell generated replay unchanged. Without that "
+            + "cache the cell fails through refuse-on-miss rather than skipping, exactly as the "
+            + "parity Hyde cell does."),
+        new(
+            "scifact",
+            BeirProtocol.RealReranked,
+            FitsTheNightly: false,
+            "MEASURED 2026-09-01: 6,414.5 s -- 1 h 47 m, embedding cache 20,455 hits and 0 misses, so "
+            + "pure compute. This replaces a DERIVED estimate of ~4 m that was wrong by roughly "
+            + "27x. The error was reasoning from the parity cell: the cross-encoder scores "
+            + "candidates drawn from 20,155 chunks here rather than 5,183 documents, and it is that "
+            + "candidate count, not the corpus size, that sets the cost. Pays no model calls -- the "
+            + "reranker is a local ONNX model."),
+        new(
+            "fiqa",
+            BeirProtocol.RealHyde,
+            FitsTheNightly: false,
+            "NOT RUN. Phase 6.2.1 scheduled SciFact alone for the Real-protocol technique cells; "
+            + "FiQA is applicable and unscheduled. Its parity Hyde cell needs the hypothetical "
+            + "cache, which is never committed, so this one inherits that constraint too."),
+        new(
+            "fiqa",
+            BeirProtocol.RealReranked,
+            FitsTheNightly: false,
+            "MEASURED 2026-09-01: 22,674.7 s -- 6 h 18 m, embedding cache 121,884 hits and 0 misses. Ran "
+            + "because RAGNET_BEIR_LONG_RUNS ungates every dataset, not because it was scheduled; "
+            + "the figure is real and is pinned. 3.5x SciFact's cell, tracking the candidate count "
+            + "rather than anything else."),
+        new(
+            "arguana",
+            BeirProtocol.RealHyde,
+            FitsTheNightly: false,
+            "NOT RUN. Applicable and unscheduled, as FiQA's is."),
+        new(
+            "arguana",
+            BeirProtocol.RealReranked,
+            FitsTheNightly: false,
+            "NOT RUN. Applicable and unscheduled, as FiQA's is."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealHyde,
+            FitsTheNightly: false,
+            "NOT RUN. Applicable and unscheduled. It would also be the most expensive of the four: "
+            + "this corpus is 33x SciFact's, so the chunked side is larger again."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealReranked,
+            FitsTheNightly: false,
+            "NOT RUN. Applicable and unscheduled, and it inherits the parity Reranked cell's "
+            + "warning: TREC-COVID judges 50 queries against a densely judged corpus averaging "
+            + "493.5 relevant documents each, which is what makes its reranker cell the suite's "
+            + "most expensive."),
 ];
 
     /// <summary>
@@ -948,6 +1030,12 @@ public static class BeirRunBudget
         BeirProtocol.GraphRagDepthControl =>
             "GRAPHRAG DEPTH CONTROL (the Real leg's article chunks alone, dense-retrieved at the " +
             "graph path's candidate depth, max-pooled to documents)",
+        BeirProtocol.RealHyde =>
+            "+HYDE OVER REAL CHUNKING ablation cell (the Real protocol's chunked corpus, searched " +
+            "with the cached hypotheticals' mean vector, against the Real dense figure)",
+        BeirProtocol.RealReranked =>
+            "+RERANKER OVER REAL CHUNKING ablation cell (the Real protocol's chunked corpus, dense " +
+            "top-k rescored by the cross-encoder, against the Real dense figure)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -1027,8 +1115,14 @@ public static class BeirRunBudget
             BeirProtocol.Parity => nameof(BeirParityTests),
             BeirProtocol.Real => nameof(BeirRealChunkingTests),
             BeirProtocol.HybridBm25 => "UnderBm25HybridRrf",
-            BeirProtocol.Hyde => "UnderCachedHyde",
-            BeirProtocol.Reranked => "UnderCrossEncoderRerank",
+            // Both parity discriminators carry the trailing underscore of their method name, and
+            // it is load-bearing rather than cosmetic. RealHyde's method is
+            // NdcgAt10_UnderCachedHydeOverRealChunking, so a bare "UnderCachedHyde" is a prefix of
+            // it and the parity cell's printed command would select the Real cell too -- handing a
+            // reader an expensive measurement they did not ask for, under an exit code that says
+            // everything ran as priced. The underscore is what makes the parity name terminal.
+            BeirProtocol.Hyde => "UnderCachedHyde_",
+            BeirProtocol.Reranked => "UnderCrossEncoderRerank_",
             BeirProtocol.SemanticChunking => "UnderSemanticChunking",
             BeirProtocol.Comparison => nameof(BeirComparisonControlTests),
             BeirProtocol.SemanticKernel => nameof(BeirSemanticKernelDefaultsTests),
@@ -1036,6 +1130,8 @@ public static class BeirRunBudget
             BeirProtocol.LlamaIndex => "ThroughLlamaIndex",
             BeirProtocol.Haystack => "ThroughHaystack",
             BeirProtocol.GraphRagDepthControl => "DenseAtTheGraphPathsDepth",
+            BeirProtocol.RealHyde => "UnderCachedHydeOverRealChunking",
+            BeirProtocol.RealReranked => "UnderCrossEncoderRerankOverRealChunking",
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 
