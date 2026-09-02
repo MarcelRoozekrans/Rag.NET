@@ -1,7 +1,8 @@
 # Session State
 
-**Last updated:** 2026-09-02 (FiQA RealHyde measured at 0.34683 and pinned, which corrected the
-SciFact reading; before it #433, #439 and #441 merged and verified on `main` by content)
+**Last updated:** 2026-09-02 (HyDE now measured on all three runnable corpora — SciFact +0.036, FiQA
+−0.009, ArguAna −0.021 — and it helps one and harms two; #433, #439, #441 and #442 all merged and
+verified on `main` by content)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -297,26 +298,41 @@ the Real control's 0.35569, −0.00886, reproduced.** It cost 29 m 47 s cold and
 this entry predicted, and it changed the reading of the SciFact cell rather than confirming it — see
 `ROADMAP.md`'s 6.2.1 block for the corrected framing.
 
-**The next step is a decision rather than a run, and it is the operator's.** Two of two techniques
-measured on two datasets are **corpus-dependent in sign**: HyDE is +0.036 on SciFact and −0.009 on
-FiQA; reranking is +0.013 and −0.010. A technique cell pinned on one dataset therefore says almost
-nothing about whether a user should switch that technique on, which is what these cells exist to
-answer.
+**The next step is a decision rather than a run, and it is the operator's. ArguAna made the case for
+it much harder to decline.** HyDE is now measured on all three benchmarked corpora: **+0.03647 on
+SciFact, −0.00886 on FiQA, −0.02053 on ArguAna** — it helps one and harms two. Reranking is
++0.01266 and −0.00951 on the two it has. **Two of two techniques are corpus-dependent in sign**, and
+a technique cell pinned on one dataset therefore says almost nothing about whether a user should
+switch that technique on, which is the question these cells exist to answer.
+
+**ArguAna is the specific warning.** Its parity cell reads −0.00139 — Phase 3.15 recorded it as the
+design's negative control, and it held — so the ablation table this library publishes reports HyDE as
+neutral on that corpus. On the corpus the library actually produces it costs **0.02 nDCG**, a ~15x
+move, and it is the worst-affected of the three. **A prediction that it would stay near zero was
+written down before the run and falsified by it.** Across the three the real/parity magnitude ratio
+is 0.67x, 1.63x and 14.8x: parity predicts the sign and nothing else.
 
 So the remaining cells — hybrid BM25, late chunking, SPLADE — should either be **budgeted for two
 corpora each from the start**, or the phase should say plainly that its technique figures are
 SciFact's and not the library's. Both are defensible; drifting into the second by measuring one
-dataset per technique and writing it up as a property of the technique is not, and this phase has
-now done that once and had to correct it.
+dataset per technique and writing it up as a property of the technique is not, and this phase has now
+done that once and had to correct it twice — first when FiQA landed, then again when ArguAna did.
 
-Costs for that decision, measured rather than derived: a HyDE cell is ~3 m on SciFact and ~30 m on
-FiQA, cold, with no model calls. A reranker cell is 1 h 47 m and 6 h 18 m. Nothing here needs money;
-it needs machine time and a scheduled run per dataset.
+**Costs, measured rather than derived, all cold and none needing money:** a HyDE cell is 199.5 s on
+SciFact, 565.0 s on ArguAna and 1,786.9 s on FiQA. A reranker cell is 1 h 47 m and 6 h 18 m. Note the
+HyDE order — **ArguAna costs 2.8x SciFact on 19% more units, because it judges 1,406 queries against
+SciFact's 300.** Price the remaining cells on queries as well as units; pricing on units alone is how
+the RealReranked estimate came to be wrong by 27x.
 
-**Whichever way that goes, ArguAna is the cheapest unrun HyDE cell** — 24,003 units against FiQA's
-121,236, and its hypothetical cache exists from Phase 3.15. TREC-COVID remains unrunnable for HyDE
-at any budget: nobody has generated its hypotheticals, so the cell fails on refuse-on-miss after
-paying for the chunking.
+**TREC-COVID cannot be measured for HyDE at any budget** and this is worth stating as a boundary
+rather than an unrun cell: nobody has ever generated its hypotheticals, so the cell fails on
+refuse-on-miss *after* paying for the chunking. Adding it means a **paid generation run** through the
+generation tool — a separate piece of work that has never been costed, not a benchmark scheduling
+decision.
+
+**The one HyDE cell left that can run today is none** — all three runnable datasets are measured. The
+cheapest unrun Real-protocol cell of any kind is **ArguAna `RealReranked`**, whose parity sibling was
+28 m; on the HyDE evidence that its query count drives cost, expect more rather than less.
 
 **Do not run any cell with `=1`.** It still means every dataset, and TREC-COVID's Real leg has never
 been embedded — a `RealHyde` or `RealReranked` run that reaches it chunks and embeds a corpus 33x

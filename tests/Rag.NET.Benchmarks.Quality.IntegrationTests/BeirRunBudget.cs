@@ -739,7 +739,12 @@ public static class BeirRunBudget
             "arguana",
             BeirProtocol.RealHyde,
             FitsTheNightly: false,
-            "NOT RUN. Applicable and unscheduled, as FiQA's is."),
+            "MEASURED 2026-09-02: 565.0 s cold and 48.6 s warm, embedding cache 29,627 hits and 0 misses, so pure "
+            + "compute and no model calls. Between SciFact's 199.5 s and FiQA's 1,786.9 s, and NOT "
+            + "in corpus-size order: ArguAna's 24,003 units are barely above SciFact's 20,155, but "
+            + "it judges all 1,406 of its queries against SciFact's 300. Query count drives these "
+            + "cells as much as corpus size does, which is worth knowing before pricing the "
+            + "remaining ones from unit counts alone."),
         new(
             "arguana",
             BeirProtocol.RealReranked,
