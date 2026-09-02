@@ -4990,10 +4990,32 @@ turns a typo into the most expensive run available. The skip messages print the 
 remaining technique cell in this phase is now measurable one dataset at a time**, which is most of
 why it was worth doing before the measurement rather than after.
 
+**DECIDED 2026-09-02 — every remaining technique gets three corpora, not one.** The operator's call,
+taken on three datasets of evidence rather than as a principle. HyDE is +0.03647 on SciFact,
+−0.00886 on FiQA and −0.02053 on ArguAna; reranking is +0.01266 and −0.00951 on the two it has. **Two
+of two techniques measured on more than one corpus are corpus-dependent in sign**, and ArguAna showed
+that a parity cell reading as a clean negative control can hide a 0.02 harm on the corpus this
+library actually produces. A technique cell pinned on SciFact alone does not answer the question
+these cells exist for, which is whether a user should switch the technique on.
+
+**What it costs is not uniform, and the decision was taken with that in front of it.** HyDE-shaped
+cells are cheap: all three cost 43 minutes combined and no money. Reranker-shaped cells are not —
+SciFact 1 h 47 m, FiQA 6 h 18 m, and ArguAna **derived at 8–14 h** from the 21.4 s and 35.0 s per
+judged query those two measured, against its 1,406 queries. The alternative considered and rejected
+was to measure one corpus per technique and state plainly that the figures are SciFact's; it was
+rejected because this phase has already drifted into that twice and had to correct it both times.
+
+**Price these cells on queries as well as units.** Two separate estimates in this phase have been
+wrong by reasoning from corpus size alone — RealReranked's ~4 m derivation, wrong by 27x, and a
+same-day estimate of ArguAna's reranker cell as "over an hour", wrong by roughly ten. ArguAna's HyDE
+cell cost 2.8x SciFact's on 19% more units because it judges 1,406 queries against 300.
+
 **What this leaves open in the sweep:** hybrid BM25, late chunking and SPLADE under the Real
-protocol; HyDE and reranking on the three datasets each still lacks (FiQA's RealHyde is the cheapest
-of them — its chunked corpus is already embedded and its hypothetical cache exists); every vector
-store through the SciFact parity leg; local search's yes/no abstention; and `refine`'s caveat above.
+protocol, three corpora each; reranking's ArguAna cell (running 2026-09-02) and TREC-COVID's, the
+latter the most expensive in the suite; every vector store through the SciFact parity leg; local
+search's yes/no abstention; and `refine`'s caveat above. **HyDE is finished on every corpus where it
+can be measured** — TREC-COVID is not unscheduled but unmeasurable at any budget, because nobody has
+generated its hypotheticals, and adding it means a paid generation run that has never been costed.
 
 ### Phase 6.2.2: Requested Features [status: complete 2026-08-16 — #252 built and exercised; the phase stays open in spirit for any further request filed before the tag]
 **Goal:** the feature requests reported against the shipped packages, built and exercised to this
