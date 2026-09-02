@@ -749,7 +749,14 @@ public static class BeirRunBudget
             "arguana",
             BeirProtocol.RealReranked,
             FitsTheNightly: false,
-            "NOT RUN. Applicable and unscheduled, as FiQA's is."),
+            "MEASURED 2026-09-02: 22,976.2 s -- 6 h 23 m, embedding cache 25,409 hits and 0 misses, "
+            + "so pure compute and no model calls. This replaces a DERIVED 8-14 h, which OVERSHOT: "
+            + "it took the two measured reranker rates as a range -- 21.4 s/query on SciFact and "
+            + "35.0 s/query on FiQA -- and this corpus ran at 16.3 s/query, below both. Two "
+            + "derivations of this cell have now been wrong in opposite directions, the earlier one "
+            + "calling it 'over an hour' by reasoning from its 28 m parity sibling. **Per-query rate "
+            + "is not transferable between corpora any more than corpus size is**; it is the third "
+            + "estimate in this phase to miss, and the first to miss high."),
         new(
             "trec-covid",
             BeirProtocol.RealHyde,

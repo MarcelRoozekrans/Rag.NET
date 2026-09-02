@@ -4912,10 +4912,45 @@ near zero on the chunked corpus. It moved to **−0.02053, about 15x**, and is t
 of the three datasets in either protocol. Across the three the real/parity ratio is 0.67x, 1.63x and
 14.8x: it shrinks, it grows, and it explodes.
 
-**So a parity ablation figure predicts the sign of the real effect and nothing else.** ArguAna is the
-proof and the warning in one cell: its parity number reports HyDE as neutral on that corpus, and on
-the corpus this library actually produces HyDE costs it 0.02 nDCG. A reader of the parity table would
+~~**So a parity ablation figure predicts the sign of the real effect and nothing else.**~~
+**RETIRED the same day it was written, 2026-09-02, by ArguAna's reranker cell.** The sentence above
+generalised from HyDE's three cells, where the sign did hold on all three. With reranking measured on
+the same three corpora there are **six (technique, corpus) pairs under both protocols, and one of the
+six flips**: FiQA reranking is **+0.01372 at parity** (0.38458 against 0.37086) and **−0.00951 real**
+(0.34618 against 0.35569). Parity does not reliably predict even the direction.
+
+**The claim's failure is a lesson about the claim, not about reranking.** It was asserted from three
+pairs, written into `ROADMAP.md` and `STATE.md`, merged twice, and falsified within hours by the
+fourth technique-corpus pair measured after it. FiQA's parity reranker figure — the one that
+falsifies it — **was already pinned in `BeirReproduction` at the time the claim was made**, and was
+recorded in that PR's own table as an em-dash rather than looked up. The generalisation was one grep
+away from never being made.
+
+**What is actually supported, on six pairs:** a parity ablation figure is not a reliable guide to the
+real effect's magnitude *or* its sign. It is a figure about one-chunk-per-document truncated at 256
+tokens, and this library does not produce that corpus. Reading anything from it about the shipped
+configuration requires the real cell.
+
+ArguAna remains the sharpest illustration for HyDE: its parity number reports the technique as
+neutral on that corpus — Phase 3.15 recorded it as the design's negative control, and it held — and
+on the corpus this library actually produces it costs 0.02 nDCG. A reader of the parity table would
 switch HyDE on for ArguAna without concern.
+
+**Reranking on the three corpora, completed 2026-09-02:**
+
+| dataset | parity dense | parity rerank | Δ | real dense | real rerank | Δ |
+| --- | --- | --- | --- | --- | --- | --- |
+| SciFact | 0.64593 | 0.68442 | **+0.03849** | 0.67742 | 0.69008 | **+0.01266** |
+| FiQA | 0.37086 | 0.38458 | **+0.01372** | 0.35569 | 0.34618 | **−0.00951** |
+| ArguAna | 0.50432 | 0.47917 | **−0.02515** | 0.47559 | 0.40621 | **−0.06938** |
+
+**Both techniques help one corpus and harm two on the corpus this library actually produces**, and
+**ArguAna is worst hit by both** — −0.02053 under HyDE and −0.06938 under reranking, the two largest
+effects the phase has measured. Same corpus, same candidate explanation: its relevance is
+whole-argument against whole-argument, so 512-character fragments are the wrong unit for it, and a
+cross-encoder scoring a query against a *passage* pays that cost twice — once in retrieval, again in
+rescoring. Reasoning, not measurement; the testable consequence is that late chunking should recover
+part of both, and late chunking is an unrun cell in this phase.
 
 **Candidate mechanism, as reasoning and not measurement.** HyDE searches with a hypothetical
 *document* vector, and ArguAna's relevance is whole-argument against whole-argument. Chunking already

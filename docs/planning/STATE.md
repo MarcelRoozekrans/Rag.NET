@@ -1,9 +1,9 @@
 # Session State
 
-**Last updated:** 2026-09-02 (HyDE measured on all three runnable corpora — +0.036 SciFact,
-−0.009 FiQA, −0.021 ArguAna: it helps one and harms two. Scope DECIDED: three corpora per
-technique. #433, #439, #441, #442 and #443 merged and verified on `main` by content; ArguAna
-RealReranked running unattended)
+**Last updated:** 2026-09-02 (HyDE and reranking both complete on three corpora; each helps one
+corpus and harms two. "Parity predicts the sign" asserted and RETIRED the same day. #433, #439,
+#441, #442, #443, #444 merged and verified on `main` by content; ArguAna reranker confirmation
+run still going)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -311,7 +311,9 @@ design's negative control, and it held — so the ablation table this library pu
 neutral on that corpus. On the corpus the library actually produces it costs **0.02 nDCG**, a ~15x
 move, and it is the worst-affected of the three. **A prediction that it would stay near zero was
 written down before the run and falsified by it.** Across the three the real/parity magnitude ratio
-is 0.67x, 1.63x and 14.8x: parity predicts the sign and nothing else.
+is 0.67x, 1.63x and 14.8x. **The "parity predicts the sign" reading of that was RETIRED the same day
+by ArguAna's reranker cell**: across six (technique, corpus) pairs one flips — FiQA reranking is
++0.01372 at parity and −0.00951 real. Parity predicts neither magnitude nor, reliably, sign.
 
 **The rejected alternative** was to measure one corpus per technique and state plainly that the
 figures are SciFact's. Rejected because this phase has already drifted into that twice and had to
@@ -328,14 +330,34 @@ in the message immediately after writing that lesson down — an estimate of Arg
 because it judges 1,406 queries against 300. The measured rate is **21.4 s/query on SciFact and
 35.0 s/query on FiQA** for reranker cells.
 
-**RUNNING AS OF 2026-09-02, unattended: ArguAna `RealReranked`.** Started on branch
-`bench/arguana-real-reranked`, `RAGNET_BEIR_LONG_RUNS=arguana`, derived 8–14 h, no money and no
-supervision needed. **If it finished:** pin the figure in `BeirReproduction` against its control, the
-ArguAna Real cell's **0.47559**, replace the derived cost in `BeirRunBudget` with the measured one,
-and confirm the pin with a second run before trusting it — all three HyDE pins reproduced to five
-decimals while none of the three timings did. **If it did not finish or the machine was interrupted:**
-nothing is lost but the time; the cell is unpinned, the branch holds no measurement, and the run is
-simply restarted.
+**~~RUNNING AS OF 2026-09-02, unattended: ArguAna `RealReranked`~~ — MEASURED and PINNED at 0.40621,
+2026-09-02.** Against its control, the ArguAna Real cell's 0.47559, that is **−0.06938: the largest
+technique effect this phase has measured, in either direction, and it is a harm.** Cost 22,976.2 s
+(6 h 23 m) against a derived 8–14 h; it ran at 16.3 s/query, below both rates the derivation
+bracketed it with. Reranking is now complete on three corpora.
+
+**STILL RUNNING when this was written: the confirmation re-run of that same cell**, started ~20:00 on
+branch `bench/arguana-rerank-figure`, `RAGNET_BEIR_LONG_RUNS=arguana`. **Expect it to take the full
+~6 h 23 m again, NOT the ~30 minutes the warm/cold ratio suggests.**
+
+**That correction matters for scheduling every remaining reranker cell.** The 11.6–18x warm/cold
+speedup recorded this afternoon came from the OS page cache over embedding-cache shard files, and it
+is a property of **retrieval-bound cells only**. HyDE cells are retrieval-bound. **A reranker cell is
+cross-encoder inference — pure compute, with nothing to cache — so its confirmation run costs what
+the original did.** Confirming a reranker pin roughly doubles its price; confirming a HyDE pin adds
+about a tenth. Budget accordingly, and do not derive one from the other.
+
+**What to do on the confirmation, next session:**
+
+- **If it finished and agrees at 0.40621** — nothing to do; the pin already asserts. Note the elapsed
+  time in `BeirRunBudget` alongside the cold figure, which is the datum that proves the paragraph
+  above rather than merely asserting it.
+- **If it finished and DISAGREES** — that is a real finding and outranks everything else in this
+  phase. Every pin taken this way has reproduced to five decimals; a reranker cell that does not is
+  either non-deterministic or environment-sensitive, and the figure must not be published until it
+  is understood.
+- **If it did not finish** — nothing is lost. The pin stands on the first run, and the entry says so;
+  re-run it when the machine is free.
 
 **HyDE is finished on every corpus where it can be measured.** TREC-COVID is not unscheduled but
 **unmeasurable at any budget**: nobody has generated its hypotheticals, so the cell fails on
