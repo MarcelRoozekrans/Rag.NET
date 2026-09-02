@@ -1,8 +1,9 @@
 # Session State
 
-**Last updated:** 2026-09-02 (HyDE now measured on all three runnable corpora — SciFact +0.036, FiQA
-−0.009, ArguAna −0.021 — and it helps one and harms two; #433, #439, #441 and #442 all merged and
-verified on `main` by content)
+**Last updated:** 2026-09-02 (HyDE measured on all three runnable corpora — +0.036 SciFact,
+−0.009 FiQA, −0.021 ArguAna: it helps one and harms two. Scope DECIDED: three corpora per
+technique. #433, #439, #441, #442 and #443 merged and verified on `main` by content; ArguAna
+RealReranked running unattended)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -298,12 +299,12 @@ the Real control's 0.35569, −0.00886, reproduced.** It cost 29 m 47 s cold and
 this entry predicted, and it changed the reading of the SciFact cell rather than confirming it — see
 `ROADMAP.md`'s 6.2.1 block for the corrected framing.
 
-**The next step is a decision rather than a run, and it is the operator's. ArguAna made the case for
-it much harder to decline.** HyDE is now measured on all three benchmarked corpora: **+0.03647 on
-SciFact, −0.00886 on FiQA, −0.02053 on ArguAna** — it helps one and harms two. Reranking is
-+0.01266 and −0.00951 on the two it has. **Two of two techniques are corpus-dependent in sign**, and
-a technique cell pinned on one dataset therefore says almost nothing about whether a user should
-switch that technique on, which is the question these cells exist to answer.
+**~~The next step is a decision rather than a run~~ — DECIDED 2026-09-02 by the operator: every
+remaining technique gets three corpora, not one.** Taken on three datasets of evidence. HyDE is
+**+0.03647 on SciFact, −0.00886 on FiQA, −0.02053 on ArguAna** — it helps one and harms two.
+Reranking is +0.01266 and −0.00951 on the two it has. **Two of two techniques measured on more than
+one corpus are corpus-dependent in sign**, and a technique cell pinned on SciFact alone does not
+answer the question these cells exist for.
 
 **ArguAna is the specific warning.** Its parity cell reads −0.00139 — Phase 3.15 recorded it as the
 design's negative control, and it held — so the ablation table this library publishes reports HyDE as
@@ -312,27 +313,34 @@ move, and it is the worst-affected of the three. **A prediction that it would st
 written down before the run and falsified by it.** Across the three the real/parity magnitude ratio
 is 0.67x, 1.63x and 14.8x: parity predicts the sign and nothing else.
 
-So the remaining cells — hybrid BM25, late chunking, SPLADE — should either be **budgeted for two
-corpora each from the start**, or the phase should say plainly that its technique figures are
-SciFact's and not the library's. Both are defensible; drifting into the second by measuring one
-dataset per technique and writing it up as a property of the technique is not, and this phase has now
-done that once and had to correct it twice — first when FiQA landed, then again when ArguAna did.
+**The rejected alternative** was to measure one corpus per technique and state plainly that the
+figures are SciFact's. Rejected because this phase has already drifted into that twice and had to
+correct it both times — once when FiQA landed and again when ArguAna did.
 
-**Costs, measured rather than derived, all cold and none needing money:** a HyDE cell is 199.5 s on
-SciFact, 565.0 s on ArguAna and 1,786.9 s on FiQA. A reranker cell is 1 h 47 m and 6 h 18 m. Note the
-HyDE order — **ArguAna costs 2.8x SciFact on 19% more units, because it judges 1,406 queries against
-SciFact's 300.** Price the remaining cells on queries as well as units; pricing on units alone is how
-the RealReranked estimate came to be wrong by 27x.
+**Costs are not uniform and the decision was taken knowing it.** HyDE-shaped cells are cheap: 199.5 s
+on SciFact, 565.0 s on ArguAna, 1,786.9 s on FiQA — 43 minutes for a whole technique, no money.
+Reranker-shaped cells are not: 1 h 47 m and 6 h 18 m measured, and **ArguAna derived at 8–14 h**.
 
-**TREC-COVID cannot be measured for HyDE at any budget** and this is worth stating as a boundary
-rather than an unrun cell: nobody has ever generated its hypotheticals, so the cell fails on
-refuse-on-miss *after* paying for the chunking. Adding it means a **paid generation run** through the
-generation tool — a separate piece of work that has never been costed, not a benchmark scheduling
-decision.
+**PRICE THESE CELLS ON QUERIES AS WELL AS UNITS.** Two estimates in this phase have been wrong by
+reasoning from corpus size alone: RealReranked's ~4 m derivation, wrong by 27x, and — the same day,
+in the message immediately after writing that lesson down — an estimate of ArguAna's reranker cell as
+"over an hour", wrong by roughly ten. ArguAna's HyDE cell cost 2.8x SciFact's on 19% more units
+because it judges 1,406 queries against 300. The measured rate is **21.4 s/query on SciFact and
+35.0 s/query on FiQA** for reranker cells.
 
-**The one HyDE cell left that can run today is none** — all three runnable datasets are measured. The
-cheapest unrun Real-protocol cell of any kind is **ArguAna `RealReranked`**, whose parity sibling was
-28 m; on the HyDE evidence that its query count drives cost, expect more rather than less.
+**RUNNING AS OF 2026-09-02, unattended: ArguAna `RealReranked`.** Started on branch
+`bench/arguana-real-reranked`, `RAGNET_BEIR_LONG_RUNS=arguana`, derived 8–14 h, no money and no
+supervision needed. **If it finished:** pin the figure in `BeirReproduction` against its control, the
+ArguAna Real cell's **0.47559**, replace the derived cost in `BeirRunBudget` with the measured one,
+and confirm the pin with a second run before trusting it — all three HyDE pins reproduced to five
+decimals while none of the three timings did. **If it did not finish or the machine was interrupted:**
+nothing is lost but the time; the cell is unpinned, the branch holds no measurement, and the run is
+simply restarted.
+
+**HyDE is finished on every corpus where it can be measured.** TREC-COVID is not unscheduled but
+**unmeasurable at any budget**: nobody has generated its hypotheticals, so the cell fails on
+refuse-on-miss after paying for the chunking. A fourth corpus for HyDE means a **paid generation
+run** that has never been costed — a separate piece of work, not a scheduling decision.
 
 **Do not run any cell with `=1`.** It still means every dataset, and TREC-COVID's Real leg has never
 been embedded — a `RealHyde` or `RealReranked` run that reaches it chunks and embeds a corpus 33x
@@ -673,16 +681,23 @@ much larger than answer generation's.
 > really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
 > here before.
 
-**Last landed on `main`:** **#433** as `e4923341` (2026-09-02) — HyDE and reranking measured over
-Rag.NET's own chunking, plus the fix that turned the branch's day-old red CI green. Verify by
-content: the pinned `0.71389` in
-`tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirReproduction.cs`, and `UnderCachedHyde_` —
-underscore load-bearing — in `BeirRunBudget.cs`.
+**Last landed on `main`:** **#443** as `d4d4d398` (2026-09-02) — ArguAna HyDE at 0.45506, which
+falsified a prediction written down before the run. Verify by content: the pinned `0.45506` in
+`tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirReproduction.cs`.
 
-With it, **#439** as `f66b1677` (2026-09-02) — `RAGNET_BEIR_LONG_RUNS` scoped to named datasets, so
-a cell can be measured without ungating TREC-COVID. Verify by content: `IsOptedInFor` in
-`tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirRunBudget.cs`. Merged main verified after
-both: 225 tests, 0 failed, 94 skipped.
+Before it, **#442** as `05943fff` — FiQA HyDE at 0.34683, and the correction to what SciFact's cell
+had been read to mean. Verify by content: `0.34683` in the same file.
+
+Before it, **#441** as `da22a05e` — the roadmap record for HyDE and the scoped gate. Verify by
+content: `HyDE's thread completed 2026-09-02` in `docs/planning/ROADMAP.md`.
+
+Before them, **#433** as `e4923341` — HyDE and reranking measured over Rag.NET's own chunking, plus
+the fix for the branch's day-old red CI — and **#439** as `f66b1677`, `RAGNET_BEIR_LONG_RUNS` scoped
+to named datasets. Verify by content: `UnderCachedHyde_` (underscore load-bearing) and `IsOptedInFor`
+in `BeirRunBudget.cs`.
+
+**Five PRs merged 2026-09-02, each verified on `main` by content rather than by a MERGED label.**
+Merged main re-run after the first two: 225 tests, 0 failed, 94 skipped.
 
 Before them, **#431** as `8b2e0124` (2026-08-31) — `mapreduce` pinned at 0.6483, a null result, and
 the DoD's answer-engine clause closed. Before it **#430** (`ced43abb`) and **#425** (`3640637b`).
