@@ -4976,16 +4976,25 @@ them. Costed rather than assumed: FiQA's HyDE cell was 29 m 47 s and paid no mod
 ablation figure is not a statement about the corpus this library produces, in either direction. It
 overstated HyDE's help on SciFact and understated its harm on FiQA.
 
-**Cost is recorded as two numbers per cell, because cold and warm differ by 11.6–18x** — SciFact
-199.5 s then 12.5 s, FiQA 1,786.9 s then 99.3 s, ArguAna 565.0 s then 48.6 s, each pair on the same
-machine and binary with nothing changed between them. **Three cells at 16x, 18x and 11.6x make it a
-property of these runs rather than one odd measurement**, and the spread means it cannot be derived
-for a cell that has not been run. The candidate cause is the OS page cache over the embedding cache's
-shard files, recorded as a **candidate and not a diagnosis**; in-process chunking is redone on every
-run, so it is not that. `BeirRunBudget` carries both figures per cell and says to budget against the
-cold one. This is the same shape as the 23x artefact that produced three false findings in one day,
-caught this time because each pin was confirmed by a second run rather than trusted from one — **all
-three nDCG figures reproduced to five decimals while none of the three timings did.**
+**Cost is recorded as two numbers per cell, because cold and warm differ by 1.72–18x** — SciFact HyDE
+199.5 s then 12.5 s, FiQA HyDE 1,786.9 s then 99.3 s, ArguAna HyDE 565.0 s then 48.6 s, ArguAna
+reranker 22,976.2 s then 13,385.3 s. Each pair ran on the same machine and binary with nothing
+changed between them.
+
+**The ratio is a property of each cell's mix, not of the suite**, and that took two wrong readings to
+establish. The three HyDE cells gave 16x, 18x and 11.6x, which was generalised to the suite. The
+reranker cell was then predicted at ~1.0x on the reasoning that a cross-encoder has nothing to cache.
+It measured **1.72x**. Both readings treated a ratio as a constant: it tracks the share of a cell's
+cost that is page-cacheable I/O against the share that is compute. HyDE cells are retrieval-only, so
+nearly all of their cost caches away; a reranker's dense-retrieval side caches and its cross-encoder
+inference does not. **Predict a cell's warm cost from its composition or do not predict it**, and
+budget against the cold figure either way.
+
+The candidate cause of the cacheable part is the OS page cache over the embedding cache's shard
+files, recorded as a **candidate and not a diagnosis**; in-process chunking is redone on every run, so
+it is not that. This is the same shape as the 23x artefact that produced three false findings in one
+day, caught this time because each pin was confirmed by a second run rather than trusted from one —
+**all four nDCG figures reproduced to five decimals while none of the four timings did.**
 
 **And cold cost does not order by corpus size.** ArguAna's 24,003 units are 19% above SciFact's
 20,155 and it cost 2.8x as much, because it judges all 1,406 of its queries against SciFact's 300.

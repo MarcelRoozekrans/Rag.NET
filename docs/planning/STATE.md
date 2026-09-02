@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-02 (HyDE and reranking both complete on three corpora; each helps one
 corpus and harms two. "Parity predicts the sign" asserted and RETIRED the same day. #433, #439,
 #441, #442, #443, #444 merged and verified on `main` by content; ArguAna reranker confirmation
-run still going)
+run finished and agreed at 0.40621)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -336,28 +336,27 @@ technique effect this phase has measured, in either direction, and it is a harm.
 (6 h 23 m) against a derived 8–14 h; it ran at 16.3 s/query, below both rates the derivation
 bracketed it with. Reranking is now complete on three corpora.
 
-**STILL RUNNING when this was written: the confirmation re-run of that same cell**, started ~20:00 on
-branch `bench/arguana-rerank-figure`, `RAGNET_BEIR_LONG_RUNS=arguana`. **Expect it to take the full
-~6 h 23 m again, NOT the ~30 minutes the warm/cold ratio suggests.**
+**~~STILL RUNNING when this was written: the confirmation re-run~~ — FINISHED and AGREED, 2026-09-02.**
+All three metrics identical to five decimals (0.40621 / 0.65505 / 0.32921), now asserting against the
+pin rather than reporting. **Every figure this phase has pinned has reproduced exactly**; four cells,
+four agreements, and none of the four timings reproduced.
 
-**That correction matters for scheduling every remaining reranker cell.** The 11.6–18x warm/cold
-speedup recorded this afternoon came from the OS page cache over embedding-cache shard files, and it
-is a property of **retrieval-bound cells only**. HyDE cells are retrieval-bound. **A reranker cell is
-cross-encoder inference — pure compute, with nothing to cache — so its confirmation run costs what
-the original did.** Confirming a reranker pin roughly doubles its price; confirming a HyDE pin adds
-about a tenth. Budget accordingly, and do not derive one from the other.
+**Its cost corrected this phase's warm/cold model for the second time in one day, and the second
+correction was mine too.** Warm 13,385.3 s (3 h 43 m) against cold 22,976.2 s is **1.72x**:
 
-**What to do on the confirmation, next session:**
+- The afternoon's reading was **11.6–18x**, generalised from three HyDE cells.
+- The evening's correction to it was **~1.0x for reranker cells**, reasoned from "a cross-encoder has
+  nothing to cache", and written into `STATE.md` and PR #446 as guidance.
+- The measurement is **1.72x**. Both readings were wrong in the same way: they treated the ratio as a
+  property of the **suite**. It is a property of each cell's **mix** — the share of its cost that is
+  page-cacheable I/O against the share that is compute. HyDE cells are retrieval-only, so nearly all
+  of their cost caches away. This cell's dense-retrieval side caches and its cross-encoder inference
+  does not, and 1.72x is where that lands.
 
-- **If it finished and agrees at 0.40621** — nothing to do; the pin already asserts. Note the elapsed
-  time in `BeirRunBudget` alongside the cold figure, which is the datum that proves the paragraph
-  above rather than merely asserting it.
-- **If it finished and DISAGREES** — that is a real finding and outranks everything else in this
-  phase. Every pin taken this way has reproduced to five decimals; a reranker cell that does not is
-  either non-deterministic or environment-sensitive, and the figure must not be published until it
-  is understood.
-- **If it did not finish** — nothing is lost. The pin stands on the first run, and the entry says so;
-  re-run it when the machine is free.
+**So: predict a cell's warm cost from its composition, or do not predict it.** Confirming a reranker
+pin costs about 58% of taking it, not 100% and not 6%. The three cost predictions this phase made
+about reranker cells — "over an hour", "8–14 h", "the full 6 h 23 m again" — missed low, high, and
+high again. **Measure these cells; do not derive them.**
 
 **HyDE is finished on every corpus where it can be measured.** TREC-COVID is not unscheduled but
 **unmeasurable at any budget**: nobody has generated its hypotheticals, so the cell fails on
