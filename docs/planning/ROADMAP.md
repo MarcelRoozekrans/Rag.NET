@@ -4270,7 +4270,7 @@ guards' allowlist is empty.
 **Open threads, 2026-08-20** — what is actually left, now that #247 and the local-search work have
 closed: ~~RAPTOR~~ (**complete 2026-08-27**, Tasks 1-6 — measured, pinned, and written down; see
 below), ~~HyDE~~ (**SciFact measured 2026-09-02 in #433**, 0.71389 against the Real control's
-0.67742, +0.03647; three datasets unrun and each now measurable alone — see below), reranking
+0.67742, +0.03647; **FiQA measured the same day**, 0.34683 against 0.35569, −0.00886, so the sign is the corpus rather than the technique; ArguAna and TREC-COVID unrun and each now measurable alone — see below), reranking
 (**SciFact and FiQA measured 2026-09-02 in the same PR**, +0.01266 and −0.00951; ArguAna and
 TREC-COVID unrun), hybrid BM25, late chunking and SPLADE under the Real protocol; ~~the
 three answer engines as arms~~ (**built 2026-08-28** on `feat/answer-engine-arms`, not yet merged —
@@ -4887,23 +4887,48 @@ a second run agreeing to five decimals and now asserting rather than reporting. 
 MRR@10 0.67295, 20,155 units over 5,183 of 5,183 documents, 21,355 embedding-cache hits and 0
 misses, no model calls, no spend. HyDE reordered 300 of 300 queries.
 
-**The finding is the shrinkage, not the sign.** The parity pair is +0.055 over a 0.645 dense anchor;
-this is +0.036 over 0.67742. **HyDE buys roughly two-thirds as much on the corpus this library
-actually produces as it does on whole documents** — and reranking, measured in the same PR, buys
-about a third (SciFact 0.69008 against 0.67742, +0.01266, where its parity cell is +0.039). Two
-techniques, same direction, different magnitudes. **A parity-corpus ablation table overstates what a
-technique buys a real user**, which is precisely the hypothesis these cells were built to test and is
-now carried by two numbers rather than an argument. Reranking additionally flips sign on FiQA
-(0.34618 against 0.35569, −0.00951, 648 of 648 queries reordered); HyDE stays clearly positive on the
-one dataset it has.
+~~**The finding is the shrinkage, not the sign.**~~ **Corrected 2026-09-02 by FiQA's cell, and the
+correction is the more useful finding.** This paragraph originally read the SciFact pair — +0.055 at
+parity over a 0.645 dense anchor against +0.036 over 0.67742 — as "HyDE buys roughly two-thirds as
+much on the corpus this library actually produces as it does on whole documents". That is a ratio
+from **one dataset** presented as the shape of the result, and the second dataset does not merely
+fail to confirm it: it moves the other way.
 
-**Its cost is recorded as two numbers because the two runs disagree by 16x** — 199.5 s then 12.5 s,
-same machine, same binary, nothing changed between them. The candidate cause is the OS page cache
-over the 21,355 shard files the embedding cache reads, recorded as a **candidate and not a
-diagnosis**; in-process chunking is redone on both runs, so it is not that. `BeirRunBudget` carries
-both and says to budget against the cold one. This is the same shape as the 23x artefact that
-produced three false findings in one day, caught this time because the pin was confirmed by a second
-run rather than trusted from one.
+| dataset | parity dense | parity HyDE | Δ | real dense | real HyDE | Δ |
+| --- | --- | --- | --- | --- | --- | --- |
+| SciFact | 0.64593 | 0.70001 | **+0.05408** | 0.67742 | 0.71389 | **+0.03647** |
+| FiQA | 0.37086 | 0.36543 | **−0.00543** | 0.35569 | 0.34683 | **−0.00886** |
+
+**HyDE's sign is a property of the corpus, not of the protocol.** Positive stays positive and
+negative stays negative across both protocols. What the chunked corpus changes is the *magnitude*,
+and **not in a consistent direction** — SciFact's advantage shrinks toward zero while FiQA's deficit
+grows away from it. There is no single ratio to quote, and quoting one was the error.
+
+**Note that HyDE was already slightly negative on FiQA at parity.** The library's own ablation table
+has carried 0.36543 against a 0.37086 anchor since Phase 3.15, so "HyDE helps" was never this
+project's finding — it was SciFact's, and nobody had said so.
+
+**Reranking behaves the same way and was measured in the same PR**: SciFact +0.01266 (0.69008 against
+0.67742) where its parity cell is +0.039, and FiQA −0.00951 (0.34618 against 0.35569, 648 of 648
+queries reordered). **Two of two techniques measured on two datasets are corpus-dependent in sign.**
+That is the load-bearing result for the rest of the sweep: a technique cell pinned on SciFact alone
+says almost nothing about whether a user should switch the technique on, so the remaining cells
+(hybrid BM25, late chunking, SPLADE) want at least two corpora before anything is concluded from
+them. Costed rather than assumed: FiQA's HyDE cell was 29 m 47 s and paid no model calls.
+
+**What survives from the original claim** is the weaker and still-useful half: a parity-corpus
+ablation figure is not a statement about the corpus this library produces, in either direction. It
+overstated HyDE's help on SciFact and understated its harm on FiQA.
+
+**Cost is recorded as two numbers per cell, because cold and warm differ by 16–18x** — SciFact
+199.5 s then 12.5 s, FiQA 1,786.9 s then 99.3 s, each pair on the same machine and binary with
+nothing changed between them. **Two cells agreeing on the ratio makes it a property of these runs
+rather than one odd measurement.** The candidate cause is the OS page cache over the embedding
+cache's shard files, recorded as a **candidate and not a diagnosis**; in-process chunking is redone
+on every run, so it is not that. `BeirRunBudget` carries both figures per cell and says to budget
+against the cold one. This is the same shape as the 23x artefact that produced three false findings
+in one day, caught this time because each pin was confirmed by a second run rather than trusted from
+one — and both nDCG figures reproduced to five decimals while their timings did not.
 
 **#433 was red on CI for a day and nobody had read why**, which is the part worth carrying forward.
 Adding `RealHyde` and `RealReranked` to `BeirProtocol` left three exhaustive constructs behind —

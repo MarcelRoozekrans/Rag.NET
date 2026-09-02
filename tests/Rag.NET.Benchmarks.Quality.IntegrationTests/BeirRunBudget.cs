@@ -717,9 +717,16 @@ public static class BeirRunBudget
             "fiqa",
             BeirProtocol.RealHyde,
             FitsTheNightly: false,
-            "NOT RUN. Phase 6.2.1 scheduled SciFact alone for the Real-protocol technique cells; "
-            + "FiQA is applicable and unscheduled. Its parity Hyde cell needs the hypothetical "
-            + "cache, which is never committed, so this one inherits that constraint too."),
+            "MEASURED 2026-09-02: 1,786.9 s -- 29 m 47 s, embedding cache 123,828 hits and 0 "
+            + "misses, so pure compute and no model calls. Against SciFact's cold 199.5 s that is "
+            + "9.0x the time over 6.0x the units (121,236 against 20,155), so cost is mildly "
+            + "superlinear in corpus size rather than proportional -- the retrieval side sorts a "
+            + "larger candidate set per query. Quoted COLD, deliberately: SciFact's warm re-run of "
+            + "the same cell was 16x faster than its cold one, and a warm figure quoted as the cost "
+            + "is how a nightly gets scheduled against a time only a second run can produce -- this "
+            + "cell measured 99.3 s warm, an 18x ratio matching SciFact's 16x. Needs "
+            + "the hypothetical cache, which only the generation tool writes and which is never "
+            + "committed -- FiQA's exists because its parity Hyde cell ran in Phase 3.15."),
         new(
             "fiqa",
             BeirProtocol.RealReranked,

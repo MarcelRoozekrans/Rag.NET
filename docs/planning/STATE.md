@@ -1,7 +1,7 @@
 # Session State
 
-**Last updated:** 2026-09-02 (#433 and #439 both merged and verified on `main` by content; HyDE
-measured and pinned, and the long-runs gate scoped to named datasets)
+**Last updated:** 2026-09-02 (FiQA RealHyde measured at 0.34683 and pinned, which corrected the
+SciFact reading; before it #433, #439 and #441 merged and verified on `main` by content)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -292,11 +292,31 @@ the extraction cache was replayed refuse-on-miss.
 **Updated 2026-09-02. The answer-engine thread and the HyDE thread are both closed; the next step is
 another Real-protocol technique cell, and they are now safe to run one at a time.**
 
-**FiQA `RealHyde` is the cheapest cell left in the sweep.** Its chunked corpus is already embedded —
-the `RealReranked` cell paid for that on 2026-09-01, 121,884 hits and 0 misses — and its hypothetical
-cache exists, written when the parity Hyde cell ran in Phase 3.15. So it pays no model calls and no
-cold embedding, and it is the second dataset for a technique that currently has one. Run it with
-`RAGNET_BEIR_LONG_RUNS=fiqa`, which since #439 opts in that dataset alone.
+~~**FiQA `RealHyde` is the cheapest cell left in the sweep.**~~ **Done 2026-09-02: 0.34683 against
+the Real control's 0.35569, −0.00886, reproduced.** It cost 29 m 47 s cold and no money, exactly as
+this entry predicted, and it changed the reading of the SciFact cell rather than confirming it — see
+`ROADMAP.md`'s 6.2.1 block for the corrected framing.
+
+**The next step is a decision rather than a run, and it is the operator's.** Two of two techniques
+measured on two datasets are **corpus-dependent in sign**: HyDE is +0.036 on SciFact and −0.009 on
+FiQA; reranking is +0.013 and −0.010. A technique cell pinned on one dataset therefore says almost
+nothing about whether a user should switch that technique on, which is what these cells exist to
+answer.
+
+So the remaining cells — hybrid BM25, late chunking, SPLADE — should either be **budgeted for two
+corpora each from the start**, or the phase should say plainly that its technique figures are
+SciFact's and not the library's. Both are defensible; drifting into the second by measuring one
+dataset per technique and writing it up as a property of the technique is not, and this phase has
+now done that once and had to correct it.
+
+Costs for that decision, measured rather than derived: a HyDE cell is ~3 m on SciFact and ~30 m on
+FiQA, cold, with no model calls. A reranker cell is 1 h 47 m and 6 h 18 m. Nothing here needs money;
+it needs machine time and a scheduled run per dataset.
+
+**Whichever way that goes, ArguAna is the cheapest unrun HyDE cell** — 24,003 units against FiQA's
+121,236, and its hypothetical cache exists from Phase 3.15. TREC-COVID remains unrunnable for HyDE
+at any budget: nobody has generated its hypotheticals, so the cell fails on refuse-on-miss after
+paying for the chunking.
 
 **Do not run any cell with `=1`.** It still means every dataset, and TREC-COVID's Real leg has never
 been embedded — a `RealHyde` or `RealReranked` run that reaches it chunks and embeds a corpus 33x
