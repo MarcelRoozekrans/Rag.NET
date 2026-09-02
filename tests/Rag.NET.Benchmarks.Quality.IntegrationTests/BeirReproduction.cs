@@ -329,8 +329,36 @@ public static class BeirReproduction
         new(
             "arguana",
             BeirProtocol.RealHyde,
-            [],
-            "NOT RUN. Applicable and unscheduled; Phase 6.2.1 scheduled SciFact alone for the " +
+            [0.45506],
+            "MEASURED 2026-09-02, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.45506, Recall@10 "
+            + "0.73898, MRR@10 0.36741 over all 1,406 judged queries; 24,003 units over 8,674 of "
+            + "8,674 documents; embedding cache 29,627 hits and 0 misses, so no model calls. HyDE "
+            + "reordered 1,406 of 1,406 queries. "
+            + "**Against its control, the Real cell's 0.47559, this is −0.02053 — the largest HyDE "
+            + "effect of the three datasets, and it is a harm.** "
+            + "**This cell falsified a prediction made before it ran, and that is why it matters.** "
+            + "ArguAna's parity Hyde cell is −0.00139 against a 0.50432 anchor — the nearest to zero "
+            + "of the three, and it was predicted to stay near zero on the chunked corpus if sign "
+            + "were the corpus's property. The sign did hold. The MAGNITUDE moved by ~15x: "
+            + "−0.00139 to −0.02053. Across three datasets the real/parity magnitude ratio is 0.67x "
+            + "(SciFact), 1.63x (FiQA) and 14.8x (ArguAna) -- it shrinks, it grows, and it explodes. "
+            + "**There is no usable relationship between a parity ablation figure and the real one "
+            + "beyond the sign**, and ArguAna is the proof: its parity cell reports HyDE as neutral "
+            + "on this corpus, and on the corpus this library actually produces it is the worst "
+            + "affected of the three. "
+            + "As REASONING and not measurement, the candidate mechanism: HyDE searches with a "
+            + "hypothetical *document* vector, and ArguAna's relevance is whole-argument against "
+            + "whole-argument. Chunking already costs this corpus −0.02873 on its own (0.50432 "
+            + "parity to 0.47559 real, the largest chunking penalty of the three), so a "
+            + "document-shaped query vector matched against 512-character fragments compounds a "
+            + "mismatch the other two corpora do not have. Untested -- it predicts that late "
+            + "chunking should recover some of this, which is a cell this phase has not run. "
+            + "REPRODUCED: a second run returned all three metrics identical to five decimals, this "
+            + "time asserting against the pin rather than reporting. "
+            + "Cost 565.0 s cold and 48.6 s warm, an 11.6x ratio against SciFact's 16x and FiQA's "
+            + "18x -- the divergence is consistent in kind across all three cells and not a "
+            + "constant, so budget against the cold figure and do not derive one from another. "
+            + "SUPERSEDED TEXT: NOT RUN. Applicable and unscheduled; Phase 6.2.1 scheduled SciFact alone for the " +
             "Real-protocol technique cells. ArguAna's hypothetical cache does exist -- its parity " +
             "Hyde cell ran in Phase 3.15 -- so unlike TREC-COVID's this one could run today. Empty " +
             "rather than a guessed figure, so AssertReproduces reports instead of asserting."),

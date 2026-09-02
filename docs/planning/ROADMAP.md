@@ -4270,7 +4270,7 @@ guards' allowlist is empty.
 **Open threads, 2026-08-20** — what is actually left, now that #247 and the local-search work have
 closed: ~~RAPTOR~~ (**complete 2026-08-27**, Tasks 1-6 — measured, pinned, and written down; see
 below), ~~HyDE~~ (**SciFact measured 2026-09-02 in #433**, 0.71389 against the Real control's
-0.67742, +0.03647; **FiQA measured the same day**, 0.34683 against 0.35569, −0.00886, so the sign is the corpus rather than the technique; ArguAna and TREC-COVID unrun and each now measurable alone — see below), reranking
+0.67742, +0.03647; **FiQA measured the same day**, 0.34683 against 0.35569, −0.00886, so the sign is the corpus rather than the technique; **ArguAna measured the same day**, 0.45506 against 0.47559, −0.02053, which falsified the prediction that its near-zero parity effect would stay near zero; TREC-COVID unrunnable for HyDE at any budget, its hypotheticals never generated — see below), reranking
 (**SciFact and FiQA measured 2026-09-02 in the same PR**, +0.01266 and −0.00951; ArguAna and
 TREC-COVID unrun), hybrid BM25, late chunking and SPLADE under the Real protocol; ~~the
 three answer engines as arms~~ (**built 2026-08-28** on `feat/answer-engine-arms`, not yet merged —
@@ -4894,19 +4894,40 @@ much on the corpus this library actually produces as it does on whole documents"
 from **one dataset** presented as the shape of the result, and the second dataset does not merely
 fail to confirm it: it moves the other way.
 
-| dataset | parity dense | parity HyDE | Δ | real dense | real HyDE | Δ |
-| --- | --- | --- | --- | --- | --- | --- |
-| SciFact | 0.64593 | 0.70001 | **+0.05408** | 0.67742 | 0.71389 | **+0.03647** |
-| FiQA | 0.37086 | 0.36543 | **−0.00543** | 0.35569 | 0.34683 | **−0.00886** |
+| dataset | parity dense | parity HyDE | Δ | real dense | real HyDE | Δ | ratio |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| SciFact | 0.64593 | 0.70001 | **+0.05408** | 0.67742 | 0.71389 | **+0.03647** | 0.67x |
+| FiQA | 0.37086 | 0.36543 | **−0.00543** | 0.35569 | 0.34683 | **−0.00886** | 1.63x |
+| ArguAna | 0.50432 | 0.50293 | **−0.00139** | 0.47559 | 0.45506 | **−0.02053** | **14.8x** |
 
-**HyDE's sign is a property of the corpus, not of the protocol.** Positive stays positive and
-negative stays negative across both protocols. What the chunked corpus changes is the *magnitude*,
-and **not in a consistent direction** — SciFact's advantage shrinks toward zero while FiQA's deficit
-grows away from it. There is no single ratio to quote, and quoting one was the error.
+**HyDE's sign is a property of the corpus, not of the protocol** — that holds on all three. Positive
+stays positive, negative stays negative. **Its magnitude has no usable relationship to the parity
+figure at all**, which ArguAna established on 2026-09-02 by falsifying a prediction made before it
+ran.
+
+**The prediction and its failure, recorded because the failure is the finding.** ArguAna's parity
+cell is −0.00139 — the nearest to zero of the three, and Phase 3.15 recorded it as the design's
+negative control, which held. The stated expectation was that a near-zero parity effect would stay
+near zero on the chunked corpus. It moved to **−0.02053, about 15x**, and is the largest HyDE effect
+of the three datasets in either protocol. Across the three the real/parity ratio is 0.67x, 1.63x and
+14.8x: it shrinks, it grows, and it explodes.
+
+**So a parity ablation figure predicts the sign of the real effect and nothing else.** ArguAna is the
+proof and the warning in one cell: its parity number reports HyDE as neutral on that corpus, and on
+the corpus this library actually produces HyDE costs it 0.02 nDCG. A reader of the parity table would
+switch HyDE on for ArguAna without concern.
+
+**Candidate mechanism, as reasoning and not measurement.** HyDE searches with a hypothetical
+*document* vector, and ArguAna's relevance is whole-argument against whole-argument. Chunking already
+costs that corpus −0.02873 unaided — 0.50432 parity to 0.47559 real, the largest chunking penalty of
+the three — so a document-shaped query vector matched against 512-character fragments compounds a
+mismatch the other two corpora do not have. **It is testable and untested**: it predicts late
+chunking should recover part of the loss, and late chunking is an unrun cell in this same phase.
 
 **Note that HyDE was already slightly negative on FiQA at parity.** The library's own ablation table
 has carried 0.36543 against a 0.37086 anchor since Phase 3.15, so "HyDE helps" was never this
-project's finding — it was SciFact's, and nobody had said so.
+project's finding — it was SciFact's, and nobody had said so. With ArguAna measured, **HyDE helps on
+one of the three corpora this project benchmarks and harms the other two.**
 
 **Reranking behaves the same way and was measured in the same PR**: SciFact +0.01266 (0.69008 against
 0.67742) where its parity cell is +0.039, and FiQA −0.00951 (0.34618 against 0.35569, 648 of 648
@@ -4920,15 +4941,21 @@ them. Costed rather than assumed: FiQA's HyDE cell was 29 m 47 s and paid no mod
 ablation figure is not a statement about the corpus this library produces, in either direction. It
 overstated HyDE's help on SciFact and understated its harm on FiQA.
 
-**Cost is recorded as two numbers per cell, because cold and warm differ by 16–18x** — SciFact
-199.5 s then 12.5 s, FiQA 1,786.9 s then 99.3 s, each pair on the same machine and binary with
-nothing changed between them. **Two cells agreeing on the ratio makes it a property of these runs
-rather than one odd measurement.** The candidate cause is the OS page cache over the embedding
-cache's shard files, recorded as a **candidate and not a diagnosis**; in-process chunking is redone
-on every run, so it is not that. `BeirRunBudget` carries both figures per cell and says to budget
-against the cold one. This is the same shape as the 23x artefact that produced three false findings
-in one day, caught this time because each pin was confirmed by a second run rather than trusted from
-one — and both nDCG figures reproduced to five decimals while their timings did not.
+**Cost is recorded as two numbers per cell, because cold and warm differ by 11.6–18x** — SciFact
+199.5 s then 12.5 s, FiQA 1,786.9 s then 99.3 s, ArguAna 565.0 s then 48.6 s, each pair on the same
+machine and binary with nothing changed between them. **Three cells at 16x, 18x and 11.6x make it a
+property of these runs rather than one odd measurement**, and the spread means it cannot be derived
+for a cell that has not been run. The candidate cause is the OS page cache over the embedding cache's
+shard files, recorded as a **candidate and not a diagnosis**; in-process chunking is redone on every
+run, so it is not that. `BeirRunBudget` carries both figures per cell and says to budget against the
+cold one. This is the same shape as the 23x artefact that produced three false findings in one day,
+caught this time because each pin was confirmed by a second run rather than trusted from one — **all
+three nDCG figures reproduced to five decimals while none of the three timings did.**
+
+**And cold cost does not order by corpus size.** ArguAna's 24,003 units are 19% above SciFact's
+20,155 and it cost 2.8x as much, because it judges all 1,406 of its queries against SciFact's 300.
+**Query count drives these cells as much as corpus size does** — worth knowing before pricing the
+remaining ones off unit counts, which is how the RealReranked estimate came to be wrong by 27x.
 
 **#433 was red on CI for a day and nobody had read why**, which is the part worth carrying forward.
 Adding `RealHyde` and `RealReranked` to `BeirProtocol` left three exhaustive constructs behind —
