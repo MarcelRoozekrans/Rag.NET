@@ -1,7 +1,7 @@
 # Session State
 
-**Last updated:** 2026-08-27 (RAPTOR Task 6 merged in #412, and the pipeline-parity test's fast leg
-built on `feat/pipeline-parity-test` — not yet merged)
+**Last updated:** 2026-09-02 (#433 and #439 both merged and verified on `main` by content; HyDE
+measured and pinned, and the long-runs gate scoped to named datasets)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -288,6 +288,50 @@ the extraction cache was replayed refuse-on-miss.
   is a page-cache artefact of reading 35,176 files rather than a property of extraction.
 
 ## Recommended Next Step
+
+**Updated 2026-09-02. The answer-engine thread and the HyDE thread are both closed; the next step is
+another Real-protocol technique cell, and they are now safe to run one at a time.**
+
+**FiQA `RealHyde` is the cheapest cell left in the sweep.** Its chunked corpus is already embedded —
+the `RealReranked` cell paid for that on 2026-09-01, 121,884 hits and 0 misses — and its hypothetical
+cache exists, written when the parity Hyde cell ran in Phase 3.15. So it pays no model calls and no
+cold embedding, and it is the second dataset for a technique that currently has one. Run it with
+`RAGNET_BEIR_LONG_RUNS=fiqa`, which since #439 opts in that dataset alone.
+
+**Do not run any cell with `=1`.** It still means every dataset, and TREC-COVID's Real leg has never
+been embedded — a `RealHyde` or `RealReranked` run that reaches it chunks and embeds a corpus 33x
+SciFact's from cold and then fails on refuse-on-miss, because nobody has generated its hypotheticals.
+That is the trap that cost 6 h 18 m on 2026-09-01.
+
+**Three things this session established that the next one should not re-derive:**
+
+1. **A parity-corpus ablation figure overstates what a technique buys a real user.** HyDE +0.055 at
+   parity against +0.036 real; reranking +0.039 against +0.013, and negative on FiQA. Two techniques,
+   same direction. Every remaining cell in this table is worth measuring under Real for that reason,
+   and the parity number is not a substitute.
+2. **A green local run over a gated-off suite is not evidence about the gated-off path.** #433 was
+   red on CI for a day because `Explain` is only reached when a case is gated *off*, and every local
+   run had the opt-in set. Run the fast tier once with no `RAGNET_*` variables before pushing.
+3. **Confirm a pin with a second run before trusting its cost.** The two SciFact `RealHyde` runs
+   agreed on nDCG to five decimals and disagreed on wall clock by 16x, 199.5 s against 12.5 s. The
+   figure survived; the timing would have been published warm.
+
+**Still open in 6.2.1, in rough order of cost:** FiQA/ArguAna/TREC-COVID `RealHyde` and the two unrun
+`RealReranked` cells; hybrid BM25, late chunking and SPLADE under the Real protocol; every vector
+store through the SciFact parity leg; local search's yes/no abstention, still unexplained; and
+`refine`'s −0.1055, whose caveat MapReduce turned into a live question rather than a hedge. The exit
+condition also wants every 6.0 *plan* row pinned and the guards' allowlist empty.
+
+**6.1 remains the milestone's only blocker engineering cannot clear** — 18 cassettes, blocked on
+accounts rather than effort, and gating v1.0 by the operator's 2026-08-20 decision.
+
+---
+
+**The text below predates 2026-09-02 and is kept for its reasoning, not its recommendation.** Its
+"next step is `MapReduceAnswerEngine`" was carried out: the defect was fixed in #430, the arms were
+made comparable in #429, and `mapreduce` was pinned at 0.6483 in #431. Read it for how the three
+options were framed, not for what to do next.
+
 
 **The answer-engine thread has delivered what it can without product work. The next step is
 `MapReduceAnswerEngine`, as a shipped-package defect rather than a benchmark chore.**
@@ -593,10 +637,24 @@ much larger than answer generation's.
 > really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
 > here before.
 
-**Last landed on `main`:** **#429** as `1a4d5364` (2026-08-30) — the engine arms made comparable and
-measured. Verify by content: `AnswerContract`, `EngineContract` and `GroundingRule` in
-`tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirGraphRagAnswerTests.cs`, and the pinned
-`0.7503` in `MultiHopRagAnswerReproduction.cs`.
+**Last landed on `main`:** **#433** as `e4923341` (2026-09-02) — HyDE and reranking measured over
+Rag.NET's own chunking, plus the fix that turned the branch's day-old red CI green. Verify by
+content: the pinned `0.71389` in
+`tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirReproduction.cs`, and `UnderCachedHyde_` —
+underscore load-bearing — in `BeirRunBudget.cs`.
+
+With it, **#439** as `f66b1677` (2026-09-02) — `RAGNET_BEIR_LONG_RUNS` scoped to named datasets, so
+a cell can be measured without ungating TREC-COVID. Verify by content: `IsOptedInFor` in
+`tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirRunBudget.cs`. Merged main verified after
+both: 225 tests, 0 failed, 94 skipped.
+
+Before them, **#431** as `8b2e0124` (2026-08-31) — `mapreduce` pinned at 0.6483, a null result, and
+the DoD's answer-engine clause closed. Before it **#430** (`ced43abb`) and **#425** (`3640637b`).
+
+**This field was five PRs stale when this session opened** — it named #429 while `main` carried
+#425, #430 and #431 — which is the ninth occurrence of the pattern the note above describes. It went
+stale the same way as always: at the moment work merged, which is the moment nobody is editing this
+file.
 
 Before it, **#419** as `50221812` (2026-08-29) — the FLARE contract-and-cache fix.
 Verify by content: `FragmentProtocol` in `src/Rag.NET.AnswerEngines/FlareAnswerEngine.cs`,
