@@ -1,9 +1,9 @@
 # Session State
 
-**Last updated:** 2026-09-02 (HyDE measured on all three runnable corpora — +0.036 SciFact,
-−0.009 FiQA, −0.021 ArguAna: it helps one and harms two. Scope DECIDED: three corpora per
-technique. #433, #439, #441, #442 and #443 merged and verified on `main` by content; ArguAna
-RealReranked running unattended)
+**Last updated:** 2026-09-02 (HyDE and reranking both complete on three corpora; each helps one
+corpus and harms two. "Parity predicts the sign" asserted and RETIRED the same day. #433, #439,
+#441, #442, #443, #444 merged and verified on `main` by content; ArguAna reranker confirmation
+run finished and agreed at 0.40621)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -311,7 +311,9 @@ design's negative control, and it held — so the ablation table this library pu
 neutral on that corpus. On the corpus the library actually produces it costs **0.02 nDCG**, a ~15x
 move, and it is the worst-affected of the three. **A prediction that it would stay near zero was
 written down before the run and falsified by it.** Across the three the real/parity magnitude ratio
-is 0.67x, 1.63x and 14.8x: parity predicts the sign and nothing else.
+is 0.67x, 1.63x and 14.8x. **The "parity predicts the sign" reading of that was RETIRED the same day
+by ArguAna's reranker cell**: across six (technique, corpus) pairs one flips — FiQA reranking is
++0.01372 at parity and −0.00951 real. Parity predicts neither magnitude nor, reliably, sign.
 
 **The rejected alternative** was to measure one corpus per technique and state plainly that the
 figures are SciFact's. Rejected because this phase has already drifted into that twice and had to
@@ -328,14 +330,33 @@ in the message immediately after writing that lesson down — an estimate of Arg
 because it judges 1,406 queries against 300. The measured rate is **21.4 s/query on SciFact and
 35.0 s/query on FiQA** for reranker cells.
 
-**RUNNING AS OF 2026-09-02, unattended: ArguAna `RealReranked`.** Started on branch
-`bench/arguana-real-reranked`, `RAGNET_BEIR_LONG_RUNS=arguana`, derived 8–14 h, no money and no
-supervision needed. **If it finished:** pin the figure in `BeirReproduction` against its control, the
-ArguAna Real cell's **0.47559**, replace the derived cost in `BeirRunBudget` with the measured one,
-and confirm the pin with a second run before trusting it — all three HyDE pins reproduced to five
-decimals while none of the three timings did. **If it did not finish or the machine was interrupted:**
-nothing is lost but the time; the cell is unpinned, the branch holds no measurement, and the run is
-simply restarted.
+**~~RUNNING AS OF 2026-09-02, unattended: ArguAna `RealReranked`~~ — MEASURED and PINNED at 0.40621,
+2026-09-02.** Against its control, the ArguAna Real cell's 0.47559, that is **−0.06938: the largest
+technique effect this phase has measured, in either direction, and it is a harm.** Cost 22,976.2 s
+(6 h 23 m) against a derived 8–14 h; it ran at 16.3 s/query, below both rates the derivation
+bracketed it with. Reranking is now complete on three corpora.
+
+**~~STILL RUNNING when this was written: the confirmation re-run~~ — FINISHED and AGREED, 2026-09-02.**
+All three metrics identical to five decimals (0.40621 / 0.65505 / 0.32921), now asserting against the
+pin rather than reporting. **Every figure this phase has pinned has reproduced exactly**; four cells,
+four agreements, and none of the four timings reproduced.
+
+**Its cost corrected this phase's warm/cold model for the second time in one day, and the second
+correction was mine too.** Warm 13,385.3 s (3 h 43 m) against cold 22,976.2 s is **1.72x**:
+
+- The afternoon's reading was **11.6–18x**, generalised from three HyDE cells.
+- The evening's correction to it was **~1.0x for reranker cells**, reasoned from "a cross-encoder has
+  nothing to cache", and written into `STATE.md` and PR #446 as guidance.
+- The measurement is **1.72x**. Both readings were wrong in the same way: they treated the ratio as a
+  property of the **suite**. It is a property of each cell's **mix** — the share of its cost that is
+  page-cacheable I/O against the share that is compute. HyDE cells are retrieval-only, so nearly all
+  of their cost caches away. This cell's dense-retrieval side caches and its cross-encoder inference
+  does not, and 1.72x is where that lands.
+
+**So: predict a cell's warm cost from its composition, or do not predict it.** Confirming a reranker
+pin costs about 58% of taking it, not 100% and not 6%. The three cost predictions this phase made
+about reranker cells — "over an hour", "8–14 h", "the full 6 h 23 m again" — missed low, high, and
+high again. **Measure these cells; do not derive them.**
 
 **HyDE is finished on every corpus where it can be measured.** TREC-COVID is not unscheduled but
 **unmeasurable at any budget**: nobody has generated its hypotheticals, so the cell fails on

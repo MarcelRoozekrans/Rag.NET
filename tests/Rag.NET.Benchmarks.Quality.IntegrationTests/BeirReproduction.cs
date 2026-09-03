@@ -365,8 +365,48 @@ public static class BeirReproduction
         new(
             "arguana",
             BeirProtocol.RealReranked,
-            [],
-            "NOT RUN. Applicable and unscheduled. ArguAna is the expensive reranker corpus because " +
+            [0.40621],
+            "MEASURED 2026-09-02, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.40621, Recall@10 "
+            + "0.65505, MRR@10 0.32921 over all 1,406 judged queries; 24,003 units over 8,674 of "
+            + "8,674 documents; embedding cache 25,409 hits and 0 misses, so no model calls -- the "
+            + "reranker is a local ONNX model. Reranked order differed from dense on 1,406 of 1,406 "
+            + "queries. "
+            + "**Against its control, the Real cell's 0.47559, this is −0.06938 — the largest "
+            + "technique effect Phase 6.2.1 has measured, in either direction, and it is a harm.** "
+            + "**This cell completes reranking on three corpora and falsifies the phase's own "
+            + "'parity predicts the sign' generalisation.** With all six (technique, corpus) pairs "
+            + "measured under both protocols, five preserve their sign and ONE DOES NOT: FiQA "
+            + "reranking is +0.01372 at parity (0.38458 against 0.37086) and −0.00951 real (0.34618 "
+            + "against 0.35569). A parity ablation figure does not reliably predict even the "
+            + "direction of the real effect. The generalisation was written into ROADMAP.md and "
+            + "STATE.md twice on 2026-09-02, on HyDE's three cells where it did hold, and this cell "
+            + "retired it the same day. "
+            + "Reranking across the three: SciFact +0.03849 parity / +0.01266 real; FiQA +0.01372 / "
+            + "−0.00951; ArguAna −0.02515 / −0.06938. **Reranking helps one corpus and harms two on "
+            + "the corpus this library actually produces**, the same shape HyDE showed, and ArguAna "
+            + "is worst hit by both techniques. "
+            + "As REASONING and not measurement, the candidate mechanism is the one this cell's "
+            + "SUPERSEDED text predicted before the run: a cross-encoder scores a query against a "
+            + "PASSAGE, and ArguAna's relevance is whole-argument against whole-argument, so "
+            + "512-character fragments are the wrong unit for it twice over -- once in the "
+            + "retrieval and again in the rescoring. It is the same corpus and the same explanation "
+            + "as its HyDE cell's −0.02053, at 3.4x the size. "
+            + "REPRODUCED: a second run returned all three metrics identical to five decimals, this "
+            + "time asserting against the pin rather than reporting. **Its cost is the datum that "
+            + "corrects this phase's warm/cold model for the second time in a day.** 13,385.3 s "
+            + "(3 h 43 m) warm against 22,976.2 s cold is **1.72x** -- not the 11.6-18x the three "
+            + "HyDE cells showed, and not the 1.0x predicted for it hours earlier on the reasoning "
+            + "that a cross-encoder has nothing to cache. Both readings were wrong in the same way: "
+            + "they treated the ratio as a property of the SUITE. It is a property of each cell's "
+            + "**mix** -- the share of its cost that is I/O-bound page-cacheable reads against the "
+            + "share that is compute. HyDE cells are retrieval-only, so nearly all of their cost "
+            + "caches away. This cell's dense-retrieval side caches and its cross-encoder inference "
+            + "does not, and 1.72x is where that lands. Predict a cell's warm cost from its "
+            + "composition, or do not predict it. "
+            + "Cost 22,976.2 s (6 h 23 m) cold, against a DERIVED 8-14 h -- the derivation overshot "
+            + "because it took 21.4 s/query (SciFact) and 35.0 s/query (FiQA) as a range and this "
+            + "corpus ran at 16.3 s/query, below both. "
+            + "SUPERSEDED TEXT: NOT RUN. Applicable and unscheduled. ArguAna is the expensive reranker corpus because " +
             "it judges every query -- 14,060 cross-encoder pairs at parity against FiQA's 6,480 -- " +
             "and the Real protocol's chunking raises the candidate count that sets that cost. " +
             "Empty rather than a guessed figure."),
