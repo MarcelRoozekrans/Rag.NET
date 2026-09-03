@@ -671,6 +671,48 @@ public static class BeirRunBudget
             + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
             + "new text and is not in any cache."),
 
+        // Phase 6.2.1: the RealLateChunking cells. Four entries because the protocol applies to all
+        // four BEIR datasets; SciFact, FiQA and ArguAna are scheduled under the three-corpora scope
+        // decision of 2026-09-02. Every figure below is DERIVED until a run replaces it.
+        new(
+            "scifact",
+            BeirProtocol.RealLateChunking,
+            FitsTheNightly: false,
+            "MEASURED 2026-09-03: 430.9 s cold, 632.6 s on the confirmation run -- and the two are "
+            + "NOT a warm/cold pair. **This is the one cell in the table where a re-run is not "
+            + "cheaper**, because EmbeddingCache is keyed on model identity and text while a "
+            + "late-chunked vector is not a function of the chunk's text alone: the same text in a "
+            + "different document embeds differently, which is the property under test. Token-level "
+            + "embedding of all 5,183 documents is paid in full every run. The other cells show "
+            + "1.72-18x warm speedups; this one shows none, and the second run being SLOWER is "
+            + "ordinary machine noise rather than a signal. The DERIVED text this replaces declined "
+            + "to give a number at all, on the grounds that four cost derivations in this phase had "
+            + "missed by scaling from cells of a different shape; that was the right call, and it "
+            + "is why this entry needed no correction."),
+        new(
+            "fiqa",
+            BeirProtocol.RealLateChunking,
+            FitsTheNightly: false,
+            "MEASURED 2026-09-03: 2,295.7 s -- 38 m 16 s, the most expensive late-chunking cell and "
+            + "5.3x SciFact's over 11.1x the documents. Sublinear in document count because "
+            + "FiQA's documents are shorter: 73,014 units from 57,638 documents against SciFact's "
+            + "9,507 from 5,183. No cache benefit on a re-run; see SciFact's entry."),
+        new(
+            "arguana",
+            BeirProtocol.RealLateChunking,
+            FitsTheNightly: false,
+            "MEASURED 2026-09-03: 494.0 s. 1.15x SciFact's 430.9 s over 8,674 documents against "
+            + "5,183 -- close to flat in document count, because the cost is token-level embedding "
+            + "per document rather than per judged query. That is the opposite of the reranker "
+            + "cells, where ArguAna's 1,406 judged queries made it 2.8x SciFact. **Cost shape "
+            + "differs per technique, which is the fifth distinct way a derivation could have gone "
+            + "wrong in this phase.** No cache benefit on a re-run; see SciFact's entry."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealLateChunking,
+            FitsTheNightly: false,
+            "NOT RUN and not scheduled. Its Real leg has never been embedded, and this cell would "
+            + "additionally pay uncacheable token-level embedding over a corpus 33x SciFact's."),
         // Phase 6.2.1: the RealHybridBm25 cells measure dense+BM25 RRF fusion over Rag.NET's own
         // chunking. Four entries because the protocol applies to all four BEIR datasets; SciFact,
         // FiQA and ArguAna are scheduled under the three-corpora scope decision of 2026-09-02.
@@ -1104,6 +1146,10 @@ public static class BeirRunBudget
             "+BM25 HYBRID OVER REAL CHUNKING ablation cell (the Real protocol's chunked corpus, "
             + "dense fused with InMemoryBm25Index via RRF over the same chunks, against the Real "
             + "dense figure)",
+        BeirProtocol.RealLateChunking =>
+            "LATE CHUNKING over the Real protocol's boundaries (document embedded at token level, "
+            + "each chunk pooled from token vectors that saw the whole document, against the Real "
+            + "dense figure)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -1201,6 +1247,7 @@ public static class BeirRunBudget
             BeirProtocol.RealHyde => "UnderCachedHydeOverRealChunking",
             BeirProtocol.RealReranked => "UnderCrossEncoderRerankOverRealChunking",
             BeirProtocol.RealHybridBm25 => "UnderBm25HybridRrfOverRealChunking",
+            BeirProtocol.RealLateChunking => "UnderLateChunking",
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 

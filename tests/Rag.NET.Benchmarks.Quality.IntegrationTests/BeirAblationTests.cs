@@ -1,8 +1,8 @@
 using Rag.NET.Benchmarks.Quality;
 using Rag.NET.Chunking;
 using Rag.NET.Embeddings.Onnx;
-using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Models;
 using Rag.NET.Reranking.Onnx;
 using Xunit;
 
@@ -468,6 +468,97 @@ public sealed class BeirAblationTests
             "assertions should have made impossible.");
     }
 
+    /// <summary>
+    /// Asserts the corpus this cell excluded cannot distort its figure by more than the band that
+    /// figure is pinned at.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This started as an assertion that no excluded document is judged-relevant, and that
+    /// assumption was false.</b> On SciFact, 2026-09-03, one of the 20 documents late chunking
+    /// could not embed — 15319019 — is relevant to judged query 823. Excluding it is therefore not
+    /// free, and the binary check was asking the wrong question: not "is anything lost" but "can
+    /// what is lost move the number by more than the number's own tolerance".
+    /// </para>
+    /// <para>
+    /// <b>The bound.</b> Each affected query can lose at most its entire nDCG contribution, which
+    /// is 1.0 before averaging, so the worst case over the whole run is
+    /// <c>affectedQueries / judgedQueries</c>. That is an upper bound rather than an estimate: the
+    /// real loss is smaller whenever the query has other relevant documents, or when the excluded
+    /// one would not have ranked inside the cutoff anyway. SciFact's single affected query out of
+    /// 300 gives <b>≤ 0.00333</b>, against a reproduction band of ±0.005 — so the distortion is
+    /// provably below the tolerance the pin already accepts, and it is disclosed in the run's own
+    /// output rather than left for a reader to discover.
+    /// </para>
+    /// <para>
+    /// <b>Above the band it refuses.</b> A cell whose exclusions could move the figure further than
+    /// the figure's tolerance is not a measurement of the technique, and no amount of disclosure
+    /// makes it one. Weakening this from "none" to "bounded" is defensible; weakening it to
+    /// "reported" would not be, because the report would sit beside a number nobody can interpret.
+    /// </para>
+    /// </remarks>
+    /// <param name="dataset">The dataset, for its qrels.</param>
+    /// <param name="excludedDocumentIds">The documents excluded.</param>
+    /// <returns>The worst-case nDCG distortion, for the run's output.</returns>
+    private static double AssertExclusionsCannotMoveTheFigureBeyondItsBand(
+        BeirDataset dataset, IReadOnlyList<string> excludedDocumentIds)
+    {
+        if (excludedDocumentIds.Count == 0)
+        {
+            return 0;
+        }
+
+        var excluded = new HashSet<string>(excludedDocumentIds, StringComparer.Ordinal);
+        var affected = new List<string>();
+        var judged = 0;
+
+        foreach (var (queryId, qrels) in dataset.Qrels)
+        {
+            var hasPositive = false;
+            var losesOne = false;
+            foreach (var (documentId, relevance) in qrels)
+            {
+                if (relevance <= 0)
+                {
+                    continue;
+                }
+
+                hasPositive = true;
+                if (excluded.Contains(documentId))
+                {
+                    losesOne = true;
+                }
+            }
+
+            if (!hasPositive)
+            {
+                continue;
+            }
+
+            judged++;
+            if (losesOne)
+            {
+                affected.Add(queryId);
+            }
+        }
+
+        var bound = judged == 0 ? 0 : (double)affected.Count / judged;
+
+        Assert.True(
+            bound <= BeirReproduction.Tolerance,
+            FormattableString.Invariant(
+                $"Excluded documents affect {affected.Count} of {judged} judged queries, a ") +
+            FormattableString.Invariant(
+                $"worst-case nDCG distortion of {bound:F5} against a reproduction band of ") +
+            FormattableString.Invariant($"{BeirReproduction.Tolerance:F5}. ") +
+            "Above the band the figure cannot be interpreted as a measurement of the technique, and " +
+            "disclosing it would not change that. Affected queries: " +
+            string.Join(", ", affected.Take(5)));
+
+        return bound;
+    }
+
+
     /// <summary>The cell, labelled the way the published table must label it.</summary>
     private static string Describe(
         BeirDatasetDescriptor descriptor, HybridBm25AblationRow row, BeirRunResult run) =>
@@ -699,6 +790,86 @@ public sealed class BeirAblationTests
 
         BeirReproduction.AssertReproduces(
             datasetName, BeirProtocol.RealHybridBm25, run.NdcgAt10, _output);
+    }
+
+    /// <summary>
+    /// Late chunking end to end — its own windowing and its own embedding — against the
+    /// <see cref="BeirProtocol.Real"/> figure on the same dataset.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The comparison is not the same shape as the other Real cells'.</b> They hold the units
+    /// fixed and vary the ranking row; this varies how the units are embedded. It answers "does
+    /// late chunking beat Rag.NET's default chunking end to end", which is the question a user has.
+    /// </para>
+    /// <para>
+    /// <b>The units carry their own embeddings.</b> That is the whole point, and the harness is told
+    /// so explicitly — <c>RequirePrecomputedEmbeddings</c> refuses a unit without one rather than
+    /// letting the sentence embedder fill in, which would measure late chunking's BOUNDARIES with
+    /// ordinary embeddings and report it under this name.
+    /// </para>
+    /// <para><b>Run it with <c>-showLiveOutput</c></b>, for the reason given above.</para>
+    /// </remarks>
+    /// <param name="datasetName">The dataset to measure.</param>
+    [Theory]
+    [MemberData(nameof(Datasets))]
+    public async Task NdcgAt10_UnderLateChunking_MeasuresWithChunksProvablyContextualised(
+        string datasetName)
+    {
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.RealLateChunking),
+            $"{datasetName} does not declare the RealLateChunking protocol applicable, so measuring " +
+            "it would produce a number that means nothing.");
+
+        Assert.SkipUnless(
+            BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
+            BeirHarness.SkipReason);
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.RealLateChunking, out var budgetReason),
+            budgetReason);
+
+        var ct = TestContext.Current.CancellationToken;
+        var dataset = await BeirHarness.LoadAsync(descriptor, cacheDirectory, " ", ct);
+
+        using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
+        var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
+
+        // The same model as every other cell, read at token level rather than pooled, so the
+        // difference against the Real control is the technique and not the encoder.
+        using var tokens = new OnnxTokenEmbeddingGenerator(new OnnxTokenEmbeddingOptions
+        {
+            ModelPath = modelPath,
+            TokenizerVocabPath = vocabPath,
+        });
+
+        var allUnits = await BeirRealChunkingTests.LateChunkAsync(dataset.Documents, tokens, ct);
+
+        // Exclude what late chunking could not embed, rather than letting the harness substitute an
+        // ordinary embedding for it. PartitionLateChunked refuses a systemic failure and reports a
+        // tail; MeasureAsync then refuses anything unembedded that got past it.
+        var (units, excludedDocumentIds) = BeirRealChunkingTests.PartitionLateChunked(allUnits);
+
+        // The exclusion is only harmless if none of the dropped documents could have been retrieved
+        // for a judged query. Stated as an assertion rather than an assumption, because a dropped
+        // relevant document costs recall directly and would read as a property of late chunking.
+        var distortionBound = AssertExclusionsCannotMoveTheFigureBeyondItsBand(
+            dataset, excludedDocumentIds);
+
+        var run = await BeirHarness.MeasureAsync(
+            descriptor, dataset, units, AblationRow.Dense, generator, embeddings,
+            candidateDepth: null, ct, unitsCarryTheirOwnEmbeddings: true);
+
+        _output.WriteLine(FormattableString.Invariant($"""
+            === {descriptor.Name} · late chunking (document embedded at token level, chunks pooled from whole-document context) ===
+            Dense anchor comparable to published ≈ {descriptor.ParityTarget.PublishedNdcgAt10:F5}; this row varies BOTH the boundaries and how their vectors are computed — late chunking windows at its own {new LateChunkingOptions().WindowSizeTokens} tokens rather than reusing RecursiveChunkingStrategy's.
+            {allUnits.Count - units.Count} of {allUnits.Count} units excluded, across {excludedDocumentIds.Count} documents late chunking could not embed. Worst-case nDCG distortion from that exclusion: {distortionBound:F5}, against a reproduction band of {BeirReproduction.Tolerance:F5}.
+            {run.Describe()}
+            """));
+
+        BeirReproduction.AssertReproduces(
+            datasetName, BeirProtocol.RealLateChunking, run.NdcgAt10, _output);
     }
     /// <summary>The HyDE cell, stating the evidence its guard judges.</summary>
     private static string Describe(

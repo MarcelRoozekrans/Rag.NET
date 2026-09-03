@@ -210,6 +210,7 @@ public sealed record BeirDatasetDescriptor(
         BeirProtocol.RealHyde,
         BeirProtocol.RealReranked,
         BeirProtocol.RealHybridBm25,
+        BeirProtocol.RealLateChunking,
         BeirProtocol.SemanticChunking,
         BeirProtocol.Comparison,
         BeirProtocol.SemanticKernel,
