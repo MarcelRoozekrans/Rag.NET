@@ -7,7 +7,7 @@
     <!-- unit, not container, deliberately: the engines meet a real LLM only in the advisory
          nightly E2E job, whose failures gate nothing and whose assertions on model-written
          text are measured flaky. The verification that can be relied on is the fakes. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <VerifiedBy>benchmark</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>
