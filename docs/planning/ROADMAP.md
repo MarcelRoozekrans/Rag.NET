@@ -4338,7 +4338,7 @@ closed: ~~RAPTOR~~ (**complete 2026-08-27**, Tasks 1-6 — measured, pinned, and
 below), ~~HyDE~~ (**SciFact measured 2026-09-02 in #433**, 0.71389 against the Real control's
 0.67742, +0.03647; **FiQA measured the same day**, 0.34683 against 0.35569, −0.00886, so the sign is the corpus rather than the technique; **ArguAna measured the same day**, 0.45506 against 0.47559, −0.02053, which falsified the prediction that its near-zero parity effect would stay near zero; TREC-COVID unrunnable for HyDE at any budget, its hypotheticals never generated — see below), reranking
 (**SciFact and FiQA measured 2026-09-02 in the same PR**, +0.01266 and −0.00951; ArguAna and
-TREC-COVID unrun), ~~hybrid BM25~~ (**all three scheduled corpora measured 2026-09-03**: SciFact +0.01880, FiQA −0.04185, ArguAna +0.03978 — and ArguAna refutes the fragmentation explanation the phase had been carrying; see below), late chunking and SPLADE under the Real protocol; ~~the
+TREC-COVID unrun), ~~late chunking~~ (**all three scheduled corpora measured 2026-09-03**: SciFact −0.02232, FiQA +0.02800, ArguAna +0.01429 — anti-correlated with the other three, and it found the `MaxTokens` shipped defect; see below), ~~hybrid BM25~~ (**all three scheduled corpora measured 2026-09-03**: SciFact +0.01880, FiQA −0.04185, ArguAna +0.03978 — and ArguAna refutes the fragmentation explanation the phase had been carrying; see below), SPLADE under the Real protocol — still blocked on a model nobody has provisioned or costed; ~~the
 three answer engines as arms~~ (**built 2026-08-28** on `feat/answer-engine-arms`, not yet merged —
 five arms, `flare` included; no pilot run; see below); every vector store through the SciFact parity
 leg; ~~the
@@ -5078,8 +5078,11 @@ and three corpora:**
 | FiQA | −0.00886 | −0.00951 | **−0.04185** |
 | ArguAna | −0.02053 | −0.06938 | **+0.03978** |
 
-**Corpus dominates technique.** SciFact is helped by everything measured; **FiQA is harmed by
-everything measured**, making it the only corpus where nothing has helped; ArguAna splits on the kind
+**Corpus dominates technique.** SciFact was helped by everything measured at the time; ~~**FiQA is harmed by
+everything measured**, making it the only corpus where nothing has helped~~ — **RETIRED 2026-09-03 by
+late chunking, which is +0.02800 on FiQA**, the largest positive effect any technique has had there.
+The claim was true of the three techniques measured then and false as a statement about the corpus.
+ArguAna splits on the kind
 of matching rather than on the technique's name. A user asking "should I turn on hybrid search"
 cannot be answered from this table without knowing their corpus, and that is the phase's finding
 rather than a caveat on it.
@@ -5096,6 +5099,82 @@ term-count work, and 121,236 short chunks hold roughly the same terms as 57,600 
 each posting list is shorter, so the corpus grew in rows and shrank in per-row work. Fourth cost
 derivation in this phase to miss. **ArguAna's held**, and the difference is that it reasoned from a
 mechanism — query count drives these cells — rather than scaling a number from another corpus.
+
+**Late chunking's thread completed 2026-09-03 — the sweep's fourth technique, and the one that
+found a shipped defect on the way.** Wired as `RealLateChunking` and measured on all three
+scheduled corpora. **It is the first retrieval-quality figure late chunking has ever had**: the
+allowlist entry that owed this cell said it was "measured once in Phase 3.7 and never pinned", and
+3.7 built the harness and measured SciFact's parity dense anchor instead. Phase 3.13 verified late
+chunking *functionally* after fixing a normalisation defect, which is a different claim.
+
+| corpus | real dense | late chunking | Δ |
+| --- | --- | --- | --- |
+| SciFact | 0.67742 | 0.65510 | **−0.02232** |
+| FiQA | 0.35569 | 0.38369 | **+0.02800** |
+| ArguAna | 0.47559 | 0.48988 | **+0.01429** |
+
+**A SHIPPED DEFECT, found because the benchmark seam refuses to fall back.**
+`OnnxTokenEmbeddingOptions.MaxTokens` defaulted to **8192** while its sibling
+`OnnxEmbeddingOptions.MaxTokens` — same option name, same package, same model — defaults to **256**.
+That value decides whether the windowing its own documentation promises happens at all; at 8192 it
+never did, and `all-MiniLM-L6-v2` was handed sequences it cannot embed, throwing at the
+position-embedding node. **`LateChunkingStrategy` catches generator failures and falls back to
+unembedded chunks, and `EmbeddingBehavior` then backfills those with ordinary embeddings** — each
+correct alone, and together meaning a caller who configured `UseLateChunking()` with this library's
+own model got **ordinary embeddings on exactly the documents long enough to need late chunking**,
+with no error and no log unless they passed one. Measured before the fix: **1,401 of 9,506 SciFact
+units**, and 393 of the first 400 document failures were this cause. Fixed to 256 and guarded by a
+test that pins **the relationship** between the two encoders' limits rather than the number, so they
+cannot drift apart again in either direction.
+
+**The finding is anti-correlation.** Late chunking is the only technique measured here that is
+negative on SciFact and positive on both other corpora — the exact inverse of HyDE and reranking:
+
+| corpus | HyDE | Reranking | Hybrid BM25 | Late chunking |
+| --- | --- | --- | --- | --- |
+| SciFact | +0.03647 | +0.01266 | +0.01880 | **−0.02232** |
+| FiQA | −0.00886 | −0.00951 | −0.04185 | **+0.02800** |
+| ArguAna | −0.02053 | −0.06938 | +0.03978 | **+0.01429** |
+
+**It retires this phase's claim that FiQA is the corpus nothing helps**, written into `ROADMAP.md`
+and `STATE.md` with the hybrid result. That was true of the three techniques measured then and false
+as a statement about the corpus: **+0.02800 is the largest positive effect any technique has had on
+FiQA.**
+
+**And ArguAna confirms a prediction written before the run.** The chain: HyDE and reranking harm
+ArguAna most; hybrid BM25 refuted the fragmentation explanation by scoring +0.03978 over the
+identical fragments; what survived was that the harm is specific to matching a *document-shaped or
+semantically-rescored* query against fragments; late chunking attacks exactly that by giving each
+fragment a vector computed with whole-document context. It recovers, as the cell's reproduction entry
+predicted it would. The pattern fits the same where-relevance-lives axis Phase 3.12 recorded for
+chunking itself: whole-document context helps when relevance is whole-argument and blurs it when
+relevance is a claim supported by two sentences inside an abstract.
+
+**CAVEAT, attached to all three figures and not small: this cell varies boundaries AND embedding.**
+`LateChunkingStrategy` windows at its own 256 tokens rather than reusing `RecursiveChunkingStrategy`,
+so it produced 9,507 / 73,014 / 11,137 units against the Real cells' 20,155 / 121,236 / 24,003 —
+consistently fewer and larger. For corpora where relevance is document-level, that alone could
+produce these results with no contribution from context. **Separating them needs a control with late
+chunking's boundaries and ordinary embeddings, which no cell runs.** The mechanism is
+consistent-with, not confirmed. **This was mis-stated when the cell was written** — three places said
+it "keeps the Real protocol's boundaries and changes only how their vectors are computed", and the
+unit counts were available before the run.
+
+**Exclusions, and why the figures survive them.** Text carrying control characters that BERT's own
+reference implementation deletes cannot be late-chunked without breaking offset mapping, so those
+units are excluded rather than backfilled: 8 documents on SciFact, 49 on FiQA, 1 on ArguAna.
+Excluding is not substituting — a backfilled ordinary embedding under late chunking's name is the
+failure the seam exists to prevent. One SciFact exclusion is relevant to a judged query, which
+falsified the original "no excluded document is judged-relevant" assertion; it was replaced by a
+**bounded** check computing the worst case as `affectedQueries / judgedQueries` = **0.00333 against
+a ±0.005 reproduction band**, disclosed in the run's output and refused outright above the band.
+
+**Cost: 430.9 s / 2,295.7 s / 494.0 s, no model calls — and no warm speedup.** This is the one cell
+where a re-run is not cheaper: `EmbeddingCache` is keyed on text, and a late-chunked vector is not a
+function of chunk text alone. Every other cell shows 1.72–18x warm; this shows none. **Its budget
+entry declined to derive a cost before the run** on the grounds that four derivations in this phase
+had already missed by scaling from cells of a different shape — and it is the only cost entry in the
+phase that needed no correction afterwards.
 
 **Cost is recorded as two numbers per cell, because cold and warm differ by 1.72–18x** — SciFact HyDE
 199.5 s then 12.5 s, FiQA HyDE 1,786.9 s then 99.3 s, ArguAna HyDE 565.0 s then 48.6 s, ArguAna

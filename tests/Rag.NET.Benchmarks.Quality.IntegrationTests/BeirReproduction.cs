@@ -109,6 +109,42 @@ public static class BeirReproduction
             "CPU ONNX Runtime; re-measured 2026-07-31."),
         new(
             "scifact",
+            BeirProtocol.RealLateChunking,
+            [0.65510],
+            "MEASURED 2026-09-03, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.65510 over the 300 judged queries; 9,507 units over 5,175 of 5,183 documents, max 9 per document. **Against its control, the Real cell's 0.67742, this is −0.02232 — late chunking makes SciFact worse, and it is the first technique measured here to do so.** HyDE, reranking and hybrid BM25 all help this corpus (+0.03647, +0.01266, +0.01880). **This cell varies BOTH the boundaries and the embedding, which was mis-stated when it was written**: late chunking windows at its own 256 tokens rather than reusing RecursiveChunkingStrategy's, so it produced 9,507 units against the Real cell's 20,155 over the same corpus. The comparison is still the end-to-end one a user faces; no part of it isolates the embedding step, so this figure cannot be read as \"whole-document context is worth −0.022\". **8 documents excluded**, carrying control characters BERT's own reference implementation deletes; one is relevant to a judged query, bounding the distortion at 0.00333 against a ±0.005 band. **The first retrieval-quality figure late chunking has ever had** — the allowlist entry claimed Phase 3.7 measured it, and 3.7 measured the parity dense anchor instead. SUPERSEDED TEXT: NEVER RUN -- Phase 6.2.1 wired this cell and has not measured it. **Late chunking has never had a " +
+            "never had a retrieval-quality figure at all**: the allowlist entry that owed this cell " +
+            "said it was 'measured once in Phase 3.7 and never pinned', and 3.7 built the harness " +
+            "and measured SciFact's parity dense figure instead. Phase 3.13 verified late chunking " +
+            "functionally after fixing a normalisation defect, which is a different claim. " +
+            "**Its control is the Real cell's 0.67742**, and the comparison is not the same shape " +
+            "as the other Real cells': they hold units fixed and vary the ranking row, this varies " +
+            "how the units are embedded. It answers 'does late chunking beat the default chunking " +
+            "end to end'."),
+        new(
+            "fiqa",
+            BeirProtocol.RealLateChunking,
+            [0.38369],
+            "MEASURED 2026-09-03, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.38369 over the 648 judged queries; 73,014 units over 57,589 of 57,638 documents; 2,295.7 s. **Against its control, the Real cell's 0.35569, this is +0.02800 — the largest positive effect any technique has had on FiQA, and it RETIRES this phase's claim that FiQA is the corpus nothing helps.** That claim was written into ROADMAP.md and STATE.md with the hybrid result, when HyDE (−0.00886), reranking (−0.00951) and hybrid (−0.04185) had all harmed it. It was true of the three techniques measured then and is false as a statement about the corpus. **Late chunking is anti-correlated with the other three across all three corpora** — the only one negative on SciFact and positive on FiQA and ArguAna. Same caveat as the other two cells: this varies boundaries AND embedding (73,014 units against the Real cell's 121,236), so fewer larger units could carry part or all of it. SUPERSEDED TEXT: NEVER RUN -- wired by Phase 6.2.1. **Its control is the Real cell's 0.35569.** FiQA is " +
+            "the corpus every technique has harmed under the Real protocol so far."),
+        new(
+            "arguana",
+            BeirProtocol.RealLateChunking,
+            [0.48988],
+            "MEASURED 2026-09-03, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.48988 over all 1,406 judged queries; 11,137 units over 8,673 of 8,674 documents. **Against its control, the Real cell's 0.47559, this is +0.01429 — and it CONFIRMS the prediction written into this entry before the run.** The chain: HyDE and reranking harm ArguAna most (−0.02053, −0.06938); hybrid BM25 refuted the fragmentation explanation by scoring +0.03978 over the identical fragments; what survived was that the harm is specific to matching a document-shaped or semantically-rescored query against fragments; late chunking attacks exactly that by giving each fragment a vector computed with whole-document context. It recovers, as predicted. **And the sign is opposite to SciFact's −0.02232** — late chunking is the only technique measured here that helps where HyDE and reranking hurt and hurts where they help, which is the same where-relevance-lives axis Phase 3.12 recorded for chunking itself: whole-document context helps when relevance is whole-argument and blurs it when relevance is a claim supported by two sentences. **CAVEAT, and it is not small: this cell varies boundaries AND embedding** (11,137 units against the Real cell's 24,003), so fewer larger units could explain this on their own for a whole-argument corpus. Separating them needs a control with late chunking's boundaries and ordinary embeddings, which no cell runs. SUPERSEDED TEXT: NEVER RUN -- wired by Phase 6.2.1. **Its control is the Real cell's " +
+            "the cell that tests what survived the hybrid result: HyDE and reranking harm ArguAna " +
+            "while BM25 over the same fragments helps it, so the remaining explanation is that the " +
+            "harm is specific to matching a document-shaped or semantically-rescored query against " +
+            "fragments. **Late chunking attacks that directly** -- it gives each fragment a vector " +
+            "computed with whole-document context, which is the missing context that explanation " +
+            "blames. If the explanation holds, this cell should recover part of HyDE's and " +
+            "reranking's loss here."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealLateChunking,
+            [],
+            "NOT RUN and not scheduled -- its Real leg has never been embedded."),
+        new(
+            "scifact",
             BeirProtocol.RealHybridBm25,
             [0.69622],
             "MEASURED 2026-09-03, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.69622, Recall@10 0.82200, MRR@10 0.66393 over the 300 judged queries; 20,155 units over 5,183 documents; 172.5 s. BM25 was non-empty for 300 of 300 queries and the fused ranking diverged from dense on all 300. **Against its control, the Real cell's 0.67742, this is +0.01880.** Beside the parity pair -- 0.69913 against a 0.64593 dense anchor, +0.05320 -- the gain shrinks to about a third on the corpus this library actually produces, the same direction HyDE and reranking showed on this dataset. SUPERSEDED TEXT: NEVER RUN -- Phase 6.2.1 wired this cell and has not measured it; empty rather than a " +

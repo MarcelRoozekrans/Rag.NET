@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-02 (HyDE and reranking both complete on three corpora; each helps one
 corpus and harms two. "Parity predicts the sign" asserted and RETIRED the same day. #433, #439,
 #441, #442, #443, #444 merged and verified on `main` by content; ArguAna reranker confirmation
-run finished and agreed at 0.40621. 2026-09-03: AnswerEngines and QueryTechniques both discharged, allowlist 20 → 18 and 6.2.1 owns none of the rest; the Delivered blind spot closed; hybrid BM25 measured on three corpora and it refuted the ArguAna fragmentation explanation)
+run finished and agreed at 0.40621. 2026-09-03: AnswerEngines and QueryTechniques both discharged, allowlist 20 → 18 and 6.2.1 owns none of the rest; the Delivered blind spot closed; hybrid BM25 measured on three corpora and it refuted the ArguAna fragmentation explanation; late chunking measured on three corpora and it found a shipped MaxTokens defect)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -358,6 +358,53 @@ pin costs about 58% of taking it, not 100% and not 6%. The three cost prediction
 about reranker cells — "over an hour", "8–14 h", "the full 6 h 23 m again" — missed low, high, and
 high again. **Measure these cells; do not derive them.**
 
+**2026-09-03, fifth change — late chunking measured on three corpora, and it found a shipped defect
+on the way.**
+
+| corpus | HyDE | Reranking | Hybrid BM25 | Late chunking |
+| --- | --- | --- | --- | --- |
+| SciFact | +0.03647 | +0.01266 | +0.01880 | **−0.02232** |
+| FiQA | −0.00886 | −0.00951 | −0.04185 | **+0.02800** |
+| ArguAna | −0.02053 | −0.06938 | +0.03978 | **+0.01429** |
+
+**Late chunking is anti-correlated with the other three** — the only one negative on SciFact and
+positive on both others. **The first retrieval-quality figure it has ever had**: the allowlist entry
+claimed Phase 3.7 measured it, and 3.7 measured the parity dense anchor instead.
+
+**THE SHIPPED DEFECT, and it is the session's most consequential find.**
+`OnnxTokenEmbeddingOptions.MaxTokens` defaulted to **8192** where its sibling in the same package
+defaults to **256**, for the same model. Windowing therefore never triggered, ONNX threw at the
+position-embedding node, `LateChunkingStrategy` swallowed it, and `EmbeddingBehavior` backfilled
+ordinary embeddings — so **`UseLateChunking()` silently did nothing on every document long enough to
+need it**, with no error and no log. 1,401 of 9,506 SciFact units before the fix. Fixed to 256, and
+guarded by a test pinning the **relationship** between the two encoders' limits rather than the
+number.
+
+**It was found only because the benchmark seam refuses to fall back.** Nothing else in the repo
+would have surfaced it.
+
+**Two claims of mine retired by this thread**, both written as statements about corpora when the
+evidence only supported statements about the techniques measured so far: ArguAna's fragmentation
+explanation (refuted by hybrid), and "FiQA is the corpus nothing helps" (refuted by late chunking).
+
+**One framing error corrected.** Three places said the cell "keeps the Real protocol's boundaries and
+changes only how their vectors are computed". It varies **both** — late chunking windows at its own
+256 tokens, producing 9,507 / 73,014 / 11,137 units against the Real cells' 20,155 / 121,236 /
+24,003. The unit counts were available before the run. **So no figure here isolates whole-document
+context**; separating it needs a control with late chunking's boundaries and ordinary embeddings,
+which no cell runs.
+
+**And a guard of mine was weakened after it fired, deliberately and with arithmetic.** The original
+asserted no excluded document is judged-relevant; SciFact's 15319019 falsified it. It was replaced by
+a bounded check — worst case `affectedQueries / judgedQueries` = **0.00333 against a ±0.005 band** —
+which refuses outright above the band. Weakening "none" to "bounded" is defensible; weakening it to
+"reported" would not have been.
+
+**Costs 430.9 s / 2,295.7 s / 494.0 s, with NO warm speedup** — the only cell in the table where a
+re-run is not cheaper, because `EmbeddingCache` is keyed on text and a late-chunked vector is not a
+function of chunk text alone. Its budget entry declined to derive a cost beforehand, and it is the
+only cost entry in the phase that needed no correction after.
+
 **2026-09-03, fourth change — hybrid BM25 measured on three corpora, and it refuted an explanation
 this phase had asserted twice.**
 
@@ -367,8 +414,9 @@ this phase had asserted twice.**
 | FiQA | −0.00886 | −0.00951 | **−0.04185** |
 | ArguAna | −0.02053 | −0.06938 | **+0.03978** |
 
-**Corpus dominates technique.** SciFact is helped by everything measured; **FiQA is harmed by
-everything measured**; ArguAna splits on the *kind* of matching. "Should I turn on hybrid search"
+**Corpus dominates technique.** SciFact was helped by everything measured at the time; ~~**FiQA is
+harmed by everything measured**~~ — **RETIRED 2026-09-03 by late chunking at +0.02800**, the largest
+positive effect any technique has had on FiQA; ArguAna splits on the *kind* of matching.
 has no answer here without knowing the corpus — that is the phase's finding, not a caveat on it.
 
 **The refutation, and it was set up in writing before the run.** ArguAna's harm under HyDE and

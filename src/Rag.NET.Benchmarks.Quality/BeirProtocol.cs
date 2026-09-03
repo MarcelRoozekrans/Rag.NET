@@ -206,6 +206,51 @@ public enum BeirProtocol
     RealHybridBm25,
 
     /// <summary>
+    /// Late chunking measured end to end: the document is embedded at
+    /// token level first, and each chunk's vector is pooled from token vectors that saw the whole
+    /// document.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It varies BOTH the boundaries and the embedding, and that was mis-stated when this cell
+    /// was written.</b> The first version of this remark said the cell "keeps the Real protocol's
+    /// boundaries and changes only how their vectors are computed". It does not:
+    /// <c>LateChunkingStrategy</c> windows at its own <c>WindowSizeTokens</c> (256) rather than
+    /// reusing <c>RecursiveChunkingStrategy</c>'s, and SciFact's first run made that plain — 9,507
+    /// units against the Real cell's 20,155 over the same 5,183 documents. The comparison against
+    /// <see cref="Real"/> is still the right one, because the question is "does late chunking beat
+    /// the default chunking end to end", but no part of this cell isolates the embedding step.
+    /// </para>
+    /// <para>
+    /// <b>Its control is <see cref="Real"/> on the same dataset</b> — but the asymmetry is worth
+    /// stating, because it is not the same kind of comparison the other Real cells make.
+    /// <see cref="RealHyde"/>, <see cref="RealReranked"/> and <see cref="RealHybridBm25"/> hold the
+    /// units fixed and vary the ranking row. <b>This one varies how the units are embedded.</b> It
+    /// answers "does late chunking beat Rag.NET's default chunking end to end", which is the
+    /// question a user has, rather than isolating a ranking step.
+    /// </para>
+    /// <para>
+    /// <b>Never measured before.</b> The allowlist entry that owed this cell said late chunking was
+    /// "measured once in Phase 3.7 and never pinned"; 3.7 built the harness and measured SciFact's
+    /// parity dense figure, and no nDCG figure for late chunking has ever existed. Phase 3.13
+    /// verified it functionally after fixing a normalisation defect — that is a different claim.
+    /// </para>
+    /// <para>
+    /// <b>Its units carry their own embeddings and must not be re-embedded.</b> The harness's normal
+    /// path embeds a unit's text through the sentence embedder; doing that here would measure late
+    /// chunking's BOUNDARIES with ordinary embeddings and report it under this name. The precomputed
+    /// index path exists for this cell and refuses rather than falling back.
+    /// </para>
+    /// <para>
+    /// <b>Pays no model calls and no cache.</b> The token embedder is local, and
+    /// <c>EmbeddingCache</c> cannot help: it is keyed on text, and these vectors are not a function
+    /// of chunk text alone — the same text in a different document embeds differently, which is the
+    /// property under test.
+    /// </para>
+    /// </remarks>
+    RealLateChunking,
+
+    /// <summary>
     /// The graph path: entities and relations extracted from the corpus into a graph, that graph
     /// partitioned into communities, and retrieval running over the result — local search out from
     /// the entities a query names, global search over the community summaries. <b>Applies to

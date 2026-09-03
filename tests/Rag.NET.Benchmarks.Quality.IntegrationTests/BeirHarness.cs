@@ -321,7 +321,8 @@ public static class BeirHarness
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         int? candidateDepth,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool unitsCarryTheirOwnEmbeddings = false)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(dataset);
@@ -335,7 +336,8 @@ public static class BeirHarness
         var (maxPerDocument, distinctDocuments) = SummariseUnits(units);
 
         using var store = new InMemoryVectorStore();
-        await IndexAsync(generator, embeddings, store, units, cancellationToken);
+        await IndexAsync(
+            generator, embeddings, store, units, unitsCarryTheirOwnEmbeddings, cancellationToken);
         var (runs, pooledQueries, _) = await RetrieveAsync(
             row, generator, embeddings, store, JudgedQueries(dataset), descriptor, maxPerDocument,
             candidateDepth, cancellationToken);
@@ -413,7 +415,8 @@ public static class BeirHarness
 
         using var store = new InMemoryVectorStore();
         var indexingStartedAt = Stopwatch.GetTimestamp();
-        await IndexAsync(generator, embeddings, store, units, cancellationToken);
+        await IndexAsync(
+            generator, embeddings, store, units, unitsCarryTheirOwnEmbeddings: false, cancellationToken);
         var indexingSeconds = Stopwatch.GetElapsedTime(indexingStartedAt).TotalSeconds;
         var (runs, _, latencies) = await RetrieveAsync(
             row, generator, embeddings, store, judged, descriptor, maxPerDocument,
@@ -541,18 +544,110 @@ public static class BeirHarness
     }
 
     /// <summary>
+    /// Reads the embedding every unit must already carry, for cells whose units are embedded by the
+    /// technique under test rather than by the harness.
+    /// </summary>
+    /// <param name="units">The units, each of which must carry a non-empty embedding.</param>
+    /// <returns>The embeddings, in <paramref name="units"/>' order.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// Any unit is missing an embedding, carries an empty one, or disagrees with the first unit's
+    /// dimension.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this refuses rather than falling back.</b> <see cref="IndexAsync"/> embeds a unit's
+    /// TEXT through the sentence embedder, which is right for every row that varies the ranking and
+    /// wrong for one that varies how the units are embedded. Late chunking's claim is that a chunk's
+    /// vector carries whole-document token context; embedding its text independently produces
+    /// <b>late chunking's boundaries with ordinary embeddings</b> — a figure that looks plausible,
+    /// reproduces exactly on a second run, and measures something nobody asked about.
+    /// </para>
+    /// <para>
+    /// The fallback is not hypothetical. <c>LateChunkingStrategy</c> yields a chunk with a null
+    /// embedding when the token generator fails on a section, and in production
+    /// <c>EmbeddingBehavior</c> backfills it with an ordinary embedding — correct there, because one
+    /// awkward section should not fail a document, and catastrophic here, because the cell would
+    /// report the backfill as a late-chunked vector. A run that silently mixes the two is
+    /// indistinguishable from a clean one in every output the harness produces.
+    /// </para>
+    /// <para>
+    /// So the contract is all-or-nothing and the message names the unit, the count and the cause.
+    /// Empty is checked separately from null because empty is the shape a failed generator actually
+    /// produces and it would otherwise pass a null check into the store as a zero-length vector.
+    /// </para>
+    /// </remarks>
+    internal static IReadOnlyList<ReadOnlyMemory<float>> RequirePrecomputedEmbeddings(
+        IReadOnlyList<TextChunk> units)
+    {
+        ArgumentNullException.ThrowIfNull(units);
+
+        var vectors = new ReadOnlyMemory<float>[units.Count];
+        var dimension = 0;
+        var missing = 0;
+        string? firstMissing = null;
+
+        for (var i = 0; i < units.Count; i++)
+        {
+            var embedding = units[i].Embedding;
+            if (embedding is null || embedding.Value.Length == 0)
+            {
+                missing++;
+                firstMissing ??= units[i].DocumentId.Value;
+                continue;
+            }
+
+            if (dimension == 0)
+            {
+                dimension = embedding.Value.Length;
+            }
+            else if (embedding.Value.Length != dimension)
+            {
+                throw new InvalidOperationException(FormattableString.Invariant(
+                    $"Unit '{units[i].DocumentId.Value}' has embedding dimension ") +
+                    FormattableString.Invariant(
+                        $"{embedding.Value.Length} where the first unit has {dimension}. ") +
+                    "Two dimensions in one index is not a retrievable corpus, and the failure it " +
+                    "produces downstream is a cosine over mismatched spans rather than anything " +
+                    "naming this cause.");
+            }
+
+            vectors[i] = embedding.Value;
+        }
+
+        if (missing > 0)
+        {
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"{missing} of {units.Count} units carry no embedding, the first being ") +
+                FormattableString.Invariant($"'{firstMissing}'. ") +
+                "This cell indexes the embeddings the technique produced; the harness must not " +
+                "embed their text instead. For late chunking that substitution would measure its " +
+                "BOUNDARIES with ordinary embeddings — a figure that looks plausible and " +
+                "reproduces exactly while answering a different question. A null or empty " +
+                "embedding here means the token generator failed on that section, which is a run " +
+                "to investigate rather than one to complete.");
+        }
+
+        return vectors;
+    }
+
+    /// <summary>
     /// Embeds every unit through the cache and stores it. Under
     /// <see cref="RetrieveScoredRunsAsync"/> the cache has been prefetched, so "embeds" resolves
     /// to an in-memory lookup and the timed span around this call holds no disk I/O; under
     /// <see cref="MeasureAsync"/> the cache reads disk and embeds misses as it always did.
     /// </summary>
-    private static async Task IndexAsync(
+    internal static async Task IndexAsync(
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         InMemoryVectorStore store,
         IReadOnlyList<TextChunk> units,
+        bool unitsCarryTheirOwnEmbeddings,
         CancellationToken cancellationToken)
     {
+        var precomputed = unitsCarryTheirOwnEmbeddings
+            ? RequirePrecomputedEmbeddings(units)
+            : null;
+
         for (var start = 0; start < units.Count; start += SlabSize)
         {
             var end = Math.Min(start + SlabSize, units.Count);
@@ -562,7 +657,9 @@ public static class BeirHarness
                 texts[i - start] = units[i].Text;
             }
 
-            var vectors = await EmbedAsync(generator, embeddings, texts, cancellationToken);
+            var vectors = precomputed is null
+                ? await EmbedAsync(generator, embeddings, texts, cancellationToken)
+                : null;
 
             var stored = new EmbeddedChunk[end - start];
             for (var i = start; i < end; i++)
@@ -570,7 +667,7 @@ public static class BeirHarness
                 stored[i - start] = new EmbeddedChunk
                 {
                     Chunk = units[i],
-                    Embedding = vectors[i - start],
+                    Embedding = precomputed is null ? vectors![i - start] : precomputed[i],
                 };
             }
 

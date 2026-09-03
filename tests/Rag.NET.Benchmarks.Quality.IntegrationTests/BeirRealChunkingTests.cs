@@ -1,4 +1,5 @@
 using Rag.NET.Benchmarks.Quality;
+using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -327,6 +328,137 @@ public sealed class BeirRealChunkingTests
 
         return units;
     }
+
+    /// <summary>
+    /// Produces the <see cref="BeirProtocol.RealLateChunking"/> units: late-chunked, and carrying
+    /// the embeddings late chunking computed for them.
+    /// </summary>
+    /// <param name="documents">The corpus.</param>
+    /// <param name="generator">The token-level embedder, over the same model the dense cells use.</param>
+    /// <param name="cancellationToken">Cancels the chunking.</param>
+    /// <returns>Units whose <c>Embedding</c> is set by the strategy, for the precomputed index path.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>These units must not be re-embedded</b>, which is the whole reason
+    /// <see cref="BeirHarness.RequirePrecomputedEmbeddings"/> exists. Late chunking's claim is that a
+    /// chunk's vector carries whole-document token context; embedding the chunk's text afterwards
+    /// through the sentence embedder would measure late chunking's BOUNDARIES with ordinary
+    /// embeddings and report it under late chunking's name.
+    /// </para>
+    /// <para>
+    /// <b>The same model as every other cell</b> — <c>RAGNET_ONNX_EMBED_MODEL</c> read at token
+    /// level rather than pooled — so the comparison against the Real cell varies the technique and
+    /// not the encoder. A different model here would make the difference uninterpretable.
+    /// </para>
+    /// <para>
+    /// <b>No embedding cache.</b> <c>EmbeddingCache</c> is keyed on model identity and text, and
+    /// these vectors are not a function of the chunk's text alone — the same chunk text in a
+    /// different document embeds differently, which is precisely the property under test. Caching
+    /// them by text would be wrong rather than merely unhelpful, so this path pays full cost on
+    /// every run and the budget entries say so.
+    /// </para>
+    /// </remarks>
+    internal static async Task<IReadOnlyList<TextChunk>> LateChunkAsync(
+        IReadOnlyList<BeirDocument> documents,
+        ITokenEmbeddingGenerator generator,
+        CancellationToken cancellationToken)
+    {
+        var strategy = new LateChunkingStrategy(generator, new LateChunkingOptions());
+        var options = new ChunkingOptions();
+        var units = new List<TextChunk>(documents.Count * 2);
+
+        for (var i = 0; i < documents.Count; i++)
+        {
+            var section = new DocumentSection
+            {
+                Text = documents[i].RetrievalText,
+                DocumentId = new DocumentId(documents[i].Id),
+            };
+
+            await foreach (var chunk in strategy.ChunkAsync(section, options, cancellationToken))
+            {
+                units.Add(chunk);
+            }
+        }
+
+        return units;
+    }
+
+    /// <summary>
+    /// Splits late-chunked units into those the strategy embedded and the documents it could not.
+    /// </summary>
+    /// <param name="units">The units <see cref="LateChunkAsync"/> produced.</param>
+    /// <returns>The embedded units, and the distinct document ids excluded.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// More than <see cref="MaxExcludedFraction"/> of the units carry no embedding.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// <b>Excluding is not the same as substituting, and only one of them is honest.</b> A unit the
+    /// strategy could not embed is simply not in the index — the corpus is that much smaller and the
+    /// cell says by how much. Filling it in with an ordinary sentence embedding would put a
+    /// differently-computed vector in the same index under late chunking's name, which is what
+    /// <see cref="BeirHarness.RequirePrecomputedEmbeddings"/> refuses. That guard stays absolute;
+    /// this decides what is handed to it.
+    /// </para>
+    /// <para>
+    /// <b>Why a ceiling rather than a plain filter.</b> On 2026-09-03 the first late-chunking run
+    /// over SciFact left 1,401 of 9,506 units unembedded — a <c>MaxTokens</c> default the model could
+    /// not honour, since fixed. A partition that quietly excluded those would have reported a figure
+    /// computed over 85% of the corpus and called it a measurement. After the fix the same corpus
+    /// leaves 20 of 9,527: a documented tail of text carrying control characters that BERT's own
+    /// reference implementation deletes too. <b>A tail is reportable; a collapse is a run to
+    /// investigate</b>, and the only thing separating them is a threshold, so there is one.
+    /// </para>
+    /// <para>
+    /// One percent admits the observed tail at 0.21% and refuses the observed collapse at 14.7%,
+    /// with an order of magnitude of clearance either side. It is a judgement, not a derivation, and
+    /// it is written here so the next person changing it can see what it was chosen against.
+    /// </para>
+    /// </remarks>
+    internal static (IReadOnlyList<TextChunk> Kept, IReadOnlyList<string> ExcludedDocumentIds)
+        PartitionLateChunked(IReadOnlyList<TextChunk> units)
+    {
+        ArgumentNullException.ThrowIfNull(units);
+
+        var kept = new List<TextChunk>(units.Count);
+        var excluded = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        for (var i = 0; i < units.Count; i++)
+        {
+            var embedding = units[i].Embedding;
+            if (embedding is null || embedding.Value.Length == 0)
+            {
+                if (seen.Add(units[i].DocumentId.Value))
+                {
+                    excluded.Add(units[i].DocumentId.Value);
+                }
+
+                continue;
+            }
+
+            kept.Add(units[i]);
+        }
+
+        var missing = units.Count - kept.Count;
+        if (missing > units.Count * MaxExcludedFraction)
+        {
+            throw new InvalidOperationException(FormattableString.Invariant(
+                $"{missing} of {units.Count} units carry no late-chunked embedding, above the ") +
+                FormattableString.Invariant($"{MaxExcludedFraction:P0} this cell will exclude. ") +
+                "That is a systemic failure rather than the documented tail of text carrying " +
+                "control characters, and excluding it would produce a figure over a corpus this " +
+                "size while reporting it as the whole one. Investigate the generator before " +
+                "measuring: the first occurrence, 1,401 of 9,506 on SciFact, was a MaxTokens " +
+                "default the model could not honour.");
+        }
+
+        return (kept, excluded);
+    }
+
+    /// <summary>The share of units this cell will exclude before treating the run as broken.</summary>
+    private const double MaxExcludedFraction = 0.01;
 
     /// <summary>
     /// Asserts the two mechanisms this run exists to exercise both did something, before any number
