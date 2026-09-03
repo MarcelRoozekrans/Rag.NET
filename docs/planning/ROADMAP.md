@@ -10,29 +10,31 @@ Anything added here follows one rule: record it with its origin, then schedule i
 phase or re-justify it. Closed items move to the list below rather than vanishing, so a
 future reader can tell the difference between "never existed" and "dealt with".
 
-- **`FeatureExerciseTests` cannot see nine features, and six of them are 6.2.1's own** (found
-  2026-09-03 while discharging the AnswerEngines allowlist entry): the guard matches the literal
-  `**Status:** ✅ Done` and nothing else, so the **nine sections carrying `**Status:** Delivered`**
-  are outside it entirely — they need no `Exercised by:` pointer, appear on no allowlist, and
-  contribute nothing to the count the guard checks its parse against. The nine are: **Weaviate,
-  Chroma and Pinecone vector stores**, Proposition Extraction Chunking, Sliding Window Chunking with
-  Overlap, **HyDE v2**, **FLARE**, **SPLADE**, and Multi-Index Federation.
-  **Six are 6.2.1's own threads** — the three vector stores are its *"every vector store through the
-  SciFact parity leg"* item, and HyDE v2, FLARE and SPLADE are its techniques, two of them measured
-  in this phase. So the phase cannot honestly claim *"every row 6.0 classified as plan has its
-  pointer and its pin"* while nine rows are invisible to the guard that checks it. The 6.0 inventory
-  counted "49 Done sections without an exercise pointer" and would have counted these nine at zero.
-  **Late Chunking is NOT among them** — it carries `✅ Done` and a proper allowlist entry, and an
-  earlier draft of this debt said otherwise by reading headings adjacent to the matches rather than
-  the matches themselves. Corrected before it was committed; recorded because it is the same
-  incomplete-look error the allowlist's own history documents twice.
-  **Not fixed on discovery, deliberately.** Whether `Delivered` is a distinct status or an older
-  convention that drifted is undetermined — nothing in `features.md` or the guard defines either —
-  and widening the marker set turns nine sections into nine pointer-writing tasks, which is work
-  rather than a one-line fix. Decide the status question first; the answer changes whether this is
-  a guard defect or a data-entry backlog.
-  → **Phase 6.2.1**, as the phase whose exit condition the gap undermines and which owns six of the
-  nine (assigned 2026-09-03)
+- ~~**`FeatureExerciseTests` cannot see nine features, and six of them are 6.2.1's own**~~ **CLOSED
+  2026-09-03, the day after it was found.** The guard matched the literal `**Status:** ✅ Done`, so
+  the nine sections written as `**Status:** Delivered` were outside it entirely — no pointer
+  required, no allowlist entry, no contribution to its parse-count check.
+  **The status question the entry said to answer first was answered by evidence, and the answer is
+  that `Delivered` was never a status.** It is a formatting variant: the three vector stores sit
+  between two `✅ Done` sections in the same region of the file, and every `Delivered` line follows
+  one authoring pattern — `Delivered. <TypeName> (register with UseX)` — where the status line
+  carries the whole description instead of a marker plus prose. Nothing in `features.md` or the
+  guard ever defined it.
+  All nine were normalised to `✅ Done`, keeping their prose. **Six took a one-line pointer naming
+  tests that already existed** — Weaviate, Chroma and Pinecone are `VerifiedBy=container` with real
+  container suites; Proposition Chunking has strategy and registration tests; FLARE's arm is pinned
+  at +0.0075 (p=0.0135); HyDE v2's pointer landed with the parity test in #449. **Three had no
+  exerciser at all** and took allowlist entries with owning phases instead of a pointer nobody could
+  back: Sliding Window Chunking (6.2), Multi-Index Federation (6.2), and SPLADE — whose *encoder*
+  has unit tests while SPLADE *retrieval* owes a Real-protocol cell (6.2.1).
+  **The section allowlist went 40 → 43, which is the number getting worse and truer at once.** Those
+  three features were previously counted at zero because nothing could see them. The guard's
+  expected-count doc moved 51 → 60. Mutation-checked: removing the Weaviate pointer now fails the
+  guard naming that section, which it could not have done yesterday.
+  **What this cost to find:** an incidental grep while discharging a different allowlist entry. The
+  6.0 inventory counted "49 Done sections without an exercise pointer" and would have counted these
+  nine at zero — a guard reporting green over what it cannot see is the failure mode this whole
+  ledger exists to prevent, and it had it.
 
 - **Seven guide pages are unreachable from the sidebar** (found in the Phase 3.4 Part D review):
   `sidebars.ts` omits `guide/security`, `guide/memory`, `guide/resilience`, `guide/data-providers`,
