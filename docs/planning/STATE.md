@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-02 (HyDE and reranking both complete on three corpora; each helps one
 corpus and harms two. "Parity predicts the sign" asserted and RETIRED the same day. #433, #439,
 #441, #442, #443, #444 merged and verified on `main` by content; ArguAna reranker confirmation
-run finished and agreed at 0.40621. 2026-09-03: AnswerEngines and QueryTechniques both discharged, allowlist 20 → 18, and 6.2.1 owns none of the rest)
+run finished and agreed at 0.40621. 2026-09-03: AnswerEngines and QueryTechniques both discharged, allowlist 20 → 18 and 6.2.1 owns none of the rest; the Delivered blind spot closed, sections 40 → 43)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -357,6 +357,24 @@ correction was mine too.** Warm 13,385.3 s (3 h 43 m) against cold 22,976.2 s is
 pin costs about 58% of taking it, not 100% and not 6%. The three cost predictions this phase made
 about reranker cells — "over an hour", "8–14 h", "the full 6 h 23 m again" — missed low, high, and
 high again. **Measure these cells; do not derive them.**
+
+**2026-09-03, third change — the `Delivered` blind spot closed the day after it was found.** All
+nine sections normalised to `✅ Done`; six took one-line pointers naming tests that already existed,
+three took allowlist entries with owning phases because nothing exercises them. **Section allowlist
+40 → 43 — worse and truer at once**, since those three were previously counted at zero by a guard
+that could not see them. Mutation-checked: removing the Weaviate pointer now fails the guard naming
+that section, which was impossible yesterday.
+
+**The status question resolved by evidence, not preference.** `Delivered` was never a status: the
+three vector stores sit between two `✅ Done` sections in the same region, and every `Delivered` line
+follows one authoring pattern where the status line carries the whole description. Nothing defined
+it anywhere.
+
+**And the cost estimate that preceded it was wrong in the useful direction.** The debt entry said
+folding these in meant "nine pointer-writing tasks, which is work rather than a one-line fix". Six
+were one-line fixes. The estimate was made without checking what already existed — the same
+incomplete-look shape as the Late Chunking slip in that entry's first draft, on the same day, in the
+same entry. **Check before costing, not after.**
 
 **2026-09-03, second discharge — `Rag.NET.QueryTechniques`, allowlist 19 → 18. 6.2.1 now owns none
 of the remaining entries.** `HydePipelineParityTests` holds the shipped `HydeBehavior` to the
