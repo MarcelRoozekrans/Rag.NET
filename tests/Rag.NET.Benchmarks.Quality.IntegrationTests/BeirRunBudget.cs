@@ -671,6 +671,48 @@ public static class BeirRunBudget
             + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
             + "new text and is not in any cache."),
 
+        // Phase 6.2.1: the RealHybridBm25 cells measure dense+BM25 RRF fusion over Rag.NET's own
+        // chunking. Four entries because the protocol applies to all four BEIR datasets; SciFact,
+        // FiQA and ArguAna are scheduled under the three-corpora scope decision of 2026-09-02.
+        // Every figure below is DERIVED until a run replaces it, and each says which it is.
+        new(
+            "scifact",
+            BeirProtocol.RealHybridBm25,
+            FitsTheNightly: false,
+            "MEASURED 2026-09-03: 172.5 s, no model calls -- InMemoryBm25Index is in process and the "
+            + "chunk embeddings were already cached by the Real and RealReranked cells. **The cheapest "
+            + "Real-protocol technique cell measured so far**, below this dataset's HyDE cell at 199.5 s "
+            + "and far below its reranker at 1 h 47 m. The DERIVED text this replaces declined to give a "
+            + "multiple and said to treat it as unknown; that was the right call and is why this entry "
+            + "needed no correction, unlike three others in this phase. REPRODUCED: a second run agreed to five decimals at 11.5 s warm, a 15x ratio."),
+        new(
+            "fiqa",
+            BeirProtocol.RealHybridBm25,
+            FitsTheNightly: false,
+            "MEASURED 2026-09-03: 1,164.4 s -- 19 m 24 s, no model calls. **Below its own parity "
+            + "sibling's ~58 m, which is the opposite of what the DERIVED text expected**: that "
+            + "estimate reasoned the chunked corpus would cost more because it indexes 121,236 chunks "
+            + "against 57,600 documents. It costs less. BM25 indexing is term-count work, and 121,236 "
+            + "short chunks hold roughly the same terms as 57,600 long documents while each posting "
+            + "list is shorter -- so the corpus grew in rows and shrank in per-row work. **Fourth cost "
+            + "derivation in this phase to miss, and the second to miss high.** REPRODUCED: a second run agreed to five decimals at 63.9 s warm, an 18x ratio."),
+        new(
+            "arguana",
+            BeirProtocol.RealHybridBm25,
+            FitsTheNightly: false,
+            "MEASURED 2026-09-03: 308.6 s, no model calls. 1.8x SciFact's 172.5 s on 19% more units, "
+            + "which is the query-count effect this entry predicted -- ArguAna judges all 1,406 of its "
+            + "queries against SciFact's 300. **The prediction held here where three other cost "
+            + "derivations in this phase missed**, and the difference is that it reasoned from a "
+            + "mechanism (queries drive cost) rather than scaling a number from another corpus. REPRODUCED: a second run agreed to five decimals at 41.7 s warm, a 7.4x ratio -- the three hybrid cells span 7.4-18x, so the warm/cold spread is now 1.72-18x across seven confirmed cells and still not a constant."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealHybridBm25,
+            FitsTheNightly: false,
+            "NOT RUN, and not scheduled. Its Real leg has never been embedded and this corpus is 33x "
+            + "SciFact's, so the cell would pay a cold chunk-and-embed of the whole corpus before "
+            + "indexing anything. The parity HybridBm25 entry says the same of itself and for the "
+            + "same reason."),
         // Phase 6.2.1: the RealHyde and RealReranked cells measure HyDE and cross-encoder reranking
         // over Rag.NET's own chunking rather than parity's one-chunk-per-document units. Eight
         // entries because both protocols apply to all four BEIR datasets; only SciFact was
@@ -1058,6 +1100,10 @@ public static class BeirRunBudget
         BeirProtocol.RealReranked =>
             "+RERANKER OVER REAL CHUNKING ablation cell (the Real protocol's chunked corpus, dense " +
             "top-k rescored by the cross-encoder, against the Real dense figure)",
+        BeirProtocol.RealHybridBm25 =>
+            "+BM25 HYBRID OVER REAL CHUNKING ablation cell (the Real protocol's chunked corpus, "
+            + "dense fused with InMemoryBm25Index via RRF over the same chunks, against the Real "
+            + "dense figure)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -1136,7 +1182,7 @@ public static class BeirRunBudget
         {
             BeirProtocol.Parity => nameof(BeirParityTests),
             BeirProtocol.Real => nameof(BeirRealChunkingTests),
-            BeirProtocol.HybridBm25 => "UnderBm25HybridRrf",
+            BeirProtocol.HybridBm25 => "UnderBm25HybridRrf_",
             // Both parity discriminators carry the trailing underscore of their method name, and
             // it is load-bearing rather than cosmetic. RealHyde's method is
             // NdcgAt10_UnderCachedHydeOverRealChunking, so a bare "UnderCachedHyde" is a prefix of
@@ -1154,6 +1200,7 @@ public static class BeirRunBudget
             BeirProtocol.GraphRagDepthControl => "DenseAtTheGraphPathsDepth",
             BeirProtocol.RealHyde => "UnderCachedHydeOverRealChunking",
             BeirProtocol.RealReranked => "UnderCrossEncoderRerankOverRealChunking",
+            BeirProtocol.RealHybridBm25 => "UnderBm25HybridRrfOverRealChunking",
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 

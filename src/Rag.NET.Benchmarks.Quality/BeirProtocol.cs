@@ -180,6 +180,32 @@ public enum BeirProtocol
     RealReranked,
 
     /// <summary>
+    /// Dense retrieval fused with BM25 by reciprocal rank fusion, measured over <see cref="Real"/>'s
+    /// units: Rag.NET's own chunking, with the lexical index built over the same chunks.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Its control is <see cref="Real"/> on the same dataset</b>, for the reason given on
+    /// <see cref="RealHyde"/>: units fixed, row varied, so the difference is the BM25 arm alone.
+    /// </para>
+    /// <para>
+    /// <b>Distinct from <see cref="HybridBm25"/></b>, which fuses over parity units. The distinction
+    /// has a specific shape here that it does not have for the other two techniques: <b>BM25 is a
+    /// term-frequency model, and chunking changes the document length it normalises against.</b> A
+    /// whole document truncated at 256 tokens and a 512-character chunk have different term
+    /// statistics, different IDF denominators and different lengths, so the lexical arm is not the
+    /// same ranker over the two corpora even though the code is identical. Whether that helps or
+    /// hurts is what this cell measures.
+    /// </para>
+    /// <para>
+    /// Costs no model calls and needs no model file beyond the dense embedder: the index is
+    /// <c>InMemoryBm25Index</c>, built in process over the units the harness already holds. It is
+    /// the cheapest of the Real-protocol technique cells for that reason.
+    /// </para>
+    /// </remarks>
+    RealHybridBm25,
+
+    /// <summary>
     /// The graph path: entities and relations extracted from the corpus into a graph, that graph
     /// partitioned into communities, and retrieval running over the result — local search out from
     /// the entities a query names, global search over the community summaries. <b>Applies to
