@@ -10,6 +10,30 @@ Anything added here follows one rule: record it with its origin, then schedule i
 phase or re-justify it. Closed items move to the list below rather than vanishing, so a
 future reader can tell the difference between "never existed" and "dealt with".
 
+- **`FeatureExerciseTests` cannot see nine features, and six of them are 6.2.1's own** (found
+  2026-09-03 while discharging the AnswerEngines allowlist entry): the guard matches the literal
+  `**Status:** ✅ Done` and nothing else, so the **nine sections carrying `**Status:** Delivered`**
+  are outside it entirely — they need no `Exercised by:` pointer, appear on no allowlist, and
+  contribute nothing to the count the guard checks its parse against. The nine are: **Weaviate,
+  Chroma and Pinecone vector stores**, Proposition Extraction Chunking, Sliding Window Chunking with
+  Overlap, **HyDE v2**, **FLARE**, **SPLADE**, and Multi-Index Federation.
+  **Six are 6.2.1's own threads** — the three vector stores are its *"every vector store through the
+  SciFact parity leg"* item, and HyDE v2, FLARE and SPLADE are its techniques, two of them measured
+  in this phase. So the phase cannot honestly claim *"every row 6.0 classified as plan has its
+  pointer and its pin"* while nine rows are invisible to the guard that checks it. The 6.0 inventory
+  counted "49 Done sections without an exercise pointer" and would have counted these nine at zero.
+  **Late Chunking is NOT among them** — it carries `✅ Done` and a proper allowlist entry, and an
+  earlier draft of this debt said otherwise by reading headings adjacent to the matches rather than
+  the matches themselves. Corrected before it was committed; recorded because it is the same
+  incomplete-look error the allowlist's own history documents twice.
+  **Not fixed on discovery, deliberately.** Whether `Delivered` is a distinct status or an older
+  convention that drifted is undetermined — nothing in `features.md` or the guard defines either —
+  and widening the marker set turns nine sections into nine pointer-writing tasks, which is work
+  rather than a one-line fix. Decide the status question first; the answer changes whether this is
+  a guard defect or a data-entry backlog.
+  → **Phase 6.2.1**, as the phase whose exit condition the gap undermines and which owns six of the
+  nine (assigned 2026-09-03)
+
 - **Seven guide pages are unreachable from the sidebar** (found in the Phase 3.4 Part D review):
   `sidebars.ts` omits `guide/security`, `guide/memory`, `guide/resilience`, `guide/data-providers`,
   `guide/mediator`, `guide/graphrag` and `guide/raptor`. They exist and are linked from other
@@ -4266,6 +4290,23 @@ test for parity. What it does not promise: that any of them are good. Measured i
 and re-measured~~ (met 2026-08-18); ~~the pipeline-parity test is in the fast tier~~ (met
 2026-08-27 — **both legs now run and pass as of 2026-08-28**, see below); the
 guards' allowlist is empty.
+
+**Allowlist progress, 2026-09-03.** `PackagesAllowedToStayUnit` **20 → 19** and
+`SectionsAwaitingExercise` **42 → 40**, by discharging `Rag.NET.AnswerEngines`: all three of its
+engines now carry a pinned figure against a control, so the package went `unit` → **`benchmark`** and
+Map-Reduce and Refine gained `Exercised by:` pointers naming the arm, the reproduction and the
+number. **Both halves are guard-enforced rather than asserted** — raising the level without deleting
+the entry fails `EveryPackageAllowedToStayUnitIsStillBareUnit`, deleting it without raising fails
+`NoPackageStaysAtBareUnit`, and both were mutation-checked here rather than assumed.
+
+**The remaining 19 are not this phase's to clear:** 17 are 6.1's credential-blocked connectors,
+one is `Chunking.Templates` (6.2), and one is **`Rag.NET.QueryTechniques`, which this phase's own
+HyDE work did NOT discharge.** `HydeAblationRow` imports `HydeOptions` and nothing else from the
+package; the hypotheticals come from `HypotheticalCache`, written by a separate generation tool, and
+the shipped `LlmHypotheticalDocumentGenerator` is exercised only by unit tests. **Three corpora of
+HyDE figures characterise the technique and touch none of the shipped code** — the same
+harness-versus-shipped-path gap the pipeline-parity test was built to close for retrieval. Closing it
+needs a test proving the two agree, not another measurement.
 
 **Open threads, 2026-08-20** — what is actually left, now that #247 and the local-search work have
 closed: ~~RAPTOR~~ (**complete 2026-08-27**, Tasks 1-6 — measured, pinned, and written down; see

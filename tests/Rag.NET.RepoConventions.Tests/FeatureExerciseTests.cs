@@ -65,8 +65,6 @@ public sealed partial class FeatureExerciseTests
         ["BM25 Synonym Expansion"] = "6.2.1 — the +BM25 cell with and without expansion",
         ["Ensemble / Reciprocal Rank Fusion (RRF)"] = "6.2.1 — the +BM25 hybrid cell composes RRF by hand today; the library's RrfMerger under the same cell",
         ["Deep Research Loop (Sufficiency-Gated Sub-Query Decomposition)"] = "6.2.1 — an answer-harness arm",
-        ["Map-Reduce Synthesis"] = "6.2.1 — an arm of BeirGraphRagAnswerTests against MultiHop-RAG's gold answers",
-        ["Refine (Iterative Synthesis)"] = "6.2.1 — an arm of BeirGraphRagAnswerTests",
         ["LLM Metadata Extraction at Ingest"] = "6.2.1 — a real model over a real corpus, extracted metadata inspected",
         ["Mind-Map Extractor"] = "6.2.1 — over the MultiHop-RAG slice with replayed calls, like GraphRagFunctionsTests",
         ["Late Chunking"] = "6.2.1 — measured once in Phase 3.7 and never pinned; under the Real protocol",

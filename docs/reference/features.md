@@ -296,7 +296,7 @@ rag.UseCohereReranking(o =>
 
 ### ONNX Cross-Encoder Reranking (Local)
 **Status:** ✅ Done
-**Exercised by:** benchmark — the +reranker ablation cell on SciFact, FiQA and ArguAna in `BeirAblationTests`, pinned in `BeirReproduction` at ±0.005; the run that found `OnnxReranker` mapping 26% of every document to `[UNK]` (Phase 3.15) and now guards the fix. Recall@10 is frozen by construction there — the cell permutes only the top-10 it is evaluated on — which the Milestone 6.2.1 re-measure under the Real protocol will lift.
+**Exercised by:** benchmark — the +reranker ablation cell on SciFact, FiQA and ArguAna in `BeirAblationTests`, pinned in `BeirReproduction` at ±0.005; the run that found `OnnxReranker` mapping 26% of every document to `[UNK]` (Phase 3.15) and now guards the fix. **Re-measured under the Real protocol on all three corpora, 2026-09-02 (Phase 6.2.1), which is what the previous version of this line said was still owed.** Against each corpus's Real dense control: SciFact **+0.01266** (0.69008 vs 0.67742), FiQA **−0.00951** (0.34618 vs 0.35569), ArguAna **−0.06938** (0.40621 vs 0.47559). **Reranking helps one of the three corpora and harms two on the corpus this library actually produces**, and the parity cells do not predict that: FiQA is **+0.01372 at parity and negative on real chunks**, a sign flip between protocols. Recall@10 is frozen by construction in the parity cells — they permute only the top-10 they are evaluated on — and the Real cells lift that.
 
 **Package:** `Rag.NET.Reranking.Onnx`
 
@@ -336,6 +336,7 @@ Answer questions over large document sets by first mapping an LLM call over each
 **Why:** Essential for long-document and large-corpus RAG workloads.
 
 **Status:** ✅ Done
+**Exercised by:** benchmark — the `mapreduce` arm of `BeirGraphRagAnswerTests` over MultiHop-RAG's 2,556 gold answers, pinned at **0.6483** in `MultiHopRagAnswerReproduction` against a `chatengine` control of 0.6341. **`mapreduce − chatengine` = +0.0142, McNemar p=0.2955 on 462 wins against 430 across 892 discordant pairs — not significant.** The map/reduce mechanism buys nothing measurable over a single call on this corpus, which is a completion rather than a win. Contract compliance 2,553 of 2,556. Measured 2026-08-31 (Phase 6.2.1), after #430 fixed the refusal-sentinel defect that a caller's `SystemPrompt` defeated — before that fix the arm scored 0.1898.
 
 ---
 
@@ -347,6 +348,7 @@ Process chunks sequentially: generate an initial answer from the first chunk, th
 **Why:** Handles context-window overflow gracefully with a different trade-off profile than map-reduce.
 
 **Status:** ✅ Done
+**Exercised by:** benchmark — the `refine` arm of `BeirGraphRagAnswerTests` over MultiHop-RAG's 2,556 gold answers, pinned at **−0.1055 against the `chatengine` control** in `MultiHopRagAnswerReproduction`, `p<0.0001` — significantly worse than a single call on this corpus. **Read with its caveat, which is a live question rather than a hedge:** the deficit may be partly structural rather than mechanism, and MapReduce has since shown that a per-chunk shape can hide a defect worth 0.46 (#430). Refine rewrites sequentially over chunks — the same per-chunk shape — and has not been re-examined since that fix. Measured 2026-08-30 (Phase 6.2.1).
 
 ---
 

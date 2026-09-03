@@ -163,7 +163,6 @@ public sealed class PackageVerificationTests
         ["Rag.NET.Chunking.Templates"] = "6.2 — a real document of each template's kind",
 
         // ── 6.2.1 Retrieval & Answer Sweep: a pinned figure with a control ───────────────────
-        ["Rag.NET.AnswerEngines"] = "6.2.1 — MapReduce, Refine and FLARE as arms of the 5.2.2 answer harness",
         ["Rag.NET.QueryTechniques"] = "6.2.1 — HyDE's cell uses only its options today; the behaviour itself under the Real protocol",
     };
 

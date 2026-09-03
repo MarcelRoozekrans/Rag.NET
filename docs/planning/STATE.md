@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-02 (HyDE and reranking both complete on three corpora; each helps one
 corpus and harms two. "Parity predicts the sign" asserted and RETIRED the same day. #433, #439,
 #441, #442, #443, #444 merged and verified on `main` by content; ArguAna reranker confirmation
-run finished and agreed at 0.40621)
+run finished and agreed at 0.40621. 2026-09-03: AnswerEngines discharged, allowlist 20 → 19)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -357,6 +357,30 @@ correction was mine too.** Warm 13,385.3 s (3 h 43 m) against cold 22,976.2 s is
 pin costs about 58% of taking it, not 100% and not 6%. The three cost predictions this phase made
 about reranker cells — "over an hour", "8–14 h", "the full 6 h 23 m again" — missed low, high, and
 high again. **Measure these cells; do not derive them.**
+
+**2026-09-03 — the exit condition's allowlist moved for the first time this milestone.**
+`PackagesAllowedToStayUnit` **20 → 19**, `SectionsAwaitingExercise` **42 → 40**, by discharging
+`Rag.NET.AnswerEngines`: all three engines carry a pinned figure against a control, so the package
+went `unit` → **`benchmark`**, and Map-Reduce and Refine gained `Exercised by:` pointers naming the
+arm, the reproduction and the number. Both halves are guard-enforced and were **mutation-checked**,
+not assumed: reverting the level fails `NoPackageStaysAtBareUnit`, removing a pointer fails the
+exercise guard. 94/94 conventions tests green.
+
+**`Rag.NET.QueryTechniques` was NOT discharged, and this is the trap to avoid next session.** Three
+corpora of HyDE figures make it look done. `HydeAblationRow` imports `HydeOptions` and nothing else
+from the package — the hypotheticals come from `HypotheticalCache`, written by a separate generation
+tool, and the shipped `LlmHypotheticalDocumentGenerator` is exercised only by unit tests. **The
+measurements characterise the technique and touch none of the shipped code.** Closing it needs a
+test proving the harness row and the shipped generator agree — the same harness-versus-shipped-path
+gap the pipeline-parity test closed for retrieval — not another measurement.
+
+**And a guard blind spot was found while doing it**, recorded in `ROADMAP.md`'s follow-up debts and
+assigned to this phase: `FeatureExerciseTests` matches the literal `**Status:** ✅ Done`, so the
+**nine `**Status:** Delivered` sections are invisible to it** — including HyDE v2, FLARE, SPLADE and
+the Weaviate/Chroma/Pinecone stores, six of which are 6.2.1's own threads. The phase cannot claim
+"every plan row has its pointer" while nine rows are outside the guard. Deliberately not fixed on
+discovery: whether `Delivered` is a distinct status or drift is undetermined, and widening the marker
+turns nine sections into nine pointer-writing tasks. **Decide the status question first.**
 
 **HyDE is finished on every corpus where it can be measured.** TREC-COVID is not unscheduled but
 **unmeasurable at any budget**: nobody has generated its hypotheticals, so the cell fails on
