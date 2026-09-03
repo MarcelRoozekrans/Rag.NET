@@ -42,6 +42,15 @@ internal static class PipelineParity
     /// the harness computes its own cutoff, so leaving each side on its default would fail for a
     /// reason that is not drift.</param>
     /// <param name="ct">Cancels the retrieval.</param>
+    /// <param name="configureRag">
+    /// Optional <c>AddRagNet</c> configuration — how a parity leg turns on an opt-in behaviour such
+    /// as <c>UseHyde</c>. Null leaves the default pipeline, which is what the dense leg compares.
+    /// </param>
+    /// <param name="configureServices">
+    /// Optional registration applied AFTER <c>AddRagNet</c>, so a fixture can replace a service the
+    /// builder registered — the last registration wins. This is how a parity leg substitutes a
+    /// deterministic generator for one that would otherwise call a model.
+    /// </param>
     /// <returns>The pipeline's hits, projected to the harness's <see cref="ChunkHit"/> shape.</returns>
     /// <remarks>
     /// A fresh container per call, deliberately. <c>ResultCacheBehavior</c> and
@@ -54,7 +63,9 @@ internal static class PipelineParity
         IEmbeddingGenerator<string, Embedding<float>> embedder,
         string query,
         int topK,
-        CancellationToken ct)
+        CancellationToken ct,
+        Action<RagBuilder>? configureRag = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(embedder);
@@ -62,7 +73,8 @@ internal static class PipelineParity
         var services = new ServiceCollection();
         services.AddSingleton(store);
         services.AddSingleton(embedder);
-        services.AddRagNet();
+        services.AddRagNet(configureRag);
+        configureServices?.Invoke(services);
 
         using var provider = services.BuildServiceProvider();
         var pipeline = provider.GetRequiredService<IRagPipeline>();

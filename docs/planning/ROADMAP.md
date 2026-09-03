@@ -4299,14 +4299,37 @@ number. **Both halves are guard-enforced rather than asserted** — raising the 
 the entry fails `EveryPackageAllowedToStayUnitIsStillBareUnit`, deleting it without raising fails
 `NoPackageStaysAtBareUnit`, and both were mutation-checked here rather than assumed.
 
-**The remaining 19 are not this phase's to clear:** 17 are 6.1's credential-blocked connectors,
-one is `Chunking.Templates` (6.2), and one is **`Rag.NET.QueryTechniques`, which this phase's own
-HyDE work did NOT discharge.** `HydeAblationRow` imports `HydeOptions` and nothing else from the
-package; the hypotheticals come from `HypotheticalCache`, written by a separate generation tool, and
-the shipped `LlmHypotheticalDocumentGenerator` is exercised only by unit tests. **Three corpora of
-HyDE figures characterise the technique and touch none of the shipped code** — the same
-harness-versus-shipped-path gap the pipeline-parity test was built to close for retrieval. Closing it
-needs a test proving the two agree, not another measurement.
+**`Rag.NET.QueryTechniques` discharged 2026-09-03 — allowlist 19 → 18.** The gap this closes was
+named the day before and is worth restating, because three corpora of HyDE figures made the package
+look already done: `HydeAblationRow` imports `HydeOptions` and nothing else from it, the
+hypotheticals come from `HypotheticalCache` written by a separate generation tool, and the shipped
+`LlmHypotheticalDocumentGenerator` was exercised only by unit tests. **The measurements
+characterised the technique and executed none of the shipped code.**
+
+**What made that a live hazard rather than a pedantic one:** both sides mean-pool and L2-normalise,
+and `HydeAblationRow.BuildSearchVector` and `HydeBehavior.AverageAndNormalize` are arithmetically
+identical line for line — same summation, same divide-by-count, same double-accumulated norm, same
+`Math.Sqrt`. Two copies of one calculation, in two assemblies, with nothing tying them together.
+
+`HydePipelineParityTests` ties them: the same three hypotheses over the same store, through a real
+`AddRagNet` pipeline with `UseHyde` on one side and the row's own pooling on the other, asserting
+identical ids, scores and order. Fast tier, no model, no corpus, no network — the same shape as the
+dense `PipelineParityTests`, which closed this gap for retrieval. **Mutation-checked**: skewing one
+component of the shipped pooled vector by 5% fails it at rank 0 on a score difference of 0.0002.
+
+**The package went `unit` → `integration`, deliberately not `benchmark`.** The chain now reads: three
+Real-protocol figures pinned for the harness row, and a test proving the shipped path is the same
+computation. That is enough to say the figures describe shipped behaviour, and **not** enough to say
+a benchmark ran through it — the parity corpus is six documents in two dimensions, not a BEIR corpus
+in 384. Claiming `benchmark` would be the overclaim this phase has twice had to retract. The Real
+cell through the shipped generator remains available if that level is ever wanted; it was considered
+and not taken.
+
+**The remaining 18 are not this phase's to clear:** 17 are 6.1's credential-blocked connectors and
+one is `Chunking.Templates`, owned by 6.2. **6.2.1 now owns none of them** — `Rag.NET.AnswerEngines`
+and `Rag.NET.QueryTechniques` were its two, both discharged 2026-09-03. The exit condition's
+allowlist clause is therefore no longer blocked on this phase's own work; what remains of it is
+6.1's accounts.
 
 **Open threads, 2026-08-20** — what is actually left, now that #247 and the local-search work have
 closed: ~~RAPTOR~~ (**complete 2026-08-27**, Tasks 1-6 — measured, pinned, and written down; see
