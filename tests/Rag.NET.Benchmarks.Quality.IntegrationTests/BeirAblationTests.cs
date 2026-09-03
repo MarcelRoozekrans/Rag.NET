@@ -631,6 +631,75 @@ public sealed class BeirAblationTests
         BeirReproduction.AssertReproduces(
             datasetName, BeirProtocol.RealReranked, run.NdcgAt10, _output);
     }
+
+    /// <summary>
+    /// Dense fused with BM25 by RRF over Rag.NET's own chunking, against the
+    /// <see cref="BeirProtocol.Real"/> figure on the same dataset.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Control named for the reason given on the RealHyde cell above: units fixed, row varied.
+    /// </para>
+    /// <para>
+    /// <b>The parity/real distinction has a different shape here than for the other two.</b> HyDE
+    /// and reranking keep the same ranker and change what it sees. <b>BM25 is a term-frequency
+    /// model normalised against document length</b>, so chunking changes the ranker itself: a whole
+    /// document truncated at 256 tokens and a 512-character chunk have different term statistics,
+    /// different IDF denominators and different lengths. The lexical arm is not the same ranker over
+    /// the two corpora even though the code is identical, which is why a parity hybrid figure cannot
+    /// stand in for this one.
+    /// </para>
+    /// <para>
+    /// <b>The cheapest Real-protocol technique cell</b>: no model beyond the dense embedder, no
+    /// hypothetical cache, no cross-encoder. The index is built in process over units the harness
+    /// already holds.
+    /// </para>
+    /// <para><b>Run it with <c>-showLiveOutput</c></b>, for the reason given above.</para>
+    /// </remarks>
+    /// <param name="datasetName">The dataset to measure.</param>
+    [Theory]
+    [MemberData(nameof(Datasets))]
+    public async Task NdcgAt10_UnderBm25HybridRrfOverRealChunking_MeasuresWithBm25ProvablyContributing(
+        string datasetName)
+    {
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.RealHybridBm25),
+            $"{datasetName} does not declare the RealHybridBm25 protocol applicable, so measuring " +
+            "it would produce a number that means nothing.");
+
+        Assert.SkipUnless(
+            BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
+            BeirHarness.SkipReason);
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.RealHybridBm25, out var budgetReason),
+            budgetReason);
+
+        var ct = TestContext.Current.CancellationToken;
+        var dataset = await BeirHarness.LoadAsync(descriptor, cacheDirectory, " ", ct);
+
+        using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
+        var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
+
+        // ONE list, used twice — the lexical index is built over `units` and the harness indexes
+        // `units`. The parity cell states this at its own call site for the same reason: the seam
+        // cannot enforce that BM25 and the vector store rank the same corpus, so the call site must
+        // show it. The only difference from that cell is which units these are.
+        var units = await BeirRealChunkingTests.ChunkAsync(dataset.Documents, ct);
+        using var row = HybridBm25AblationRow.Over(units);
+        var run = await BeirHarness.MeasureAsync(
+            descriptor, dataset, units, row, generator, embeddings, ct);
+
+        _output.WriteLine(Describe(descriptor, row, run));
+
+        // Before the number is trusted: if BM25 returned nothing, or returned things that never
+        // moved a ranking, this cell is the Real cell wearing a hybrid label.
+        row.AssertBm25Contributed(descriptor.Name);
+
+        BeirReproduction.AssertReproduces(
+            datasetName, BeirProtocol.RealHybridBm25, run.NdcgAt10, _output);
+    }
     /// <summary>The HyDE cell, stating the evidence its guard judges.</summary>
     private static string Describe(
         BeirDatasetDescriptor descriptor, HydeAblationRow row, BeirRunResult run) =>

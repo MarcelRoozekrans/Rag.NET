@@ -4338,7 +4338,7 @@ closed: ~~RAPTOR~~ (**complete 2026-08-27**, Tasks 1-6 — measured, pinned, and
 below), ~~HyDE~~ (**SciFact measured 2026-09-02 in #433**, 0.71389 against the Real control's
 0.67742, +0.03647; **FiQA measured the same day**, 0.34683 against 0.35569, −0.00886, so the sign is the corpus rather than the technique; **ArguAna measured the same day**, 0.45506 against 0.47559, −0.02053, which falsified the prediction that its near-zero parity effect would stay near zero; TREC-COVID unrunnable for HyDE at any budget, its hypotheticals never generated — see below), reranking
 (**SciFact and FiQA measured 2026-09-02 in the same PR**, +0.01266 and −0.00951; ArguAna and
-TREC-COVID unrun), hybrid BM25, late chunking and SPLADE under the Real protocol; ~~the
+TREC-COVID unrun), ~~hybrid BM25~~ (**all three scheduled corpora measured 2026-09-03**: SciFact +0.01880, FiQA −0.04185, ArguAna +0.03978 — and ArguAna refutes the fragmentation explanation the phase had been carrying; see below), late chunking and SPLADE under the Real protocol; ~~the
 three answer engines as arms~~ (**built 2026-08-28** on `feat/answer-engine-arms`, not yet merged —
 five arms, `flare` included; no pilot run; see below); every vector store through the SciFact parity
 leg; ~~the
@@ -5009,20 +5009,22 @@ switch HyDE on for ArguAna without concern.
 | SciFact | 0.64593 | 0.68442 | **+0.03849** | 0.67742 | 0.69008 | **+0.01266** |
 | FiQA | 0.37086 | 0.38458 | **+0.01372** | 0.35569 | 0.34618 | **−0.00951** |
 | ArguAna | 0.50432 | 0.47917 | **−0.02515** | 0.47559 | 0.40621 | **−0.06938** |
-
 **Both techniques help one corpus and harm two on the corpus this library actually produces**, and
 **ArguAna is worst hit by both** — −0.02053 under HyDE and −0.06938 under reranking, the two largest
-effects the phase has measured. Same corpus, same candidate explanation: its relevance is
-whole-argument against whole-argument, so 512-character fragments are the wrong unit for it, and a
-cross-encoder scoring a query against a *passage* pays that cost twice — once in retrieval, again in
-rescoring. Reasoning, not measurement; the testable consequence is that late chunking should recover
-part of both, and late chunking is an unrun cell in this phase.
+effects the phase had measured at the time. ~~Same corpus, same candidate explanation: its relevance
+is whole-argument against whole-argument, so 512-character fragments are the wrong unit for it~~ —
+**REFUTED 2026-09-03 by the RealHybridBm25 cell, which is +0.03978 on ArguAna over the identical
+fragments.** A term-frequency model over the same units does not suffer; it produces that corpus's
+best Real-protocol figure. Fragmentation alone is not the cause. What survives is narrower and
+untested: the harm is specific to matching a *document-shaped or semantically-rescored* query against
+fragments — a hypothetical-document vector, or a cross-encoder scoring query against passage — not to
+the fragments themselves. See the hybrid entry below.
 
 **Candidate mechanism, as reasoning and not measurement.** HyDE searches with a hypothetical
 *document* vector, and ArguAna's relevance is whole-argument against whole-argument. Chunking already
 costs that corpus −0.02873 unaided — 0.50432 parity to 0.47559 real, the largest chunking penalty of
 the three — so a document-shaped query vector matched against 512-character fragments compounds a
-mismatch the other two corpora do not have. **It is testable and untested**: it predicts late
+mismatch the other two corpora do not have. **It WAS testable, and it was tested.** As stated it is **REFUTED**: the RealHybridBm25 cell below is +0.03978 on this corpus over the identical fragments. The compounding argument may still hold for the DENSE half specifically, but "fragments are the wrong unit for ArguAna" does not, because a lexical ranker over those fragments produces the corpus's best Real-protocol figure. It also predicts late
 chunking should recover part of the loss, and late chunking is an unrun cell in this same phase.
 
 **Note that HyDE was already slightly negative on FiQA at parity.** The library's own ablation table
@@ -5041,6 +5043,59 @@ them. Costed rather than assumed: FiQA's HyDE cell was 29 m 47 s and paid no mod
 **What survives from the original claim** is the weaker and still-useful half: a parity-corpus
 ablation figure is not a statement about the corpus this library produces, in either direction. It
 overstated HyDE's help on SciFact and understated its harm on FiQA.
+
+**Hybrid BM25's thread completed 2026-09-03 — the sweep's third technique, and the one that refutes
+an explanation this phase had been carrying.** Wired as `RealHybridBm25` and measured on all three
+scheduled corpora under the scope decision of 2026-09-02.
+
+| dataset | parity dense | parity hybrid | Δ | real dense | real hybrid | Δ |
+| --- | --- | --- | --- | --- | --- | --- |
+| SciFact | 0.64593 | 0.69913 | **+0.05320** | 0.67742 | 0.69622 | **+0.01880** |
+| FiQA | 0.37086 | 0.35665 | **−0.01421** | 0.35569 | 0.31384 | **−0.04185** |
+| ArguAna | 0.50432 | 0.51173 | **+0.00741** | 0.47559 | 0.51537 | **+0.03978** |
+
+**ArguAna refutes the fragmentation explanation, and the refutation was set up in writing before the
+run.** HyDE cost that corpus 0.02053 and reranking 0.06938, both attributed here to its relevance
+being whole-argument against whole-argument, making 512-character fragments the wrong unit for it.
+This cell's own pre-run reproduction text said so explicitly: *"BM25 is the test of that
+explanation: if fragments are the problem, a term-frequency model over the same fragments should
+suffer too."* It does not suffer. **+0.03978 is the best Real-protocol figure ArguAna has** — above
+its Real dense control and above its parity dense 0.50432.
+
+**So fragmentation alone is not what hurt the other two.** Whatever does is specific to matching a
+*document-shaped or semantically-rescored* query against fragments, not to the fragments themselves:
+HyDE searches with a hypothetical document vector, a cross-encoder rescores a query against a
+passage, and both degrade on this corpus while a term-frequency model over the identical units
+improves on it. The narrower explanation is untested and should be labelled as such wherever the old
+one was asserted.
+
+**The cross-technique picture on the corpus this library produces, now complete for three techniques
+and three corpora:**
+
+| corpus | HyDE | Reranking | Hybrid BM25 |
+| --- | --- | --- | --- |
+| SciFact | +0.03647 | +0.01266 | +0.01880 |
+| FiQA | −0.00886 | −0.00951 | **−0.04185** |
+| ArguAna | −0.02053 | −0.06938 | **+0.03978** |
+
+**Corpus dominates technique.** SciFact is helped by everything measured; **FiQA is harmed by
+everything measured**, making it the only corpus where nothing has helped; ArguAna splits on the kind
+of matching rather than on the technique's name. A user asking "should I turn on hybrid search"
+cannot be answered from this table without knowing their corpus, and that is the phase's finding
+rather than a caveat on it.
+
+**Sign held on all three hybrid pairs.** Across all nine (technique, corpus) pairs now measured under
+both protocols, **exactly one flips** — FiQA reranking, +0.01372 at parity and −0.00951 real. Parity
+predicts the sign eight times in nine and the magnitude never.
+
+**Cost: 172.5 s SciFact, 308.6 s ArguAna, 1,164.4 s FiQA, no model calls at any of them** —
+`InMemoryBm25Index` is in process and the chunk embeddings were already cached by the Real and
+RealReranked cells. As predicted, the cheapest of the three techniques. **FiQA came in below its own
+parity sibling's ~58 m, which is the opposite of what its derivation expected:** BM25 indexing is
+term-count work, and 121,236 short chunks hold roughly the same terms as 57,600 long documents while
+each posting list is shorter, so the corpus grew in rows and shrank in per-row work. Fourth cost
+derivation in this phase to miss. **ArguAna's held**, and the difference is that it reasoned from a
+mechanism — query count drives these cells — rather than scaling a number from another corpus.
 
 **Cost is recorded as two numbers per cell, because cold and warm differ by 1.72–18x** — SciFact HyDE
 199.5 s then 12.5 s, FiQA HyDE 1,786.9 s then 99.3 s, ArguAna HyDE 565.0 s then 48.6 s, ArguAna

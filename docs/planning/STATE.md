@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-02 (HyDE and reranking both complete on three corpora; each helps one
 corpus and harms two. "Parity predicts the sign" asserted and RETIRED the same day. #433, #439,
 #441, #442, #443, #444 merged and verified on `main` by content; ArguAna reranker confirmation
-run finished and agreed at 0.40621. 2026-09-03: AnswerEngines and QueryTechniques both discharged, allowlist 20 → 18 and 6.2.1 owns none of the rest; the Delivered blind spot closed, sections 40 → 43)
+run finished and agreed at 0.40621. 2026-09-03: AnswerEngines and QueryTechniques both discharged, allowlist 20 → 18 and 6.2.1 owns none of the rest; the Delivered blind spot closed; hybrid BM25 measured on three corpora and it refuted the ArguAna fragmentation explanation)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -357,6 +357,45 @@ correction was mine too.** Warm 13,385.3 s (3 h 43 m) against cold 22,976.2 s is
 pin costs about 58% of taking it, not 100% and not 6%. The three cost predictions this phase made
 about reranker cells — "over an hour", "8–14 h", "the full 6 h 23 m again" — missed low, high, and
 high again. **Measure these cells; do not derive them.**
+
+**2026-09-03, fourth change — hybrid BM25 measured on three corpora, and it refuted an explanation
+this phase had asserted twice.**
+
+| corpus | HyDE | Reranking | Hybrid BM25 |
+| --- | --- | --- | --- |
+| SciFact | +0.03647 | +0.01266 | +0.01880 |
+| FiQA | −0.00886 | −0.00951 | **−0.04185** |
+| ArguAna | −0.02053 | −0.06938 | **+0.03978** |
+
+**Corpus dominates technique.** SciFact is helped by everything measured; **FiQA is harmed by
+everything measured**; ArguAna splits on the *kind* of matching. "Should I turn on hybrid search"
+has no answer here without knowing the corpus — that is the phase's finding, not a caveat on it.
+
+**The refutation, and it was set up in writing before the run.** ArguAna's harm under HyDE and
+reranking had been attributed to its whole-argument relevance making 512-character fragments the
+wrong unit. This cell's own pre-run text said: *"BM25 is the test of that explanation: if fragments
+are the problem, a term-frequency model over the same fragments should suffer too."* **It does not
+suffer — +0.03978, the best Real-protocol figure ArguAna has**, above its Real dense control and
+above its parity dense. Fragmentation alone is not the cause. What survives is narrower and untested:
+the harm is specific to matching a document-shaped or semantically-rescored query against fragments.
+Both places the old claim was asserted are now struck and annotated in `ROADMAP.md`.
+
+**Sign held on all three hybrid pairs.** Across nine (technique, corpus) pairs measured under both
+protocols, **exactly one flips** — FiQA reranking. Parity predicts the sign eight times in nine and
+the magnitude never.
+
+**Costs: 172.5 s / 308.6 s / 1,164.4 s, no model calls.** The cheapest technique, as predicted.
+FiQA came in *below* its own ~58 m parity sibling, opposite to its derivation: BM25 indexing is
+term-count work, and many short chunks hold roughly the same terms as fewer long documents while each
+posting list is shorter. **Fourth cost derivation in this phase to miss.** ArguAna's held, and the
+difference is that it reasoned from a mechanism — query count drives these cells — rather than
+scaling a number from another corpus.
+
+**Two guards earned their keep on this branch.** Wiring the cells without `Describe` and `Filter`
+arms failed four fast-tier tests immediately — including `NoCellsDiscriminatorIsContainedInAnothers`
+and `TheSkipMessagesCommand_OptsInOnlyTheCasesOwnDataset`, both added in #439 — catching before push
+exactly the gap that left #433 red on CI for a day. The parity discriminator needed the same trailing
+underscore treatment as Hyde and Reranked did.
 
 **2026-09-03, third change — the `Delivered` blind spot closed the day after it was found.** All
 nine sections normalised to `✅ Done`; six took one-line pointers naming tests that already existed,

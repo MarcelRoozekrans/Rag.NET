@@ -109,6 +109,43 @@ public static class BeirReproduction
             "CPU ONNX Runtime; re-measured 2026-07-31."),
         new(
             "scifact",
+            BeirProtocol.RealHybridBm25,
+            [0.69622],
+            "MEASURED 2026-09-03, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.69622, Recall@10 0.82200, MRR@10 0.66393 over the 300 judged queries; 20,155 units over 5,183 documents; 172.5 s. BM25 was non-empty for 300 of 300 queries and the fused ranking diverged from dense on all 300. **Against its control, the Real cell's 0.67742, this is +0.01880.** Beside the parity pair -- 0.69913 against a 0.64593 dense anchor, +0.05320 -- the gain shrinks to about a third on the corpus this library actually produces, the same direction HyDE and reranking showed on this dataset. SUPERSEDED TEXT: NEVER RUN -- Phase 6.2.1 wired this cell and has not measured it; empty rather than a " +
+            "guessed figure, so AssertReproduces reports instead of asserting until a run fills it. " +
+            "Dense fused with InMemoryBm25Index by RRF over the Real protocol's 20,155 chunks. " +
+            "**Its control is the Real cell's 0.67742 on this dataset**, not the parity hybrid " +
+            "cell's 0.69913 -- units are held fixed and only the ranking row varies. " +
+            "**What makes this cell different from the other two Real technique cells:** HyDE and " +
+            "reranking keep the same ranker and change what it sees; BM25 normalises against " +
+            "document length, so chunking changes the ranker itself. A parity hybrid figure is not " +
+            "a weaker version of this number, it is a number about a different lexical model."),
+        new(
+            "fiqa",
+            BeirProtocol.RealHybridBm25,
+            [0.31384],
+            "MEASURED 2026-09-03, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.31384, Recall@10 0.39817, MRR@10 0.38012 over the 648 judged queries; 121,236 units over 57,600 documents; 1,164.4 s. BM25 non-empty for 648 of 648 queries, fused ranking diverged from dense on all of them. **Against its control, the Real cell's 0.35569, this is −0.04185 -- the largest harm hybrid does on any of the three corpora.** Its parity sibling is already negative at −0.01421 (0.35665 against 0.37086), so the sign held and the magnitude roughly tripled: mildly negative at parity, decidedly negative on the corpus this library produces. **All three techniques now harm FiQA under the Real protocol** -- HyDE −0.00886, reranking −0.00951, hybrid −0.04185 -- which makes it the only corpus of the three where nothing measured has helped. SUPERSEDED TEXT: NEVER RUN -- wired by Phase 6.2.1, unmeasured, empty for the same reason as SciFact's. " +
+            "**Its control is the Real cell's 0.35569.** Worth noting before it runs: FiQA is the " +
+            "corpus where both measured techniques went negative on real chunks while being " +
+            "positive or neutral at parity, so a parity hybrid figure predicts nothing here."),
+        new(
+            "arguana",
+            BeirProtocol.RealHybridBm25,
+            [0.51537],
+            "MEASURED 2026-09-03, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.51537, Recall@10 0.80299, MRR@10 0.42507 over all 1,406 judged queries; 24,003 units over 8,674 documents; 308.6 s. BM25 non-empty for 1,406 of 1,406 queries, fused ranking diverged from dense on all of them. **Against its control, the Real cell's 0.47559, this is +0.03978 -- and it REFUTES the explanation this phase had been carrying for ArguAna.** HyDE cost this corpus 0.02053 and reranking 0.06938, both attributed to its relevance being whole-argument against whole-argument, making 512-character fragments the wrong unit. A term-frequency model over those same fragments does not suffer: it produces the best Real-protocol figure ArguAna has, above its Real dense control AND above its parity dense 0.50432. **Fragmentation alone is not what hurt the other two.** Whatever does is specific to matching a document-shaped or semantically-rescored query against fragments, not to the fragments themselves. SUPERSEDED TEXT: NEVER RUN -- wired by Phase 6.2.1, unmeasured. **Its control is the Real cell's " +
+            "0.47559.** ArguAna is the corpus both measured techniques harmed most under the Real " +
+            "protocol -- HyDE -0.02053, reranking -0.06938 -- on the standing explanation that its " +
+            "relevance is whole-argument against whole-argument and 512-character fragments are the " +
+            "wrong unit for it. **BM25 is the test of that explanation**: if fragments are the " +
+            "problem, a term-frequency model over the same fragments should suffer too."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealHybridBm25,
+            [],
+            "NOT RUN and not scheduled -- its Real leg has never been embedded. Empty rather than a " +
+            "guessed figure."),
+        new(
+            "scifact",
             BeirProtocol.Real,
             [0.67742],
             "20,155 chunks over 5,183 of 5,183 documents, max 25 from one, pooled on all 1,109 " +
