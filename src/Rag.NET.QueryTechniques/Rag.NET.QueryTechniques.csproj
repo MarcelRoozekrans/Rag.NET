@@ -5,7 +5,7 @@
     <PackageId>Rag.NET.QueryTechniques</PackageId>
     <Description>HyDE, multi-query expansion and contextual compression query techniques for Rag.NET</Description>
     <PackageTags>$(PackageTags);hyde;query-expansion;contextual-compression</PackageTags>
-    <VerifiedBy>unit</VerifiedBy>
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

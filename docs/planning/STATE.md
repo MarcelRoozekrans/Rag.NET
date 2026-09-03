@@ -3,7 +3,7 @@
 **Last updated:** 2026-09-02 (HyDE and reranking both complete on three corpora; each helps one
 corpus and harms two. "Parity predicts the sign" asserted and RETIRED the same day. #433, #439,
 #441, #442, #443, #444 merged and verified on `main` by content; ArguAna reranker confirmation
-run finished and agreed at 0.40621. 2026-09-03: AnswerEngines discharged, allowlist 20 → 19)
+run finished and agreed at 0.40621. 2026-09-03: AnswerEngines and QueryTechniques both discharged, allowlist 20 → 18, and 6.2.1 owns none of the rest)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -357,6 +357,32 @@ correction was mine too.** Warm 13,385.3 s (3 h 43 m) against cold 22,976.2 s is
 pin costs about 58% of taking it, not 100% and not 6%. The three cost predictions this phase made
 about reranker cells — "over an hour", "8–14 h", "the full 6 h 23 m again" — missed low, high, and
 high again. **Measure these cells; do not derive them.**
+
+**2026-09-03, second discharge — `Rag.NET.QueryTechniques`, allowlist 19 → 18. 6.2.1 now owns none
+of the remaining entries.** `HydePipelineParityTests` holds the shipped `HydeBehavior` to the
+harness's `HydeAblationRow`: same three hypotheses, same store, a real `AddRagNet` pipeline with
+`UseHyde` on one side and the row's own pooling on the other, identical ids, scores and order. Fast
+tier — no model, no corpus, no network. **Mutation-checked**: skewing one component of the shipped
+pooled vector by 5% fails it at rank 0 on a 0.0002 score difference.
+
+**This is what the yesterday's warning was about, now closed.** The three HyDE figures executed no
+line of the package; the two pooling implementations were arithmetically identical line for line, in
+two assemblies, with nothing tying them together. The test ties them, so the figures describe shipped
+behaviour rather than a re-implementation.
+
+**Level `integration`, deliberately not `benchmark`.** Enough to say the figures describe the shipped
+path; not enough to say a benchmark ran through it, because the parity corpus is six documents in two
+dimensions rather than a BEIR corpus in 384. **Claiming `benchmark` would be the same overclaim this
+phase has twice retracted.** Running a Real cell through the shipped generator would earn it and was
+considered; it was not taken.
+
+**One geometry error worth carrying**, because it cost a cycle and the fix is general: the first
+fixture put the three hypotheses on documents 3, 4 and 5, expecting their mean to rank the corpus in
+reverse. **The mean of three unit vectors points at the middle one**, so the resultant landed exactly
+on document 4 and documents 3 and 5 tied — a ranking decided by sort stability rather than geometry.
+The angles are asymmetric now (3.8, 4.3, 5.1 steps, resultant 4.399) and the expected order was
+computed from the geometry rather than read off a run. **A pinned expectation derived from the code
+under test pins nothing.**
 
 **2026-09-03 — the exit condition's allowlist moved for the first time this milestone.**
 `PackagesAllowedToStayUnit` **20 → 19**, `SectionsAwaitingExercise` **42 → 40**, by discharging

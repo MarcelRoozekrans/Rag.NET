@@ -163,7 +163,6 @@ public sealed class PackageVerificationTests
         ["Rag.NET.Chunking.Templates"] = "6.2 — a real document of each template's kind",
 
         // ── 6.2.1 Retrieval & Answer Sweep: a pinned figure with a control ───────────────────
-        ["Rag.NET.QueryTechniques"] = "6.2.1 — HyDE's cell uses only its options today; the behaviour itself under the Real protocol",
     };
 
     private readonly ITestOutputHelper _output;
