@@ -22,7 +22,7 @@
     <PackageVersion Include="ErrorProne.NET.Structs" Version="0.1.2" />
     <PackageVersion Include="FFMpegCore" Version="5.4.0" />
     <PackageVersion Include="Google.Apis.Auth" Version="1.76.0" />
-    <PackageVersion Include="Google.Apis.Drive.v3" Version="1.75.0.4218" />
+    <PackageVersion Include="Google.Apis.Drive.v3" Version="1.76.0.4252" />
     <PackageVersion Include="Grpc.AspNetCore" Version="2.83.0" />
     <PackageVersion Include="Grpc.Net.Client" Version="2.83.0" />
     <PackageVersion Include="Grpc.Net.ClientFactory" Version="2.83.0" />
