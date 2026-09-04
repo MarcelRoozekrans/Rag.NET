@@ -47,7 +47,11 @@ public class MetadataBehaviorUpdatedAtTests
         await sut.HandleAsync(ctx, ct, NullNext);
 
         Assert.True(ctx.Chunks[0].Metadata.TryGetValue(ReservedMetadataKeys.UpdatedAt, out var value));
-        Assert.Equal(updatedAt.ToString("O"), value);
+        // Was `Assert.Equal(updatedAt.ToString("O"), value)` until issue #435: the key is written
+        // as a TYPED date now, so the stores' date mappings apply and Azure AI Search's filterable
+        // `dateValue` receives it instead of `stringValue`. This test pinned the defect.
+        Assert.Equal(MetadataValueKind.DateTimeOffset, value.Kind);
+        Assert.Equal(new DateTimeOffset(updatedAt), value.DateTimeOffsetValue);
     }
 
     [Fact]
