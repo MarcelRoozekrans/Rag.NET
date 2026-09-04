@@ -43,7 +43,10 @@ public class MetadataBehaviorCreatedAtTests
         await sut.HandleAsync(ctx, ct, NullNext);
 
         Assert.True(ctx.Chunks[0].Metadata.TryGetValue("created_at", out var value));
-        Assert.Equal(createdAt.ToString("O"), value);
+        // Was `Assert.Equal(createdAt.ToString("O"), value)` until issue #435 — see the sibling
+        // test on updated_at. This test pinned the defect.
+        Assert.Equal(MetadataValueKind.DateTimeOffset, value.Kind);
+        Assert.Equal(new DateTimeOffset(createdAt), value.DateTimeOffsetValue);
     }
 
     [Fact]
