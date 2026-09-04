@@ -441,6 +441,43 @@ RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.Integration
   --filter "DisplayName~UnderCrossEncoderRerank&DisplayName~scifact"
 ```
 
+**The SPLADE cell needs a second model, which the nightly also does not provision** — for the reason
+Phase 4.1 removed the reranker's provisioning, and more so: this export is **508 MB** against the
+cross-encoder's 88, and every reader sits behind `RAGNET_BEIR_LONG_RUNS`, which that job never sets.
+Provisioning an input no unattended job consumes is the inert-path shape this repository keeps
+deleting.
+
+**The canonical SPLADE model cannot be used here.** `naver/splade-cocondenser-ensembledistil`
+publishes no ONNX export at all — only `pytorch_model.bin` — and converting it locally would produce
+an artefact with no upstream digest to pin, which is precisely what these fenced procedures exist to
+avoid. `Qdrant/Splade_PP_en_v1` publishes `model.onnx` and `vocab.txt` at its root and is pinned
+below. If a checksum fails, do **not** edit the checksum to match — check whether upstream
+republished the revision first.
+
+```bash
+# Qdrant/Splade_PP_en_v1, pinned (recorded 2026-09-04: the revision is main's sha from the HF API;
+# both SHA-256s computed locally after download). The vocab digest is byte-identical to the
+# cross-encoder's above — expected, and worth checking rather than assuming: all three models
+# tokenize with the standard BERT uncased WordPiece vocabulary.
+revision=efcd182bc7eb351e81a9445752d4388c2bab500b
+dir="$RAGNET_BEIR_CACHE/models/Splade_PP_en_v1"
+mkdir -p "$dir"
+curl -fsSL -o "$dir/model.onnx" "https://huggingface.co/Qdrant/Splade_PP_en_v1/resolve/$revision/model.onnx"
+curl -fsSL -o "$dir/vocab.txt"  "https://huggingface.co/Qdrant/Splade_PP_en_v1/resolve/$revision/vocab.txt"
+echo "65adbad0d7e1bc882c867d534821d52e60d6f666a91662be3f58457d08d25bf3  $dir/model.onnx" | sha256sum -c -
+echo "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3  $dir/vocab.txt"  | sha256sum -c -
+
+RAGNET_ONNX_SPLADE_MODEL="$dir/model.onnx" RAGNET_ONNX_SPLADE_VOCAB="$dir/vocab.txt" \
+RAGNET_BEIR_LONG_RUNS=scifact \
+  tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+  -method '*NdcgAt10_UnderSplade_*' -showLiveOutput
+```
+
+**Run it on a quiet machine.** The cell encodes every unit through the MLM before it retrieves
+anything — 20,155 units on SciFact — and that dominates the run. A first attempt on 2026-09-04 took
+roughly 80 minutes with a browser and an editor active, which is why no cost is recorded for it yet:
+a benchmark timing taken under load is not a figure this table should carry.
+
 One more opt-in gate lives in the same project and costs seconds, not hours:
 `RAGNET_IDENTITY_BATTERY_DIR` points `IdentityBatteryDumpTests` at the directory
 `identity_check.py --write-battery` filled with the library comparison's embedder-identity battery

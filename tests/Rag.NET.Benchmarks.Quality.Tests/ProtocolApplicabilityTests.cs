@@ -59,6 +59,7 @@ public sealed class ProtocolApplicabilityTests
             "multihop-rag/RealReranked",
             "multihop-rag/RealHybridBm25",
             "multihop-rag/RealLateChunking",
+            "multihop-rag/RealSplade",
 
             "scifact/GraphRag",
             "fiqa/GraphRag",

@@ -671,6 +671,49 @@ public static class BeirRunBudget
             + "all. The embedding cache absorbs the unit side on a re-run; the sentence side is "
             + "new text and is not in any cache."),
 
+        // Phase 6.2.1: the RealSplade cells. Four entries because the protocol applies to all four
+        // BEIR datasets; SciFact, FiQA and ArguAna are scheduled under the three-corpora scope
+        // decision of 2026-09-02. Unlike every other cell here, these additionally need a model the
+        // repository did not have until 2026-09-04 -- see docs/reference/ci.md for the pinned
+        // Qdrant/Splade_PP_en_v1 procedure. Every figure below is DERIVED until a run replaces it.
+        new(
+            "scifact",
+            BeirProtocol.RealSplade,
+            FitsTheNightly: false,
+            "NOT PINNED, and no clean cost recorded. A first run on 2026-09-04 completed and "
+            + "returned nDCG@10 0.69018, but it FAILED its own mechanism guard through a defect in "
+            + "the guard rather than in the cell -- the expansion evidence compared the query with "
+            + "itself, so it could never have passed. The figure is deterministic and almost "
+            + "certainly right; it is not pinned because this table does not carry numbers from runs "
+            + "whose mechanism assertion did not assert. Re-run after the fix. **And no cost is "
+            + "recorded because that run took roughly 80 minutes with a browser and an editor "
+            + "active** -- a benchmark timing taken under load is not a figure this table should "
+            + "carry, so the re-run wants a quiet machine. NOT DERIVED either: there is nothing in "
+            + "this table shaped like it to derive from. Every other cell scores dense vectors the embedding cache already holds; "
+            + "this one runs a 508 MB MLM over all 20,155 units AND every query, and its output "
+            + "cannot be cached by EmbeddingCache, which is keyed for dense vectors. The nearest "
+            + "analogue is the reranker cell's cross-encoder at 1 h 47 m on this dataset, and that "
+            + "scores only the retrieved candidates rather than the whole corpus. Five cost "
+            + "derivations in this phase have missed; this entry declines rather than adding a "
+            + "sixth. Measure it, then write the number here."),
+        new(
+            "fiqa",
+            BeirProtocol.RealSplade,
+            FitsTheNightly: false,
+            "NOT YET MEASURED, and not derived -- see SciFact's entry. 121,236 units at 6x that "
+            + "corpus, which is the one thing that can be said before a run."),
+        new(
+            "arguana",
+            BeirProtocol.RealSplade,
+            FitsTheNightly: false,
+            "NOT YET MEASURED, and not derived -- see SciFact's entry. 24,003 units, and all 1,406 "
+            + "queries judged, so the query side costs more here than anywhere else."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealSplade,
+            FitsTheNightly: false,
+            "NOT RUN and not scheduled. Its Real leg has never been embedded, and this cell would "
+            + "additionally encode a corpus 33x SciFact's through the MLM."),
         // Phase 6.2.1: the RealLateChunking cells. Four entries because the protocol applies to all
         // four BEIR datasets; SciFact, FiQA and ArguAna are scheduled under the three-corpora scope
         // decision of 2026-09-02. Every figure below is DERIVED until a run replaces it.
@@ -1150,6 +1193,10 @@ public static class BeirRunBudget
             "LATE CHUNKING over the Real protocol's boundaries (document embedded at token level, "
             + "each chunk pooled from token vectors that saw the whole document, against the Real "
             + "dense figure)",
+        BeirProtocol.RealSplade =>
+            "SPLADE learned sparse retrieval over the Real protocol's chunked corpus (units and "
+            + "queries encoded by OnnxSpladeEncoder, sparse dot product, NO dense arm; against the "
+            + "Real dense figure)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -1248,6 +1295,7 @@ public static class BeirRunBudget
             BeirProtocol.RealReranked => "UnderCrossEncoderRerankOverRealChunking",
             BeirProtocol.RealHybridBm25 => "UnderBm25HybridRrfOverRealChunking",
             BeirProtocol.RealLateChunking => "UnderLateChunking",
+            BeirProtocol.RealSplade => "UnderSplade",
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 

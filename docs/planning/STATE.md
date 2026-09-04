@@ -1,7 +1,8 @@
 # Session State
 
-**Last updated:** 2026-09-03, session close (four of five sweep techniques measured on three corpora
-each — HyDE, reranking, hybrid BM25, late chunking; SPLADE blocked on a model nobody has provisioned.
+**Last updated:** 2026-09-04 (SPLADE unblocked and wired — model pinned, cell built, measurement
+postponed for a quiet machine. Four of five sweep techniques measured on three corpora
+each — HyDE, reranking, hybrid BM25, late chunking; SPLADE's model is now provisioned and pinned.
 Twelve PRs merged across two days, each verified on `main` by content)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
@@ -289,6 +290,52 @@ the extraction cache was replayed refuse-on-miss.
   is a page-cache artefact of reading 35,176 files rather than a property of extraction.
 
 ## Recommended Next Step
+
+
+**POSTPONED, 2026-09-04 — SPLADE is wired and unblocked; the measurement waits on a quiet machine.**
+This is the phase's last unmeasured technique, and it is no longer blocked on anything but a run.
+
+**What was blocking it is gone.** Until 2026-09-04 there was no SPLADE model anywhere here: no
+export in the cache, no `RAGNET_ONNX_SPLADE_*` convention, no download procedure, and
+`OnnxSpladeEncoderTests` driving an injected window runner rather than a real session — the encoder
+had **never run against a real model in this repository.** The canonical
+`naver/splade-cocondenser-ensembledistil` publishes no ONNX export at all, so the pinned artefact is
+**`Qdrant/Splade_PP_en_v1`** — revision `efcd182bc7eb351e81a9445752d4388c2bab500b`, model SHA-256
+`65adbad0…`, **508 MB** against the reranker's 88. The fenced procedure is in
+`docs/reference/ci.md`; it is deliberately not in the nightly, for the reason Phase 4.1 removed the
+reranker's.
+
+**Verified before wiring anything:** the shipped `OnnxSpladeEncoder`, unmodified, returned 28
+non-zero terms with max weight 2.3176 on a probe sentence — proof the export satisfies its
+`[1, sequence, vocabulary]` MLM-logits contract.
+
+**To resume, one command** — the fenced block in `docs/reference/ci.md` carries it verbatim:
+
+```
+RAGNET_ONNX_SPLADE_MODEL=… RAGNET_ONNX_SPLADE_VOCAB=… RAGNET_BEIR_LONG_RUNS=scifact \
+  <exe> -method '*NdcgAt10_UnderSplade_*' -showLiveOutput
+```
+
+**Expect nDCG@10 0.69018 on SciFact.** A first run on 2026-09-04 produced exactly that and is
+recorded in `BeirReproduction` as an **observation, not a pin** — it failed its own mechanism guard
+through a defect in the guard, not the cell: the expansion evidence encoded the query and then
+encoded the same string again, so it compared the query with itself and could never have passed.
+Fixed to a word-count proxy with a 3x bar. **If the re-run returns anything other than 0.69018, that
+is a finding and outranks the measurement** — the figure is deterministic.
+
+**Why it waits rather than runs now.** That first run took roughly 80 minutes with a browser and an
+editor active. The nDCG is unaffected by load, but the cost is, and a benchmark timing taken under
+load is not a figure this table should carry — so no cost is recorded and the budget entry says why.
+**The re-run wants an idle machine**, which is also the only way the FiQA and ArguAna cells can be
+scheduled sensibly: SPLADE encodes every unit through the MLM before retrieving anything, so its
+cost tracks unit count, and FiQA has 121,236 against SciFact's 20,155.
+
+**A prediction is written into ArguAna's reproduction entry, before that run.** Hybrid BM25 is
++0.03978 there — the best Real-protocol figure ArguAna has — and the surviving explanation is that
+its harm is specific to matching a *document-shaped or semantically-rescored* query against
+fragments. SPLADE is learned term matching, so if that explanation holds it should also land
+positive. **A negative would mean the explanation is about lexical-versus-dense rather than about
+query shape**, which is a different claim from the one currently recorded.
 
 **Updated 2026-09-03 at session close. Four of the sweep's five techniques are measured on three
 corpora each. SPLADE is the only one left, and it is blocked on provisioning rather than on effort.**

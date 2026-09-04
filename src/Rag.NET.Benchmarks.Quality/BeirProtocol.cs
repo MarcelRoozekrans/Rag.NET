@@ -251,6 +251,35 @@ public enum BeirProtocol
     RealLateChunking,
 
     /// <summary>
+    /// Learned sparse retrieval over <see cref="Real"/>'s units: every unit and every query encoded
+    /// by <c>OnnxSpladeEncoder</c>, scored by sparse dot product with no dense arm at all.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Its control is <see cref="Real"/> on the same dataset</b>, and the comparison is blunter
+    /// than the other Real cells'. <see cref="RealHyde"/> changes the query vector,
+    /// <see cref="RealReranked"/> rescores dense candidates, <see cref="RealHybridBm25"/> fuses a
+    /// lexical arm beside the dense one — all three keep dense retrieval in the path. <b>This
+    /// replaces the ranker entirely.</b> Read its figure as "what a learned sparse retriever scores
+    /// on this corpus", not as "what SPLADE adds to the pipeline".
+    /// </para>
+    /// <para>
+    /// <b>It needs a model the other cells do not, and that is why it went unmeasured for so
+    /// long.</b> Until 2026-09-04 there was no SPLADE model anywhere in this repository: no export
+    /// in the cache, no <c>RAGNET_ONNX_SPLADE_*</c> convention beside the embed and rerank ones, no
+    /// download procedure, and <c>OnnxSpladeEncoderTests</c> driving an injected window runner
+    /// rather than a real session. The encoder had never run against a real model here. The
+    /// canonical <c>naver/splade-cocondenser-ensembledistil</c> publishes no ONNX export at all, so
+    /// the pinned artefact is <c>Qdrant/Splade_PP_en_v1</c> — 508 MB, against the reranker's 88 —
+    /// provisioned by the fenced procedure in <c>docs/reference/ci.md</c> and deliberately not by
+    /// the nightly, for the reason Phase 4.1 removed the reranker from it: an input no unattended
+    /// job consumes is provisioning nobody reads.
+    /// </para>
+    /// <para>Costs no model calls; the encoder is a local ONNX session.</para>
+    /// </remarks>
+    RealSplade,
+
+    /// <summary>
     /// The graph path: entities and relations extracted from the corpus into a graph, that graph
     /// partitioned into communities, and retrieval running over the result — local search out from
     /// the entities a query names, global search over the community summaries. <b>Applies to

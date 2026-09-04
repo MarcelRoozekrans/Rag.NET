@@ -871,6 +871,81 @@ public sealed class BeirAblationTests
         BeirReproduction.AssertReproduces(
             datasetName, BeirProtocol.RealLateChunking, run.NdcgAt10, _output);
     }
+
+    /// <summary>
+    /// SPLADE learned sparse retrieval over Rag.NET's own chunking, against the
+    /// <see cref="BeirProtocol.Real"/> figure on the same dataset.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Gated on its own model, which no other cell needs.</b> <c>RAGNET_ONNX_SPLADE_MODEL</c> and
+    /// <c>_VOCAB</c> point at the pinned <c>Qdrant/Splade_PP_en_v1</c> export — 508 MB, provisioned
+    /// by the fenced procedure in <c>docs/reference/ci.md</c> and deliberately not by the nightly,
+    /// for the reason Phase 4.1 removed the reranker's provisioning: an input no unattended job
+    /// consumes is provisioning nobody reads. Absent, this skips naming the variable rather than
+    /// failing, because a missing model is an environment fact and not a defect.
+    /// </para>
+    /// <para><b>Run it with <c>-showLiveOutput</c></b>, for the reason given above.</para>
+    /// </remarks>
+    /// <param name="datasetName">The dataset to measure.</param>
+    [Theory]
+    [MemberData(nameof(Datasets))]
+    public async Task NdcgAt10_UnderSplade_MeasuresWithTermsProvablyExpanded(string datasetName)
+    {
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.RealSplade),
+            $"{datasetName} does not declare the RealSplade protocol applicable, so measuring it " +
+            "would produce a number that means nothing.");
+
+        Assert.SkipUnless(
+            BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
+            BeirHarness.SkipReason);
+
+        var spladeModel = Environment.GetEnvironmentVariable("RAGNET_ONNX_SPLADE_MODEL");
+        var spladeVocab = Environment.GetEnvironmentVariable("RAGNET_ONNX_SPLADE_VOCAB");
+        Assert.SkipWhen(
+            string.IsNullOrWhiteSpace(spladeModel) || string.IsNullOrWhiteSpace(spladeVocab),
+            "RAGNET_ONNX_SPLADE_MODEL/_VOCAB are not set. This cell needs the pinned " +
+            "Qdrant/Splade_PP_en_v1 export (508 MB), which the nightly deliberately does not " +
+            "provision — see the fenced procedure in docs/reference/ci.md.");
+
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.RealSplade, out var budgetReason),
+            budgetReason);
+
+        var ct = TestContext.Current.CancellationToken;
+        var dataset = await BeirHarness.LoadAsync(descriptor, cacheDirectory, " ", ct);
+
+        using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
+        var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
+
+        using var encoder = new OnnxSpladeEncoder(new OnnxSpladeOptions
+        {
+            ModelPath = spladeModel!,
+            TokenizerVocabPath = spladeVocab!,
+        });
+
+        var units = await BeirRealChunkingTests.ChunkAsync(dataset.Documents, ct);
+        using var row = await SpladeAblationRow.OverAsync(units, encoder, ct);
+
+        var run = await BeirHarness.MeasureAsync(
+            descriptor, dataset, units, row, generator, embeddings, ct);
+
+        _output.WriteLine(FormattableString.Invariant($"""
+            === {descriptor.Name} · {row.Name} ===
+            Dense anchor comparable to published ≈ {descriptor.ParityTarget.PublishedNdcgAt10:F5}; this row replaces dense retrieval entirely rather than varying it.
+            {run.Describe()}
+            """));
+
+        // Before the number is trusted: an encoder emitting only the query's own tokens is BM25
+        // with worse tooling and a 508 MB model, and its figure would describe neither technique.
+        row.AssertExpandedBeyondTheQueryTokens(descriptor.Name);
+
+        BeirReproduction.AssertReproduces(
+            datasetName, BeirProtocol.RealSplade, run.NdcgAt10, _output);
+    }
     /// <summary>The HyDE cell, stating the evidence its guard judges.</summary>
     private static string Describe(
         BeirDatasetDescriptor descriptor, HydeAblationRow row, BeirRunResult run) =>
