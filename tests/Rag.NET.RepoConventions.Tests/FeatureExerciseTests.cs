@@ -70,7 +70,6 @@ public sealed partial class FeatureExerciseTests
         ["Deep Research Loop (Sufficiency-Gated Sub-Query Decomposition)"] = "6.2.1 — an answer-harness arm",
         ["LLM Metadata Extraction at Ingest"] = "6.2.1 — a real model over a real corpus, extracted metadata inspected",
         ["Mind-Map Extractor"] = "6.2.1 — over the MultiHop-RAG slice with replayed calls, like GraphRagFunctionsTests",
-        ["Late Chunking"] = "6.2.1 — measured once in Phase 3.7 and never pinned; under the Real protocol",
         ["Conversational Memory Management"] = "6.2.1 — a multi-turn run through a real pipeline",
         ["LLM Fallback Chain"] = "6.2 — a real failure injected in front of a real client",
         ["Rate Limiting & Cost Budgeting"] = "6.2 — a real client under a real budget",
