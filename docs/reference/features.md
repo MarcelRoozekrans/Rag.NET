@@ -58,6 +58,7 @@ services.AddRagNet(rag => rag
 **Why:** The single biggest quality lever for retrieval. Fixed-size and recursive splitting regularly break mid-paragraph or mid-argument. Semantic chunking ensures each chunk is a self-contained unit of meaning, directly improving retrieval precision.
 
 **Status:** ✅ Done
+**Exercised by:** benchmark — the `SemanticChunking` cell in `BeirAblationTests`, measured on all four BEIR corpora in Phase 6.2.1 and pinned in `BeirReproduction`. `SemanticChunkingStrategy` at its defaults (breakpoint percentile 0.25, minimum 100 characters), against each dataset's **parity** control — same corpus, embedder and retrieval, differing only in where the boundaries fall. SciFact **0.64551** against 0.64593 (−0.00042, a wash), FiQA **0.34509** against 0.37086, ArguAna **0.47502** against 0.50432, TREC-COVID **0.52196**. **Naming the control is load-bearing here and this cell is why the phase learned to do it**: the same SciFact figure reads as a 0.00042 wash against parity and a 0.032 regression against Real, so a cell without a named control is not a measurement. The run asserts the chunker actually split — a corpus where semantic chunking is a no-op fails loudly rather than reporting the control's number under another name.
 
 ---
 

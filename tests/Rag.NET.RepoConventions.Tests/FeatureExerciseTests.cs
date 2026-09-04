@@ -59,7 +59,6 @@ public sealed partial class FeatureExerciseTests
         ["Sliding Window Chunking with Overlap"] = "6.2 — a real document through TokenAwareChunkingStrategy at a window and overlap a user would set; delivered and normalised from `Delivered` on 2026-09-03, which is when it first became visible to this guard",
         ["Multi-Index Federation"] = "6.2 — two real stores federated and queried, which nothing exercises today; delivered and normalised from `Delivered` on 2026-09-03",
         ["Sparse Embedding Retrieval (SPLADE)"] = "6.2.1 — the encoder has unit tests (`OnnxSpladeEncoderTests`, `SpladePoolingTests`); what is unexercised is SPLADE RETRIEVAL, which owes a Real-protocol cell on three corpora like HyDE and reranking now have",
-        ["Semantic Chunking (Embedding-Based Boundary Detection)"] = "6.2.1 — under the Real protocol on a BEIR corpus, differenced against RecursiveChunkingStrategy",
         ["Hierarchical Merger (Regex-Driven Tree Chunking)"] = "6.2.1 — under the Real protocol on a corpus with headings",
         ["Domain-Specific Chunking Templates"] = "6.2.1 — one template on a corpus of its kind, or 6.2 with a real document",
         ["Self-Query / Metadata Filter Generation"] = "6.2.1 — a real model generating filters against a real store",
