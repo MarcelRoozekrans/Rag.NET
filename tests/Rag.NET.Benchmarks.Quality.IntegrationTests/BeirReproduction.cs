@@ -109,6 +109,51 @@ public static class BeirReproduction
             "CPU ONNX Runtime; re-measured 2026-07-31."),
         new(
             "scifact",
+            BeirProtocol.RealSplade,
+            [],
+            "NOT PINNED. A first run on 2026-09-04 returned nDCG@10 0.69018 -- +0.01276 against the " +
+            "Real cell's 0.67742 -- and FAILED its own mechanism guard, through a defect in the " +
+            "guard rather than in the cell: the expansion evidence encoded the query and then " +
+            "encoded the same string again, so it compared the query with itself and could never " +
+            "have passed. The figure is deterministic and expected to reproduce; it is recorded " +
+            "here as an OBSERVATION rather than a pin, because a number from a run whose mechanism " +
+            "assertion did not assert is not evidence the mechanism fired. The re-run has an " +
+            "expectation to check against, which is worth more than an empty entry. **The " +
+            "encoder had never run against a real model in this repository before that date**: " +
+            "encoder had never run against a real model in this repository before that date**: " +
+            "there was no SPLADE export in the cache, no RAGNET_ONNX_SPLADE_* convention, no " +
+            "download procedure, and OnnxSpladeEncoderTests drives an injected window runner. " +
+            "**Its control is the Real cell's 0.67742**, and the comparison is blunter than the " +
+            "other Real cells': this replaces the ranker entirely rather than varying it, so read " +
+            "the figure as what a learned sparse retriever scores on this corpus rather than as " +
+            "what SPLADE adds to the pipeline."),
+        new(
+            "fiqa",
+            BeirProtocol.RealSplade,
+            [],
+            "NEVER RUN -- wired 2026-09-04. **Its control is the Real cell's 0.35569.** FiQA is the " +
+            "corpus where the three dense-path techniques all harmed and only late chunking " +
+            "helped, so a sparse retriever with no dense arm is the least predictable of the four " +
+            "cells here."),
+        new(
+            "arguana",
+            BeirProtocol.RealSplade,
+            [],
+            "NEVER RUN -- wired 2026-09-04. **Its control is the Real cell's 0.47559.** Worth a " +
+            "prediction before it runs, since this phase has twice profited from writing one down: " +
+            "hybrid BM25 is +0.03978 here, the best Real-protocol figure ArguAna has, and the " +
+            "surviving explanation is that its harm is specific to matching a document-shaped or " +
+            "semantically-rescored query against fragments. **SPLADE is term-weighted matching " +
+            "like BM25 but learned, so if that explanation holds it should also land positive.** A " +
+            "negative here would mean the explanation is about lexical-vs-dense rather than about " +
+            "query shape, which is a different claim than the one currently recorded."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealSplade,
+            [],
+            "NOT RUN and not scheduled -- its Real leg has never been embedded."),
+        new(
+            "scifact",
             BeirProtocol.RealLateChunking,
             [0.65510],
             "MEASURED 2026-09-03, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.65510 over the 300 judged queries; 9,507 units over 5,175 of 5,183 documents, max 9 per document. **Against its control, the Real cell's 0.67742, this is −0.02232 — late chunking makes SciFact worse, and it is the first technique measured here to do so.** HyDE, reranking and hybrid BM25 all help this corpus (+0.03647, +0.01266, +0.01880). **This cell varies BOTH the boundaries and the embedding, which was mis-stated when it was written**: late chunking windows at its own 256 tokens rather than reusing RecursiveChunkingStrategy's, so it produced 9,507 units against the Real cell's 20,155 over the same corpus. The comparison is still the end-to-end one a user faces; no part of it isolates the embedding step, so this figure cannot be read as \"whole-document context is worth −0.022\". **8 documents excluded**, carrying control characters BERT's own reference implementation deletes; one is relevant to a judged query, bounding the distortion at 0.00333 against a ±0.005 band. **The first retrieval-quality figure late chunking has ever had** — the allowlist entry claimed Phase 3.7 measured it, and 3.7 measured the parity dense anchor instead. SUPERSEDED TEXT: NEVER RUN -- Phase 6.2.1 wired this cell and has not measured it. **Late chunking has never had a " +
