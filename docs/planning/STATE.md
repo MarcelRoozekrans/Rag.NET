@@ -1,9 +1,8 @@
 # Session State
 
-**Last updated:** 2026-09-02 (HyDE and reranking both complete on three corpora; each helps one
-corpus and harms two. "Parity predicts the sign" asserted and RETIRED the same day. #433, #439,
-#441, #442, #443, #444 merged and verified on `main` by content; ArguAna reranker confirmation
-run finished and agreed at 0.40621. 2026-09-03: AnswerEngines and QueryTechniques both discharged, allowlist 20 → 18 and 6.2.1 owns none of the rest; the Delivered blind spot closed; hybrid BM25 measured on three corpora and it refuted the ArguAna fragmentation explanation; late chunking measured on three corpora and it found a shipped MaxTokens defect)
+**Last updated:** 2026-09-03, session close (four of five sweep techniques measured on three corpora
+each — HyDE, reranking, hybrid BM25, late chunking; SPLADE blocked on a model nobody has provisioned.
+Twelve PRs merged across two days, each verified on `main` by content)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -290,6 +289,54 @@ the extraction cache was replayed refuse-on-miss.
   is a page-cache artefact of reading 35,176 files rather than a property of extraction.
 
 ## Recommended Next Step
+
+**Updated 2026-09-03 at session close. Four of the sweep's five techniques are measured on three
+corpora each. SPLADE is the only one left, and it is blocked on provisioning rather than on effort.**
+
+| corpus | HyDE | Reranking | Hybrid BM25 | Late chunking | SPLADE |
+| --- | --- | --- | --- | --- | --- |
+| SciFact | +0.03647 | +0.01266 | +0.01880 | −0.02232 | **blocked** |
+| FiQA | −0.00886 | −0.00951 | −0.04185 | +0.02800 | **blocked** |
+| ArguAna | −0.02053 | −0.06938 | +0.03978 | +0.01429 | **blocked** |
+
+**What blocks SPLADE, established 2026-09-03 by looking rather than assuming.** There is no SPLADE
+model anywhere: nothing in `~/.cache/ragnet-beir`, no `RAGNET_ONNX_SPLADE_*` convention beside the
+embed and rerank ones, no mention in `nightly.yml` or the provisioning docs, and no download script.
+`OnnxSpladeEncoderTests` drives an injected `WindowRunner` — a substitute — so **the encoder has
+never run against a real model in this repository.** A Real-protocol SPLADE cell is therefore
+*provision a model, invent the env convention, wire the row, then measure*, and the provisioning half
+has never been costed. That is why its allowlist entry says the retrieval owes a cell while the
+encoder has unit tests.
+
+**So the next step is a scoping decision, not a run.** Either cost the provisioning — which model,
+how large, from where, what env convention, whether the nightly can carry it — or state that the
+sweep ships with four of five techniques measured and SPLADE named as out of scope. Both are
+defensible; drifting into the second by leaving the entry open is not.
+
+**What is NOT blocked, if a run is wanted instead:** every technique above has a fourth corpus
+unrun. TREC-COVID's Real leg has never been embedded, so any cell on it pays a cold chunk-and-embed
+of a corpus 33x SciFact's, and HyDE additionally cannot run there at any budget because nobody has
+generated its hypotheticals. That is a paid generation run, not a scheduling decision.
+
+**Read the four measured techniques together before scheduling more of them.** Corpus dominates
+technique: SciFact is helped by three and harmed by one, FiQA harmed by three and helped by one,
+ArguAna split. **No technique in this table is a recommendation without naming the corpus**, and that
+is the sweep's result rather than a caveat on it.
+
+**Three standing cautions, each earned this session:**
+
+1. **Never run a cell with `RAGNET_BEIR_LONG_RUNS=1`.** It means every dataset. Use a name or a
+   comma-separated list; the gate has taken lists since #439.
+2. **Confirm every pin with a second run.** Seven cells were confirmed this session and all seven
+   reproduced their nDCG to five decimals while **none** reproduced its timing.
+3. **Do not derive a cell's cost from another cell.** Five derivations in this phase have missed —
+   high, low, by corpus size, by per-query rate, and by cost shape. The one entry that declined to
+   derive needed no correction.
+
+---
+
+**The text below predates 2026-09-03 and is kept for its reasoning, not its recommendation.**
+
 
 **Updated 2026-09-02. The answer-engine thread and the HyDE thread are both closed; the next step is
 another Real-protocol technique cell, and they are now safe to run one at a time.**
@@ -857,9 +904,25 @@ much larger than answer generation's.
 > really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
 > here before.
 
-**Last landed on `main`:** **#443** as `d4d4d398` (2026-09-02) — ArguAna HyDE at 0.45506, which
-falsified a prediction written down before the run. Verify by content: the pinned `0.45506` in
-`tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirReproduction.cs`.
+**Last landed on `main`:** **#452** as `d7d20666` (2026-09-03) — late chunking measured on three
+corpora, and the `MaxTokens` shipped defect it exposed. Verify by content: `MaxTokens { get; set; }
+= 256` in `src/Rag.NET.Embeddings.Onnx/OnnxTokenEmbeddingOptions.cs`, and the pinned `0.65510` in
+`BeirReproduction.cs`.
+
+Before it, in order: **#451** `b3e7473b` hybrid BM25 on three corpora; **#450** `784d3b5c` the nine
+`Delivered` sections normalised so the exercise guard can see them; **#449** `9ed26ff8` the HyDE
+pipeline-parity test and `QueryTechniques` discharged; **#448** `fd0f8f48` `AnswerEngines`
+discharged; **#446** `93134872` ArguAna reranking and the retraction of "parity predicts the sign";
+**#444** `8fb7f00a` the three-corpora scope decision.
+
+**Twelve PRs merged across 2026-09-02 and 2026-09-03**, each verified on `main` by content rather
+than by a MERGED label.
+
+**This field was seven PRs stale when the session closed — the tenth occurrence of the pattern its
+own note above describes.** It goes stale at the moment work merges, which is the moment nobody is
+editing this file. The note says to derive the branch with `git branch --show-current` and check
+`main` by content; that advice held every time it was followed and this field still drifted whenever
+several PRs landed in one sitting.
 
 Before it, **#442** as `05943fff` — FiQA HyDE at 0.34683, and the correction to what SciFact's cell
 had been read to mean. Verify by content: `0.34683` in the same file.
