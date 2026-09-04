@@ -62,6 +62,12 @@ internal static class UpdatedAtChunkTagAssertion
 
         var wrote = ctx.Chunks[0].Metadata.TryGetValue(ReservedMetadataKeys.UpdatedAt, out var tag);
         Assert.True(wrote, "MetadataBehavior did not write the reserved updated_at chunk tag.");
-        Assert.Equal(updatedAt.Value.ToString("O"), tag);
+        // Was `Assert.Equal(updatedAt.Value.ToString("O"), tag)` until issue #435. The tag is a
+        // TYPED date now, so a store's date mapping applies to it — Azure AI Search's filterable
+        // `dateValue` rather than `stringValue`. The string comparison could not see the change:
+        // a String-kind and a DateTimeOffset-kind MetadataValue holding the same instant render
+        // identically, which is why CI reported "Expected: ...Z / Actual: ...Z / Values differ".
+        Assert.Equal(MetadataValueKind.DateTimeOffset, tag.Kind);
+        Assert.Equal(new DateTimeOffset(updatedAt.Value), tag.DateTimeOffsetValue);
     }
 }
