@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-09-05 (THE TECHNIQUE SWEEP IS COMPLETE — five techniques, three corpora each,
 fifteen cells, every figure pinned and reproduced on an idle machine. What remains of the phase is
-eleven allowlist entries: four cheap runs, one funding decision covering five, two operator calls)
+eight allowlist entries: one cheap cell, one funding decision covering five, two operator calls)
 Seventeen PRs merged across three days, each verified on `main` by content)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
@@ -506,6 +506,42 @@ condition also wants every 6.0 *plan* row pinned and the guards' allowlist empty
 accounts rather than effort, and gating v1.0 by the operator's 2026-08-20 decision.
 
 ---
+
+**2026-09-05, second change — three more allowlist entries discharged, `SectionsAwaitingExercise`
+41 → 38, and only ONE of the three needed new code.** The pattern from the 2026-09-04 audit held:
+entries drift from what the repository already contains.
+
+**BM25 Synonym Expansion needed nothing built.** `InMemoryBm25IndexSynonymTests` already drives the
+real index with and without a `SynonymMap` — "Kubernetes" indexed and retrieved by "k8s", a
+three-term group matching on all forms, a runtime addition taking effect, and
+`Search_NoSynonymMap_ExistingBehaviourUnchanged` pinning the without-expansion case returning
+nothing. That **is** the with-and-without pair the entry asked for, at the mechanism level.
+
+**Hierarchical Merger and Domain-Specific Templates needed one new test between them.**
+`RealPaperExerciseTests` runs a real markdown paper through the real `MarkdownDocumentParser` into
+both strategies. **The parser is not re-implemented**, which is the whole point: both strategies had
+unit tests and sat on the allowlist anyway, because those tests hand-build their `DocumentSection`
+inputs and so cannot catch a disagreement between strategy and parser about what a heading is.
+Mutation-checked — stripping the `##` markers fails both.
+
+**All three pointers state what they do NOT claim.** None carries a retrieval-quality figure. The
+entries wanted Real-protocol cells; **no BEIR corpus has headings** (SciFact documents are a title
+and an abstract, checked against the corpus rather than assumed) and `SynonymMap` ships empty, so a
+synonym cell would have measured whichever vocabulary its author invented. Both entries offered a
+second route and both took it. **Whether heading-aware chunking or synonym expansion helps retrieval
+is unmeasured and says so in the pointer**, because a mechanism test and a quality figure are not
+interchangeable.
+
+**Eight entries remain**, and the shape is now: five needing a paid model under one funding
+decision, one compute-only cell (Tag-Based Retrieval Filtering — a filtered parity leg, needing a
+decision about what tags), and two operator decisions (Time-Weighted's "declared" route, and
+Ensemble/RRF's swap to the library's `RrfMerger`).
+
+**A correction to the 2026-09-04 audit, which called four of these "cheap runs".** Two were not runs
+at all: Hierarchical Merger's Real-protocol framing is unsatisfiable on any corpus here, and
+Domain-Specific Templates keys on the same absent headings. The audit costed them by reading the
+entries rather than checking them against the corpus — better than guessing and still one layer
+short.
 
 **What is left in this phase, and it is no longer measurement of techniques.** The exit condition
 has three clauses: the pipeline-parity test (met), the package allowlist (no 6.2.1 entries remain),

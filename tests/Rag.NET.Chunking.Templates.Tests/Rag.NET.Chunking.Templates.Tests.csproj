@@ -27,4 +27,10 @@
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
 
+
+  <!-- The real paper RealPaperExerciseTests runs through the real markdown parser. Embedded rather
+       than copied to output so the test cannot silently pass against a stale file on disk. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\**\*" />
+  </ItemGroup>
 </Project>
