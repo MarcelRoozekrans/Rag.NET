@@ -540,7 +540,27 @@ tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Be
 in-process runner silently discards — a filtered `dotnet test` runs the whole project and reports
 success, which reads identically to a filtered run that passed. The `-class` argument is honoured.
 
-The split keeps the *parity* number under nightly regression guard on two datasets, which is theThe split keeps the *parity* number under nightly regression guard on two datasets, which is the
+### Metadata extraction, `RAGNET_METADATA_EXTRACTION_GENERATE`
+
+Fills the `metadata-extraction` cache with real model replies. Requires `OPENROUTER_API_KEY`; no
+workflow sets it and the nightly never spends. Absent the variable the pilot replays from cache, and
+with an empty cache it skips rather than reaching the network.
+
+The pilot is 120 chunks — 60 from SciFact and 60 from FiQA — and costs about a cent. The full run
+over SciFact's 20,155 Real-protocol units is priced at roughly $4.63 by `LlmCallShapeTests`.
+
+```bash
+# Pilot: 120 chunks, generating what the cache lacks.
+RAGNET_METADATA_EXTRACTION_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMetadataExtractionPilotTests
+
+# Replay: drop the variable and the same 120 come from cache, free.
+tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMetadataExtractionPilotTests
+```
+
+As with the self-query gate above, these invoke the built executable with `-class` rather than
+`dotnet test --filter`, which the xunit v3 in-process runner silently discards.
+
+The split keeps the *parity* number under nightly regression guard on two datasets, which is theThe split keeps the *parity* number under nightly regression guard on two datasets, which is theThe split keeps the *parity* number under nightly regression guard on two datasets, which is the
 number the milestone exists to protect and the only one that can be checked against a published
 figure at all. **What it gives up is stated rather than buried:** no chunk-to-document max-pooling
 runs against a corpus in the nightly any more. The cheap chunk-shape checks still run there and
