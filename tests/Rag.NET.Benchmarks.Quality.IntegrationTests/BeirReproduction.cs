@@ -227,6 +227,25 @@ public static class BeirReproduction
             "guessed figure."),
         new(
             "scifact",
+            BeirProtocol.RealTagFiltered,
+            [0.67742],
+            "MEASURED 2026-09-05, and it CONFIRMS a prediction recorded before the first run. " +
+            "The filtered leg returns 0.67742 -- SciFact's standalone Real dense figure, to five " +
+            "decimals, not within a band -- from a store holding 141,391 units: 20,155 tagged " +
+            "scifact and 121,236 tagged fiqa. 123,000 hits over 300 queries, 0 leaked and 0 " +
+            "untagged. Recall@10 0.81322, MRR@10 0.63757, matching the Real cell. " +
+            "**The control makes the reproduction mean something**: the SAME store measured " +
+            "unfiltered scores 0.67065, so FiQA does displace judged SciFact documents and the " +
+            "filter is doing work rather than being a no-op. The gap is only -0.00677, which is " +
+            "small but sits outside this file's +/-0.005 band, so it is a real difference rather " +
+            "than noise. Read it as 'a competing corpus costs a little here', NOT as 'filtering " +
+            "rarely matters' -- the pairing is scientific claims against financial QA, about as " +
+            "little lexical competition as two corpora can have. " +
+            "TIMING IS NOT A COST HERE: the first run took 702.7 s and the confirmation 26.9 s " +
+            "with an identical figure and 0 embedding-cache misses in both. The 26x gap is the OS " +
+            "page cache over a 141k-unit read, not compute; budget the cold number."),
+        new(
+            "scifact",
             BeirProtocol.Real,
             [0.67742],
             "20,155 chunks over 5,183 of 5,183 documents, max 25 from one, pooled on all 1,109 " +

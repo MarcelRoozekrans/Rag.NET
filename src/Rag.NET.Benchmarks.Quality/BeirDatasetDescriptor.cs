@@ -220,6 +220,42 @@ public sealed record BeirDatasetDescriptor(
         BeirProtocol.Haystack);
 
     /// <summary>
+    /// SciFact's set: every protocol the other three carry, plus
+    /// <see cref="BeirProtocol.RealTagFiltered"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Spelled out rather than derived from the shared set, because the set type cannot be
+    /// added to</b> — <see cref="BeirProtocolSet"/> is a bitmask with <c>Contains</c> and no
+    /// enumeration, and widening its public API to save thirteen lines in one file is the worse
+    /// trade in a packable project.
+    /// <para>
+    /// <b>Only SciFact declares the tag-filtered protocol, and that is not an omission.</b> The
+    /// protocol names a store composition — SciFact retrieved out of a SciFact+FiQA store — rather
+    /// than a technique applied to a corpus. "FiQA under RealTagFiltered" would have to mean a
+    /// different pairing, with a different control and a different target; it is a run that does
+    /// not exist rather than one nobody has got to yet.
+    /// </para>
+    /// </remarks>
+    private static readonly BeirProtocolSet SciFactProtocols = BeirProtocolSet.Of(
+        BeirProtocol.Parity,
+        BeirProtocol.Real,
+        BeirProtocol.HybridBm25,
+        BeirProtocol.Hyde,
+        BeirProtocol.Reranked,
+        BeirProtocol.RealHyde,
+        BeirProtocol.RealReranked,
+        BeirProtocol.RealHybridBm25,
+        BeirProtocol.RealLateChunking,
+        BeirProtocol.RealSplade,
+        BeirProtocol.RealTagFiltered,
+        BeirProtocol.SemanticChunking,
+        BeirProtocol.Comparison,
+        BeirProtocol.SemanticKernel,
+        BeirProtocol.LangChain,
+        BeirProtocol.LlamaIndex,
+        BeirProtocol.Haystack);
+
+    /// <summary>
     /// SciFact: scientific claims against a corpus of abstracts.
     /// </summary>
     /// <remarks>
@@ -247,7 +283,7 @@ public sealed record BeirDatasetDescriptor(
         ExcludesSelfRetrievedDocument: false,
         ParityTarget: new BeirParityTarget(0.645, SciFactPublishedSource))
     {
-        ApplicableProtocols = EveryProtocolExceptTheGraphPair,
+        ApplicableProtocols = SciFactProtocols,
     };
 
     /// <summary>

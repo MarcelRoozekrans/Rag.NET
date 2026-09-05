@@ -280,6 +280,34 @@ public enum BeirProtocol
     RealSplade,
 
     /// <summary>
+    /// Retrieval over a store holding <b>two</b> corpora, restricted back to one of them by a
+    /// metadata tag naming the corpus each chunk came from.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It is the only protocol here that changes the STORE rather than the ranker.</b> Every
+    /// other one indexes a single corpus and varies how it is cut, fused or rescored. This one
+    /// leaves dense retrieval exactly as <see cref="Real"/> runs it and indexes SciFact together
+    /// with FiQA, tagging every unit with its corpus, so the question is not how well the ranker
+    /// scores but whether the filter restores what a single-corpus store would have returned.
+    /// </para>
+    /// <para>
+    /// <b>Which is why it has a target rather than a figure.</b> The filtered run must reproduce
+    /// SciFact's standalone <see cref="Real"/> number to five decimals. A tag-filtering cell built
+    /// the obvious way — invent tags, filter on them, report the score — would have measured
+    /// whichever vocabulary its author invented, since no BEIR corpus carries tags. The corpus a
+    /// document came from is a fact about the data rather than an invention, and it turns the cell
+    /// into a check that can fail.
+    /// </para>
+    /// <para>
+    /// Costs no model calls, but it is the most expensive cell here to SET UP: it embeds FiQA's
+    /// 57,638 documents alongside SciFact's 5,183 to build one store, against every other cell's
+    /// single corpus.
+    /// </para>
+    /// </remarks>
+    RealTagFiltered,
+
+    /// <summary>
     /// The graph path: entities and relations extracted from the corpus into a graph, that graph
     /// partitioned into communities, and retrieval running over the result — local search out from
     /// the entities a query names, global search over the community summaries. <b>Applies to

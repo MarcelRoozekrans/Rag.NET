@@ -2,7 +2,8 @@
 
 **Last updated:** 2026-09-05 (THE TECHNIQUE SWEEP IS COMPLETE — five techniques, three corpora each,
 fifteen cells, every figure pinned and reproduced on an idle machine. What remains of the phase is
-six allowlist entries: one cheap cell and one funding decision covering five)
+five allowlist entries, ALL behind one funding decision -- every compute-only cell in this
+phase is now measured)
 Seventeen PRs merged across three days, each verified on `main` by content)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
@@ -546,8 +547,10 @@ short.
 **What is left in this phase, and it is no longer measurement of techniques.** The exit condition
 has three clauses: the pipeline-parity test (met), the package allowlist (no 6.2.1 entries remain),
 and every row 6.0 classified as *plan* carrying its pointer and its pin. Only the third is open, and
-it is **six `SectionsAwaitingExercise` entries** — thirteen at the 2026-09-04 audit, which found two
-stale rather than owed, less the three #462 discharged, Ensemble/RRF, SPLADE, and Time-Weighted.
+it is **five `SectionsAwaitingExercise` entries** — thirteen at the 2026-09-04 audit, which found
+two stale rather than owed, less the three #462 discharged, Ensemble/RRF, SPLADE, Time-Weighted and
+Tag-Based. **All five that remain need a paid model, so the phase's remaining work is one decision
+rather than a queue.**
 
 **Time-Weighted took the sanctioned `declared` route on the operator's 2026-09-05 call**, and
 checking it went one layer deeper than the entry did. "BEIR carries no timestamps" is true, but
@@ -571,11 +574,8 @@ re-running that reconciliation after any phase that discharges several entries a
   Extractor, Conversational Memory. All drive an `IChatClient`. `CachedGraphRagClient` plus the
   on-disk `graph-extractions`, `graph-reports` and `graph-answers` caches are how the GraphRAG work
   paid once and replayed free; the same shape applies. **One funding decision covers all five.**
-- **One is compute only and cheap** — Tag-Based Retrieval Filtering (a filtered parity leg, and it
-  needs no model: the feature is explicitly "a lightweight scoping alternative to self-query"). It
-  was four; #462 discharged BM25 Synonym Expansion, Hierarchical Merger and Domain-Specific
-  Chunking Templates, two of which turned out not to be runs at all. The cell this one most
-  resembles, `RealHybridBm25` on SciFact, ran in 172.5 s.
+- **The compute-only group is empty.** It was four. #462 discharged three, two of which turned out
+  not to be runs at all, and Tag-Based Retrieval Filtering was measured on 2026-09-05.
 - **Time-Weighted is closed** — declared on 2026-09-05, the route the entry itself sanctioned. It
   drops the count without measuring anything, which is what declaring means and what the pointer
   admits: whether recency weighting helps retrieval on a real dated corpus stays unverified.
@@ -597,12 +597,22 @@ after the score assertion went in did both that mutation and a 0-based-rank muta
 the fourth guard on this branch that looked right and proved nothing until it was mutated; the
 pattern is now consistent enough to treat mutation as part of writing the guard, not a review step.
 
-**The one cheap entry left carries a design choice that changes what its number means** — which
-tags a filtered parity leg filters on. The same trap emptied the other three: `SynonymMap` ships
-empty, so a "+BM25 with and without expansion" cell would have measured whichever word list its
-author invented, and two entries wanted headings no BEIR corpus has. Settle the choice before
-building, not after: this phase has twice produced a cell that measured something other than its
-name.
+**Tag-Based is measured, and the design choice WAS the job.** BEIR chunks carry no tags, so
+filtering on an invented vocabulary would have measured the invention — the trap that emptied three
+of the other four cheap entries. The operator chose the corpus a document came from, which is a fact
+about the data rather than a choice, and it turned the cell from a score into a TARGET: SciFact
+filtered out of a SciFact+FiQA store must reproduce SciFact's standalone figure. **It did, exactly**
+— 0.67742 to five decimals, 0 leaked hits over 123,000, against a prediction pinned before the run.
+The unfiltered control on the same store scores 0.67065, so the filter was doing work rather than
+sitting over a corpus that never competed.
+
+**Two things that run surfaced, neither of them about tagging.** The 26x gap between its two runs
+(702.7 s then 26.9 s, identical figures, 0 embedding-cache misses both times) is the OS page cache
+over a 141k-unit read — the same artefact that produced three false findings earlier this phase, and
+why the cost entry says to budget the cold number. And `SummariseUnits` prints a document count
+larger than the dataset's and a NEGATIVE "contributed nothing" figure here, because it assumes
+indexed units come from the dataset under measurement. Harmless — the metrics come from qrels — but
+a reader meeting "-57587" should know it is a one-corpus assumption meeting a two-corpus store.
 
 **6.1 remains the milestone's only blocker engineering cannot clear** — 18 cassettes, blocked on
 accounts, gating v1.0 by the operator's 2026-08-20 decision.

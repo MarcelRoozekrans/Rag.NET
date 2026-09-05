@@ -186,6 +186,8 @@ Maintain a "tag knowledge base" of content-tag pairs. At query time, match the u
 
 **Status:** ✅ Done
 
+**Exercised by:** benchmark — the `+tag filter` cell in `BeirTagFilteredTests`, driven by `TagFilteredAblationRow`, measured in Phase 6.2.1 and pinned in `BeirReproduction`. SciFact and FiQA are indexed into ONE store (141,391 units: 20,155 tagged `scifact`, 121,236 tagged `fiqa`) and dense retrieval is restricted back to SciFact by a `MetadataFilter`. **The cell has a target rather than a score**: the filtered run must reproduce SciFact's standalone Real dense figure, and it does — 0.67742 to five decimals, with 0 leaked and 0 untagged hits across 123,000 hits over 300 queries. The same store measured UNFILTERED scores 0.67065, so the filter is demonstrably doing work rather than being a no-op. **What it does NOT establish:** `InMemoryVectorStore` filters before scoring, so this covers the pre-filtering in-memory dense path only — not stores that filter after ranking, and not the BM25 arm of client-side hybrid, which is a separate concern. The tag is the corpus a document came from, chosen because no BEIR corpus carries tags and any invented vocabulary would have been the thing measured. The run is opt-in behind `RAGNET_BEIR_LONG_RUNS`.
+
 ---
 
 ### Time-Weighted Retrieval
