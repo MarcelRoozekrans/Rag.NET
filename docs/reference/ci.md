@@ -519,7 +519,28 @@ RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.Integration
   --filter "FullyQualifiedName~BeirGraphRagAnswerTests"
 ```
 
-The split keeps the *parity* number under nightly regression guard on two datasets, which is the
+### Self-query, `RAGNET_SELF_QUERY_GENERATE`
+
+Fills the `self-query` cache with real model replies. Requires `OPENROUTER_API_KEY`; no workflow
+sets it and the nightly never spends. Absent the variable the pilot replays from cache, and with an
+empty cache it skips rather than reaching the network — `CachedGraphRagClient` is constructed with
+no inner client in that mode, so a miss throws instead of silently costing money.
+
+The pilot is six queries and costs about a hundredth of a cent.
+
+```bash
+# Pilot: six queries, generating what the cache lacks.
+RAGNET_SELF_QUERY_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirSelfQueryPilotTests
+
+# Replay, which is what a re-run should do: drop the variable and the same six come from cache.
+tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirSelfQueryPilotTests
+```
+
+**These invoke the built executable rather than `dotnet test --filter`**, which the xunit v3
+in-process runner silently discards — a filtered `dotnet test` runs the whole project and reports
+success, which reads identically to a filtered run that passed. The `-class` argument is honoured.
+
+The split keeps the *parity* number under nightly regression guard on two datasets, which is theThe split keeps the *parity* number under nightly regression guard on two datasets, which is the
 number the milestone exists to protect and the only one that can be checked against a published
 figure at all. **What it gives up is stated rather than buried:** no chunk-to-document max-pooling
 runs against a corpus in the nightly any more. The cheap chunk-shape checks still run there and
