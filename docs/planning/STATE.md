@@ -503,7 +503,37 @@ store through the SciFact parity leg; local search's yes/no abstention, still un
 `refine`'s −0.1055, whose caveat MapReduce turned into a live question rather than a hedge. The exit
 condition also wants every 6.0 *plan* row pinned and the guards' allowlist empty.
 
-**6.1 remains the milestone's only blocker engineering cannot clear** — 18 cassettes, blocked on
+**The self-query pilot ran against a real model on 2026-09-05, and it cost about a hundredth of a
+cent.** Six queries, six calls; 5 produced a filter and all 5 named the query's own corpus. Both
+mechanism gates held, and a replay run afterwards returned 6 cache hits and 0 misses, so the
+pay-once-replay-free pattern is proven for this feature rather than assumed. It publishes NO
+accuracy figure — six queries cannot support one, and RAPTOR's pilot headline reversed at full
+scale.
+
+**Two corrections it forced, both of mine.**
+
+1. **#467 claimed the funded self-query run "would have crashed on ordinary replies"** because an
+   object-shaped `filters` is "what a schema-free prompt most often gets back". The crash is real
+   and the fix is right, but that frequency claim was speculation and the first evidence
+   contradicts it: **all six real replies used the correct array shape.** The one that produced no
+   filter returned an empty array, not a malformed one. Nothing so far validates the fix, because
+   no reply took the crashing path. Asserting a frequency without evidence is the same habit that
+   mispriced two runs in this phase.
+2. **The pilot's own cache-empty gate reported a full cache as empty.** `GraphExtractionCache`
+   SHARDS entries into subdirectories by key prefix, and the first draft enumerated the top level
+   only — the exact hazard that file's own documentation warns about. Six entries on disk, and the
+   replay run skipped saying "nothing to replay". Fixed to enumerate recursively.
+
+**And a finding about the shipped behaviour, which reframes what this entry can claim.**
+`SelfQueryBehavior` writes its filter into `RetrievalOptions.Filter`, an
+`ISpecification<SearchResult>` that `FilterBehavior` applies as `results.Where(...)` AFTER
+retrieval — with no over-fetch and no backfill. It never writes `MetadataFilter`, the field
+`InMemoryVectorStore` pre-filters on. **So self-query narrows a page of results; it does not scope
+the search.** On a two-corpus store a query asking for ten gets ten, discards the foreign ones and
+returns fewer. The tag-filtered cell's 0.67742 came from a pre-filter and is therefore not a target
+this path can reach, which is worth knowing before the full run is designed around it.
+
+**6.1 remains the milestone's only blocker engineering cannot clear****6.1 remains the milestone's only blocker engineering cannot clear** — 18 cassettes, blocked on
 accounts rather than effort, and gating v1.0 by the operator's 2026-08-20 decision.
 
 ---
