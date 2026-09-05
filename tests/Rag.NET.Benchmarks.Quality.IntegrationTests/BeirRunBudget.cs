@@ -680,33 +680,31 @@ public static class BeirRunBudget
             "scifact",
             BeirProtocol.RealSplade,
             FitsTheNightly: false,
-            "NOT PINNED, and no clean cost recorded. A first run on 2026-09-04 completed and "
-            + "returned nDCG@10 0.69018, but it FAILED its own mechanism guard through a defect in "
-            + "the guard rather than in the cell -- the expansion evidence compared the query with "
-            + "itself, so it could never have passed. The figure is deterministic and almost "
-            + "certainly right; it is not pinned because this table does not carry numbers from runs "
-            + "whose mechanism assertion did not assert. Re-run after the fix. **And no cost is "
-            + "recorded because that run took roughly 80 minutes with a browser and an editor "
-            + "active** -- a benchmark timing taken under load is not a figure this table should "
-            + "carry, so the re-run wants a quiet machine. NOT DERIVED either: there is nothing in "
-            + "this table shaped like it to derive from. Every other cell scores dense vectors the embedding cache already holds; "
-            + "this one runs a 508 MB MLM over all 20,155 units AND every query, and its output "
-            + "cannot be cached by EmbeddingCache, which is keyed for dense vectors. The nearest "
-            + "analogue is the reranker cell's cross-encoder at 1 h 47 m on this dataset, and that "
-            + "scores only the retrieved candidates rather than the whole corpus. Five cost "
-            + "derivations in this phase have missed; this entry declines rather than adding a "
-            + "sixth. Measure it, then write the number here."),
+            "MEASURED 2026-09-05 on an IDLE machine, which is the point: the three SPLADE cells ran "
+            + "as one process in 10,712 s (2 h 59 m) and the confirmation pass in 10,053 s. **The "
+            + "per-dataset `elapsed` figures the runs print are the MEASURE phase only** -- 76.4 s "
+            + "here, 447.8 s FiQA, 308.1 s ArguAna -- because encoding every unit through the MLM "
+            + "happens in SpladeAblationRow.OverAsync before the harness starts its stopwatch. The "
+            + "encoding is the cost, and it is not in those numbers. Budget the whole cell at "
+            + "roughly an hour for SciFact-sized corpora and read the three-dataset total, not the "
+            + "elapsed line. "
+            + "**A first attempt on 2026-09-04 took ~80 minutes for SciFact alone with a browser "
+            + "and an editor active**; the same cell on a quiet machine sits inside a 3 h run that "
+            + "also does 6x and 1.2x the units. That gap is why no cost was recorded then. "
+            + "The DERIVED text this replaces declined to give a number at all, on the grounds that "
+            + "five derivations in this phase had already missed; it is the second entry in the "
+            + "phase to decline and the second to need no correction afterwards."),
         new(
             "fiqa",
             BeirProtocol.RealSplade,
             FitsTheNightly: false,
-            "NOT YET MEASURED, and not derived -- see SciFact's entry. 121,236 units at 6x that "
+            "MEASURED 2026-09-05, idle machine: measure phase 447.8 s, encoding not separately timed -- see SciFact's entry for why the elapsed line understates these cells. 121,236 units at 6x that "
             + "corpus, which is the one thing that can be said before a run."),
         new(
             "arguana",
             BeirProtocol.RealSplade,
             FitsTheNightly: false,
-            "NOT YET MEASURED, and not derived -- see SciFact's entry. 24,003 units, and all 1,406 "
+            "MEASURED 2026-09-05, idle machine: measure phase 308.1 s. 24,003 units, and all 1,406 "
             + "queries judged, so the query side costs more here than anywhere else."),
         new(
             "trec-covid",
