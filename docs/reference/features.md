@@ -197,6 +197,8 @@ Combine semantic similarity score with a recency decay factor. Fresher documents
 
 **Status:** ✅ Done
 
+**Exercised by:** declared — no corpus this repository benchmarks against carries a timestamp, so a time-decay retrieval leg would measure whichever dates its author invented rather than the retriever. Checked against the provisioned corpora rather than assumed: SciFact, FiQA and ArguAna ship `metadata: {}`, and TREC-COVID ships `url` and `pubmed_id` — real metadata, but not a date. Resolving those PubMed ids to publication dates would make a pinned figure depend on a third-party service the harness has no provisioning path for. **What IS verified:** `TimeWeightedRetrieverTests` covers the decay maths and the metadata resolution around it — decay reducing a score, results re-sorting under it, `updated_at` winning over `created_at`, fallback keys in declaration order, and unparseable or absent timestamps leaving the base score untouched. **What stays unverified:** whether recency weighting helps or harms retrieval quality on a real dated corpus. That needs a dated corpus, not a better test.
+
 ---
 
 ### BM25 Synonym Expansion

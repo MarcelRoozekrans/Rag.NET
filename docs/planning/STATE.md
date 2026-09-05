@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-09-05 (THE TECHNIQUE SWEEP IS COMPLETE — five techniques, three corpora each,
 fifteen cells, every figure pinned and reproduced on an idle machine. What remains of the phase is
-seven allowlist entries: one cheap cell, one funding decision covering five, one operator call)
+six allowlist entries: one cheap cell and one funding decision covering five)
 Seventeen PRs merged across three days, each verified on `main` by content)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
@@ -546,8 +546,15 @@ short.
 **What is left in this phase, and it is no longer measurement of techniques.** The exit condition
 has three clauses: the pipeline-parity test (met), the package allowlist (no 6.2.1 entries remain),
 and every row 6.0 classified as *plan* carrying its pointer and its pin. Only the third is open, and
-it is **seven `SectionsAwaitingExercise` entries** — thirteen at the 2026-09-04 audit, which found
-two stale rather than owed, less the three #462 discharged, Ensemble/RRF, and SPLADE.
+it is **six `SectionsAwaitingExercise` entries** — thirteen at the 2026-09-04 audit, which found two
+stale rather than owed, less the three #462 discharged, Ensemble/RRF, SPLADE, and Time-Weighted.
+
+**Time-Weighted took the sanctioned `declared` route on the operator's 2026-09-05 call**, and
+checking it went one layer deeper than the entry did. "BEIR carries no timestamps" is true, but
+"BEIR carries no metadata" would have been false: SciFact, FiQA and ArguAna ship `metadata: {}`
+while TREC-COVID ships `url` and `pubmed_id`. Neither is a date, so the declaration holds — but
+resolving those PubMed ids to publication dates would make a pinned figure depend on a third-party
+service, which is the reason to decline rather than an oversight, and the pointer says so.
 
 **SPLADE was discharged by writing one line, and finding it was the useful part.** The dictionary
 held eight entries while the prose said seven, and the eighth was not an arithmetic slip: #461
@@ -569,8 +576,9 @@ re-running that reconciliation after any phase that discharges several entries a
   was four; #462 discharged BM25 Synonym Expansion, Hierarchical Merger and Domain-Specific
   Chunking Templates, two of which turned out not to be runs at all. The cell this one most
   resembles, `RealHybridBm25` on SciFact, ran in 172.5 s.
-- **One is a decision rather than a run** — Time-Weighted ("a dated corpus, or declared", and BEIR
-  carries no timestamps, so declaring is sanctioned but drops the count without measuring anything).
+- **Time-Weighted is closed** — declared on 2026-09-05, the route the entry itself sanctioned. It
+  drops the count without measuring anything, which is what declaring means and what the pointer
+  admits: whether recency weighting helps retrieval on a real dated corpus stays unverified.
 
 **Ensemble/RRF is discharged (2026-09-05), and it found something.** `HybridFusionParityTests`
 retrieves through a real `IRagPipeline` with `UseHybridSearch` set, so `EnsembleBehavior` fuses a
