@@ -58,7 +58,6 @@ public sealed partial class FeatureExerciseTests
         // ── 6.2.1 Retrieval & Answer Sweep ──────────────────────────────────────────────────
         ["Sliding Window Chunking with Overlap"] = "6.2 — a real document through TokenAwareChunkingStrategy at a window and overlap a user would set; delivered and normalised from `Delivered` on 2026-09-03, which is when it first became visible to this guard",
         ["Multi-Index Federation"] = "6.2 — two real stores federated and queried, which nothing exercises today; delivered and normalised from `Delivered` on 2026-09-03",
-        ["Sparse Embedding Retrieval (SPLADE)"] = "6.2.1 — the encoder has unit tests (`OnnxSpladeEncoderTests`, `SpladePoolingTests`); what is unexercised is SPLADE RETRIEVAL, which owes a Real-protocol cell on three corpora like HyDE and reranking now have",
         ["Self-Query / Metadata Filter Generation"] = "6.2.1 — a real model generating filters against a real store",
         ["Tag-Based Retrieval Filtering"] = "6.2.1 — a filtered parity leg",
         ["Time-Weighted Retrieval"] = "6.2.1 — a dated corpus, or declared",
