@@ -308,6 +308,26 @@ public enum BeirProtocol
     RealTagFiltered,
 
     /// <summary>
+    /// Retrieval whose metadata filter is written by a real model rather than by the harness,
+    /// over the same two-corpus store <see cref="RealTagFiltered"/> uses.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The pair is the point.</b> <see cref="RealTagFiltered"/> applies the corpus filter by
+    /// hand through <c>MetadataFilter</c>, which the store applies while scoring, and reproduces
+    /// the single-corpus figure exactly. This one asks a model to write that same filter and lets
+    /// the pipeline apply it where the pipeline actually does — <c>RetrievalOptions.Filter</c>,
+    /// which <c>FilterBehavior</c> runs as <c>results.Where(...)</c> AFTER the search. Two things
+    /// therefore separate the figures: whether the model picked the right corpus, and what the
+    /// post-retrieval wiring costs even when it did.
+    /// </para>
+    /// <para>
+    /// Costs one model call per query, cached on disk, so a re-run replays free.
+    /// </para>
+    /// </remarks>
+    RealSelfQuery,
+
+    /// <summary>
     /// The graph path: entities and relations extracted from the corpus into a graph, that graph
     /// partitioned into communities, and retrieval running over the result — local search out from
     /// the entities a query names, global search over the community summaries. <b>Applies to

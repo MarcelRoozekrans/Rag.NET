@@ -227,6 +227,23 @@ public static class BeirReproduction
             "guessed figure."),
         new(
             "scifact",
+            BeirProtocol.RealSelfQuery,
+            [0.68247],
+            "MEASURED 2026-09-05, 957.5 s, 300 queries and 300 model calls. Recall@10 0.81656, " +
+            "MRR@10 0.64221. **It BEAT the hand-filtered control, which was not expected**: the " +
+            "pre-filtered tag cell scores 0.67742 on the same store and the unfiltered control " +
+            "0.67065, so self-query is +0.00505 over a filter that cannot leak and +0.01182 over " +
+            "none. The filter is not what did it -- a filter can only remove, and with the same " +
+            "query vector the post-filtered page is a PREFIX of the pre-filtered ranking, so it " +
+            "cannot score higher. The query REWRITE is the only mechanism left: SelfQueryBehavior " +
+            "rewrites the query text and the pipeline embeds the rewrite. This cell measures " +
+            "rewrite AND filter together, and the rewrite is carrying it. " +
+            "**The post-filter's structural cost is real but INVISIBLE here**: 4,496 hits were " +
+            "discarded across 300 queries, and it changed nothing because the harness over-fetches " +
+            "for pooling, so the filtered page still holds far more than the cutoff needs. A caller " +
+            "retrieving at TopK 10 would see the shrinkage this run cannot."),
+        new(
+            "scifact",
             BeirProtocol.RealTagFiltered,
             [0.67742],
             "MEASURED 2026-09-05, and it CONFIRMS a prediction recorded before the first run. " +

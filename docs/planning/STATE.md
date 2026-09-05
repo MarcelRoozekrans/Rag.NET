@@ -2,8 +2,7 @@
 
 **Last updated:** 2026-09-05 (THE TECHNIQUE SWEEP IS COMPLETE — five techniques, three corpora each,
 fifteen cells, every figure pinned and reproduced on an idle machine. What remains of the phase is
-five allowlist entries, ALL behind one funding decision -- every compute-only cell in this
-phase is now measured)
+four allowlist entries, all LLM-funded; Self-Query is measured and discharged)
 Seventeen PRs merged across three days, each verified on `main` by content)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
@@ -532,6 +531,30 @@ retrieval — with no over-fetch and no backfill. It never writes `MetadataFilte
 the search.** On a two-corpus store a query asking for ten gets ten, discards the foreign ones and
 returns fewer. The tag-filtered cell's 0.67742 came from a pre-filter and is therefore not a target
 this path can reach, which is worth knowing before the full run is designed around it.
+
+**Self-Query is measured and discharged (2026-09-05), and its figure is not what I predicted.**
+300 judged queries, 300 model calls, ~$0.01; a replay run returned 300 cache hits, 0 misses and an
+identical figure, so the pin is confirmed. **nDCG@10 0.68247** — against **0.67742** for the same
+two-corpus store filtered by hand and **0.67065** unfiltered.
+
+**I predicted it could not reach 0.67742 and it beat it.** The reasoning was that `FilterBehavior`
+applies self-query's filter as `results.Where(...)` after retrieval with no backfill, so the page
+can only shrink. That part is true — 4,496 hits were discarded across 300 queries. The error was
+treating the filter as the whole technique. `SelfQueryBehavior` also REWRITES the query, and the
+pipeline embeds the rewrite; a filter can only remove, so with the same query vector the
+post-filtered page is a prefix of the pre-filtered ranking and cannot score higher. **The rewrite is
+the only mechanism that can explain +0.00505, and the cell measures rewrite and filter together.**
+
+That is also why the row drives `AddRagNet` rather than a hand-composed chain. The first draft
+composed generate → search → `Where` by hand and could not apply the rewrite at all, because
+`EmbeddingTextOverride` is `internal` to Rag.NET. It would have measured the filter alone, produced
+a LOWER number, and carried the technique's name — the same class of error as the HyDE and RRF
+harness gaps this phase has been closing.
+
+**The post-filter's structural cost is real and this harness cannot see it.** `BeirHarness:736` sets
+`TopK = (Cutoff + …) × maxUnitsPerDocument`, which is 410 deep for a cutoff of 10, so ~15 discards
+per query never approach the cutoff. A caller retrieving at `TopK` 10 would see the shrinkage. The
+pointer says so rather than letting the figure read as a clean endorsement.
 
 **6.1 remains the milestone's only blocker engineering cannot clear****6.1 remains the milestone's only blocker engineering cannot clear** — 18 cassettes, blocked on
 accounts rather than effort, and gating v1.0 by the operator's 2026-08-20 decision.

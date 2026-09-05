@@ -729,6 +729,24 @@ public static class BeirRunBudget
             "The DERIVED text this replaces declined to give a number, on the grounds that five " +
             "derivations in this phase had already missed; that is now three entries that declined " +
             "and three that needed no correction. Not nightly-sized, and gated off by default."),
+        // Phase 6.2.1: the RealSelfQuery cell. Same store as RealTagFiltered, one entry, same
+        // reason -- the protocol names a store composition rather than a corpus.
+        new(
+            "scifact",
+            BeirProtocol.RealSelfQuery,
+            FitsTheNightly: false,
+            "DERIVED until it runs. It builds the SAME two-corpus store as the tag-filtered cell " +
+            "and adds one model call per query -- the counting pass measured self-query at 1.00 " +
+            "call and ~74 tokens per query, so 300 judged queries is about a cent. It also " +
+            "retrieves TWICE per query, once with self-query on and once off, because the pipeline " +
+            "returns the filtered page and says nothing about what it discarded; the difference " +
+            "between the two page sizes is the only way to see that from outside, and the second " +
+            "retrieval costs no model call. Calls go through the self-query cache, so a re-run " +
+            "replays free. Not nightly-sized, and gated off by default. " +
+            "MEASURED 2026-09-05: 957.5 s generating (300 model calls), 33.8 s replaying with 300 " +
+            "cache hits and 0 misses and an identical figure. The 28x gap is the model calls, not " +
+            "the page cache -- the embedding cache reported 141,391 hits and 0 misses in BOTH runs, " +
+            "so the corpus side was already warm each time. Budget the generating number once."),
         // Phase 6.2.1: the RealLateChunking cells. Four entries because the protocol applies to all
         // four BEIR datasets; SciFact, FiQA and ArguAna are scheduled under the three-corpora scope
         // decision of 2026-09-02. Every figure below is DERIVED until a run replaces it.
@@ -1194,6 +1212,17 @@ public static class BeirRunBudget
         BeirProtocol.GraphRagDepthControl =>
             "GRAPHRAG DEPTH CONTROL (the Real leg's article chunks alone, dense-retrieved at the " +
             "graph path's candidate depth, max-pooled to documents)",
+        _ => DescribeRealChunkingCell(protocol),
+    };
+
+    /// <summary>Describes the cells that run over the Real protocol's chunked corpus.</summary>
+    /// <remarks>
+    /// Split from <see cref="Describe(BeirProtocol)"/> only because the combined switch outgrew
+    /// the method-length analyser. The division is the natural one: everything here chunks with
+    /// RecursiveChunkingStrategy and varies what happens afterwards.
+    /// </remarks>
+    private static string DescribeRealChunkingCell(BeirProtocol protocol) => protocol switch
+    {
         BeirProtocol.RealHyde =>
             "+HYDE OVER REAL CHUNKING ablation cell (the Real protocol's chunked corpus, searched " +
             "with the cached hypotheticals' mean vector, against the Real dense figure)",
@@ -1216,6 +1245,10 @@ public static class BeirRunBudget
             "TAG-FILTERED retrieval over a TWO-CORPUS store (SciFact and FiQA indexed together, "
             + "every unit tagged with its corpus, dense retrieval restricted back to one of them; "
             + "must REPRODUCE the single-corpus Real dense figure rather than beat it)",
+        BeirProtocol.RealSelfQuery =>
+            "SELF-QUERY over the same two-corpus store (a real model writes the corpus filter and "
+            + "the pipeline applies it AFTER retrieval, which shrinks the page rather than scoping "
+            + "the search; against the hand-filtered figure, not the single-corpus one)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -1316,6 +1349,7 @@ public static class BeirRunBudget
             BeirProtocol.RealLateChunking => "UnderLateChunking",
             BeirProtocol.RealSplade => "UnderSplade",
             BeirProtocol.RealTagFiltered => "UnderTagFilter",
+            BeirProtocol.RealSelfQuery => "UnderSelfQuery",
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 
