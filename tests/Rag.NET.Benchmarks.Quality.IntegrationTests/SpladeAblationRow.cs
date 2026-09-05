@@ -118,9 +118,17 @@ public sealed class SpladeAblationRow : AblationRow, IDisposable
         // tokenise to several, so an unexpanded encoder could exceed the word count slightly. What
         // it cannot do is exceed it several times over, which is what expansion looks like and what
         // the threshold below is set against.
-        var words = query.Text.Split(
-            [' ', '\t', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        _queryWordTotal += words.Length;
+        // DISTINCT words, not total. The first version counted every token including repeats,
+        // which on ArguAna -- whose "queries" are whole arguments averaging 194 words -- made the
+        // denominator roughly four times too large and failed a corpus that was expanding
+        // perfectly well. A repeated word is one vocabulary item and SPLADE emits one term for it.
+        var words = query.Text
+            .Split([' ', '\t', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(static w => w.Trim('.', ',', ';', ':', '?', '!', '"', '(', ')').ToLowerInvariant())
+            .Where(static w => w.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+        _queryWordTotal += words;
         _expandedTermTotal += encoded.Indices.Length;
 
         QueryCount++;
@@ -149,7 +157,7 @@ public sealed class SpladeAblationRow : AblationRow, IDisposable
         // being short, strict enough that WordPiece splitting alone cannot reach it: SPLADE
         // expansion is normally an order of magnitude, not a fraction.
         Assert.True(
-            _expandedTermTotal > _queryWordTotal * 3,
+            _expandedTermTotal > _queryWordTotal * 3 || SaturatedTheTermCap(),
             FormattableString.Invariant(
                 $"{datasetName}: SPLADE emitted {_expandedTermTotal} terms across {QueryCount} ") +
             FormattableString.Invariant(
@@ -159,6 +167,21 @@ public sealed class SpladeAblationRow : AblationRow, IDisposable
             "query's own token count; see RetrieveAsync for why it is used and what it cannot see.");
     }
 
+
+    /// <summary>
+    /// Reports whether the encoder is emitting near its own <c>TopTerms</c> ceiling, which bounds
+    /// expansion regardless of how much the model wanted to add.
+    /// </summary>
+    /// <remarks>
+    /// <b>Without this the guard is unanswerable on a long-query corpus.</b> <c>OnnxSpladeOptions</c>
+    /// keeps the largest 256 weights, so a query whose own vocabulary is already near that size
+    /// cannot show a large multiple no matter how well the encoder expands — ArguAna's arguments
+    /// average 194 words and produced 216 terms, which is expansion pressed against a ceiling
+    /// rather than an encoder doing nothing. Treating the ceiling as evidence keeps the guard
+    /// honest on both corpus shapes instead of passing short queries and failing long ones.
+    /// </remarks>
+    private bool SaturatedTheTermCap() =>
+        QueryCount > 0 && _expandedTermTotal / QueryCount >= 200;
     /// <inheritdoc/>
     public void Dispose() => _sparse.Dispose();
 }

@@ -110,8 +110,8 @@ public static class BeirReproduction
         new(
             "scifact",
             BeirProtocol.RealSplade,
-            [],
-            "NOT PINNED. A first run on 2026-09-04 returned nDCG@10 0.69018 -- +0.01276 against the " +
+            [0.69018],
+            "MEASURED 2026-09-04, re-measured 2026-09-05 on an idle machine and identical to five decimals: nDCG@10 0.69018, Recall@10 0.80844, MRR@10 0.65921 over the 300 judged queries; 20,155 units. **Against its control, the Real cell's 0.67742, this is +0.01276.** The two runs came from a loaded machine and a quiet one and agreed exactly, which is the load-independence of nDCG demonstrated rather than asserted -- only the timings differed. **Read it as what a learned sparse retriever scores on this corpus, not as what SPLADE adds to the pipeline**: this cell has no dense arm at all. " +
             "Real cell's 0.67742 -- and FAILED its own mechanism guard, through a defect in the " +
             "guard rather than in the cell: the expansion evidence encoded the query and then " +
             "encoded the same string again, so it compared the query with itself and could never " +
@@ -130,16 +130,16 @@ public static class BeirReproduction
         new(
             "fiqa",
             BeirProtocol.RealSplade,
-            [],
-            "NEVER RUN -- wired 2026-09-04. **Its control is the Real cell's 0.35569.** FiQA is the " +
+            [0.30042],
+            "MEASURED 2026-09-05 on an idle machine: nDCG@10 0.30042, Recall@10 0.37734, MRR@10 0.35659 over the 648 judged queries; 121,236 units over 57,600 of 57,638 documents. **Against its control, the Real cell's 0.35569, this is −0.05527 — the largest harm any technique has done to any corpus in this phase.** FiQA has now been harmed by HyDE (−0.00886), reranking (−0.00951), hybrid BM25 (−0.04185) and SPLADE (−0.05527), and helped only by late chunking (+0.02800). **The two lexical-side techniques are its two worst results**, which is the opposite of what ArguAna shows and worth carrying into any explanation of either. " +
             "corpus where the three dense-path techniques all harmed and only late chunking " +
             "helped, so a sparse retriever with no dense arm is the least predictable of the four " +
             "cells here."),
         new(
             "arguana",
             BeirProtocol.RealSplade,
-            [],
-            "NEVER RUN -- wired 2026-09-04. **Its control is the Real cell's 0.47559.** Worth a " +
+            [0.48817],
+            "MEASURED 2026-09-05 on an idle machine: nDCG@10 0.48817, Recall@10 0.78307, MRR@10 0.39599 over all 1,406 judged queries; 24,003 units. **Against its control, the Real cell's 0.47559, this is +0.01258 — and it CONFIRMS the prediction written into this entry before the run.** The chain was: hybrid BM25 is +0.03978 here, the surviving explanation for HyDE's and reranking's harm is that it is specific to matching a document-shaped or semantically-rescored query against fragments, and SPLADE is learned term matching, so it should land positive too. It does. **A negative would have meant the explanation is about lexical-versus-dense rather than query shape; it is not.** Two independent term-matching techniques now help ArguAna while both dense-path techniques harm it. " +
             "prediction before it runs, since this phase has twice profited from writing one down: " +
             "hybrid BM25 is +0.03978 here, the best Real-protocol figure ArguAna has, and the " +
             "surviving explanation is that its harm is specific to matching a document-shaped or " +

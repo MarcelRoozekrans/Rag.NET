@@ -4338,7 +4338,7 @@ closed: ~~RAPTOR~~ (**complete 2026-08-27**, Tasks 1-6 — measured, pinned, and
 below), ~~HyDE~~ (**SciFact measured 2026-09-02 in #433**, 0.71389 against the Real control's
 0.67742, +0.03647; **FiQA measured the same day**, 0.34683 against 0.35569, −0.00886, so the sign is the corpus rather than the technique; **ArguAna measured the same day**, 0.45506 against 0.47559, −0.02053, which falsified the prediction that its near-zero parity effect would stay near zero; TREC-COVID unrunnable for HyDE at any budget, its hypotheticals never generated — see below), reranking
 (**SciFact and FiQA measured 2026-09-02 in the same PR**, +0.01266 and −0.00951; ArguAna and
-TREC-COVID unrun), ~~late chunking~~ (**all three scheduled corpora measured 2026-09-03**: SciFact −0.02232, FiQA +0.02800, ArguAna +0.01429 — anti-correlated with the other three, and it found the `MaxTokens` shipped defect; see below), ~~hybrid BM25~~ (**all three scheduled corpora measured 2026-09-03**: SciFact +0.01880, FiQA −0.04185, ArguAna +0.03978 — and ArguAna refutes the fragmentation explanation the phase had been carrying; see below), SPLADE under the Real protocol — still blocked on a model nobody has provisioned or costed; ~~the
+TREC-COVID unrun), ~~late chunking~~ (**all three scheduled corpora measured 2026-09-03**: SciFact −0.02232, FiQA +0.02800, ArguAna +0.01429 — anti-correlated with the other three, and it found the `MaxTokens` shipped defect; see below), ~~hybrid BM25~~ (**all three scheduled corpora measured 2026-09-03**: SciFact +0.01880, FiQA −0.04185, ArguAna +0.03978 — and ArguAna refutes the fragmentation explanation the phase had been carrying; see below), ~~SPLADE~~ (**all three scheduled corpora measured 2026-09-05**: SciFact +0.01276, FiQA −0.05527, ArguAna +0.01258 — and ArguAna confirms the prediction written before the run; the model was provisioned and pinned 2026-09-04); ~~the
 three answer engines as arms~~ (**built 2026-08-28** on `feat/answer-engine-arms`, not yet merged —
 five arms, `flare` included; no pilot run; see below); every vector store through the SciFact parity
 leg; ~~the
@@ -5099,6 +5099,65 @@ term-count work, and 121,236 short chunks hold roughly the same terms as 57,600 
 each posting list is shorter, so the corpus grew in rows and shrank in per-row work. Fourth cost
 derivation in this phase to miss. **ArguAna's held**, and the difference is that it reasoned from a
 mechanism — query count drives these cells — rather than scaling a number from another corpus.
+
+**SPLADE's thread completed 2026-09-05 — the sweep's fifth and last technique, and the phase's
+technique work is now done.** Measured on all three scheduled corpora on an idle machine, every
+figure reproduced by a confirmation pass agreeing to five decimals.
+
+| corpus | real dense | SPLADE | Δ |
+| --- | --- | --- | --- |
+| SciFact | 0.67742 | 0.69018 | **+0.01276** |
+| FiQA | 0.35569 | 0.30042 | **−0.05527** |
+| ArguAna | 0.47559 | 0.48817 | **+0.01258** |
+
+**It was blocked on provisioning, not capability, and that took a day to establish.** There was no
+SPLADE model anywhere here until 2026-09-04: no export in the cache, no `RAGNET_ONNX_SPLADE_*`
+convention, no download procedure, and `OnnxSpladeEncoderTests` driving an injected window runner —
+the shipped encoder had never run against a real model. The canonical
+`naver/splade-cocondenser-ensembledistil` publishes no ONNX export at all, so the pinned artefact is
+`Qdrant/Splade_PP_en_v1` at 508 MB, fenced in `docs/reference/ci.md` and deliberately absent from the
+nightly.
+
+**THE PREDICTION WRITTEN BEFORE THE RUN IS CONFIRMED.** ArguAna's reproduction entry said, before
+any SPLADE code ran: hybrid BM25 is +0.03978 there, the surviving explanation for HyDE's and
+reranking's harm is that it is specific to matching a *document-shaped or semantically-rescored*
+query against fragments, and SPLADE is learned term matching, so it should land positive. It did:
+**+0.01258**. A negative would have meant the explanation is about lexical-versus-dense rather than
+query shape. **Two independent term-matching techniques now help ArguAna while both dense-path
+techniques harm it**, which is as close to a mechanism as this phase has got.
+
+**The complete sweep — five techniques, three corpora, on the corpus this library actually
+produces:**
+
+| corpus | HyDE | Reranking | Hybrid BM25 | Late chunking | SPLADE |
+| --- | --- | --- | --- | --- | --- |
+| SciFact | +0.03647 | +0.01266 | +0.01880 | −0.02232 | +0.01276 |
+| FiQA | −0.00886 | −0.00951 | −0.04185 | **+0.02800** | −0.05527 |
+| ArguAna | −0.02053 | −0.06938 | **+0.03978** | +0.01429 | +0.01258 |
+
+**Corpus dominates technique, and now with fifteen cells rather than six.** SciFact is helped by four
+of five; **FiQA is harmed by four of five and helped only by late chunking**; ArguAna splits on the
+kind of matching. **No row in that table is a recommendation without naming the corpus**, and that is
+the phase's finding rather than a caveat on it.
+
+**FiQA's −0.05527 is the largest harm any technique has done to any corpus here**, and its two worst
+results are the two lexical-side techniques — the exact inverse of ArguAna, where both lexical
+techniques are its best results. Whatever explains one has to explain the other.
+
+**Cost, measured on an idle machine because a loaded one is not a measurement.** All three cells ran
+as one process in 2 h 59 m; the confirmation pass took 2 h 48 m. **The per-dataset `elapsed` lines
+the runs print are the measure phase only** — encoding every unit through the MLM happens before the
+harness starts its stopwatch, and the encoding is the cost. A first attempt on 2026-09-04 took ~80
+minutes for SciFact alone with a browser and an editor active; on a quiet machine all three fit in
+three hours. That gap is the whole reason the run waited.
+
+**One guard of this cell's needed correcting twice, both times after firing.** The first version
+compared each query against a second encoding of the same string — the query against itself, which
+could never pass and doubled the per-query cost. The second counted *total* words rather than
+distinct ones, so ArguAna — whose queries are whole 194-word arguments — got a denominator four times
+too large and failed while expanding perfectly well; `TopTerms` caps output at 256, making a 3x
+multiple impossible on that corpus by construction. It now counts distinct words and accepts
+saturation at the cap as evidence in its own right.
 
 **Late chunking's thread completed 2026-09-03 — the sweep's fourth technique, and the one that
 found a shipped defect on the way.** Wired as `RealLateChunking` and measured on all three
