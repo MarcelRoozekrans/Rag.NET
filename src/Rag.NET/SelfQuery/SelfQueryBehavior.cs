@@ -70,7 +70,13 @@ public sealed class SelfQueryBehavior : IRetrievalBehavior
             var query = root.TryGetProperty("query", out var qProp) ? qProp.GetString() ?? question : question;
             var filters = new List<KeyValuePair<string, string>>();
 
-            if (root.TryGetProperty("filters", out var filtersProp))
+            // Only an ARRAY is enumerable here. A model returning the more natural
+            // {"topic":"finance"} used to make EnumerateArray throw InvalidOperationException --
+            // which the JsonException catch below does not cover, so it escaped HandleAsync and
+            // failed the whole retrieval rather than degrading. Degrading is the stated intent: see
+            // the comment above the extractor about malformed replies costing only a warning.
+            if (root.TryGetProperty("filters", out var filtersProp)
+                && filtersProp.ValueKind == JsonValueKind.Array)
             {
                 foreach (var f in filtersProp.EnumerateArray())
                 {
