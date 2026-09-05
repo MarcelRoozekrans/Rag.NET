@@ -5158,6 +5158,47 @@ not the page cache: the embedding cache reported 20,155 hits and 0 misses in bot
 it took the retrieval-cell route its siblings take. **Third entry in this phase found to
 mis-describe its own route**, after Hierarchical Merger and Domain-Specific Templates — all three
 written by reading rather than by checking against the code.
+**LLM Metadata Extraction discharged 2026-09-05 — `SectionsAwaitingExercise` 38 → 37, and the run
+had already been paid for.** The cell was measured over two corpora with the real
+`LlmMetadataExtractionBehavior` and a real `gpt-4o-mini`, one call per chunk.
+
+| arm | n | coverage | correct, of those extracted | cross-domain values |
+| --- | --- | --- | --- | --- |
+| SciFact (whole corpus) | 20,155 | **98.79%** | 99.88% | finance × 23 |
+| FiQA (capped control) | 1,000 | **62.70%** | 96.33% | biomedical × 23 |
+
+**The control is what makes this a measurement rather than a number.** The arms differ in the
+corpus and in nothing else — same behaviour, model, schema, temperature and cache — so the
+**36.09-point coverage gap is a property of the corpus, not of the behaviour**. That is precisely
+the claim #470's 120-chunk pilot could suggest and could not establish, and the pilot's predicted
+~40-point gap came in at 36.09. **A pilot that priced the run would have missed this; the one that
+scored it did not.**
+
+**The shortfall is the finding.** The misses are the model returning a literal `{}` — nothing throws
+and nothing fails to parse — and the behaviour attaches with `TryAdd` and logs a per-chunk warning,
+so **37.30% of a FiQA-shaped corpus comes out unlabelled with nothing louder than the log**, and a
+filter over that key quietly does not match those chunks. Live on the shipped path.
+
+**The money was already spent, and nobody had recorded it.** The SciFact cache — all 20,155 entries
+— was generated between 14:00 and 20:17 on 2026-09-05 by a session that ended without committing
+either the cell or a figure, leaving `BeirMetadataExtractionTests.cs` untracked in the checkout. The
+next session opened, asked the operator to fund a $4.63 run, and got 20,155 cache hits and 0 misses.
+**Read the hit rate as the alarm it was**: a never-run cell reporting a perfect cache is either
+prior work or a colliding key, and only counting the entries separates those. It was prior work —
+20,215 files against 20,155 SciFact + 60 pilot FiQA units, exact, and 21,155 after the FiQA arm.
+**A cache is a spend ledger and this phase has no way to read it**; the only reason this was caught
+is that the hit rate was implausible enough to check.
+
+**Both coverage figures are pinned in the cell at ±0.5 points and mutation-checked** at 0.6, which
+fails at the right arm with the right diagnostic. Because replay is deterministic the pin guards the
+**shipped attachment path**, not the model — a coverage move means the behaviour stopped attaching
+what it used to. The discharge's two halves were mutation-checked against each other as well:
+restoring the allowlist entry with the pointer present fails the staleness twin, 1 of 96.
+
+**What it does not claim:** no retrieval-quality figure — whether extracted metadata improves recall
+is unmeasured and this cell structurally cannot say. The section's **Q&A-pair route is untouched**;
+only the structured-tag route ran. FiQA's rate carries an n of 1,000 because its full 121,236 units
+are ~$28 and ~44 hours — **the cap is arithmetic, not thrift**.
 
 **SPLADE's thread completed 2026-09-05 — the sweep's fifth and last technique, and the phase's
 technique work is now done.** Measured on all three scheduled corpora on an idle machine, every
