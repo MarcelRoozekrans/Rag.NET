@@ -32,6 +32,7 @@ public sealed class ProtocolApplicabilityTests
         // computing it from the source it is meant to constrain would agree with any value that
         // source ever takes.
         var expected = ExpectedInapplicablePairs();
+        expected.UnionWith(ExpectedInapplicableBeirPairs());
 
         var actual = new HashSet<string>(
             from d in BeirDatasetDescriptor.All
@@ -80,7 +81,18 @@ public sealed class ProtocolApplicabilityTests
                 "multihop-rag/RealLateChunking",
                 "multihop-rag/RealSplade",
 
-                "scifact/GraphRag",
+            };
+
+    /// <summary>The pairs inapplicable because the protocol belongs to a BEIR dataset, not to all.</summary>
+    /// <remarks>
+    /// Split from <see cref="ExpectedInapplicablePairs"/> only because the combined list outgrew the
+    /// method-length analyser. The seam is the natural one: everything above is inapplicable because
+    /// it belongs to the four BEIR datasets and multihop-rag carries only the graph protocols;
+    /// everything here is inapplicable in the other direction.
+    /// </remarks>
+    private static IReadOnlyList<string> ExpectedInapplicableBeirPairs() =>
+        [
+            "scifact/GraphRag",
                 "fiqa/GraphRag",
                 "arguana/GraphRag",
                 "trec-covid/GraphRag",
@@ -102,5 +114,13 @@ public sealed class ProtocolApplicabilityTests
                 "arguana/RealTagFiltered",
                 "trec-covid/RealTagFiltered",
                 "multihop-rag/RealTagFiltered",
-        };
+
+            // Phase 6.2.1: RealSelfQuery is SciFact's for the same reason as RealTagFiltered --
+            // it names the same two-corpus store, and asks a model to write the filter that cell
+            // applies by hand. The other three would each need a different pairing.
+            "fiqa/RealSelfQuery",
+            "arguana/RealSelfQuery",
+            "trec-covid/RealSelfQuery",
+            "multihop-rag/RealSelfQuery",
+        ];
 }

@@ -110,11 +110,11 @@ public sealed class BeirSelfQueryPilotTests(ITestOutputHelper output)
         var cache = new GraphExtractionCache(
             cacheDirectory,
             GraphExtractionModelIdentity.ModelName,
-            Mode(out var generating),
+            SelfQueryGate.Mode(GenerateVariable, out var generating),
             CacheSubdirectory);
 
         Assert.SkipWhen(
-            !generating && !HasEntries(cache),
+            !generating && !SelfQueryGate.HasEntries(cache),
             $"{GenerateVariable} is unset and the {CacheSubdirectory} cache is empty, so there is " +
             "nothing to replay and nothing may be spent. Set it with an " + ApiKeyVariable +
             " to fill the cache; the pilot costs a fraction of a cent.");
@@ -124,7 +124,7 @@ public sealed class BeirSelfQueryPilotTests(ITestOutputHelper output)
         var behavior = new SelfQueryBehavior
         {
             ChatClient = client,
-            SelfQueryOptions = new SelfQueryOptions { Schema = CorpusSchema },
+            SelfQueryOptions = new SelfQueryOptions { Schema = SelfQuerySchema.Corpus },
         };
 
         var (wellFormed, picked) = await RunPilotAsync(behavior, cache);
@@ -149,20 +149,6 @@ public sealed class BeirSelfQueryPilotTests(ITestOutputHelper output)
     }
 
 
-
-    /// <summary>Reports whether the cache directory holds anything to replay.</summary>
-    /// <remarks>
-    /// <b>Recursive, and that is not incidental.</b> The cache SHARDS entries into subdirectories
-    /// by key prefix, so a non-recursive enumeration reports a full cache as empty — the exact
-    /// hazard <see cref="GraphExtractionCache"/>'s own docs warn about, and one this method walked
-    /// into on its first draft: six cached entries, and the replay run skipped saying "empty".
-    /// A MISSING directory is also empty rather than an error; enumerating it directly throws
-    /// <see cref="DirectoryNotFoundException"/> before the first fill has ever run, turning
-    /// "nothing cached yet" into a red test.
-    /// </remarks>
-    private static bool HasEntries(GraphExtractionCache cache) =>
-        Directory.Exists(cache.EntryDirectory)
-        && Directory.EnumerateFiles(cache.EntryDirectory, "*", SearchOption.AllDirectories).Any();
 
     /// <summary>Runs every pilot query and reports how many filters parsed and how many were right.</summary>
     private async Task<(int WellFormed, int Picked)> RunPilotAsync(
@@ -212,20 +198,6 @@ public sealed class BeirSelfQueryPilotTests(ITestOutputHelper output)
         return (wellFormed, picked);
     }
 
-    /// <summary>The attribute the model filters on, and the only one.</summary>
-    /// <remarks>
-    /// The corpus a document came from, for the reason the tag-filtered cell chose it: no BEIR
-    /// corpus carries tags, so any invented vocabulary would become the thing measured. This one is
-    /// a fact about the data, and it gives the model a question with a knowable right answer.
-    /// </remarks>
-    private static readonly IReadOnlyList<AttributeInfo> CorpusSchema =
-    [
-        new(
-            TagFilteredAblationRow.TagKey,
-            "Which corpus the document came from. 'scifact' holds scientific claims and biomedical " +
-            "abstracts; 'fiqa' holds personal-finance question answering."),
-    ];
-
     /// <summary>
     /// A handful of queries with a knowable right answer, half from each corpus.
     /// </summary>
@@ -243,16 +215,6 @@ public sealed class BeirSelfQueryPilotTests(ITestOutputHelper output)
         ("What is the difference between an ETF and a mutual fund?", "fiqa"),
         ("How do I report capital gains from selling stock on my tax return?", "fiqa"),
     ];
-
-    private static GraphExtractionCacheMode Mode(out bool generating)
-    {
-        var flag = Environment.GetEnvironmentVariable(GenerateVariable);
-        generating = !string.IsNullOrWhiteSpace(flag)
-            && !string.Equals(flag, "0", StringComparison.Ordinal)
-            && !string.Equals(flag, "false", StringComparison.OrdinalIgnoreCase);
-
-        return generating ? GraphExtractionCacheMode.Fill : GraphExtractionCacheMode.RefuseOnMiss;
-    }
 
     private static CachedGraphRagClient OpenClient(GraphExtractionCache cache, bool generating)
     {

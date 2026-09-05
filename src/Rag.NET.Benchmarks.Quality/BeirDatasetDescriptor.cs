@@ -248,6 +248,7 @@ public sealed record BeirDatasetDescriptor(
         BeirProtocol.RealLateChunking,
         BeirProtocol.RealSplade,
         BeirProtocol.RealTagFiltered,
+        BeirProtocol.RealSelfQuery,
         BeirProtocol.SemanticChunking,
         BeirProtocol.Comparison,
         BeirProtocol.SemanticKernel,

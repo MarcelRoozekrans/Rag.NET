@@ -325,7 +325,7 @@ public sealed class BeirDatasetDescriptorTests
             return;
         }
 
-        if (protocol is BeirProtocol.RealTagFiltered)
+        if (protocol is BeirProtocol.RealTagFiltered or BeirProtocol.RealSelfQuery)
         {
             // SciFact's alone, and asserted in BOTH directions rather than exempted. The protocol
             // names a store composition -- SciFact retrieved out of a SciFact+FiQA store -- rather

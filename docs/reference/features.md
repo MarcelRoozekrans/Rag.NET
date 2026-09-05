@@ -175,6 +175,8 @@ Use an LLM to translate a natural-language question into a vector search query p
 
 **Status:** ✅ Done
 
+**Exercised by:** benchmark — the `+self-query` cell in `BeirSelfQueryTests`, driven by `SelfQueryAblationRow` through a real `AddRagNet` pipeline, measured in Phase 6.2.1 and pinned in `BeirReproduction`. A real `gpt-4o-mini` writes a corpus filter for each of SciFact's 300 judged queries against the SciFact+FiQA store (141,391 units); 300 calls, cached, and a replay run reproduces the figure with 0 misses. **nDCG@10 0.68247**, Recall@10 0.81656 — against 0.67742 for the same store hand-filtered and 0.67065 unfiltered. **Read the gain as the query REWRITE, not the filter.** `SelfQueryBehavior` rewrites the query text as well as producing a filter, and a filter can only remove: with the same query vector the post-filtered page is a prefix of the pre-filtered ranking and cannot score higher. **What this does NOT establish:** the filter is applied by `FilterBehavior` as `results.Where(...)` after retrieval, with no over-fetch and no backfill, so it shrinks the page rather than scoping the search — 4,496 hits were discarded across 300 queries and it cost nothing here only because the harness searches 410 deep for pooling. A caller retrieving at `TopK` 10 would see that shrinkage; this cell structurally cannot. The run is opt-in behind `RAGNET_BEIR_LONG_RUNS` and `RAGNET_SELF_QUERY_GENERATE`.
+
 ---
 
 ### Tag-Based Retrieval Filtering
