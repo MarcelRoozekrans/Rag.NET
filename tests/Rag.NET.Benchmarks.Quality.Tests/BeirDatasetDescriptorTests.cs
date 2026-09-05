@@ -301,22 +301,55 @@ public sealed class BeirDatasetDescriptorTests
         {
             foreach (var protocol in Enum.GetValues<BeirProtocol>())
             {
-                if (protocol is BeirProtocol.GraphRag or BeirProtocol.GraphRagDepthControl)
-                {
-                    Assert.False(
-                        descriptor.Supports(protocol),
-                        $"{descriptor.Name} started supporting {protocol}. The graph protocol and " +
-                        "its depth control are MultiHop-RAG's; a BEIR dataset claiming either would " +
-                        "owe a budget cell and a reproduction entry for a run whose judgements " +
-                        "cannot reward a graph, or for a control with no graph run to control for.");
-                    continue;
-                }
-
-                Assert.True(
-                    descriptor.Supports(protocol),
-                    $"{descriptor.Name} stopped supporting {protocol}, which would gate off a measured cell.");
+                AssertApplicability(descriptor, protocol);
             }
         }
+    }
+
+    /// <summary>Asserts one dataset/protocol pair is applicable exactly where it should be.</summary>
+    /// <remarks>
+    /// Extracted from the loop above only because the method outgrew the length analyser. Each
+    /// branch states why the pair is what it is, because "descriptor does not support protocol" is
+    /// indistinguishable in a test summary from "cell passed".
+    /// </remarks>
+    private static void AssertApplicability(BeirDatasetDescriptor descriptor, BeirProtocol protocol)
+    {
+        if (protocol is BeirProtocol.GraphRag or BeirProtocol.GraphRagDepthControl)
+        {
+            Assert.False(
+                descriptor.Supports(protocol),
+                $"{descriptor.Name} started supporting {protocol}. The graph protocol and its " +
+                "depth control are MultiHop-RAG's; a BEIR dataset claiming either would owe a " +
+                "budget cell and a reproduction entry for a run whose judgements cannot reward a " +
+                "graph, or for a control with no graph run to control for.");
+            return;
+        }
+
+        if (protocol is BeirProtocol.RealTagFiltered)
+        {
+            // SciFact's alone, and asserted in BOTH directions rather than exempted. The protocol
+            // names a store composition -- SciFact retrieved out of a SciFact+FiQA store -- rather
+            // than a technique applied to a corpus, so "FiQA under RealTagFiltered" would be a
+            // different pairing with a different control: a run that does not exist rather than one
+            // nobody has got to. Exempting it the way the graph pair is exempted would let somebody
+            // turn it ON for a dataset owing no budget cell and no reproduction entry, which is the
+            // same hole this test exists to close from the other side.
+            var isSciFact = string.Equals(
+                descriptor.Name, BeirDatasetDescriptor.SciFact.Name, StringComparison.Ordinal);
+
+            Assert.True(
+                descriptor.Supports(protocol) == isSciFact,
+                isSciFact
+                    ? $"{descriptor.Name} stopped supporting {protocol}, gating off a measured cell."
+                    : $"{descriptor.Name} started supporting {protocol}, but that protocol is " +
+                      "SciFact's pairing and this dataset owes no budget cell or reproduction " +
+                      "entry for it.");
+            return;
+        }
+
+        Assert.True(
+            descriptor.Supports(protocol),
+            $"{descriptor.Name} stopped supporting {protocol}, which would gate off a measured cell.");
     }
 
     [Fact]
