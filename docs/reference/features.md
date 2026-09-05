@@ -70,6 +70,7 @@ Configurable chunking stage driven by user-supplied regex patterns for each head
 **Why:** Many enterprise document types (legal codes, technical specs, internal wikis) use non-standard heading structures. Regex-driven depth chunking lets operators tune chunking without writing a custom `IChunker`.
 
 **Status:** ✅ Done
+**Exercised by:** test — `RealPaperExerciseTests` runs a real markdown paper through the real `MarkdownDocumentParser` and into `HierarchicalMergerChunkingStrategy`, asserting the heading subtrees drive the split and that subsection content lands with its parent rather than being orphaned. **The parser is not re-implemented**, which is the point: this strategy already had unit tests, and they hand-build their `DocumentSection` inputs, so they cannot catch a disagreement between the strategy and the parser about what a heading is. **The allowlist entry asked for the Real protocol over a corpus with headings, and no BEIR corpus has any** — SciFact documents are a title and an abstract, checked against the corpus rather than assumed — so the entry takes its other route. Mutation-checked: stripping the `##` markers from the document fails both tests. **Whether heading-aware chunking helps retrieval remains unmeasured**, and that is a different claim from this one.
 
 ---
 
@@ -123,6 +124,7 @@ Split C# source files into semantically meaningful chunks using Roslyn. Each chu
 
 ### Domain-Specific Chunking Templates
 **Status:** ✅ Done
+**Exercised by:** test — `RealPaperExerciseTests` runs a real markdown paper through the real `MarkdownDocumentParser` and into `AcademicPaperChunkingStrategy`, asserting its two documented behaviours on a document it did not choose: the abstract is kept and carries `section_type=abstract`, and the references are dropped. This is the entry's "or 6.2 with a real document" route; the other route wanted a corpus of the template's kind, and **no BEIR corpus carries the headings this template keys on**. Mutation-checked: stripping the `##` markers fails it. The other three templates — Book, Legal, Email — remain covered by unit tests only, which this pointer does not claim otherwise about.
 **Package:** `Rag.NET.Chunking.Templates`
 
 Pre-built chunking templates for common vertical document types:
@@ -205,6 +207,7 @@ Augment BM25 retrieval with runtime-updatable domain-specific synonym dictionari
 **Why:** Domain terminology mismatches silently reduce BM25 recall in specialised corpora (medical, legal, engineering).
 
 **Status:** ✅ Done
+**Exercised by:** test — `InMemoryBm25IndexSynonymTests` drives the real `InMemoryBm25Index` with and without a `SynonymMap`: a document indexed as "Kubernetes" is retrieved by the query "k8s" and vice versa, a three-term group matches on all three forms, a runtime addition takes effect on the next query, and **`Search_NoSynonymMap_ExistingBehaviourUnchanged` pins the without-expansion case returning nothing** — the with-and-without pair the allowlist entry asked for. `SqliteBm25IndexSynonymTests` covers the persisted index the same way. **This proves the mechanism and deliberately claims no retrieval-quality number.** The entry originally wanted a BEIR ablation cell differencing nDCG with and without expansion; `SynonymMap` ships empty, so such a cell would measure whichever vocabulary its author invented rather than the feature, and no sourced synonym set for scientific abstracts exists here. Whether expansion helps retrieval on a real corpus is a different question and remains unmeasured — stated rather than implied, because a mechanism test and a quality figure are not interchangeable.
 
 **Performance** (BenchmarkDotNet, .NET 10, i9-12900HK, Release):
 
