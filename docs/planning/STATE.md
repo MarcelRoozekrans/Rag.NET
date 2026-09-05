@@ -2,8 +2,7 @@
 
 **Last updated:** 2026-09-05 (THE TECHNIQUE SWEEP IS COMPLETE — five techniques, three corpora each,
 fifteen cells, every figure pinned and reproduced on an idle machine. What remains of the phase is
-eight allowlist entries: one cheap cell, one funding decision covering five, one operator call, and
-SPLADE's measurement from #461 still missing its `features.md` pointer)
+seven allowlist entries: one cheap cell, one funding decision covering five, one operator call)
 Seventeen PRs merged across three days, each verified on `main` by content)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
@@ -547,17 +546,19 @@ short.
 **What is left in this phase, and it is no longer measurement of techniques.** The exit condition
 has three clauses: the pipeline-parity test (met), the package allowlist (no 6.2.1 entries remain),
 and every row 6.0 classified as *plan* carrying its pointer and its pin. Only the third is open, and
-it is **eight `SectionsAwaitingExercise` entries** — thirteen at the 2026-09-04 audit, which found
-two stale rather than owed, less the three #462 discharged and Ensemble/RRF discharged here.
+it is **seven `SectionsAwaitingExercise` entries** — thirteen at the 2026-09-04 audit, which found
+two stale rather than owed, less the three #462 discharged, Ensemble/RRF, and SPLADE.
 
-**Eight in the dictionary, and the prose above this line has been saying seven.** The eighth is
-SPLADE, and the gap is real rather than an arithmetic slip: #461 measured SPLADE retrieval on three
-corpora and pinned it, which is exactly what the entry asked for, but no pointer was ever added to
-`features.md`, so the entry stayed. It is the cheapest remaining item on this list — the evidence
-exists and only the pointer is missing — and it is NOT counted among the categories below, which
-inherited their shape from the audit. **Counted honestly the list is eight, not seven.**
+**SPLADE was discharged by writing one line, and finding it was the useful part.** The dictionary
+held eight entries while the prose said seven, and the eighth was not an arithmetic slip: #461
+measured SPLADE retrieval on three corpora and pinned it — exactly what the entry asked for — but no
+pointer was ever added to `features.md`, so the entry stayed and the guard stayed green on it. **The
+guard cannot see that shape.** It checks that an entry has no pointer and that a pointer names a
+real class; an entry whose work is DONE but unpointed satisfies both and is indistinguishable from
+one that is genuinely owed. Only reconciling the count against the dictionary surfaced it. Worth
+re-running that reconciliation after any phase that discharges several entries at once.
 
-**They are not eight equal units, which is the point of the audit:**
+**They are not seven equal units, which is the point of the audit:**
 
 - **Five need a paid model** — Self-Query, LLM Metadata Extraction, Deep Research Loop, Mind-Map
   Extractor, Conversational Memory. All drive an `IChatClient`. `CachedGraphRagClient` plus the
