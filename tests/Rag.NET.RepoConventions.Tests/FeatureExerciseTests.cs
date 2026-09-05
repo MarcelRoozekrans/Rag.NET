@@ -59,7 +59,6 @@ public sealed partial class FeatureExerciseTests
         ["Sliding Window Chunking with Overlap"] = "6.2 — a real document through TokenAwareChunkingStrategy at a window and overlap a user would set; delivered and normalised from `Delivered` on 2026-09-03, which is when it first became visible to this guard",
         ["Multi-Index Federation"] = "6.2 — two real stores federated and queried, which nothing exercises today; delivered and normalised from `Delivered` on 2026-09-03",
         ["Self-Query / Metadata Filter Generation"] = "6.2.1 — a real model generating filters against a real store",
-        ["Tag-Based Retrieval Filtering"] = "6.2.1 — a filtered parity leg",
         ["Deep Research Loop (Sufficiency-Gated Sub-Query Decomposition)"] = "6.2.1 — an answer-harness arm",
         ["LLM Metadata Extraction at Ingest"] = "6.2.1 — a real model over a real corpus, extracted metadata inspected",
         ["Mind-Map Extractor"] = "6.2.1 — over the MultiHop-RAG slice with replayed calls, like GraphRagFunctionsTests",

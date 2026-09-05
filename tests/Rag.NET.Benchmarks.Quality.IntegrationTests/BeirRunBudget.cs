@@ -712,6 +712,23 @@ public static class BeirRunBudget
             FitsTheNightly: false,
             "NOT RUN and not scheduled. Its Real leg has never been embedded, and this cell would "
             + "additionally encode a corpus 33x SciFact's through the MLM."),
+        // Phase 6.2.1: the RealTagFiltered cell. ONE entry, not four -- the protocol names a store
+        // composition rather than a corpus, and only SciFact declares it applicable, because the
+        // cell IS "SciFact retrieved out of a SciFact+FiQA store". Adding rows for the other three
+        // would describe runs that cannot exist.
+        new(
+            "scifact",
+            BeirProtocol.RealTagFiltered,
+            FitsTheNightly: false,
+            "MEASURED 2026-09-05. **Two runs, 702.7 s then 26.9 s, identical figures and 0 " +
+            "embedding-cache misses in both** -- the 26x gap is the OS page cache over a " +
+            "141,391-unit read, not compute. Budget the COLD number: roughly 12 minutes. The cell " +
+            "chunks and indexes FiQA's 57,638 documents (121,236 units) beside SciFact's 5,183 " +
+            "(20,155 units) and then measures twice, once filtered and once not, because the " +
+            "unfiltered control is what makes the filtered figure mean anything. " +
+            "The DERIVED text this replaces declined to give a number, on the grounds that five " +
+            "derivations in this phase had already missed; that is now three entries that declined " +
+            "and three that needed no correction. Not nightly-sized, and gated off by default."),
         // Phase 6.2.1: the RealLateChunking cells. Four entries because the protocol applies to all
         // four BEIR datasets; SciFact, FiQA and ArguAna are scheduled under the three-corpora scope
         // decision of 2026-09-02. Every figure below is DERIVED until a run replaces it.
@@ -1195,6 +1212,10 @@ public static class BeirRunBudget
             "SPLADE learned sparse retrieval over the Real protocol's chunked corpus (units and "
             + "queries encoded by OnnxSpladeEncoder, sparse dot product, NO dense arm; against the "
             + "Real dense figure)",
+        BeirProtocol.RealTagFiltered =>
+            "TAG-FILTERED retrieval over a TWO-CORPUS store (SciFact and FiQA indexed together, "
+            + "every unit tagged with its corpus, dense retrieval restricted back to one of them; "
+            + "must REPRODUCE the single-corpus Real dense figure rather than beat it)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -1294,6 +1315,7 @@ public static class BeirRunBudget
             BeirProtocol.RealHybridBm25 => "UnderBm25HybridRrfOverRealChunking",
             BeirProtocol.RealLateChunking => "UnderLateChunking",
             BeirProtocol.RealSplade => "UnderSplade",
+            BeirProtocol.RealTagFiltered => "UnderTagFilter",
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 
