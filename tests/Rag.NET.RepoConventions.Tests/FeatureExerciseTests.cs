@@ -62,7 +62,6 @@ public sealed partial class FeatureExerciseTests
         ["Self-Query / Metadata Filter Generation"] = "6.2.1 — a real model generating filters against a real store",
         ["Tag-Based Retrieval Filtering"] = "6.2.1 — a filtered parity leg",
         ["Time-Weighted Retrieval"] = "6.2.1 — a dated corpus, or declared",
-        ["Ensemble / Reciprocal Rank Fusion (RRF)"] = "6.2.1 — the +BM25 hybrid cell composes RRF by hand today; the library's RrfMerger under the same cell",
         ["Deep Research Loop (Sufficiency-Gated Sub-Query Decomposition)"] = "6.2.1 — an answer-harness arm",
         ["LLM Metadata Extraction at Ingest"] = "6.2.1 — a real model over a real corpus, extracted metadata inspected",
         ["Mind-Map Extractor"] = "6.2.1 — over the MultiHop-RAG slice with replayed calls, like GraphRagFunctionsTests",

@@ -40,7 +40,7 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 public sealed class HybridBm25AblationRow : AblationRow, IDisposable
 {
     /// <summary>
-    /// RRF's rank constant: each list contributes <c>1 / (60 + rank)</c> at 1-based ranks.
+    /// RRF's rank constant: each list contributes <c>0.5 / (60 + rank)</c> at 1-based ranks.
     /// </summary>
     /// <remarks>
     /// 60 is the value the RRF paper (Cormack, Clarke &amp; Büttcher, SIGIR 2009) fixed for all
@@ -48,6 +48,21 @@ public sealed class HybridBm25AblationRow : AblationRow, IDisposable
     /// path — quoted rather than referenced because that type is internal to Rag.NET.
     /// </remarks>
     private const int RankConstant = 60;
+
+    /// <summary>
+    /// Each leg's weight, matching <c>EnsembleOptions.DenseWeight</c> and <c>Bm25Weight</c>, both
+    /// 0.5 by default.
+    /// </summary>
+    /// <remarks>
+    /// <b>This was 1.0, and the difference was invisible.</b> Weighting both legs equally is a
+    /// uniform factor on an RRF sum, so it moves every fused score and no rank — nDCG cannot see it
+    /// and the pinned figures did not move when this changed. It is not invisible everywhere:
+    /// anything reading the fused score directly, <c>MinScore</c> most obviously, saw numbers twice
+    /// the size the library would have produced. Carrying the library's own default costs nothing
+    /// and lets <see cref="HybridFusionParityTests"/> assert score equality outright rather than
+    /// equality-up-to-a-factor, which is a claim a reader has to check rather than read.
+    /// </remarks>
+    private const double DefaultLegWeight = 0.5;
 
     private readonly InMemoryBm25Index _lexicalIndex;
 
@@ -183,7 +198,13 @@ public sealed class HybridBm25AblationRow : AblationRow, IDisposable
     /// <c>n</c> in the other — so the order is made deterministic: dense rank first (the anchor
     /// row's evidence outranks the incomparable retriever's), then chunk id, ordinal.
     /// </remarks>
-    private static IReadOnlyList<ChunkHit> FuseByReciprocalRank(
+    /// <remarks>
+    /// <b>Internal rather than private so parity can reach it.</b> It is a pure function of two
+    /// rankings, and <see cref="HybridFusionParityTests"/> holds it against the library's own
+    /// <c>EnsembleBehavior</c> fusion. Driving this row instead would drag an ONNX embedder into a
+    /// test about arithmetic.
+    /// </remarks>
+    internal static IReadOnlyList<ChunkHit> FuseByReciprocalRank(
         IReadOnlyList<ChunkHit> dense, IReadOnlyList<ChunkHit> lexical)
     {
         var byChunk = new Dictionary<string, Candidate>(
@@ -193,13 +214,13 @@ public sealed class HybridBm25AblationRow : AblationRow, IDisposable
         {
             byChunk[dense[rank].ChunkId] = new Candidate(dense[rank].DocumentId, rank + 1)
             {
-                Score = 1.0 / (RankConstant + rank + 1),
+                Score = DefaultLegWeight / (RankConstant + rank + 1),
             };
         }
 
         for (var rank = 0; rank < lexical.Count; rank++)
         {
-            var contribution = 1.0 / (RankConstant + rank + 1);
+            var contribution = DefaultLegWeight / (RankConstant + rank + 1);
             if (byChunk.TryGetValue(lexical[rank].ChunkId, out var seen))
             {
                 seen.Score += contribution;
@@ -240,7 +261,7 @@ public sealed class HybridBm25AblationRow : AblationRow, IDisposable
     }
 
     /// <summary>Projects BM25 hits onto <see cref="ChunkHit"/>, the same id scheme as the base's.</summary>
-    private static IReadOnlyList<ChunkHit> ToChunkHits(
+    internal static IReadOnlyList<ChunkHit> ToChunkHits(
         IReadOnlyList<(TextChunk chunk, double score)> results)
     {
         var hits = new ChunkHit[results.Count];

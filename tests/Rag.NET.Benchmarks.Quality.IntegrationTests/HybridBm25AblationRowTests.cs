@@ -70,12 +70,16 @@ public sealed class HybridBm25AblationRowTests : IDisposable
     {
         // Dense (cosine against e1..e4 for q = [0.9, 0.5, 0.3, 0.05], TopK 3): d1, d2, d3.
         // Lexical ("zebra quartz"): d4 (tf 2 for "quartz") above d3 (tf 1 for "zebra").
-        // RRF at k=60, 1-based ranks:
-        //   d3 = 1/63 + 1/62   (dense rank 3, lexical rank 2)
-        //   d1 = 1/61          (dense rank 1)
-        //   d4 = 1/61          (lexical rank 1)
-        //   d2 = 1/62          (dense rank 2)
-        // d1 and d4 tie exactly; the dense rank breaks the tie, so d1 precedes d4.
+        // RRF at k=60, 1-based ranks, each leg weighted 0.5 -- the EnsembleOptions default the
+        // library's own ensemble applies, which this row carries so its scores match the shipped
+        // fusion outright rather than up to a factor (see HybridFusionParityTests):
+        //   d3 = 0.5/63 + 0.5/62   (dense rank 3, lexical rank 2)
+        //   d1 = 0.5/61            (dense rank 1)
+        //   d4 = 0.5/61            (lexical rank 1)
+        //   d2 = 0.5/62            (dense rank 2)
+        // d1 and d4 tie exactly; the dense rank breaks the tie, so d1 precedes d4. The weight is a
+        // uniform factor, so it halves every score here and reorders nothing -- which is why the
+        // pinned nDCG figures did not move when it changed.
         var units = FourUnits();
         await IndexAsync(units);
         await WarmQueryAsync("zebra quartz");
@@ -84,10 +88,10 @@ public sealed class HybridBm25AblationRowTests : IDisposable
         var hits = await RetrieveAsync(row, "zebra quartz", topK: 3);
 
         Assert.Equal(["d3#0", "d1#0", "d4#0", "d2#0"], ChunkIds(hits));
-        Assert.Equal((1.0 / 63) + (1.0 / 62), hits[0].Score, 10);
-        Assert.Equal(1.0 / 61, hits[1].Score, 10);
-        Assert.Equal(1.0 / 61, hits[2].Score, 10);
-        Assert.Equal(1.0 / 62, hits[3].Score, 10);
+        Assert.Equal((0.5 / 63) + (0.5 / 62), hits[0].Score, 10);
+        Assert.Equal(0.5 / 61, hits[1].Score, 10);
+        Assert.Equal(0.5 / 61, hits[2].Score, 10);
+        Assert.Equal(0.5 / 62, hits[3].Score, 10);
         Assert.Equal("d3", hits[0].DocumentId);
         Assert.Equal(1, row.QueryCount);
         Assert.Equal(1, row.Bm25ProductiveQueryCount);

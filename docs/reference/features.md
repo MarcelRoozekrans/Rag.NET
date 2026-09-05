@@ -238,6 +238,8 @@ Combine results from multiple retrievers (e.g., BM25 + dense vector) using Recip
 
 **Status:** ✅ Done. `EnsembleBehavior` fuses dense/BM25/(sparse) arms client-side with weighted RRF. Since native-hybrid dispatch landed, a store implementing `IHybridSearchable` (Azure AI Search, Weaviate) serves the hybrid call server-side instead **when nothing native fusion cannot express is configured** — supplying `EnsembleOptions`, a non-zero `MinScore`, or an active sparse arm keeps the client-side ensemble. The chosen path is observable via the `retrieval.hybrid.path` activity tag.
 
+**Exercised by:** test — `HybridFusionParityTests` retrieves through a real `IRagPipeline` with `UseHybridSearch` set and an `IBm25Index` registered, so `EnsembleBehavior` fuses a dense and a lexical arm through `RrfMerger`, and holds the result to the fusion the `+BM25` ablation cell composes by hand — the same documents in the same order AND the same scores. The score half is what gives the line its teeth: mutating the row's rank constant from 60 to 10 leaves an order-only comparison green, because RRF rankings barely move with k. What is NOT covered: the native `IHybridSearchable` dispatch path, which bypasses `RrfMerger` entirely and is a store-side concern (`InMemoryVectorStore` does not implement it), and the sparse third arm, which needs a registered sparse generator.
+
 ---
 
 ### RAPTOR — Recursive Abstractive Tree Summarization

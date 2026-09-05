@@ -46,6 +46,11 @@ internal static class PipelineParity
     /// Optional <c>AddRagNet</c> configuration — how a parity leg turns on an opt-in behaviour such
     /// as <c>UseHyde</c>. Null leaves the default pipeline, which is what the dense leg compares.
     /// </param>
+    /// <param name="tuneOptions">
+    /// Adjusts the retrieval options the pipeline runs under, for parity checks whose behaviour is
+    /// gated on one — the ensemble arm only engages when <c>UseHybridSearch</c> is set, so without
+    /// this hook a fusion comparison would silently compare two plain dense rankings and pass.
+    /// </param>
     /// <param name="configureServices">
     /// Optional registration applied AFTER <c>AddRagNet</c>, so a fixture can replace a service the
     /// builder registered — the last registration wins. This is how a parity leg substitutes a
@@ -65,7 +70,8 @@ internal static class PipelineParity
         int topK,
         CancellationToken ct,
         Action<RagBuilder>? configureRag = null,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        Func<RetrievalOptions, RetrievalOptions>? tuneOptions = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(embedder);
@@ -79,8 +85,9 @@ internal static class PipelineParity
         using var provider = services.BuildServiceProvider();
         var pipeline = provider.GetRequiredService<IRagPipeline>();
 
+        var baseOptions = new RetrievalOptions { TopK = topK };
         var result = await pipeline.RetrieveAsync(
-            query, new RetrievalOptions { TopK = topK }, ct);
+            query, tuneOptions?.Invoke(baseOptions) ?? baseOptions, ct);
 
         if (!result.IsSuccess)
         {

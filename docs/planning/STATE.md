@@ -2,7 +2,8 @@
 
 **Last updated:** 2026-09-05 (THE TECHNIQUE SWEEP IS COMPLETE — five techniques, three corpora each,
 fifteen cells, every figure pinned and reproduced on an idle machine. What remains of the phase is
-eight allowlist entries: one cheap cell, one funding decision covering five, two operator calls)
+eight allowlist entries: one cheap cell, one funding decision covering five, one operator call, and
+SPLADE's measurement from #461 still missing its `features.md` pointer)
 Seventeen PRs merged across three days, each verified on `main` by content)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
@@ -546,29 +547,53 @@ short.
 **What is left in this phase, and it is no longer measurement of techniques.** The exit condition
 has three clauses: the pipeline-parity test (met), the package allowlist (no 6.2.1 entries remain),
 and every row 6.0 classified as *plan* carrying its pointer and its pin. Only the third is open, and
-it is **eleven `SectionsAwaitingExercise` entries** — audited 2026-09-04 by reading, because two of
-the thirteen turned out to be stale rather than owed.
+it is **eight `SectionsAwaitingExercise` entries** — thirteen at the 2026-09-04 audit, which found
+two stale rather than owed, less the three #462 discharged and Ensemble/RRF discharged here.
 
-**They are not eleven equal units, which is the point of the audit:**
+**Eight in the dictionary, and the prose above this line has been saying seven.** The eighth is
+SPLADE, and the gap is real rather than an arithmetic slip: #461 measured SPLADE retrieval on three
+corpora and pinned it, which is exactly what the entry asked for, but no pointer was ever added to
+`features.md`, so the entry stayed. It is the cheapest remaining item on this list — the evidence
+exists and only the pointer is missing — and it is NOT counted among the categories below, which
+inherited their shape from the audit. **Counted honestly the list is eight, not seven.**
+
+**They are not eight equal units, which is the point of the audit:**
 
 - **Five need a paid model** — Self-Query, LLM Metadata Extraction, Deep Research Loop, Mind-Map
   Extractor, Conversational Memory. All drive an `IChatClient`. `CachedGraphRagClient` plus the
   on-disk `graph-extractions`, `graph-reports` and `graph-answers` caches are how the GraphRAG work
   paid once and replayed free; the same shape applies. **One funding decision covers all five.**
-- **Four are compute only and cheap** — Tag-Based Retrieval Filtering (a filtered parity leg, and it
-  needs no model: the feature is explicitly "a lightweight scoping alternative to self-query"), BM25
-  Synonym Expansion, Hierarchical Merger, Domain-Specific Chunking Templates. The cell they most
-  resemble, `RealHybridBm25` on SciFact, ran in 172.5 s.
-- **Two are decisions rather than runs** — Time-Weighted ("a dated corpus, or declared", and BEIR
-  carries no timestamps, so declaring is sanctioned but drops the count without measuring anything);
-  Ensemble/RRF (use the library's `RrfMerger` in the hybrid cell, which today composes fusion by
-  hand matching only that merger's default k).
+- **One is compute only and cheap** — Tag-Based Retrieval Filtering (a filtered parity leg, and it
+  needs no model: the feature is explicitly "a lightweight scoping alternative to self-query"). It
+  was four; #462 discharged BM25 Synonym Expansion, Hierarchical Merger and Domain-Specific
+  Chunking Templates, two of which turned out not to be runs at all. The cell this one most
+  resembles, `RealHybridBm25` on SciFact, ran in 172.5 s.
+- **One is a decision rather than a run** — Time-Weighted ("a dated corpus, or declared", and BEIR
+  carries no timestamps, so declaring is sanctioned but drops the count without measuring anything).
 
-**Each of the four cheap ones carries a design choice that changes what its number means** — which
-synonym vocabulary, which headed corpus, which domain template. `SynonymMap` ships empty, so a
-"+BM25 with and without expansion" cell would measure whichever word list its author invents. Settle
-those before building, not after: this phase has twice produced a cell that measured something other
-than its name.
+**Ensemble/RRF is discharged (2026-09-05), and it found something.** `HybridFusionParityTests`
+retrieves through a real `IRagPipeline` with `UseHybridSearch` set, so `EnsembleBehavior` fuses a
+dense and a lexical arm through the library's own `RrfMerger`, and holds that to the `+BM25` cell's
+hand-composed fusion. The two agreed on k and on the 1-based rank formula, and **disagreed on the
+weights**: the row weighted each leg 1.0 while `EnsembleOptions` defaults `DenseWeight` and
+`Bm25Weight` to 0.5 each, so every harness score was exactly twice the library's. That is a uniform
+factor on an RRF sum — it reorders nothing, nDCG cannot see it, and the SciFact cell reproduced its
+pinned 0.69622 after the row was brought onto the library's default. It mattered anyway: it is
+visible to anything reading the fused score, `MinScore` first, and removing it let the test assert
+score equality outright instead of equality-up-to-a-factor.
+
+**The order-only version of that test was worthless and the mutation check is what said so.**
+Changing the row's rank constant from 60 to 10 left it green — RRF rankings barely move with k. Only
+after the score assertion went in did both that mutation and a 0-based-rank mutation fail. This is
+the fourth guard on this branch that looked right and proved nothing until it was mutated; the
+pattern is now consistent enough to treat mutation as part of writing the guard, not a review step.
+
+**The one cheap entry left carries a design choice that changes what its number means** — which
+tags a filtered parity leg filters on. The same trap emptied the other three: `SynonymMap` ships
+empty, so a "+BM25 with and without expansion" cell would have measured whichever word list its
+author invented, and two entries wanted headings no BEIR corpus has. Settle the choice before
+building, not after: this phase has twice produced a cell that measured something other than its
+name.
 
 **6.1 remains the milestone's only blocker engineering cannot clear** — 18 cassettes, blocked on
 accounts, gating v1.0 by the operator's 2026-08-20 decision.
