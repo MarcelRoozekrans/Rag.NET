@@ -47,6 +47,22 @@ public sealed class LlmCallShapeTests(ITestOutputHelper output)
     /// <summary>Calls per query, MEASURED by <see cref="DeepResearch_MakesOneCallPerDepth"/>.</summary>
     private const int DeepResearchCallsPerQuery = 3;
 
+    /// <summary>
+    /// Documents the Mind-Map cell extracts over: the 60-article <see cref="MultiHopRagSlice"/>,
+    /// which is the route its allowlist entry names and what <c>BeirMindMapTests</c> runs.
+    /// </summary>
+    /// <remarks>
+    /// <b>This was the literal <c>3_000</c>, and it was wrong twice over</b> — it priced the feature
+    /// at $1.59 when it costs about $0.03. MultiHop-RAG's corpus is <b>609</b> documents, not 3,000
+    /// (<c>BeirDatasetDescriptor.MultiHopRag.DocumentCount</c>), and the cell runs the 60-document
+    /// slice rather than the whole corpus. Caught 2026-09-06 by reading the descriptor instead of
+    /// the comment beside the number. The whole corpus would be 609 calls, about $0.32, if a later
+    /// phase wants the wider run. <b>A cost model is only worth having if its inputs are checked
+    /// against the code rather than recalled</b>, which is the same failure the allowlist entries
+    /// keep showing.
+    /// </remarks>
+    private const int MindMapDocuments = MultiHopRagSlice.TargetDocumentCount;
+
     /// <summary>Calls per chunk, MEASURED by <see cref="LlmMetadataExtraction_MakesOneCallPerChunk"/>.</summary>
     private const int ExtractionCallsPerChunk = 1;
 
@@ -260,8 +276,8 @@ public sealed class LlmCallShapeTests(ITestOutputHelper output)
             // 300 judged SciFact queries x 1 call.
             ("Self-Query", 300, 185 + 120 + 200),
 
-            // ~3,000 MultiHop-RAG documents x 1 call.
-            ("Mind-Map Extractor", 3_000, 460 + 4_000 + 1_268),
+            // The 60-article slice x 1 call -- see MindMapDocuments for why it is not 3,000.
+            ("Mind-Map Extractor", MindMapDocuments, 460 + 4_000 + 1_268),
 
             // ~20 conversations x 10 turns, one summary per processed history.
             ("Conversational Memory", 200, 88 + 2_000 + 500),
