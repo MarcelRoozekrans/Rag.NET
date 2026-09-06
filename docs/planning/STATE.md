@@ -2,8 +2,10 @@
 
 **Last updated:** 2026-09-05 (THE TECHNIQUE SWEEP IS COMPLETE — five techniques, three corpora each,
 fifteen cells, every figure pinned and reproduced on an idle machine. What remains of the phase is
-four allowlist entries, all LLM-funded; Self-Query is measured and discharged)
-Seventeen PRs merged across three days, each verified on `main` by content)
+**three** allowlist entries, all LLM-funded — Self-Query and **LLM Metadata Extraction** are both
+measured and discharged. **A cache is a spend ledger nothing here reads**: the metadata run's
+$4.63 had already been paid by an earlier session that ended without committing the cell or the
+figure, and the only thing that caught it was a never-run cell reporting 20,155 hits and 0 misses)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -291,6 +293,43 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
+**Next: three allowlist entries, all needing a paid model — Deep Research Loop, Mind-Map Extractor,
+Conversational Memory.** They are the whole of what 6.2.1's exit condition still owes. **Pilot each
+before funding it.** That rule has now paid twice: #470's pilot found the silent `{}` shortfall that
+a well-formedness check would have called 120/120 success, and the full run confirmed it at scale.
+
+**BEFORE SPENDING ANYTHING, COUNT THE CACHE.** `~/.cache/ragnet-beir/<subdirectory>` is a spend
+ledger and nothing in this repository reads it. On 2026-09-05 a session asked the operator to fund a
+$4.63 run that an earlier session the same day had already paid for and left unrecorded; the tell was
+a never-run cell reporting 20,155 hits and 0 misses. **Read a perfect hit rate on a first run as an
+alarm, not a result** — it is either prior work or a colliding key, and counting entries against
+expected units separates them in one command.
+
+---
+
+**2026-09-05, later — LLM Metadata Extraction measured and discharged, `SectionsAwaitingExercise`
+38 → 37.**
+
+| arm | n | coverage | correct | cross-domain |
+| --- | --- | --- | --- | --- |
+| SciFact (whole) | 20,155 | **98.79%** | 99.88% | finance × 23 |
+| FiQA (capped control) | 1,000 | **62.70%** | 96.33% | biomedical × 23 |
+
+**The corpus is the only variable, so the 36.09-point gap is the corpus.** Same behaviour, model,
+schema, temperature and cache on both arms. The pilot predicted ~40 points from 120 chunks and got
+36.09 — its finding held, and a single-corpus run could not have established it. FiQA is capped
+because its 121,236 units are ~$28 and ~44 hours; **the cap is arithmetic, not thrift.**
+
+**The shortfall is live on the shipped path.** Misses are a literal `{}`, nothing throws, and the
+behaviour attaches with `TryAdd` plus a per-chunk warning — so **37.30% of a FiQA-shaped corpus is
+unlabelled with nothing louder than a log**, and a filter over that key silently does not match.
+Both figures are pinned at ±0.5 and mutation-checked at 0.6; replay being deterministic, the pin
+guards the attachment path rather than the model.
+
+**Also fixed on the way:** a line in `docs/reference/ci.md` was triplicated on itself — introduced
+doubled by #468 and worsened by #470, and on `main` for two days. Nothing guards prose for that.
+
+---
 
 **2026-09-05 — the technique sweep is COMPLETE. Five techniques, three corpora each, fifteen cells,
 every figure pinned and reproduced.**
@@ -995,7 +1034,19 @@ much larger than answer generation's.
 > really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
 > here before.
 
-**Last landed on `main`:** **#452** as `d7d20666` (2026-09-03) — late chunking measured on three
+**Last landed on `main`:** **#470** as `e2d5f39c` (2026-09-05) — the 120-chunk metadata-extraction
+pilot, and the silent coverage gap it found before the full run was funded. Verify by content:
+`BeirMetadataExtractionPilotTests` under `tests/Rag.NET.Benchmarks.Quality.IntegrationTests/`, and
+`RAGNET_METADATA_EXTRACTION_GENERATE` in `docs/reference/ci.md`.
+
+**This field was EIGHTEEN PRs stale when this session opened — the eleventh occurrence**, and the
+largest gap yet. It named #452 (`d7d20666`) while `main` carried #470; everything from #453 to #470
+had landed in between. The note above held again: `git branch --show-current` and a content check
+against `main` were both right, and this field was wrong. **The eleventh occurrence is not new
+information about forgetfulness — it is the tenth confirmation that a mutable pointer in a file
+nobody edits at merge time cannot be maintained.** Update it only when new work lands.
+
+Before it, **#452** as `d7d20666` (2026-09-03) — late chunking measured on three
 corpora, and the `MaxTokens` shipped defect it exposed. Verify by content: `MaxTokens { get; set; }
 = 256` in `src/Rag.NET.Embeddings.Onnx/OnnxTokenEmbeddingOptions.cs`, and the pinned `0.65510` in
 `BeirReproduction.cs`.
