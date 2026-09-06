@@ -122,5 +122,11 @@ public sealed class ProtocolApplicabilityTests
             "arguana/RealSelfQuery",
             "trec-covid/RealSelfQuery",
             "multihop-rag/RealSelfQuery",
+
+            // Phase 6.2.1: RealDeepResearch is a TECHNIQUE rather than a store composition, so
+            // unlike the two above it is applicable to all four BEIR datasets and only MultiHop-RAG
+            // is excluded -- it carries the graph pair and not the Real-protocol technique cells.
+            // Which of the four are scheduled is BeirRunBudget's business, not applicability's.
+            "multihop-rag/RealDeepResearch",
         ];
 }

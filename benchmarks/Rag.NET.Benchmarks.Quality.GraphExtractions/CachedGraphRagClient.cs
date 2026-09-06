@@ -377,8 +377,48 @@ public sealed class CachedGraphRagClient : IChatClient
             parts.Add(FormattableString.Invariant($"seed={seed}"));
         }
 
+        if (callerOptions.ResponseFormat is { } responseFormat)
+        {
+            parts.Add(RenderResponseFormat(responseFormat));
+        }
+
         return string.Join(";", parts);
     }
+
+    /// <summary>
+    /// Renders <see cref="ChatOptions.ResponseFormat"/> into a key part.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This field used to be refused outright, and refusing it made a shipped feature
+    /// unmeasurable.</b> <c>DeepResearchRetriever</c> asks for JSON on every sufficiency check and
+    /// catches every exception as "sufficient", so the refusal was swallowed: the loop stopped at
+    /// depth 0, no call reached the cache, and a 300-query benchmark reproduced the dense figure
+    /// exactly while reporting 0 hits and 0 misses. Refusing an unkeyable request is the right
+    /// posture; the mistake was calling this one unkeyable when it renders in one line.
+    /// </para>
+    /// <para>
+    /// <b>Existing entries are unaffected.</b> No cached request can carry a response format,
+    /// because setting one threw, so this adds a part to keys that never had it and changes none
+    /// of the 86,510-odd entries already on disk.
+    /// </para>
+    /// <para>
+    /// The schema is rendered too, not just the discriminator: two JSON-schema requests differing
+    /// only in their schema get materially different replies, and sharing one entry between them
+    /// is exactly what <see cref="ThrowIfUnkeyable"/> exists to prevent. An unrecognised subtype
+    /// still throws rather than rendering a name that might not capture what it does.
+    /// </para>
+    /// </remarks>
+    private static string RenderResponseFormat(ChatResponseFormat format) => format switch
+    {
+        ChatResponseFormatText => "responseFormat=text",
+        ChatResponseFormatJson json => FormattableString.Invariant(
+            $"responseFormat=json;schemaName={json.SchemaName};schema={json.Schema?.ToString() ?? "none"}"),
+        _ => throw new InvalidOperationException(
+            $"ChatOptions.ResponseFormat is a {format.GetType().Name}, which this cache has no " +
+            "rendering for. Add one rather than letting a request reach the model unkeyed -- two " +
+            "materially different requests would otherwise share one cache entry."),
+    };
 
     /// <summary>
     /// Refuses a request that sets a response-affecting field <see cref="RenderOptionsKey"/> cannot
@@ -394,8 +434,6 @@ public sealed class CachedGraphRagClient : IChatClient
     {
         ThrowIfSet(options.Instructions is { Length: > 0 }, nameof(options.Instructions),
             "it is sent to the model as additional system-level guidance and can change the response text");
-        ThrowIfSet(options.ResponseFormat is not null, nameof(options.ResponseFormat),
-            "it constrains the shape of the model's reply (for example, forcing JSON)");
         ThrowIfSet(options.StopSequences is { Count: > 0 }, nameof(options.StopSequences),
             "it truncates the model's reply at a caller-chosen point");
         ThrowIfSet(options.FrequencyPenalty is not null, nameof(options.FrequencyPenalty),
