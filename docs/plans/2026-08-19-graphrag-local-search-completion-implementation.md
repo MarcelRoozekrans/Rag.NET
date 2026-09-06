@@ -103,7 +103,7 @@ figure, recorded as a follow-up debt in ROADMAP.md rather than left as an open n
   `IGraphRagSearch` remains the registered local-search surface. Task 5 constructs
   `GraphLocalSearchBehavior` directly in the benchmark, so it must stay `public` and constructible.
 
-- [ ] **Step 1: Prove `CollectTopEntities` is dead before deleting it**
+- [x] **Step 1: Prove `CollectTopEntities` is dead before deleting it**
 
 Run:
 ```bash
@@ -113,7 +113,7 @@ Expected: exactly one hit — the declaration at `src/Rag.NET.GraphRag/GraphLoca
 If any call site exists, STOP: the spec's "dead code since #312" claim is wrong and this task
 needs re-planning rather than a deletion.
 
-- [ ] **Step 2: Invert the two placement tests that assert the old default**
+- [x] **Step 2: Invert the two placement tests that assert the old default**
 
 `PipelinePlacementTests.cs` already asserts the behaviour it is now this task's job to remove, in
 two places. Both change; a third stays and becomes the evidence for the design.
@@ -154,7 +154,7 @@ delegate, so `Assert.Equal(1, retrieval.Count(t => t == typeof(GraphLocalSearchB
 holds — and it is now the test proving the claim in this task's Interfaces block: a caller who
 places the behaviour deliberately still gets it. Leave it alone and say so in the commit body.
 
-- [ ] **Step 3: Run them to verify 2a fails and 2c passes**
+- [x] **Step 3: Run them to verify 2a fails and 2c passes**
 
 Run: `dotnet test tests/Rag.NET.GraphRag.Tests/Rag.NET.GraphRag.Tests.csproj --filter "FullyQualifiedName~PipelinePlacementTests"`
 Expected: `LeavesTheObsoleteLocalSearchOutOfTheChain` FAILS — the behaviour is still placed —
@@ -162,7 +162,7 @@ while `StillPlacesEachBehaviourExactlyOnce` PASSES both before and after this ta
 this point, the explicit-placement path is broken and that is a different bug; stop and diagnose
 before continuing.
 
-- [ ] **Step 4: Delete `CollectTopEntities` and stop registering the behaviour**
+- [x] **Step 4: Delete `CollectTopEntities` and stop registering the behaviour**
 
 In `src/Rag.NET.GraphRag/GraphLocalSearchBehavior.cs`, delete the whole `CollectTopEntities`
 method (declaration at line 66 through its closing brace).
@@ -172,7 +172,7 @@ In `src/Rag.NET.GraphRag/RagBuilderExtensions.cs`, remove the
 `services.AddSingleton<GraphLocalSearchBehavior>(...)` registration at line 170 — the type stays
 resolvable for anyone who placed it deliberately, and for the benchmark.
 
-- [ ] **Step 5: Record the deprecation in `<remarks>` — deliberately NOT `[Obsolete]`**
+- [x] **Step 5: Record the deprecation in `<remarks>` — deliberately NOT `[Obsolete]`**
 
 **Controller ruling, made at pre-flight — do not "restore" the attribute.** `Directory.Build.props:16`
 sets `TreatWarningsAsErrors=true`, so `CS0618` is a build **error**, and these two members are
@@ -207,7 +207,7 @@ to `PageRankWeight`'s `<remarks>` at line 74, in one sentence plus the 2,255-of-
 **Add no `[Obsolete]`, no `#pragma warning disable`, and no `NoWarn`.** If you find yourself adding
 a suppression, the attribute went in against this ruling — take it out instead.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `dotnet test tests/Rag.NET.GraphRag.Tests/Rag.NET.GraphRag.Tests.csproj`
 Expected: PASS, including the existing `GraphLocalSearchBehaviorTests` — the arithmetic is
@@ -224,7 +224,7 @@ Run: `dotnet build Rag.NET.slnx`
 Expected: no errors and no new warnings — `TreatWarningsAsErrors=true` is set repo-wide in
 `Directory.Build.props:16`, so a warning anywhere is a failure here.
 
-- [ ] **Step 7: Update the package README**
+- [x] **Step 7: Update the package README**
 
 In `src/Rag.NET.GraphRag/README.md`, change lines 29, 47 and 94 so the documented pipeline no
 longer places `GraphLocalSearchBehavior`, and the "for entity questions" sentence at line 94
@@ -235,7 +235,7 @@ var search = provider.GetRequiredService<IGraphRagSearch>();
 var answer = await search.LocalSearchAsync("Which analysts covered both companies?");
 ```
 
-- [ ] **Step 8: Record the scheduled removal in the roadmap**
+- [x] **Step 8: Record the scheduled removal in the roadmap**
 
 In `docs/planning/ROADMAP.md`, under Phase 6.2.1's block, append to the debt list:
 
@@ -248,7 +248,7 @@ In `docs/planning/ROADMAP.md`, under Phase 6.2.1's block, append to the debt lis
   figure**, in the same phase.
 ```
 
-- [ ] **Step 9: Verify and commit**
+- [x] **Step 9: Verify and commit**
 
 Run: `dotnet build Rag.NET.slnx` and confirm no new warnings.
 ```bash
@@ -277,7 +277,7 @@ from that clause would be writing the paraphrase this method exists to prevent.
 - Consumes: nothing.
 - Produces: the section Task 3 implements against. Task 3's rendering code is invalid without it.
 
-- [ ] **Step 1: Fetch the upstream conversation-history source**
+- [x] **Step 1: Fetch the upstream conversation-history source**
 
 ```bash
 gh api "repos/microsoft/graphrag/contents/packages/graphrag/graphrag/query/context_builder/conversation_history.py" --jq '.content' | base64 -d > /tmp/conversation_history.py
@@ -289,7 +289,7 @@ find the new path with
 `gh api "repos/microsoft/graphrag/git/trees/main?recursive=1" --jq '.tree[].path' | grep conversation`
 and record the path you actually read in the section below.
 
-- [ ] **Step 2: Read the source and record what it says**
+- [x] **Step 2: Read the source and record what it says**
 
 Read `/tmp/conversation_history.py` in full, plus the `conversation_history` handling in
 `build_context` in `/tmp/mixed_context.py`. Append to
@@ -326,7 +326,7 @@ Fill every angle-bracketed slot with what the source says. An empty slot means t
 read. If upstream's behaviour cannot be reproduced here, say so in 9.6 — that is a finding, not a
 failure.
 
-- [ ] **Step 3: Settle open question 1 with the evidence now in hand**
+- [x] **Step 3: Settle open question 1 with the evidence now in hand**
 
 The spec's open question 1 — *"Does the answer prompt change?"* — was to be decided "when 6.x.2
 renders its first context". It has: `LocalSearchPrompt` exists and `LocalSearchContextBuilder`
@@ -338,7 +338,7 @@ same isolation argument that made the `filtered` arm interpretable. `LocalSearch
 library default for `LocalSearchAsync`; measuring it against the others is a separate arm and a
 separate question.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/plans/2026-08-18-graphrag-local-search-microsoft-spec.md
@@ -379,7 +379,7 @@ git commit -m "docs(plans): upstream's conversation history, read from source"
   default. §9 is the authority; if a step below still disagrees with it, §9 wins and the step is
   stale — say so in your report rather than splitting the difference.
 
-- [ ] **Step 1: Write the failing test for the budget subtraction**
+- [x] **Step 1: Write the failing test for the budget subtraction**
 
 Add to `tests/Rag.NET.GraphRag.Tests/LocalSearch/LocalSearchContextBuilderTests.cs`:
 
@@ -422,7 +422,7 @@ public void HistoryTokensComeOffTheTotalBeforeTheProportions()
 which is what makes the "did the other sections shrink" assertion meaningful. Do not add a second
 fixture builder beside it.
 
-- [ ] **Step 2: Write the failing test for assembly order**
+- [x] **Step 2: Write the failing test for assembly order**
 
 ```csharp
 [Fact]
@@ -447,7 +447,7 @@ public void HistoryIsTheFirstSectionInTheContext()
 
 **Use the banner string spec §9.3 records**, not the one guessed here, if they differ.
 
-- [ ] **Step 3: Write the failing test for the turn cap — it keeps the OLDEST turns**
+- [x] **Step 3: Write the failing test for the turn cap — it keeps the OLDEST turns**
 
 Spec §9.2, verified at source. `mixed_context.py:165` calls `build_context(..., recency_bias=False)`,
 and the truncation is `if recency_bias: qa_turns = qa_turns[::-1]` followed by
@@ -498,7 +498,7 @@ public void RecencyBiasReversesWhichTurnsSurvive()
 }
 ```
 
-- [ ] **Step 3b: Write the failing test for QA grouping and user-turns-only**
+- [x] **Step 3b: Write the failing test for QA grouping and user-turns-only**
 
 Spec §9.1 and §9.2. The cap counts **QA turns**, not raw messages: only a `User` turn starts a new
 pair, and every non-user turn between two user turns is absorbed into the preceding pair's answers —
@@ -551,12 +551,12 @@ public void AssistantTurnsRenderWhenUserTurnsOnlyIsOff()
 }
 ```
 
-- [ ] **Step 4: Run all three to verify they fail**
+- [x] **Step 4: Run all three to verify they fail**
 
 Run: `dotnet test tests/Rag.NET.GraphRag.Tests/Rag.NET.GraphRag.Tests.csproj --filter "FullyQualifiedName~LocalSearchContextBuilderTests"`
 Expected: FAIL to compile — `ConversationTurn` does not exist. That is the correct first failure.
 
-- [ ] **Step 5: Add the turn model**
+- [x] **Step 5: Add the turn model**
 
 Create `src/Rag.NET.GraphRag/LocalSearch/ConversationTurn.cs`:
 
@@ -588,7 +588,7 @@ public enum ConversationRole
 public sealed record ConversationTurn(ConversationRole Role, string Content);
 ```
 
-- [ ] **Step 6: Add the option, the input and the fill**
+- [x] **Step 6: Add the option, the input and the fill**
 
 `LocalSearchContextOptions` — beside the other upstream defaults:
 
@@ -657,7 +657,7 @@ public required SectionFill History { get; init; }
 Adding a `required` member breaks every existing construction of `LocalSearchContext`. There is
 one, in `LocalSearchContextBuilder.Build`. Fix it there; do not relax `required`.
 
-- [ ] **Step 7: Build the section, first, and subtract it first**
+- [x] **Step 7: Build the section, first, and subtract it first**
 
 In `LocalSearchContextBuilder.Build`, replace the budget arithmetic:
 
@@ -808,14 +808,14 @@ implement CSV quoting on that basis — `ContextTable` does not quote for any ot
 inventing quoting here on an unverified detail would make history the only section rendered by
 different rules. Note it as a known open difference in the `<remarks>` and move on.
 
-- [ ] **Step 8: Run the tests to verify they pass**
+- [x] **Step 8: Run the tests to verify they pass**
 
 Run: `dotnet test tests/Rag.NET.GraphRag.Tests/Rag.NET.GraphRag.Tests.csproj --filter "FullyQualifiedName~LocalSearchContextBuilderTests"`
 Expected: PASS, all three new tests and every existing one. Existing tests that construct
 `LocalSearchContext` or assert on total token counts may need the new `History` fill; update them,
 and if any existing assertion about budgets changes value, say why in the commit body.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/Rag.NET.GraphRag/LocalSearch tests/Rag.NET.GraphRag.Tests/LocalSearch
@@ -840,7 +840,7 @@ git commit -m "feat(graphrag): conversation history in the local search context"
 
   The two-argument forms stay, delegating with an empty history.
 
-- [ ] **Step 1: Confirm the interface can still change shape**
+- [x] **Step 1: Confirm the interface can still change shape**
 
 `IGraphRagSearch` shipped in #321 on 2026-08-19 and the published packages are at 0.1.0 from
 2026-08-11, so it is not in any released package and adding members needs no obsolete cycle.
@@ -853,7 +853,7 @@ git tag -l | tail -5
 Expected: no tag at or after 2026-08-18. If a release did go out, add the overloads as **default
 interface methods** instead of abstract ones, so existing implementers still compile.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Add to `tests/Rag.NET.GraphRag.Tests/LocalSearch/GraphRagSearchTests.cs`:
 
@@ -881,18 +881,18 @@ the underscored names written there are wrong for this codebase; rename them to
 `HistoryTokensComeOffTheTotalBeforeTheProportions`,
 `HistoryIsTheFirstSectionInTheContext` and `OnlyTheMostRecentTurnsAreKept`.
 
-- [ ] **Step 3: Run it to verify it fails**
+- [x] **Step 3: Run it to verify it fails**
 
 Run: `dotnet test tests/Rag.NET.GraphRag.Tests/Rag.NET.GraphRag.Tests.csproj --filter "FullyQualifiedName~HistoryReachesTheAssembledContext"`
 Expected: FAIL to compile — no three-argument overload.
 
-- [ ] **Step 4: Add the overloads to the interface**
+- [x] **Step 4: Add the overloads to the interface**
 
 In `IGraphRagSearch.cs`, add both members with full doc comments, including a
 `<param name="history">` that says turns are oldest-first and that only
 `LocalSearchContextOptions.ConversationHistoryMaxTurns` of them reach the context.
 
-- [ ] **Step 5: Implement them**
+- [x] **Step 5: Implement them**
 
 In `GraphRagSearch.cs`, make the existing two-argument methods delegate:
 
@@ -1033,12 +1033,12 @@ honest one available; if it is a substitute you can capture arguments from, asse
 the embedded string contains both the question and the history, which is the stronger test. Read
 the fixture and pick the stronger option it supports.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run: `dotnet test tests/Rag.NET.GraphRag.Tests/Rag.NET.GraphRag.Tests.csproj`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/Rag.NET.GraphRag/LocalSearch tests/Rag.NET.GraphRag.Tests/LocalSearch
@@ -1074,7 +1074,7 @@ So this arm bypasses `RenderContext` and substitutes its context directly, **int
 comparable to `dense`, `control` and `filtered`. Measuring `LocalSearchPrompt` as well is a
 separate arm and a separate question — do not fold it in here.
 
-- [ ] **Step 1: Add the arm constant**
+- [x] **Step 1: Add the arm constant**
 
 In `AnswerArm.cs`, beside the others:
 
@@ -1096,7 +1096,7 @@ public const string LocalSpec = "localspec";
 
 and add it to `All`.
 
-- [ ] **Step 2: Run the harness's own guard to see it fail**
+- [x] **Step 2: Run the harness's own guard to see it fail**
 
 `MultiHopRagAnswerReproduction.Find` throws for a pair with no entry — by design, so an arm
 cannot exist without something pinning its figure.
@@ -1106,7 +1106,7 @@ Expected: FAIL with "No answer reproduction is recorded for dataset 'multihop-ra
 localspec arm." If no test calls `RequireRecordedCase` over `AnswerArm.All`, add one — that guard
 is what this step is exercising.
 
-- [ ] **Step 3: Add the empty pin entry**
+- [x] **Step 3: Add the empty pin entry**
 
 In `MultiHopRagAnswerReproduction.cs`:
 
@@ -1125,12 +1125,12 @@ new(
     "search. Phase 6.x.7."),
 ```
 
-- [ ] **Step 4: Run it to verify the guard passes**
+- [x] **Step 4: Run it to verify the guard passes**
 
 Run: `dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --filter "FullyQualifiedName~RequireRecordedCase"`
 Expected: PASS.
 
-- [ ] **Step 5: Build the context in `GraphRagRun`**
+- [x] **Step 5: Build the context in `GraphRagRun`**
 
 Add to `GraphRagRun.cs`, constructing `GraphRagSearch` over the run's existing graph store, graph
 chunk store, document store and embedder — read the class first and reuse its fields rather than
@@ -1157,7 +1157,7 @@ with a `Lazy<GraphRagSearch>` field built from the run's stores and a `NullLogge
 client it takes is unused by `BuildLocalContextAsync`; pass the run's answering client so the
 type is satisfied without a second dependency.
 
-- [ ] **Step 6: Dispatch the arm**
+- [x] **Step 6: Dispatch the arm**
 
 In `BeirGraphRagAnswerTests.cs`, the arm loop currently maps every arm to an
 `IReadOnlyList<SearchResult>` before rendering. Add the string path around it:
@@ -1182,7 +1182,7 @@ and collect `localSpecContexts` in the same sequential pre-pass as the other gra
 `CollectGraphStoreContextsAsync` — for the reason its remark already gives: retrieving per arm in
 the parallel phase would let a difference between arms be a difference in what was retrieved.
 
-- [ ] **Step 7: Run the harness's fast path to verify it wires up**
+- [x] **Step 7: Run the harness's fast path to verify it wires up**
 
 Run:
 ```bash
@@ -1194,7 +1194,7 @@ with a measured accuracy, asserting nothing. If it needs `RAGNET_GRAPHRAG_ANSWER
 `OPENROUTER_API_KEY`, set them — 5 queries is a handful of completions. If the corpus is not
 provisioned the test skips; that is fine here, and Task 6 is where provisioning matters.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add tests/Rag.NET.Benchmarks.Quality.IntegrationTests
@@ -1220,7 +1220,7 @@ search. This task replaces that with a number about local search.
 - Produces: the pinned accuracy for `localspec`, and the answer to whether local search beats
   dense when it is not starving the model.
 
-- [ ] **Step 1: Confirm the preconditions before spending anything**
+- [x] **Step 1: Confirm the preconditions before spending anything**
 
 The run needs: the provisioned MultiHop-RAG corpus, the restored answer cache, `OPENROUTER_API_KEY`,
 and — per the roadmap's standing note on the #300 follow-up — **an idle machine**, because three
@@ -1228,7 +1228,7 @@ timing runs on 2026-08-17 disagreed by 6× on identical inputs. Accuracy is not 
 is exact on a cache replay, so an idle machine matters for the cost and duration lines, not the
 accuracy. Record the machine, OS and .NET version; the pin's provenance string carries them.
 
-- [ ] **Step 2: Pilot on 100 queries**
+- [x] **Step 2: Pilot on 100 queries**
 
 ```bash
 RAGNET_GRAPHRAG_ANSWERS_GENERATE=1 RAGNET_GRAPHRAG_ANSWERS_ARMS=localspec \
@@ -1242,7 +1242,7 @@ precisely so a silently empty section is visible. A localspec context whose `Ent
 0 across the pilot means entity selection is not matching, and running the full sweep would buy an
 expensive number about nothing.
 
-- [ ] **Step 3: Run the full sweep**
+- [x] **Step 3: Run the full sweep**
 
 ```bash
 RAGNET_GRAPHRAG_ANSWERS_GENERATE=1 RAGNET_GRAPHRAG_ANSWERS_ARMS=localspec \
@@ -1255,7 +1255,7 @@ with cached ones. **Do not assume that will repeat**: localspec's context is a r
 context that no other arm has produced, so expect close to full generation, on the order of the
 ~$3 per derived arm the phase entry budgets.
 
-- [ ] **Step 4: Pin the figure**
+- [x] **Step 4: Pin the figure**
 
 Replace the empty accuracy list in `MultiHopRagAnswerReproduction.cs` with the measured value and
 write the provenance in the style of the entries around it — machine, OS, .NET version, date,
@@ -1272,7 +1272,7 @@ Read the per-type numbers against the base rates the existing entries record: co
 60% yes and temporal 46% yes, so always-yes scores 0.598 and 0.463 there. A low figure on those
 types is abstention, not error, and the entry must say which it is.
 
-- [ ] **Step 5: Run the reproduction to verify the pin holds**
+- [x] **Step 5: Run the reproduction to verify the pin holds**
 
 ```bash
 RAGNET_GRAPHRAG_ANSWERS_ARMS=localspec \
@@ -1281,7 +1281,7 @@ RAGNET_GRAPHRAG_ANSWERS_ARMS=localspec \
 Expected: PASS, replayed entirely from the answer cache — 0 generated. A miss means retrieval
 handed the model a different context on this replay, which fails before any figure is computed.
 
-- [ ] **Step 6: Update the guide and the ledger comment**
+- [x] **Step 6: Update the guide and the ledger comment**
 
 `docs/guide/graphrag.md` currently states — correctly, for the old behaviour — that local search
 adds no candidates and that the blend was the whole −0.02761. Add what this run measured, and
@@ -1293,7 +1293,7 @@ Update the `<!-- benchmark: ... -->` comment above `<VerifiedBy>benchmark</Verif
 `src/Rag.NET.GraphRag/Rag.NET.GraphRag.csproj` to name the localspec figure alongside the existing
 four.
 
-- [ ] **Step 7: Update the roadmap and commit**
+- [x] **Step 7: Update the roadmap and commit**
 
 Rewrite Phase 6.2.1's status line in `docs/planning/ROADMAP.md` to record what the sweep found,
 and — per Task 1 Step 8 — either delete `GraphLocalSearchBehavior` now that a replacement figure

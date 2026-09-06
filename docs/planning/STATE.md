@@ -22,7 +22,14 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.1 — Retrieval & Answer Sweep (active; RAPTOR Task 5 is done and pinned in #389,
+**Phase:** 6.2.1 — Retrieval & Answer Sweep — **COMPLETE 2026-09-06.** Every exit-condition clause
+met; the allowlist clause was amended the same day from "the guards' allowlist is empty" to "carries
+no entry owned by this phase", with the original wording and the 47-entry count kept in `ROADMAP.md`
+so the change is reviewable. **The next phase is 6.3 Release v1.0, and it is blocked on 6.1** — 18
+cassettes whose blocker is accounts rather than effort, kept as a v1.0 gate by the operator's
+2026-08-20 decision. Nothing in the codebase moves that.
+
+**Previously** (active; RAPTOR Task 5 is done and pinned in #389,
 **#176 closed 2026-08-26 in #405** and the **PageRank blend deleted 2026-08-27 in #408** — all four
 named debts are closed and only the sweep itself remains). **RAPTOR Task 6 closed 2026-08-27 in
 #412, so RAPTOR is the sweep's first completed technique** — measured, pinned, and now written down

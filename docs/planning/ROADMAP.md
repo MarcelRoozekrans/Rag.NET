@@ -4239,10 +4239,17 @@ phase's own first task; this entry states the question and the evidence, not the
 whatever definition this phase settles, or carries a `<VerifiedByReason>` stating why it stays.
 That is Milestone 6's second DoD criterion, and this phase owns it.
 
-### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: active 2026-08-20 — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at. Two of its four named debts are now closed: #239 and #200 on 2026-08-17, **#247 on 2026-08-18** — fixed twice over, #311 hiding graph chunks from retrieval by default and #312 giving them their own store, pinned at 0.3494 in #280. **All four of its named debts are now closed**: #239 and #200 on 2026-08-17, #247 on 2026-08-18, and **#176 answered 2026-08-26 in #405** — not by driving the number down but by naming the dropped endpoints, which turn out to be common nouns and paraphrases rather than entities the extractor missed, so the singletons are honest and the obvious fix would trade a better number for a worse graph. The full-corpus reading stands at 2,816 of 3,573 (**78.8%**) against the 65% the issue carries, and that is now a documented property rather than an open debt. The local-search thread completed 2026-08-20 (#323, #326); the sweep itself has not started. **The RAPTOR measurement's Tasks 4-6 unblocked 2026-08-22** when #345 merged in #351 (`bb4c11c7`, verified on `main` by content): before it, `SelectClusterCount` capped every level at `SelectK(maxK: Min(count, 10))`, so over MultiHop-RAG's 17,648 chunks the largest level-1 cluster held at least 1,765 chunks (~183k tokens) against `gpt-4o-mini`'s 128k context and the corpus tree could not be built at the shipped default at all]
+### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: complete 2026-09-06 — every clause of its exit condition met, the last one amended the same day to the phase scope both allowlists are partitioned by; five LLM-funded entries discharged 2026-09-05/06 and the technique sweep completed 2026-09-05. Previously active 2026-08-20 — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at. Two of its four named debts are now closed: #239 and #200 on 2026-08-17, **#247 on 2026-08-18** — fixed twice over, #311 hiding graph chunks from retrieval by default and #312 giving them their own store, pinned at 0.3494 in #280. **All four of its named debts are now closed**: #239 and #200 on 2026-08-17, #247 on 2026-08-18, and **#176 answered 2026-08-26 in #405** — not by driving the number down but by naming the dropped endpoints, which turn out to be common nouns and paraphrases rather than entities the extractor missed, so the singletons are honest and the obvious fix would trade a better number for a worse graph. The full-corpus reading stands at 2,816 of 3,573 (**78.8%**) against the 65% the issue carries, and that is now a documented property rather than an open debt. The local-search thread completed 2026-08-20 (#323, #326); the sweep itself has not started. **The RAPTOR measurement's Tasks 4-6 unblocked 2026-08-22** when #345 merged in #351 (`bb4c11c7`, verified on `main` by content): before it, `SelectClusterCount` capped every level at `SelectK(maxK: Min(count, 10))`, so over MultiHop-RAG's 17,648 chunks the largest level-1 cluster held at least 1,765 chunks (~183k tokens) against `gpt-4o-mini`'s 128k context and the corpus tree could not be built at the shipped default at all]
+**Completed:** 2026-09-06
+
 **Plan:** `docs/plans/2026-08-19-graphrag-local-search-completion-implementation.md` — the GraphRAG
 local-search thread only (spec sub-phases 6.x.1, 6.x.6, 6.x.7), not the whole sweep. **Complete
-2026-08-20.** Tasks 1–5 merged in #323; Task 6's measurement ran the same night and is pinned as the
+2026-08-20.** Its 45 task checkboxes went unticked until 2026-09-06, seventeen days after the work
+merged — the same bookkeeping-lags-the-merge pattern the Working State field has shown eleven times.
+All six tasks were verified on `main` by content before ticking: `CollectTopEntities` absent from
+`src/`, `## 9. Conversation history` in the spec doc, `ConversationHistory` threaded through
+`GraphRagSearch`/`IGraphRagSearch`/`LocalSearchContextBuilder`, `AnswerArm.LocalSpec` defined, and
+its arm pinned at `MultiHopRagAnswerReproduction.cs:128`. Tasks 1–5 merged in #323; Task 6's measurement ran the same night and is pinned as the
 `localspec` arm in `MultiHopRagAnswerReproduction`.
 
 **And it revises Milestone 5.2's published finding.** 5.2 concluded "GraphRAG does not help on this
@@ -4288,10 +4295,29 @@ traversal are decided here (rescale, drop, or use), with the ablation numbers in
 answer arm per engine (~$3 derived each, replayed after); one container run per store; a fast-tier
 test for parity. What it does not promise: that any of them are good. Measured is the bar.
 
-**Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; ~~#247 is fixed
-and re-measured~~ (met 2026-08-18); ~~the pipeline-parity test is in the fast tier~~ (met
-2026-08-27 — **both legs now run and pass as of 2026-08-28**, see below); the
-guards' allowlist is empty.
+**Exit condition:** ~~every row 6.0 classified as *plan* has its pointer and its pin~~ (met
+2026-09-06); ~~#247 is fixed and re-measured~~ (met 2026-08-18); ~~the pipeline-parity test is in
+the fast tier~~ (met 2026-08-27 — **both legs now run and pass as of 2026-08-28**, see below);
+~~the guards' allowlist carries no entry owned by this phase~~ (met 2026-09-06).
+
+**THE LAST CLAUSE WAS AMENDED ON 2026-09-06, AND THE ORIGINAL WORDING IS KEPT HERE SO THE CHANGE IS
+REVIEWABLE.** It read *"the guards' allowlist is empty"*. It is not empty and this phase cannot make
+it so: at the amendment, `SectionsAwaitingExercise` held **29** entries — 12 owned by 6.1, 17 by 6.2
+— and `PackagesAllowedToStayUnit` held **18** — 17 by 6.1, one (`Chunking.Templates`) by 6.2. **6.2.1
+owned none of either**, its section header in the package list sitting over an empty block.
+
+**Why the amendment rather than the reinterpretation.** From 2026-09-03 this phase had been reading
+the clause as "empty of this phase's entries" and recording that reading in prose — which is a
+reinterpretation, not a satisfaction, and closing against it would have been the green check that is
+not checking. Both lists are explicitly partitioned by owning phase and 6.2.1 cannot clear 6.1's
+credential-blocked connectors; holding the phase open on them would make it a container for other
+phases' work and block it on accounts it has no way to obtain. So the clause now says what it always
+meant, in writing, with the count it was amended against.
+
+**Verified by hand, not by the guard.** The SPLADE discharge established that the guard cannot see an
+entry whose work is DONE but unpointed — it satisfies both checks and is indistinguishable from one
+genuinely owed. The 47 remaining entries were counted and attributed by reading them; whether any is
+already secretly done is a question for 6.1 and 6.2, who own them.
 
 **Allowlist progress, 2026-09-03.** `PackagesAllowedToStayUnit` **20 → 19** and
 `SectionsAwaitingExercise` **42 → 40**, by discharging `Rag.NET.AnswerEngines`: all three of its
