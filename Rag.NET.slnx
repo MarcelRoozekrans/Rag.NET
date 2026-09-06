@@ -26,6 +26,7 @@
     <Project Path="src/Rag.NET.Parsers.Archive/Rag.NET.Parsers.Archive.csproj" />
     <Project Path="src/Rag.NET.Parsers.Office/Rag.NET.Parsers.Office.csproj" />
     <Project Path="src/Rag.NET.Mcp.Tool/Rag.NET.Mcp.Tool.csproj" />
+    <Project Path="src/Rag.NET.Mcp.AspNetCore/Rag.NET.Mcp.AspNetCore.csproj" />
     <Project Path="src/Rag.NET.Mcp/Rag.NET.Mcp.csproj" />
     <Project Path="src/Rag.NET.Mediator/Rag.NET.Mediator.csproj" />
     <Project Path="src/Rag.NET.Parsers.Audio/Rag.NET.Parsers.Audio.csproj" />
@@ -97,6 +98,7 @@
     <Project Path="tests/Rag.NET.VectorStores.Chroma.Tests/Rag.NET.VectorStores.Chroma.Tests.csproj" />
     <Project Path="tests/Rag.NET.VectorStores.Pinecone.Tests/Rag.NET.VectorStores.Pinecone.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Html.Tests/Rag.NET.Parsers.Html.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Mcp.AspNetCore.Tests/Rag.NET.Mcp.AspNetCore.Tests.csproj" />
     <Project Path="tests/Rag.NET.Mcp.Tests/Rag.NET.Mcp.Tests.csproj" />
     <Project Path="tests/Rag.NET.Mcp.Tool.Tests/Rag.NET.Mcp.Tool.Tests.csproj" />
     <Project Path="tests/Rag.NET.Memory.Tests/Rag.NET.Memory.Tests.csproj" />

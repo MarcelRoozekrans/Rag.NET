@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Mcp.AspNetCore</RootNamespace>
+    <PackageId>Rag.NET.Mcp.AspNetCore</PackageId>
+    <Description>ASP.NET Core hosting for the Rag.NET MCP server: a guarded HTTP transport that refuses to serve an unauthenticated write surface. Split out of Rag.NET.Mcp so that package does not force a web framework on stdio consumers.</Description>
+    <PackageTags>$(PackageTags);mcp;model-context-protocol;aspnetcore;authentication</PackageTags>
+    <!-- integration: the red run in Rag.NET.Mcp.AspNetCore.Tests stands up a real WebApplication
+         through TestServer, maps the real endpoints and asserts an unauthenticated call is
+         rejected. No container is involved; the host is in-process. -->
+    <VerifiedBy>integration</VerifiedBy>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The direction that matters: this references Rag.NET.Mcp, never the reverse. Inverting it
+         would put ASP.NET Core in front of every stdio consumer, which is the whole reason
+         Rag.NET.Mcp has no WithHttpTransport of its own. -->
+    <ProjectReference Include="..\Rag.NET.Mcp\Rag.NET.Mcp.csproj" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Mcp.AspNetCore.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

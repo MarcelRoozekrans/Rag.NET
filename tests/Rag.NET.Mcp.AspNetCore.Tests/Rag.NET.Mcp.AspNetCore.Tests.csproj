@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.Mcp.AspNetCore\Rag.NET.Mcp.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Mcp\Rag.NET.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <!-- The red run needs a real host, not a mocked one: the defect being fixed is an endpoint
+         that answers, so anything short of an actual request/response cannot see it. -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="NSubstitute" />
+  </ItemGroup>
+</Project>
