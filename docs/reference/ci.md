@@ -540,6 +540,49 @@ tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Be
 in-process runner silently discards — a filtered `dotnet test` runs the whole project and reports
 success, which reads identically to a filtered run that passed. The `-class` argument is honoured.
 
+### Mind-map extraction, `RAGNET_MIND_MAP_GENERATE`
+
+Fills the `mind-map` cache with real model replies. Requires `OPENROUTER_API_KEY`; no workflow sets
+it and the nightly never spends. Absent the variable the cell replays from cache, and with an empty
+cache it skips rather than reaching the network.
+
+One call per article over the sixty-document `MultiHopRagSlice` — 60 calls, about $0.03. Measured
+2026-09-06: 398 s generating, under a second replaying.
+
+**Read a run whose articles come back empty as a failure, not a finding.** `MindMapExtractor`
+returns `EmptyRoot()` on an LLM failure and on an unparseable reply alike and never throws, so a run
+that reached no model completes and reports sixty documents processed. The cell asserts two thirds
+of the articles produced a titled root with children.
+
+```bash
+# Generating what the cache lacks.
+RAGNET_MIND_MAP_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMindMapTests -showLiveOutput
+
+# Replay, free.
+tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMindMapTests -showLiveOutput
+```
+
+### Conversation memory, `RAGNET_CONVERSATION_MEMORY_GENERATE`
+
+Fills the `conversation-memory` cache with real model replies. Requires `OPENROUTER_API_KEY`; no
+workflow sets it and the nightly never spends. Same replay-and-skip behaviour as the gates above.
+
+Twenty ten-turn conversations processed after every turn. **140 calls, not the 200 a turn count
+suggests** — the first three turns of each conversation trim nothing, so no summary is requested.
+About $0.04. Measured 2026-09-06: 297 s generating, under a second replaying.
+
+**Read a run with zero summaries as a failure.** `GenerateSummaryAsync` catches every exception and
+returns `null`, and `ProcessAsync` then omits the summary message rather than failing, so a run that
+reached no model returns correctly-trimmed histories and looks like success.
+
+```bash
+# Generating what the cache lacks.
+RAGNET_CONVERSATION_MEMORY_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.ConversationMemoryExerciseTests -showLiveOutput
+
+# Replay, free.
+tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.ConversationMemoryExerciseTests -showLiveOutput
+```
+
 ### Deep research, `RAGNET_DEEP_RESEARCH_GENERATE`
 
 Fills the `deep-research` cache with real model replies. Requires `OPENROUTER_API_KEY`; no workflow

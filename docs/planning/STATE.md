@@ -1,6 +1,15 @@
 # Session State
 
-**Last updated:** 2026-09-05 (THE TECHNIQUE SWEEP IS COMPLETE — five techniques, three corpora each,
+**Last updated:** 2026-09-06 — **6.2.1 NOW OWNS NO ALLOWLIST ENTRIES.** All four LLM-funded
+entries are discharged: Self-Query and LLM Metadata Extraction on the 5th, Deep Research, Mind-Map
+and Conversational Memory on the 6th. The phase's exit condition is met on every clause it owns;
+what remains on `SectionsAwaitingExercise` belongs to 6.1 and 6.2. **Two lessons outrank the
+figures.** (1) A cache is a spend ledger nothing reads — count it before quoting a cost; the
+metadata run's $4.63 had already been paid. (2) **Fail-open code makes a benchmark lie quietly**:
+deep research reproduced its control exactly with zero model calls, and only a mechanism guard
+caught it. Every LLM-driven cell now carries one.
+
+(Previously: THE TECHNIQUE SWEEP IS COMPLETE — five techniques, three corpora each,
 fifteen cells, every figure pinned and reproduced on an idle machine. What remains of the phase is
 **three** allowlist entries, all LLM-funded — Self-Query and **LLM Metadata Extraction** are both
 measured and discharged. **A cache is a spend ledger nothing here reads**: the metadata run's
@@ -293,10 +302,24 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**Next: three allowlist entries, all needing a paid model — Deep Research Loop, Mind-Map Extractor,
-Conversational Memory.** They are the whole of what 6.2.1's exit condition still owes. **Pilot each
-before funding it.** That rule has now paid twice: #470's pilot found the silent `{}` shortfall that
-a well-formedness check would have called 120/120 success, and the full run confirmed it at scale.
+**6.2.1 has nothing left of its own.** All three clauses of its exit condition are met: the
+pipeline-parity test is in the fast tier, no allowlist entry is owned by this phase, and every row
+6.0 classified as *plan* here carries its pointer and its pin. **The next decision is whether to
+close the phase** — `complete-phase` — and then what Milestone 6 does about 6.1, which is the only
+thing between the project and the v1.0 tag and is blocked on accounts rather than effort.
+
+**Before closing it, re-run the reconciliation the SPLADE discharge taught.** The guard cannot see
+an entry whose work is DONE but unpointed: it checks that an entry has no pointer and that a pointer
+names a real class, and an unpointed-but-finished entry satisfies both. Count
+`SectionsAwaitingExercise` against `features.md` by hand once more before declaring the clause met.
+
+**What the five discharged cells cost in total: about $5.60 priced, far less actually spent** —
+metadata $4.63 (already paid before this session), deep research ~$0.65 of a $0.89 ceiling, mind-map
+$0.03, conversation memory ~$0.04, self-query $0.01.
+
+**Superseded, kept for the reasoning:** the three entries below were the remaining work and are now
+done. **Pilot each before funding it** still holds as a rule — #470's pilot found the silent `{}`
+shortfall a well-formedness check would have called 120/120 success.
 
 **BEFORE SPENDING ANYTHING, COUNT THE CACHE.** `~/.cache/ragnet-beir/<subdirectory>` is a spend
 ledger and nothing in this repository reads it. On 2026-09-05 a session asked the operator to fund a
@@ -1034,7 +1057,15 @@ much larger than answer generation's.
 > really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
 > here before.
 
-**Last landed on `main`:** **#470** as `e2d5f39c` (2026-09-05) — the 120-chunk metadata-extraction
+**Last landed on `main`:** **#471** as `b014217d` (2026-09-06) — metadata extraction measured on two
+corpora. Verify by content: `98.79` in `BeirMetadataExtractionTests.cs`. Before it **#476** as
+`2342df31` — deep research, and the `ResponseFormat` cache fix; verify by content:
+`RenderResponseFormat` in `CachedGraphRagClient.cs`. **Both verified on `main` by content rather
+than by a MERGED label**, and #471 needed a conflict resolved that no label would have surfaced:
+both PRs deleted adjacent lines from `SectionsAwaitingExercise`, and taking either side would have
+silently resurrected a discharged entry.
+
+Before them, **#470** as `e2d5f39c` (2026-09-05) — the 120-chunk metadata-extraction
 pilot, and the silent coverage gap it found before the full run was funded. Verify by content:
 `BeirMetadataExtractionPilotTests` under `tests/Rag.NET.Benchmarks.Quality.IntegrationTests/`, and
 `RAGNET_METADATA_EXTRACTION_GENERATE` in `docs/reference/ci.md`.

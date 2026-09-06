@@ -5100,6 +5100,48 @@ each posting list is shorter, so the corpus grew in rows and shrank in per-row w
 derivation in this phase to miss. **ArguAna's held**, and the difference is that it reasoned from a
 mechanism — query count drives these cells — rather than scaling a number from another corpus.
 
+**Mind-Map and Conversational Memory discharged 2026-09-06 — `SectionsAwaitingExercise` 36 → 34, and
+6.2.1 NOW OWNS NONE OF IT.** The exit condition's third clause is met: every row 6.0 classified as
+*plan* under this phase carries its pointer and its pin. What remains on the list belongs to 6.1
+and 6.2.
+
+| cell | result | calls |
+| --- | --- | --- |
+| Mind-Map, 60-article slice | 60 of 60 titled roots with children, 0 empty; 1,071 nodes, deepest 4 levels | 60 |
+| Conversation memory, 20 × 10 turns | 200 histories processed, 140 carried a summary, 1,120 messages trimmed | 140 |
+
+**Both are exercises, not quality figures, and both entries asked for exactly that.** A mind map has
+no qrels and a summary has no control arm; what these establish is that the shipped code, given real
+input and a real model, produces real output. Neither claims more, and both pointers say so.
+
+**THE COUNTING PASS WAS WRONG ABOUT MIND-MAP BY 50x, and reading the descriptor caught it.** The row
+carried a literal `3_000` MultiHop-RAG documents and priced the feature at **$1.59**; MultiHop-RAG's
+corpus is **609** documents, and the cell runs the **60**-document slice its entry names. Actual
+cost **$0.03**. The row now reads `MultiHopRagSlice.TargetDocumentCount` rather than a literal, so
+it cannot drift again. Phase total dropped $7.16 → $5.60. **A cost model is only worth having if its
+inputs are checked against the code rather than recalled** — the same failure the allowlist entries
+keep showing, in the file built to prevent it.
+
+**Conversation memory came in at 140 calls against 200**, because the first three turns of each
+conversation trim nothing and so request no summary. Second ceiling this week to behave as a
+ceiling rather than a prediction.
+
+**Both features fail open exactly as deep research did, and that shaped both cells.**
+`MindMapExtractor` returns `EmptyRoot()` on an LLM failure *and* on an unparseable reply and never
+throws; `ConversationMemoryPipeline` returns `null` and omits the summary message. Either would
+produce a clean-looking run describing code that never reached the model, so each cell carries a
+mechanism guard — `AssertTheModelActuallyBuiltTrees`, `AssertTheModelActuallySummarised`. **Both
+pass `options: null`**, so neither would have hit the `ResponseFormat` refusal that made deep
+research silently no-op; that fix landing first was luck rather than sequencing.
+
+**Two smaller observations, recorded rather than filed.** `MindMapOptions.MaxDepth` is documented as
+"maximum depth of the generated concept tree" and is **interpolated into the prompt only** — nothing
+checks the parsed tree, so a model that ignores it produces a deeper tree silently. This run's
+deepest is 4 node-levels against a documented 3, which is *at* the limit under edge-counting and
+over it under node-counting; the option does not say which it means, so no defect is claimed. And
+the mind-map cell passes `graphStore: null`, so the persistence path those options describe is
+still unexercised.
+
 **Deep Research measured and discharged 2026-09-06 — and the first run of it measured NOTHING while
 looking clean.** `SectionsAwaitingExercise` 37 → 36.
 
