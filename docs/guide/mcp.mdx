@@ -62,27 +62,18 @@ builder.Services.AddRagNet(rag => rag
 
 // 3. Add MCP server on top — resolves IRagPipeline from the same DI container.
 // Rag.NET.Mcp does not reference ModelContextProtocol.AspNetCore (that would force an ASP.NET
-// Core dependency on every stdio-only consumer), so HTTP transport is configured through the
-// SDK's own builder, exposed as McpServerBuilder.Server:
-var mcp = builder.Services.AddRagNetMcpServer();
-mcp.Server.WithHttpTransport();  // for multi-client HTTP/SSE
-// mcp.WithStdioTransport();     // use this instead for Claude Desktop (subprocess)
+// Core dependency on every stdio-only consumer), so the guarded HTTP transport lives in
+// Rag.NET.Mcp.AspNetCore:
+builder.Services
+    .AddRagNetMcpServer()
+    .WithRagNetHttpTransport(o => o.ApiKey = "your-secret");
+// .WithStdioTransport();     // use this instead for Claude Desktop (subprocess)
 
 var app = builder.Build();
 
-// API-key auth for HTTP is your own middleware — Rag.NET.Mcp only wires the transport.
-app.Use(async (context, next) =>
-{
-    if (context.Request.Headers["X-Api-Key"] != "your-secret")
-    {
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        return;
-    }
-
-    await next(context);
-});
-
-app.MapMcp("/mcp");
+// The key check is attached to the endpoints MapRagNetMcp maps — there is no separate middleware
+// to remember, and no way to map the endpoints without it.
+app.MapRagNetMcp("/mcp");
 await app.RunAsync();
 ```
 
@@ -324,6 +315,7 @@ Add Rag.NET as an MCP server in Claude Desktop's config file.
 | stdio | None — process boundary is the security boundary |
 | HTTP/SSE | `X-Api-Key` header; configure `ApiKeys` array for rotation and per-client revocation |
 | MCP over HTTP (`ragnet-mcp --transport http`) | `X-Api-Key` header; `--api-key` or `RAGNET_MCP_API_KEY`, or `--allow-anonymous` to opt out deliberately |
+| MCP over HTTP (your own host) | `X-Api-Key` header; `WithRagNetHttpTransport(o => o.ApiKey = ...)` from `Rag.NET.Mcp.AspNetCore`, or `o.AllowAnonymous = true` to opt out deliberately. Configuring neither **throws at startup** — this surface exposes `rag_ingest`, so serving it unauthenticated is a decision rather than a default |
 | gRPC | `x-api-key` metadata header; validated by a server-side interceptor |
 
 Both `AddRagNetApi` and `AddRagNetGrpcApi` require an explicit authentication decision at registration: configure at least one key, or opt out deliberately with `AllowAnonymous = true` (e.g. behind a trusted gateway). Registering with an empty `ApiKeys` and no opt-out throws at startup, and setting both at once is rejected as a contradiction. At request time the middleware/interceptor fail closed — no keys and no opt-out means the request is refused, never silently served.

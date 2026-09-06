@@ -40,8 +40,16 @@ namespace Rag.NET.RepoConventions.Tests;
 public sealed class PackageVerificationTests
 {
     /// <summary>
-    /// There are 72 packages under <c>src/</c> today. A far smaller number means the scan lost
-    /// the working tree and is asserting over nothing — which would pass, silently, forever.
+    /// There are <b>73</b> packages under <c>src/</c> today — 72 until Phase 6.2.13 added
+    /// <c>Rag.NET.Mcp.AspNetCore</c>. A far smaller number means the scan lost the working tree
+    /// and is asserting over nothing — which would pass, silently, forever.
+    /// <para>
+    /// <b>The scan itself reports 74, one higher, and the difference is not an error.</b> It
+    /// enumerates every <c>.csproj</c> under <c>src/</c>, and one of them is not packable. The
+    /// count in this sentence is the package count; the number in a failure message is the project
+    /// count. Recorded because the two were compared during 6.2.13 and the gap looked like a defect
+    /// for a minute.
+    /// </para>
     /// </summary>
     private const int FewestPlausiblePackages = 60;
 

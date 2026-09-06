@@ -5982,6 +5982,73 @@ where no test had ever built a tree deeper than one level. Every fix here landed
 fails against the previous code, and each was mutation-checked with the mutation verified to
 compile first.
 
+### Phase 6.2.13: MCP Fail-Closed — give library consumers the guard the CLI already has [status: complete 2026-09-06 — added and shipped the same day. `Rag.NET.Mcp.AspNetCore` ships `WithRagNetHttpTransport` (throws at startup when neither a key nor an explicit opt-out is configured) and `MapRagNetMcp` (attaches the key check as an endpoint filter on the endpoints it maps). Package count 72 → 73. Previously active 2026-09-06 — added the same day from issue #198, after a survey of the repository's open work]
+**Surface:** Backend
+**HelpWanted:** no
+
+**Goal:** close #198 — a consumer who follows `docs/guide/mcp.mdx` and calls
+`AddRagNetMcpServer()` then `mcp.Server.WithHttpTransport()` gets a remote **write** surface with
+nothing authenticating it, and the library cannot detect that they did.
+
+**The hole is narrower than the issue states, and the narrowing is what makes it fixable.**
+`Rag.NET.Mcp.Tool` already fails closed: `Program.cs:51` refuses to start the HTTP transport without
+a key unless `--allow-anonymous`, and line 84 checks every request through
+`McpApiKeyAuthorization.IsAuthorized`. **The CLI got the guard; consumers building on the package did
+not.** `McpApiKeyAuthorization` is unit-tested as a decision function and nothing exercises a host.
+
+**#189's pattern cannot be copied, which is why this needed a design decision rather than a port.**
+The HTTP API fails closed by a marker singleton that `UseRagNetApiAuthentication` sets and
+`MapRagNetApi` reads. There is no `MapRagNetMcp`: HTTP is reached through the SDK's own
+`WithHttpTransport` extension on the SDK's own builder, so no marker in `Rag.NET.Mcp` can observe
+the call. And the package deliberately refuses the `ModelContextProtocol.AspNetCore` dependency that
+would let it wrap the transport, because stdio consumers host MCP tools in non-web processes.
+
+**Decision, taken by the operator 2026-09-06: a new `Rag.NET.Mcp.AspNetCore` package.** It ships a
+`WithRagNetHttpTransport(...)` that wraps the SDK transport, installs the key middleware, and
+**throws when neither a key nor an explicit opt-out is configured** — giving library consumers what
+the CLI already has, without putting a web framework in front of stdio users. This is Phase 6.2.6's
+precedent applied a second time: `Rag.NET.Security.Audit.Sqlite` was split out for the same
+don't-drag-a-dependency reason, and `UseAuditLog()` was **removed** rather than kept as a runtime
+check so that "configured, and nothing recorded" could not be expressed at all.
+
+**Exit condition:** the red run the issue names exists and passes — stand up the MCP HTTP host
+without configuring auth, call `rag_ingest`, assert it is rejected — and it is mutation-checked;
+`docs/guide/mcp.mdx` stops teaching hand-rolled middleware; the new package is packable and carries
+an `Exercised by:` pointer rather than joining `PackagesAllowedToStayUnit`.
+
+**What it does not promise:** an auth *scheme* beyond the shared key this repository already uses on
+three surfaces. OAuth, per-client identity and revocation are not in scope and the pointer will say
+so.
+
+**Completed:** 2026-09-06
+
+**Design:** `docs/plans/2026-09-06-mcp-fail-closed-design.md`
+
+**The guard is STRUCTURAL, which is stronger than #189 and worth stating.** `Rag.NET.Api` detects a
+missing `UseRagNetApiAuthentication` and throws, because middleware and endpoints are assembled
+through two builders that cannot see each other — the best available answer there. `MapMcp` returns
+the convention builder for the endpoints it just created, so here auth and endpoints attach to the
+same object: **"mapped but unauthenticated" is not expressible rather than merely detected**, and
+there is no ordering to get wrong. The filter is scoped to the MCP endpoints, unlike `ragnet-mcp`'s
+global `app.Use`, so a host mounting MCP beside its own endpoints does not authenticate those with
+this key by accident.
+
+**Six tests, and the mutation is what carries them.** No header → 401, wrong key → 401, right key
+reaches the transport, `AllowAnonymous` serves, configuring neither throws at configuration,
+mapping without the transport call throws. **Deleting the `AddEndpointFilter` call fails exactly the
+two rejection tests and nothing else** — the happy-path tests pass against a host with no
+authentication at all, which is the defect being fixed.
+
+**`docs/guide/mcp.mdx` stopped teaching hand-rolled middleware.** It taught
+`if (context.Request.Headers["X-Api-Key"] != "your-secret")` at line 76, which is what a consumer
+following the guide had to write for themselves — and the reason the hole was reachable by doing
+what the documentation said.
+
+**A stale count corrected on the way.** `PackageVerificationTests` said "72 packages under src/"
+while its own scan reports **74**: the comment counts packages and the scan counts `.csproj`, one of
+which is not packable. Both numbers were right and neither said which it was. Now recorded, because
+the gap looked like a defect for a minute.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.

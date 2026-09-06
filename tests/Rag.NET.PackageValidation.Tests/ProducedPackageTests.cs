@@ -54,8 +54,17 @@ public sealed class ProducedPackageTests
     /// everyone using <c>UseChunkSanitiser</c>, <c>UseRbac</c> or <c>UsePiiDetection</c>
     /// (#339). Verified by an actual <c>dotnet pack</c> of the solution, which produced 72.
     /// </para>
+    /// <para>
+    /// <b>72 → 73 on 2026-09-06</b>: <c>Rag.NET.Mcp.AspNetCore</c>, split out for the same reason
+    /// as the line above — <c>Rag.NET.Mcp</c> must not reference
+    /// <c>ModelContextProtocol.AspNetCore</c>, because that would force a web framework on every
+    /// consumer hosting MCP tools in a non-web process. It ships the guarded HTTP transport that
+    /// closes #198, where following the documented setup produced an unauthenticated remote
+    /// <b>write</b> surface. Verified by an actual <c>dotnet pack</c> of the solution, which
+    /// produced 73.
+    /// </para>
     /// </summary>
-    private const int ExpectedPackageCount = 72;
+    private const int ExpectedPackageCount = 73;
 
     /// <summary>
     /// What NuGet ships when a project declares no <c>Description</c>. Not a warning, not an
