@@ -540,6 +540,31 @@ tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Be
 in-process runner silently discards — a filtered `dotnet test` runs the whole project and reports
 success, which reads identically to a filtered run that passed. The `-class` argument is honoured.
 
+### Deep research, `RAGNET_DEEP_RESEARCH_GENERATE`
+
+Fills the `deep-research` cache with real model replies. Requires `OPENROUTER_API_KEY`; no workflow
+sets it and the nightly never spends. Absent the variable the cell replays from cache, and with an
+empty cache it skips rather than reaching the network.
+
+The cell is SciFact's 300 judged queries at up to `MaxDepth` sufficiency checks each. The counting
+pass prices 900 calls at about $0.89; **the measured run made 657**, because the loop stops early on
+any query the model calls sufficient. 1,980.5 s generating, 73.6 s replaying.
+
+**Read a run that reports `0 hits, 0 misses` as a failure, not a null result.** `DeepResearchRetriever`
+catches every exception from the sufficiency check as "sufficient", so anything that stops the call
+reaching the model — a cache that refuses the request shape, a missing key — silently returns the
+inner page and reproduces the dense figure exactly. That is what happened on 2026-09-06 before
+`CachedGraphRagClient` learned to key `ChatOptions.ResponseFormat`, and it is why the cell asserts
+the loop expanded at least one page before its figure is read.
+
+```bash
+# The measured cell, generating what the cache lacks.
+RAGNET_BEIR_LONG_RUNS=scifact RAGNET_DEEP_RESEARCH_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirDeepResearchTests -showLiveOutput
+
+# Replay, free, and reproduce the pinned 0.70219.
+RAGNET_BEIR_LONG_RUNS=scifact   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirDeepResearchTests -showLiveOutput
+```
+
 ### Metadata extraction, `RAGNET_METADATA_EXTRACTION_GENERATE`
 
 Fills the `metadata-extraction` cache with real model replies. Requires `OPENROUTER_API_KEY`; no

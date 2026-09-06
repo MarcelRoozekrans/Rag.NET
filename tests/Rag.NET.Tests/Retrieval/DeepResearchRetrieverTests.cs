@@ -249,4 +249,66 @@ public class DeepResearchRetrieverTests
         // Original query + 2 capped sub-queries = 3 total retrieve calls
         _ = await inner.Received(3).RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct);
     }
+
+    /// <summary>
+    /// Pins that the returned page can exceed <see cref="RetrievalOptions.TopK"/>, which the
+    /// property documents as "chunks to return after all pipeline stages".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is a characterisation test, not an endorsement.</b> Every sub-query's page is
+    /// appended and the union deduplicated; nothing truncates. At the shipped defaults —
+    /// <see cref="DeepResearchOptions.MaxDepth"/> 3 and
+    /// <see cref="DeepResearchOptions.SubQueryCount"/> 3 — a caller asking for 10 can receive up to
+    /// 100, and <c>RagPipeline.RetrieveAsync</c> returns the retriever's list unchanged.
+    /// </para>
+    /// <para>
+    /// <b>The other half of the surprise is the ordering.</b> The union is sorted by score, but a
+    /// sub-query's scores come from a different query vector than the caller's, so they are not
+    /// comparable — a chunk scoring 0.9 against a sub-query outranks one scoring 0.8 against the
+    /// question actually asked. Any nDCG read off this page inherits that.
+    /// </para>
+    /// <para>
+    /// Written while scoping the Phase 6.2.1 retrieval cell, from reading the shipped code rather
+    /// than from a failure. If the truncation is added, this test SHOULD fail — change it then,
+    /// deliberately, rather than widening it now.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ReturnedPage_CanExceedTopK_BecauseNothingTruncatesTheUnion()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+
+        const int topK = 5;
+
+        // A TopK-honouring inner retriever: exactly TopK results per call, distinct per query so
+        // the union cannot collapse under Deduplicate and hide the growth.
+        inner
+            .RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(ci =>
+            {
+                var q = ci.ArgAt<string>(0);
+                var page = new SearchResult[topK];
+                for (var i = 0; i < topK; i++)
+                    page[i] = MakeResult($"{q}-doc{i}", i);
+
+                return Ok(page);
+            });
+
+        ReturnInsufficientThenSufficient(chatClient, "s1", "s2", "s3");
+
+        var sut = new DeepResearchRetriever(
+            inner, chatClient, new DeepResearchOptions { SubQueryCount = 3 });
+
+        var result = await sut.RetrieveAsync("q", new RetrievalOptions { TopK = topK }, ct);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(topK + (3 * topK), result.Value.Count);
+        Assert.True(
+            result.Value.Count > topK,
+            $"asked for {topK} and got {result.Value.Count}; if this now holds at {topK}, the " +
+            "truncation was added and this characterisation test needs rewriting rather than deleting.");
+    }
 }

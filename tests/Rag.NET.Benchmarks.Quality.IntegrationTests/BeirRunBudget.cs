@@ -747,6 +747,54 @@ public static class BeirRunBudget
             "cache hits and 0 misses and an identical figure. The 28x gap is the model calls, not " +
             "the page cache -- the embedding cache reported 141,391 hits and 0 misses in BOTH runs, " +
             "so the corpus side was already warm each time. Budget the generating number once."),
+        // Phase 6.2.1: RealDeepResearch on the three corpora it applies to but has not been run on.
+        // Applicable because it is a technique rather than a store composition; unscheduled because
+        // SciFact was measured first. No wall-clock is offered for any of them -- see SciFact's.
+        new(
+            "fiqa",
+            BeirProtocol.RealDeepResearch,
+            FitsTheNightly: false,
+            "NOT RUN. 648 judged queries at up to MaxDepth calls each is 1,944, against SciFact's " +
+            "measured 657 from a 900 ceiling; the same early-stopping applies, so treat 1,944 as a " +
+            "ceiling too. Not nightly-sized, and gated off by default."),
+        new(
+            "arguana",
+            BeirProtocol.RealDeepResearch,
+            FitsTheNightly: false,
+            "NOT RUN, and the most expensive of the four: 1,406 judged queries is up to 4,218 " +
+            "calls. Not nightly-sized, and gated off by default."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealDeepResearch,
+            FitsTheNightly: false,
+            "NOT RUN and blocked on the corpus rather than the budget -- TREC-COVID has never been " +
+            "embedded under the Real protocol. 50 judged queries, up to 150 calls, so it would be " +
+            "the cheapest of the four in model spend and the most expensive in setup. Gated off."),
+        // Phase 6.2.1: the RealDeepResearch cell. Single-corpus, unlike the two cells above -- deep
+        // research scopes nothing, so a second corpus would add cost and answer nothing.
+        new(
+            "scifact",
+            BeirProtocol.RealDeepResearch,
+            FitsTheNightly: false,
+            "DERIVED until it runs, and DELIBERATELY WITHOUT A TIME. The counting pass measured " +
+            "deep research at 3.00 calls per query -- one sufficiency check per depth, pinned by " +
+            "LlmCallShapeTests.DeepResearch_MakesOneCallPerDepth -- so 300 judged queries is 900 " +
+            "calls and about $0.89 at the blended rate. That is a CEILING on the calls, not a " +
+            "prediction: the loop stops early on any query the model calls sufficient, and it also " +
+            "stops early on any query whose reply fails to parse, which costs the same call and " +
+            "buys nothing. No wall-clock figure is offered because six derivations in this phase " +
+            "have now missed and this cell's shape is new -- it RETRIEVES up to 1 + MaxDepth x " +
+            "SubQueryCount times per query, ten dense searches where every other cell does one, " +
+            "and it retrieves TWICE more for the control pipeline because deep research has no " +
+            "runtime flag to toggle. Budget the generating run once, then replay free. " +
+            "MEASURED 2026-09-06: 1,980.5 s generating with 657 model calls, 73.6 s replaying with " +
+            "647 cache hits and an identical figure. **657 calls against the 900 priced -- the " +
+            "ceiling behaved as a ceiling**, because MaxDepth bounds the calls and the loop stops " +
+            "early on any query the model calls sufficient: 116 of 300 never expanded. The 27x " +
+            "generating/replaying gap is the model calls, not the page cache -- the embedding cache " +
+            "reported 20,155 hits and 0 misses in BOTH runs. Declining to derive a wall-clock was " +
+            "right for a different reason than the one given: the retrieval fan-out is real (184 " +
+            "queries retrieved up to ten times) but it is invisible next to 657 sequential calls."),
         // Phase 6.2.1: the RealLateChunking cells. Four entries because the protocol applies to all
         // four BEIR datasets; SciFact, FiQA and ArguAna are scheduled under the three-corpora scope
         // decision of 2026-09-02. Every figure below is DERIVED until a run replaces it.
@@ -1249,6 +1297,12 @@ public static class BeirRunBudget
             "SELF-QUERY over the same two-corpus store (a real model writes the corpus filter and "
             + "the pipeline applies it AFTER retrieval, which shrinks the page rather than scoping "
             + "the search; against the hand-filtered figure, not the single-corpus one)",
+        BeirProtocol.RealDeepResearch =>
+            "DEEP RESEARCH over the Real protocol's chunked corpus (a real model judges the "
+            + "retrieved context sufficient or not and, when not, writes sub-queries whose pages "
+            + "are folded in; the page is NOT capped to TopK -- issue #475 -- so it is larger than "
+            + "the control's and its ordering mixes scores from different query vectors; against "
+            + "the Real dense figure)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -1350,6 +1404,7 @@ public static class BeirRunBudget
             BeirProtocol.RealSplade => "UnderSplade",
             BeirProtocol.RealTagFiltered => "UnderTagFilter",
             BeirProtocol.RealSelfQuery => "UnderSelfQuery",
+            BeirProtocol.RealDeepResearch => "UnderDeepResearch",
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 

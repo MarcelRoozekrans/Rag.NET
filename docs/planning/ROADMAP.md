@@ -5100,6 +5100,65 @@ each posting list is shorter, so the corpus grew in rows and shrank in per-row w
 derivation in this phase to miss. **ArguAna's held**, and the difference is that it reasoned from a
 mechanism — query count drives these cells — rather than scaling a number from another corpus.
 
+**Deep Research measured and discharged 2026-09-06 — and the first run of it measured NOTHING while
+looking clean.** `SectionsAwaitingExercise` 37 → 36.
+
+| | deep research | Real dense control | Δ |
+| --- | --- | --- | --- |
+| nDCG@10 | **0.70219** | 0.67742 | **+0.02477** |
+| Recall@10 | 0.82622 | 0.81322 | +0.01300 |
+| MRR@10 | 0.66642 | 0.63757 | +0.02885 |
+
+**Second-largest gain any technique has had on SciFact**, behind HyDE's +0.03647 and ahead of hybrid
+BM25's +0.01880. **MRR rose more than Recall, which is the interesting half**: a technique that
+merely widened the candidate set would move Recall and leave the top of the ranking alone, so the
+chunks the sub-queries pull in are landing high rather than merely landing. **Read it as a larger
+search, not a better ranker** — the cell retrieves up to ten times per query where the control
+retrieves once.
+
+**THE FIRST RUN REPRODUCED THE CONTROL EXACTLY AND WOULD HAVE BEEN PUBLISHED.** 300 queries, 0
+expansions, `cache: 0 hits, 0 misses`, nDCG 0.67742 to five decimals — a clean null result reading
+"deep research changes nothing on SciFact". It cost $0.00 because nothing was ever called. Three
+individually correct designs composed into a silent no-op:
+
+1. `DeepResearchRetriever` catches **every** exception as "sufficient", not just malformed JSON.
+2. `CachedGraphRagClient.ThrowIfUnkeyable` refuses any `ResponseFormat`, because it cannot render
+   one into a cache key and will not forward a request unkeyed — the repo's fail-loud posture.
+3. Deep research sets `ResponseFormat = Json` on every sufficiency check.
+
+The refusal was swallowed as a sufficiency verdict, the loop broke at depth 0, and no call was
+counted. **`AssertTheLoopActuallyRan` failed the run rather than pinning it** — the guard was
+written for the model returning unreadable JSON and caught an infrastructure incompatibility
+instead. This is the third mechanism guard in the phase (after SPLADE's expansion and self-query's
+filter) and the first to catch something its author had not imagined.
+
+**The diagnosis ruled things out rather than guessing.** A DI test asserting the pipeline resolves
+the *same* decorated retriever passes (so the wiring is sound, and it is now a permanent test); a
+structural guard in the row asserting the deep pipeline is decorated and the control is not did not
+fire. Only then was the cache client the remaining candidate.
+
+**The fix renders `ResponseFormat` into the cache key** rather than refusing it — schema included,
+because two JSON-schema requests differing only in schema get materially different replies; unknown
+subtypes still throw. **No existing key changes**, since a request carrying a response format
+previously threw, so none of the ~86,510 entries on disk has one.
+
+**Two properties recorded rather than smoothed over.** The page is not capped to `TopK` — largest
+1,260 against 250, **5.04x**, filed as issue #475 and characterised in `DeepResearchRetrieverTests`
+— and its ordering mixes scores taken against different query vectors. Measuring as-shipped was the
+operator's call; fixing the contract on the way to a benchmark would publish a figure for code no
+released version has.
+
+**657 model calls against the 900 the counting pass priced** — the ceiling behaved as a ceiling,
+because `MaxDepth` bounds the calls and the loop stops early on any query called sufficient (116 of
+300 never expanded). 1,980.5 s generating, 73.6 s replaying, a 27x gap that is the model calls and
+not the page cache: the embedding cache reported 20,155 hits and 0 misses in both runs.
+
+**The allowlist entry named the wrong harness.** It asked for "an answer-harness arm";
+`DeepResearchRetriever` is an `IRetriever` decorator that `AnswerEngineArms.Create` cannot build, so
+it took the retrieval-cell route its siblings take. **Third entry in this phase found to
+mis-describe its own route**, after Hierarchical Merger and Domain-Specific Templates — all three
+written by reading rather than by checking against the code.
+
 **SPLADE's thread completed 2026-09-05 — the sweep's fifth and last technique, and the phase's
 technique work is now done.** Measured on all three scheduled corpora on an idle machine, every
 figure reproduced by a confirmation pass agreeing to five decimals.

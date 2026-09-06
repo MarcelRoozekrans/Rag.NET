@@ -103,9 +103,17 @@ public sealed class CachedGraphRagClientOptionsTests : IDisposable
     /// Regression coverage for the gap left after the 2026-08-29 fix: <c>Merge</c> forwards the
     /// caller's <em>whole</em> <see cref="ChatOptions"/> to the model, but
     /// <see cref="CachedGraphRagClient"/> only rendered <c>MaxOutputTokens</c>, <c>TopP</c> and
-    /// <c>Seed</c> into the key. <see cref="ChatResponseFormat.Json"/> is the realistic offender —
-    /// `DeepResearchRetriever.cs:96` already constructs one, one wiring change away from reaching
-    /// this client — so it is the field exercised here rather than a synthetic one.
+    /// <c>Seed</c> into the key.
+    /// <para>
+    /// <b>This test used to exercise <see cref="ChatResponseFormat.Json"/>, and the prediction it
+    /// was written on came true.</b> Its remark named <c>DeepResearchRetriever</c> as "one wiring
+    /// change away from reaching this client"; Phase 6.2.1 made that wiring change on 2026-09-06,
+    /// the refusal fired, <c>CheckSufficiencyAsync</c> swallowed it as a sufficiency verdict, and a
+    /// 300-query benchmark silently measured nothing. The response format is now RENDERED into the
+    /// key rather than refused — see <c>RenderResponseFormat</c> — so this test moved to
+    /// <c>StopSequences</c>, which is still response-affecting and still unrendered. <b>The
+    /// invariant is unchanged; only the field standing in for it moved.</b>
+    /// </para>
     /// </remarks>
     [Fact]
     public async Task AResponseAffectingOptionNotInTheKey_ThrowsRatherThanSharingAnEntry()
@@ -119,10 +127,62 @@ public sealed class CachedGraphRagClientOptionsTests : IDisposable
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetResponseAsync(
             [new ChatMessage(ChatRole.User, "q")],
-            new ChatOptions { ResponseFormat = ChatResponseFormat.Json },
+            new ChatOptions { StopSequences = ["STOP"] },
             Ct));
 
-        Assert.Contains("ResponseFormat", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("StopSequences", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Two requests differing only in <see cref="ChatOptions.ResponseFormat"/> must not share a
+    /// cache entry.
+    /// </summary>
+    /// <remarks>
+    /// The field was refused until 2026-09-06 and is now rendered, so this is the test that keeps
+    /// the change honest: rendering it into the key is only correct if different formats actually
+    /// land on different entries. Asking for JSON and asking for text get materially different
+    /// replies from the same prompt, which is exactly what the refusal existed to prevent sharing.
+    /// </remarks>
+    [Fact]
+    public async Task TwoResponseFormats_DoNotShareACacheEntry()
+    {
+        var inner = new OptionsRecordingChatClient(reply: "first");
+        var cache = new GraphExtractionCache(
+            RootFor(nameof(TwoResponseFormats_DoNotShareACacheEntry)),
+            "openai/gpt-4o-mini@t0.0",
+            GraphExtractionCacheMode.Fill);
+        using var client = new CachedGraphRagClient(cache, inner, temperature: 0f);
+
+        var asJson = await client.GetResponseAsync(
+            [new ChatMessage(ChatRole.User, "q")],
+            new ChatOptions { ResponseFormat = ChatResponseFormat.Json },
+            Ct);
+
+        // Changing the inner reply is what makes the second call's ORIGIN observable: a cache hit
+        // replays "first", a miss reaches this client and returns "second". Counting calls would
+        // need a counter this double does not have; this needs nothing new.
+        inner.Reply = "second";
+
+        var asText = await client.GetResponseAsync(
+            [new ChatMessage(ChatRole.User, "q")],
+            new ChatOptions { ResponseFormat = ChatResponseFormat.Text },
+            Ct);
+
+        Assert.Equal("first", asJson.Text);
+
+        Assert.Equal(
+            "second",
+            asText.Text);
+
+        // And the cache still works for a repeat of the FIRST shape, so the test above is showing
+        // a key difference rather than a cache that never hits.
+        inner.Reply = "third";
+        var repeat = await client.GetResponseAsync(
+            [new ChatMessage(ChatRole.User, "q")],
+            new ChatOptions { ResponseFormat = ChatResponseFormat.Json },
+            Ct);
+
+        Assert.Equal("first", repeat.Text);
     }
 
     /// <summary>The option shapes every current caller actually sends must not throw.</summary>

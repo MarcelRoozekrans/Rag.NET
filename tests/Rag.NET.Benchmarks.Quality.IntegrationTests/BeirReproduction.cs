@@ -243,6 +243,65 @@ public static class BeirReproduction
             "for pooling, so the filtered page still holds far more than the cutoff needs. A caller " +
             "retrieving at TopK 10 would see the shrinkage this run cannot."),
         new(
+            "fiqa",
+            BeirProtocol.RealDeepResearch,
+            [],
+            "NOT RUN. Applicable -- deep research is a technique, not a store composition, so it " +
+            "applies to every BEIR corpus here -- and unscheduled: SciFact was measured first and " +
+            "the three-corpora scope decision of 2026-09-02 would put FiQA next. 648 judged " +
+            "queries at up to MaxDepth calls each is 1,944 against SciFact's 900 ceiling. Empty " +
+            "rather than a guessed figure. **SciFact's +0.02477 predicts nothing here**: every " +
+            "technique measured on both corpora has differed in SIGN between them except late " +
+            "chunking, and FiQA is the corpus that resisted four of five."),
+        new(
+            "arguana",
+            BeirProtocol.RealDeepResearch,
+            [],
+            "NOT RUN and the most expensive of the four: 1,406 judged queries at up to MaxDepth " +
+            "calls each is 4,218, more than four times SciFact's ceiling. Applicable and " +
+            "unscheduled. Empty rather than a guessed figure. **ArguAna is the corpus where a " +
+            "prediction is worth writing before the run**: its relevance is whole-argument against " +
+            "whole-argument, and a technique that adds MORE fragments from sub-queries may dilute " +
+            "rather than help -- the opposite of what it did on SciFact."),
+        new(
+            "trec-covid",
+            BeirProtocol.RealDeepResearch,
+            [],
+            "NOT RUN and not scheduled -- TREC-COVID has never been embedded under the Real " +
+            "protocol, the same reason its RealHybridBm25 cell is empty. Cheapest of the four by " +
+            "call count (50 judged queries, 150 calls) and blocked on the corpus rather than on " +
+            "the budget. Empty rather than a guessed figure."),
+        new(
+            "scifact",
+            BeirProtocol.RealDeepResearch,
+            [0.70219],
+            "MEASURED 2026-09-06, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.70219, " +
+            "Recall@10 0.82622, MRR@10 0.66642 over the 300 judged queries; 20,155 units over " +
+            "5,183 documents; 1,980.5 s; 657 model calls. **Against its control, the Real cell's " +
+            "0.67742, this is +0.02477 -- the second-largest gain any technique has had on " +
+            "SciFact**, behind HyDE's +0.03647 and ahead of hybrid BM25's +0.01880, SPLADE's " +
+            "+0.01276 and reranking's +0.01266. The loop provably ran: 184 of 300 queries expanded " +
+            "past the control's page and 73,727 chunks were added in total. " +
+            "**MRR rose more than Recall (+0.02885 against +0.01300), which is the interesting " +
+            "half.** A technique that only widened the candidate set would move Recall and leave " +
+            "the top of the ranking alone; the chunks the sub-queries pull in are landing HIGH and " +
+            "being relevant, not merely landing. " +
+            "**READ IT AS A LARGER SEARCH, NOT A BETTER RANKER.** This cell retrieves up to ten " +
+            "times per query where the control retrieves once, and the page is NOT capped to TopK " +
+            "(issue #475): the largest returned 1,260 against a TopK of 250, 5.04x. Both sides are " +
+            "scored at the same depth so the comparison is sound, but the gain is bought with " +
+            "retrieval work and model calls rather than with a cleverer ordering -- and that " +
+            "ordering mixes scores taken against different query vectors, so it is not even " +
+            "internally comparable. " +
+            "**657 calls, not the 900 the counting pass priced**: MaxDepth bounds the calls and the " +
+            "loop stops early on any query called sufficient, so 900 was a ceiling behaving as one. " +
+            "SUPERSEDED TEXT: NEVER RUN -- Phase 6.2.1 wired this cell and has not measured it. " +
+            "**A figure identical to the control was the failure mode watched for, and it HAPPENED " +
+            "on the first attempt**: DeepResearchRetriever catches every exception as \"sufficient\", " +
+            "CachedGraphRagClient refused the ResponseFormat it sets, and the run reproduced " +
+            "0.67742 exactly with 0 hits and 0 misses. AssertTheLoopActuallyRan failed that run " +
+            "rather than pinning it."),
+        new(
             "scifact",
             BeirProtocol.RealTagFiltered,
             [0.67742],

@@ -328,6 +328,34 @@ public enum BeirProtocol
     RealSelfQuery,
 
     /// <summary>
+    /// Retrieval through the shipped <c>DeepResearchRetriever</c>: a real model judges whether the
+    /// retrieved context answers the query and, when it says no, writes sub-queries whose pages are
+    /// folded into the result.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Its control is the Real cell, and the comparison is not like-for-like in one respect
+    /// that must be stated with the figure.</b> The union of the inner page and every sub-query's
+    /// page is deduplicated and sorted, and <b>nothing truncates it to <c>TopK</c></b> — see issue
+    /// #475 — so this cell's page is larger than the control's. The ranking metrics still read the
+    /// same depth on both sides, but the page's ordering mixes scores taken against different
+    /// query vectors: a chunk scoring well against a sub-query can outrank one scoring well
+    /// against the question actually asked.
+    /// </para>
+    /// <para>
+    /// <b>It can silently not run, which is why its cell carries a mechanism guard.</b>
+    /// <c>DeepResearchRetriever</c> fails open — an unreadable sufficiency reply is treated as
+    /// "sufficient" and logged at warning — so a run where no reply parsed returns the inner page
+    /// on every query and scores the Real figure exactly. A benchmark reads no logs; only a guard
+    /// that the page changed can tell those apart.
+    /// </para>
+    /// <para>
+    /// Costs up to <c>MaxDepth</c> model calls per query, cached on disk, so a re-run replays free.
+    /// </para>
+    /// </remarks>
+    RealDeepResearch,
+
+    /// <summary>
     /// The graph path: entities and relations extracted from the corpus into a graph, that graph
     /// partitioned into communities, and retrieval running over the result — local search out from
     /// the entities a query names, global search over the community summaries. <b>Applies to
