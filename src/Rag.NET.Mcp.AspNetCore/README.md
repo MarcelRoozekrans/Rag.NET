@@ -16,7 +16,9 @@ using Rag.NET.DependencyInjection;
 using Rag.NET.Mcp.AspNetCore;
 using Rag.NET.Mcp.DependencyInjection;
 
-builder.Services.AddRagNet(rag => rag.UsePgVector(connectionString, vectorDimensions: 1536));
+// Your pipeline, configured as usual — this package adds nothing to how it is built, and the
+// store, embeddings and chunking come from whichever Rag.NET packages you already reference.
+builder.Services.AddRagNet();
 
 builder.Services
     .AddRagNetMcpServer()
