@@ -22,4 +22,34 @@ public interface IContentHashStore
 
     /// <summary>Removes a single entry record.</summary>
     Task RemoveAsync(ProviderId providerId, EntryId entryId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records that an entry was examined by an ingestion run and found unchanged.
+    /// </summary>
+    /// <param name="providerId">The provider the entry belongs to.</param>
+    /// <param name="entryId">The entry that was checked.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>"We looked and nothing had changed" had no way to be recorded, which made "is my index
+    /// fresh?" unanswerable per document</b> (issue #435). A fully-unchanged entry writes nothing:
+    /// an entry whose ETag still matches is skipped before its content is opened or its hash read,
+    /// and an entry with no ETag whose content hash matches is skipped without a write either.
+    /// <see cref="SetAsync"/> therefore fires only when something actually changed, so a timestamp
+    /// stamped there records <i>last changed</i> — which is roughly what the document's own
+    /// <c>updated_at</c> already says.
+    /// </para>
+    /// <para>
+    /// <b>It carries no hash or ETag on purpose.</b> The ETag fast path returns before reading
+    /// either, and making this method need them would force a store read per unchanged entry per
+    /// run purely to write the value straight back.
+    /// </para>
+    /// <para>
+    /// <b>Implementations may no-op.</b> Nothing in the pipeline reads what this records; it exists
+    /// so a store CAN observe the check. It is called only on the skip paths — a run that ingests
+    /// calls <see cref="SetAsync"/> instead, and a store wanting a single "last seen" should stamp
+    /// both.
+    /// </para>
+    /// </remarks>
+    Task TouchAsync(ProviderId providerId, EntryId entryId, CancellationToken cancellationToken = default);
 }

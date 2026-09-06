@@ -668,6 +668,81 @@ public sealed class IngestFromProviderTests : IDisposable
             Arg.Any<ProviderId>(), Arg.Any<EntryId>(), Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// An entry whose ETag still matches records the check, and writes nothing else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Written 2026-09-06 for #435, first as a characterisation of the gap and then as the
+    /// guard for its fix.</b> There are two skip paths. This is the ETag fast path
+    /// (<c>RagPipelineExtensions.cs:397</c>), which returns before the content is opened or the
+    /// hash read — so before <c>TouchAsync</c> existed, a fully-unchanged entry wrote nothing at
+    /// all and a store could not tell "checked, unchanged" from "not seen since the last change".
+    /// </para>
+    /// <para>
+    /// <b>The two negative assertions are the point.</b> <c>TouchAsync</c> must record the check
+    /// WITHOUT paying for a hash read or rewriting the row: an implementation that reached for
+    /// either would cost a read and a write per unchanged entry per run, which on a large sitemap
+    /// is the whole listing twice over.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task IngestFromProviderAsync_ETagMatch_TouchesTheStore_WithoutReadingTheHash()
+    {
+        var hashStore = Substitute.For<IContentHashStore>();
+        hashStore.GetETagAsync(new ProviderId("prov"), new EntryId("id-1"), Arg.Any<CancellationToken>())
+            .Returns("etag-abc");
+
+        var provider = MakeProvider(("id-1", "a.txt", "hello", "etag-abc"));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            hashStore: hashStore,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.SkippedCount);
+
+        await hashStore.Received(1).TouchAsync(
+            new ProviderId("prov"), new EntryId("id-1"), Arg.Any<CancellationToken>());
+
+        await hashStore.DidNotReceive().SetAsync(
+            Arg.Any<ProviderId>(), Arg.Any<EntryId>(), Arg.Any<string?>(), Arg.Any<string>(),
+            Arg.Any<CancellationToken>());
+
+        await hashStore.DidNotReceive().GetHashAsync(
+            Arg.Any<ProviderId>(), Arg.Any<EntryId>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// An entry with no ETag whose content is unchanged records the check too.
+    /// </summary>
+    /// <remarks>
+    /// The other half of #435, and the one that used to write nothing on EVERY run: the hash path
+    /// refreshes the ETag only when there is one to store, so a provider supplying no ETag left no
+    /// trace whatever until <c>TouchAsync</c>. Sitemaps are commonly mixed — some URLs carry
+    /// <c>&lt;lastmod&gt;</c> and some do not — so both halves matter to one crawl.
+    /// </remarks>
+    [Fact]
+    public async Task IngestFromProviderAsync_NullETag_HashMatch_TouchesTheStore()
+    {
+        var hashStore = Substitute.For<IContentHashStore>();
+        var helloHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("hello"u8.ToArray()));
+        hashStore.GetETagAsync(new ProviderId("prov"), new EntryId("id-1"), Arg.Any<CancellationToken>()).Returns((string?)null);
+        hashStore.GetHashAsync(new ProviderId("prov"), new EntryId("id-1"), Arg.Any<CancellationToken>()).Returns(helloHash);
+
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            hashStore: hashStore,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        await hashStore.Received(1).TouchAsync(
+            new ProviderId("prov"), new EntryId("id-1"), Arg.Any<CancellationToken>());
+
+        await hashStore.DidNotReceive().SetAsync(
+            Arg.Any<ProviderId>(), Arg.Any<EntryId>(), Arg.Any<string?>(), Arg.Any<string>(),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task IngestFromProviderAsync_CleanupDeleteThrows_ErrorIsRecordedButProcessingContinues()
     {
