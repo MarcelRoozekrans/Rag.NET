@@ -65,7 +65,7 @@
     <PackageVersion Include="MimeKit" Version="4.17.0" />
     <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
-    <PackageVersion Include="MsgReader" Version="6.1.0" />
+    <PackageVersion Include="MsgReader" Version="6.1.1" />
     <PackageVersion Include="NetFabric.Hyperlinq.Analyzer" Version="2.3.0" />
     <PackageVersion Include="NGitLab" Version="12.2.0" />
     <PackageVersion Include="Npgsql" Version="10.0.3" />
