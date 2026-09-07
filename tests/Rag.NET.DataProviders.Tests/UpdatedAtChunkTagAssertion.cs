@@ -52,7 +52,6 @@ internal static class UpdatedAtChunkTagAssertion
         {
             Stream           = Stream.Null,
             Metadata         = metadata,
-            GetNextBm25DocId = () => 0,
         };
         ctx.Chunks.Add(new TextChunk { Text = "probe", DocumentId = metadata.DocumentId, ChunkIndex = 0 });
 

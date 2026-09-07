@@ -28,12 +28,71 @@ public sealed class InMemoryBm25Index : IBm25Index
     private readonly ReaderWriterLockSlim _lock = new();
     private readonly SynonymMap? _synonymMap;
 
+    /// <summary>
+    /// The next internal doc id to hand out. Owned by the index because only the index knows
+    /// which ids are already taken.
+    /// </summary>
+    /// <remarks>
+    /// <b>It used to be a counter on <c>PipelineIngestor</c>, and that was the bug (#490).</b>
+    /// That counter started at 0 in every process, while a persisted index reloads the ids it
+    /// already holds — so after a restart the allocator handed out ids the index had, <c>Add</c>
+    /// saw a duplicate and returned, and the document was silently missing from keyword and hybrid
+    /// search. Measured: alpha=1 hit, bravo=0 hits across one restart. It also left both rebuilders
+    /// unable to write BM25 at all (#487), because they had no counter to borrow and stubbed it as
+    /// <c>() =&gt; 0</c>.
+    /// </remarks>
+    private int _nextDocId;
+
     public InMemoryBm25Index(SynonymMap? synonymMap = null)
     {
         _synonymMap = synonymMap;
     }
 
-    public void Add(int docId, TextChunk chunk)
+    /// <inheritdoc/>
+    public int Add(TextChunk chunk)
+    {
+        ArgumentNullException.ThrowIfNull(chunk);
+
+        int docId;
+        _lock.EnterWriteLock();
+        try
+        {
+            docId = _nextDocId++;
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+
+        AddCore(docId, chunk);
+        return docId;
+    }
+
+    /// <summary>
+    /// Indexes a chunk under an id the caller already owns.
+    /// </summary>
+    /// <remarks>
+    /// Internal, and it exists for exactly one caller: <c>SqliteBm25Index</c> reloading the ids it
+    /// persisted. Every other path allocates through <see cref="Add(TextChunk)"/>, because an id
+    /// nobody can pass is an id nobody can collide.
+    /// </remarks>
+    internal void AddWithId(int docId, TextChunk chunk)
+    {
+        _lock.EnterWriteLock();
+        try
+        {
+            if (docId >= _nextDocId)
+                _nextDocId = docId + 1;
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+
+        AddCore(docId, chunk);
+    }
+
+    private void AddCore(int docId, TextChunk chunk)
     {
         var tokens = Tokenize(chunk.Text, _synonymMap);
         var tf = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -44,7 +103,17 @@ public sealed class InMemoryBm25Index : IBm25Index
         try
         {
             if (_docs.ContainsKey(docId))
-                return; // caller must remove before re-adding
+            {
+                // Unreachable through Add, which allocates, and through AddWithId, whose only
+                // caller replays a primary key. It USED to be a silent return, and that is what
+                // turned #490 from a collision into missing data: a document ingested after a
+                // restart was dropped here with nothing to observe it by. If a future caller
+                // reintroduces a collision it should find out immediately.
+                throw new InvalidOperationException(
+                    $"BM25 internal doc id {docId} is already indexed. Ids are assigned by the " +
+                    "index itself, so a duplicate means a caller supplied one -- remove the " +
+                    "document before re-adding it.");
+            }
             _docs[docId] = (chunk, tokens.Count);
 
             var documentId = chunk.DocumentId.Value;

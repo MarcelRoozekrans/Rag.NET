@@ -66,8 +66,8 @@ public sealed class MetadataFilterParityTests
             ct);
 
         using var bm25 = new InMemoryBm25Index();
-        for (var i = 0; i < chunks.Length; i++)
-            bm25.Add(i + 1, chunks[i]);
+        foreach (var chunk in chunks)
+            bm25.Add(chunk);
 
         var denseMatched = (await vectorStore.SearchAsync(vector, new SearchOptions { TopK = 10, MetadataFilter = filter }, ct))
             .Select(static result => result.Chunk.ChunkIndex)

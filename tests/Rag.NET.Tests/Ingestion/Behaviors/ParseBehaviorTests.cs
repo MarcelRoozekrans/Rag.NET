@@ -26,7 +26,6 @@ public class ParseBehaviorTests
                 ContentType = contentType,
             },
             Progress = progress,
-            GetNextBm25DocId = () => 0,
         };
     }
 

@@ -94,7 +94,8 @@ public static class RagBuilderExtensions
             builder.Services.AddSingleton<RaptorTreeRebuilder>(sp =>
                 new RaptorTreeRebuilder(
                     sp.GetRequiredService<RaptorIngestionBehavior>(),
-                    sp.GetRequiredService<IVectorStore>()));
+                    sp.GetRequiredService<IVectorStore>(),
+                    sp.GetRequiredService<IBm25Index>()));
         }
 
         builder.Services.AddSingleton<RaptorRetrievalBehavior>(sp =>

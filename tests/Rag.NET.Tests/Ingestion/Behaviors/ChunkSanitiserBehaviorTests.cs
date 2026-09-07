@@ -24,7 +24,6 @@ public class ChunkSanitiserBehaviorTests
         {
             Stream = new MemoryStream(),
             Metadata = new DocumentMetadata { DocumentId = new DocumentId("doc1"), FileName = "f.pdf" },
-            GetNextBm25DocId = () => 1,
         };
         foreach (var (t, i) in texts.Select((t, i) => (t, i)))
         {

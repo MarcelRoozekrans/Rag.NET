@@ -171,7 +171,6 @@ public static class GraphRagSliceIngestion
                 DocumentId = new DocumentId(CommunityDocumentId),
                 FileName = CommunityDocumentId,
             },
-            GetNextBm25DocId = () => 0,
         };
 
         var behavior = new CommunityDetectionBehavior(chatClient, embedder, graphStore, options);
@@ -201,7 +200,6 @@ public static class GraphRagSliceIngestion
                 DocumentId = new DocumentId(document.Id),
                 FileName = document.Id,
             },
-            GetNextBm25DocId = () => 0,
         };
 
         for (var i = 0; i < chunks.Count; i++)

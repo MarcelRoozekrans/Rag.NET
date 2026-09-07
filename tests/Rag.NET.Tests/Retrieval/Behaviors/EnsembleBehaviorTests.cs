@@ -875,9 +875,9 @@ public class EnsembleBehaviorTests
             ],
             ct);
 
-        bm25Index.Add(1, a.Chunk);
-        bm25Index.Add(2, bExcluded.Chunk);
-        bm25Index.Add(3, c.Chunk);
+        bm25Index.Add(a.Chunk);
+        bm25Index.Add(bExcluded.Chunk);
+        bm25Index.Add(c.Chunk);
 
         var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
         embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())

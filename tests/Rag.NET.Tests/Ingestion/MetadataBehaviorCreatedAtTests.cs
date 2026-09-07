@@ -13,7 +13,6 @@ public class MetadataBehaviorCreatedAtTests
         {
             Stream           = Stream.Null,
             Metadata         = metadata,
-            GetNextBm25DocId = () => 0,
         };
         ctx.Chunks.Add(new TextChunk
         {

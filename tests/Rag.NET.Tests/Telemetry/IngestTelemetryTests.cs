@@ -83,7 +83,6 @@ public class IngestTelemetryTests
                 FileName = "test.txt",
                 ContentType = "text/plain",
             },
-            GetNextBm25DocId = () => 1,
         };
         ctx.Chunks.Add(new TextChunk { Text = "hello", DocumentId = new DocumentId("embed-doc"), ChunkIndex = 0 });
 
@@ -140,7 +139,6 @@ public class IngestTelemetryTests
                 FileName = "test.txt",
                 ContentType = "text/plain",
             },
-            GetNextBm25DocId = () => 1,
         };
 
         // Run ParseBehavior (which populates ctx.Chunks), then ChunkingBehavior
@@ -184,7 +182,6 @@ public class IngestTelemetryTests
                 FileName = "test.txt",
                 ContentType = "text/plain",
             },
-            GetNextBm25DocId = () => 1,
         };
         ctx.EmbeddedChunks.Add(new EmbeddedChunk
         {
@@ -289,7 +286,6 @@ public class IngestTelemetryTests
                 FileName = "chunks.txt",
                 ContentType = "text/plain",
             },
-            GetNextBm25DocId = () => 1,
         };
         ctx.EmbeddedChunks.Add(new EmbeddedChunk
         {

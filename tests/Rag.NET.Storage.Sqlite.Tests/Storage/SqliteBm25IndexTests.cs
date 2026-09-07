@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Data.Sqlite;
 using Rag.NET.Models;
 using Rag.NET.Storage;
 using Xunit;
@@ -45,7 +46,7 @@ public class SqliteBm25IndexTests : IAsyncDisposable
     public async Task Add_ThenRestart_SearchFindsChunk()
     {
         var sut = CreateSut();
-        sut.Add(1, MakeChunk("doc-1", 0, "hello world"));
+        sut.Add(MakeChunk("doc-1", 0, "hello world"));
         await sut.DisposeAsync();
 
         // Simulate restart: create new instance pointing to same db
@@ -59,7 +60,7 @@ public class SqliteBm25IndexTests : IAsyncDisposable
     public async Task Remove_ThenRestart_SearchFindsNothing()
     {
         var sut = CreateSut();
-        sut.Add(1, MakeChunk("doc-1", 0, "hello world"));
+        sut.Add(MakeChunk("doc-1", 0, "hello world"));
         sut.Remove("doc-1");
         await sut.DisposeAsync();
 
@@ -72,7 +73,7 @@ public class SqliteBm25IndexTests : IAsyncDisposable
     public async Task CollectionNameMismatch_WipesExistingData()
     {
         var sut = CreateSut("collection-A");
-        sut.Add(1, MakeChunk("doc-1", 0, "hello world"));
+        sut.Add(MakeChunk("doc-1", 0, "hello world"));
         await sut.DisposeAsync();
 
         // New instance with different collection name → stale guard wipes data
@@ -85,8 +86,8 @@ public class SqliteBm25IndexTests : IAsyncDisposable
     public void Add_MultipleChunks_AllReturnedBySearch()
     {
         var sut = CreateSut();
-        sut.Add(1, MakeChunk("doc-1", 0, "the quick brown fox"));
-        sut.Add(2, MakeChunk("doc-2", 0, "the lazy dog"));
+        sut.Add(MakeChunk("doc-1", 0, "the quick brown fox"));
+        sut.Add(MakeChunk("doc-2", 0, "the lazy dog"));
 
         var results = sut.Search("fox", topK: 5);
         Assert.Single(results); // only first chunk matches "fox"
@@ -97,8 +98,8 @@ public class SqliteBm25IndexTests : IAsyncDisposable
     public async Task ClearAsync_RemovesAllChunks()
     {
         var sut = CreateSut();
-        sut.Add(1, MakeChunk("doc-1", 0, "hello world"));
-        sut.Add(2, MakeChunk("doc-2", 0, "foo bar"));
+        sut.Add(MakeChunk("doc-1", 0, "hello world"));
+        sut.Add(MakeChunk("doc-2", 0, "foo bar"));
 
         await sut.ClearAsync(TestContext.Current.CancellationToken);
 
@@ -110,7 +111,7 @@ public class SqliteBm25IndexTests : IAsyncDisposable
     public async Task ClearAsync_ThenRestart_SearchFindsNothing()
     {
         var sut = CreateSut();
-        sut.Add(1, MakeChunk("doc-1", 0, "hello world"));
+        sut.Add(MakeChunk("doc-1", 0, "hello world"));
         await sut.ClearAsync(TestContext.Current.CancellationToken);
         await sut.DisposeAsync();
 
@@ -128,7 +129,7 @@ public class SqliteBm25IndexTests : IAsyncDisposable
         await sut.InitializeAsync(TestContext.Current.CancellationToken);
 
         // Subsequent operations use the already-initialised state
-        sut.Add(1, MakeChunk("doc-1", 0, "hello world"));
+        sut.Add(MakeChunk("doc-1", 0, "hello world"));
         var results = sut.Search("hello", 5);
 
         Assert.Single(results);
@@ -142,7 +143,7 @@ public class SqliteBm25IndexTests : IAsyncDisposable
         sut.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() =>
-            sut.Add(1, MakeChunk("doc-1", 0, "hello")));
+            sut.Add(MakeChunk("doc-1", 0, "hello")));
     }
 
     [Fact]
@@ -175,8 +176,8 @@ public class SqliteBm25IndexTests : IAsyncDisposable
     public async Task Add_ThenRestart_SearchWithMetadataFilter_ExcludesNonMatchingChunks()
     {
         var sut = CreateSut();
-        sut.Add(1, FilterChunk(1, "shared search term", "a"));
-        sut.Add(2, FilterChunk(2, "shared search term", "b"));
+        sut.Add(FilterChunk(1, "shared search term", "a"));
+        sut.Add(FilterChunk(2, "shared search term", "b"));
         await sut.DisposeAsync();
 
         // Simulate restart: create new instance pointing to same db.
@@ -191,5 +192,91 @@ public class SqliteBm25IndexTests : IAsyncDisposable
 
         var hit = Assert.Single(results);
         Assert.True(hit.chunk.Metadata["tenant"] == "a");
+    }
+
+    /// <summary>
+    /// A document indexed after a restart is searchable, because the index allocates its own ids.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is #490, and it was silent.</b> <c>PipelineIngestor</c> used to allocate BM25 ids
+    /// from a per-instance counter starting at 0, while <c>InitialiseCore</c> reloads the ids this
+    /// index already persisted. After a restart the caller therefore handed over ids the index
+    /// held, <c>InMemoryBm25Index.Add</c> hit <c>if (_docs.ContainsKey(docId)) return;</c>, and the
+    /// chunk was dropped without an error, a log line or a return value anyone could check.
+    /// </para>
+    /// <para>
+    /// <b>Measured before the fix: searching for the first document returned 1 hit and the second
+    /// returned 0.</b> Worse, <c>Add</c> had already run <c>INSERT OR REPLACE</c>, so the persisted
+    /// row held the NEW chunk under the OLD chunk's id while memory held the old one — the two
+    /// stores disagreed until the next restart swapped which was visible.
+    /// </para>
+    /// <para>
+    /// At shipped defaults with <c>UseSqlitePersistence</c> this meant every document ingested
+    /// after a process restart was missing from keyword and hybrid search, which reads as a
+    /// relevance problem rather than a missing document.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ADocumentIndexedAfterAReopen_IsSearchable()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"ragnet-bm25-reopen-{Guid.NewGuid():N}.db");
+        try
+        {
+            using (var first = new SqliteBm25Index(path))
+            {
+                await first.InitializeAsync(TestContext.Current.CancellationToken);
+                first.Add(MakeChunk("doc-a", 0, "alpha unique"));
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            using var second = new SqliteBm25Index(path);
+            await second.InitializeAsync(TestContext.Current.CancellationToken);
+            second.Add(MakeChunk("doc-b", 0, "bravo unique"));
+
+            Assert.Single(second.Search("alpha", topK: 10));
+            Assert.Single(second.Search("bravo", topK: 10));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    /// <summary>Reopening seeds the allocator above every id it restored.</summary>
+    /// <remarks>
+    /// The mechanism behind the test above, asserted directly so a regression says which half
+    /// broke: ids handed out after a reload must not revisit the reloaded range.
+    /// </remarks>
+    [Fact]
+    public async Task ReopeningSeedsTheAllocator_AboveTheRestoredIds()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"ragnet-bm25-seed-{Guid.NewGuid():N}.db");
+        try
+        {
+            var firstIds = new List<int>();
+            using (var first = new SqliteBm25Index(path))
+            {
+                await first.InitializeAsync(TestContext.Current.CancellationToken);
+                for (var i = 0; i < 5; i++)
+                    firstIds.Add(first.Add(MakeChunk("doc-a", i, $"chunk {i}")));
+            }
+
+            SqliteConnection.ClearAllPools();
+
+            using var second = new SqliteBm25Index(path);
+            await second.InitializeAsync(TestContext.Current.CancellationToken);
+            var reopened = second.Add(MakeChunk("doc-b", 0, "after the restart"));
+
+            Assert.DoesNotContain(reopened, firstIds);
+            Assert.True(reopened > firstIds.Max(), $"allocator returned {reopened}, inside the restored range {firstIds.Min()}..{firstIds.Max()}");
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            if (File.Exists(path)) File.Delete(path);
+        }
     }
 }

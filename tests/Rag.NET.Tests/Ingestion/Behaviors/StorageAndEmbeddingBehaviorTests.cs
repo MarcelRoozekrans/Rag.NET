@@ -28,7 +28,6 @@ public class StorageAndEmbeddingBehaviorTests
                 ContentType = "text/plain",
             },
             Progress = progress,
-            GetNextBm25DocId = () => 42,
         };
     }
 
@@ -192,7 +191,7 @@ public class StorageAndEmbeddingBehaviorTests
         var result = await sut.HandleAsync(ctx, ct, NeverCalledNext);
 
         await vectorStore.Received(1).StoreAsync(ctx.EmbeddedChunks, ct);
-        bm25.Received(1).Add(42, chunk);
+        bm25.Received(1).Add(chunk);
         dataManager.Received(1).Add(ctx.Metadata, ctx.Chunks);
 
         Assert.Equal("doc-1", result.DocumentId);
@@ -231,7 +230,7 @@ public class StorageAndEmbeddingBehaviorTests
         Received.InOrder(() =>
         {
             bm25.Remove("doc-1");
-            bm25.Add(42, chunk);
+            bm25.Add(chunk);
         });
         Received.InOrder(() =>
         {
@@ -367,7 +366,6 @@ public class StorageAndEmbeddingBehaviorTests
         {
             Stream = new MemoryStream(),
             Metadata = new DocumentMetadata { DocumentId = new DocumentId(docId), FileName = "test.txt", ContentType = "text/plain" },
-            GetNextBm25DocId = () => 42,
         };
         var chunk = new TextChunk { Text = "hello", DocumentId = new DocumentId(docId), ChunkIndex = 0 };
         ctx.Chunks.Add(chunk);

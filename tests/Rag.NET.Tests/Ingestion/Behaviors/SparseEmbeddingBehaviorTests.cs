@@ -40,7 +40,6 @@ public class SparseEmbeddingBehaviorTests
                 FileName = "test.txt",
                 ContentType = "text/plain",
             },
-            GetNextBm25DocId = () => 42,
         };
         var chunk = new TextChunk { Text = "hello", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 };
         ctx.Chunks.Add(chunk);

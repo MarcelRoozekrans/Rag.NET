@@ -210,7 +210,6 @@ public class RaptorBenchmarks
             FileName = "bench.txt",
             ContentType = "text/plain",
         },
-        GetNextBm25DocId = () => 0,
     };
 
     private RetrievalContext CreateRetrievalContext() => new()

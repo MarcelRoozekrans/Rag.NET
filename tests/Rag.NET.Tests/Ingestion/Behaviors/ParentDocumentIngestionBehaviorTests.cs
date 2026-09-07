@@ -28,7 +28,6 @@ public class ParentDocumentIngestionBehaviorTests
                 FileName = "test.txt",
                 ContentType = "text/plain",
             },
-            GetNextBm25DocId = () => 1,
         };
     }
 

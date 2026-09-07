@@ -104,7 +104,7 @@ public class Bm25SynonymBenchmarks
     private static void AddOneChunk(string text, SynonymMap? map)
     {
         using var index = new InMemoryBm25Index(map);
-        index.Add(0, new TextChunk
+        index.Add(new TextChunk
         {
             Text = text,
             DocumentId = new DocumentId("bench"),
@@ -140,7 +140,7 @@ public class Bm25SynonymBenchmarks
         const string sentence = "The quick brown fox jumps over the lazy dog. ";
         var index = new InMemoryBm25Index(map);
         for (int i = 0; i < docCount; i++)
-            index.Add(i, new TextChunk
+            index.Add(new TextChunk
             {
                 Text = sentence + $"doc {i}",
                 DocumentId = new DocumentId($"doc-{i}"),

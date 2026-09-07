@@ -331,7 +331,6 @@ public sealed class LlmCallShapeTests(ITestOutputHelper output)
         {
             Stream = Stream.Null,
             Metadata = metadata,
-            GetNextBm25DocId = () => 0,
         };
 
         for (var i = 0; i < chunks; i++)

@@ -26,6 +26,13 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>Rag.NET.Resilience</_Parameter1>
     </AssemblyAttribute>
+    <!-- SqliteBm25Index reloads the doc ids it persisted, which is the one path that supplies an
+         id rather than allocating one. InMemoryBm25Index.AddWithId is internal so that stays the
+         only such caller: the public Add assigns the id itself, because only the index knows
+         which are taken (#490). -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Storage.Sqlite</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>

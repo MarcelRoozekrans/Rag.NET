@@ -219,7 +219,6 @@ public sealed class RaptorRunTests : IDisposable
         {
             Stream = Stream.Null,
             Metadata = new DocumentMetadata { DocumentId = new DocumentId(document.Id), FileName = document.Id },
-            GetNextBm25DocId = static () => 0,
         };
         ctx.EmbeddedChunks.AddRange(embedded);
         _ = await behavior.HandleAsync(ctx, ct, static (c, _) => ValueTask.FromResult(
