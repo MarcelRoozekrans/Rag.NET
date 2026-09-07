@@ -6201,7 +6201,7 @@ stub `next` and never run `StorageBehavior`: one test asserts the behaviour regi
 as pointedly, does **not** register it when no tree was built), the other asserts `StorageBehavior`
 purges whatever is registered while leaving the vector store alone. Both mutation-checked.
 
-### Phase 6.2.16: The Variance Floor Learns the Data's Scale [status: complete 2026-09-07 — added and shipped the same day. **#337 REMAINS OPEN**: this fixes a symptom the issue did not name and leaves the one it did]
+### Phase 6.2.16: The Variance Floor Learns the Data's Scale [status: complete 2026-09-07 — added and shipped the same day. **#337's residue is closed in 6.2.19**; when this phase shipped it fixed a symptom the issue did not name and left the one it did]
 **Surface:** Backend
 **HelpWanted:** no
 **Completed:** 2026-09-07
@@ -6305,6 +6305,95 @@ duplicate now means a caller reintroduced the bug, and it says so instead of los
 
 **Four mutations, each failing exactly its own guard:** removing the allocator's seeding fails both
 #490 tests; neutralising either rebuilder's BM25 write fails its own test.
+
+### Phase 6.2.18: The Deep Research Page Honours TopK [status: complete 2026-09-07 in #494 — closes #475, and re-measures the cell whose figure it changed]
+**Surface:** Retrieval
+**HelpWanted:** no
+**Completed:** 2026-09-07
+
+**Goal:** `RetrievalOptions.TopK` documents itself as "chunks to return after all pipeline stages".
+`DeepResearchRetriever` is a pipeline stage and nothing truncated: `TopK` 5 with three sub-queries
+returned **20**, and the benchmark cell's largest page was **1,260 against its control's 250**.
+
+**THE ISSUE'S OWN SUGGESTED FIX WOULD HAVE MADE RETRIEVAL WORSE.** #475 asked to truncate the union
+to `TopK`. It also recorded, as a separate observation, that the union is sorted by scores taken
+against *different query vectors*. While nothing truncated, that only mis-ORDERED the page. Cutting
+at `TopK` on the same ordering promotes the broken comparison to deciding CONTENT — the caller's
+best-matching chunks dropped in favour of a sub-query's inflated ones. That trades a documented
+over-fetch for a silent quality loss.
+
+Fused by **Reciprocal Rank Fusion** instead, which reads only each hit's position within its own
+ranking. Not invented here: `RrfMerger` already existed, and `EnsembleBehavior`'s client-side hybrid
+path already returns RRF scores at this same boundary, so the score scale callers see is consistent
+rather than novel. The no-expansion case stays a pass-through with scores untouched.
+
+**RE-MEASURED FOR $0.00 — 657 cached calls, all replayed, cache unchanged at 647 entries.**
+
+| | before | after | control |
+| --- | --- | --- | --- |
+| nDCG@10 | 0.70219 | **0.71913** | 0.67742 |
+| Δ | +0.02477 | **+0.04171** | — |
+
+**The largest gain any technique has had on SciFact**, ahead of HyDE's +0.03647. **The reading
+inverts**: the old figure was rightly read as "a larger search, not a better ranker" because the page
+was uncapped; both sides now return at most 250, so the gain is bought by ordering the same-sized
+page better. That it went UP when the over-fetch was removed is the strongest evidence for what #475
+claimed about the old ordering.
+
+**The cell's own mechanism guard had to be rewritten, because this fix disabled it.** It counted
+expansion as "the deep page is longer than the control's", which the cap makes false by
+construction: the first re-run reported 0 of 300 expanded while all 657 calls replayed. It now
+compares pages by content and order — immune to the cap, and stronger, since a run finding nothing
+new would have passed the length check. Both agree at 184 of 300.
+
+**Not closed:** reproducing the replay needs a pristine worktree; the primary checkout reports 0
+hits on identical content, unexplained after ruling out cwd, line endings, build staleness and
+package resolution. Filed as **#495**. It cannot spend — `RefuseOnMiss` throws rather than calling.
+
+### Phase 6.2.19: A Fit May Contain One Lonely Component [status: complete 2026-09-07 — closes #337, the residue 6.2.16 left]
+**Surface:** Backend
+**HelpWanted:** no
+**Completed:** 2026-09-07
+
+**Goal:** close the near-duplicate inflation #337 filed, which 6.2.16's data-scaled floor did not
+reach and which a characterisation test has been pinning ever since.
+
+**BOTH THE PREDICTED MECHANISM AND THE CHARACTERISATION WERE WRONG, AND MEASURING SAID SO.**
+
+#337 — and this project's own comment on it — expected components of near-identical points to survive
+as collapsed PAIRS that the degenerate-fit rule misses because they hold two points, and prescribed
+plumbing per-component variances into the rejection path. **The winning fit contains no such pairs.**
+At k = 10 its components are sized `4,1,1,1,2,1,6,1,2,1`: the pairs are split, and **six singletons**
+carry the likelihood. The old rule tolerated them because it rejects only when *most* points are
+alone, and six of twenty is not most.
+
+The variance plumbing was built, measured to be unnecessary, and **reverted rather than shipped as
+unused fields**. It could not have worked anyway: on two tight blobs the *legitimate* components are
+also pinned to the floor, so rejecting floored components would reject the fit #337 explicitly
+required to keep working.
+
+**The characterisation was off too.** #337 said k pins to the ceiling, which held at the single
+`maxK` it was measured at. Given more room the old code returned 11 at both 15 and 19 — it saturated
+just above, rather than tracking forever.
+
+**The fix is 14 lines: at most one lonely component.** The boundary is inherited, not tuned — the
+existing rule already justified tolerating a lone outlier as a fact about the data, and two is the
+smallest count that cannot be one.
+
+| | maxK 10 | maxK 15 | maxK 19 |
+| --- | --- | --- | --- |
+| before | 10 | 11 | 11 |
+| after | **7** | **7** | **7** |
+
+**The caller's ceiling no longer chooses the answer**, which is the defect. The replacement test
+asserts that stability rather than pinning 7, because the number is the measurement and the
+stability is the property.
+
+**One mutation survived and was reported rather than covered.** Deleting the empty-component
+rejection entirely changes no test. It appears defensive rather than load-bearing — an empty
+component adds parameters without likelihood, so BIC already avoids it — but no dataset was found
+where the mutant differs, so any test written would have passed with the rule deleted. Filed as
+**#498**.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to

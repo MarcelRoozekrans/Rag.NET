@@ -37,6 +37,13 @@ internal static class GaussianMixtureModel
     // and the reason a lone undersized component does not by itself disqualify a candidate.
     private const int MinimumComponentPoints = 2;
 
+    /// <summary>
+    /// How many components owning a single point a fit may contain before it is rejected (#337).
+    /// One isolated point is a fact about the data; several is a fit coming apart. See
+    /// <see cref="IsDegenerateFit"/> for why the boundary sits here rather than at a fraction.
+    /// </summary>
+    private const int MaximumLonelyComponents = 1;
+
     internal static GmmResult Fit(float[][] data, int k, int maxIterations = 100, double tolerance = 1e-6)
     {
         int n = data.Length;
@@ -112,6 +119,27 @@ internal static class GaussianMixtureModel
     /// distinguishes the #333 pathology is not that some component is alone but that most points
     /// are — a fit where half the data sits in components of one is fragmentation, not clustering.
     ///
+    /// <b>The share test alone was too lenient, which is #337.</b> On 20 points holding five
+    /// near-identical pairs the winning fit was sized 4,1,1,1,2,1,6,1,2,1 — <b>six singletons</b>,
+    /// but only six of twenty points, so "most points are alone" was false and the fit stood. k rose
+    /// from 10 to 11 as <c>maxK</c> went from 10 to 15, meaning the caller's ceiling was choosing
+    /// the answer. So a count of lonely components is applied as well:
+    /// <see cref="MaximumLonelyComponents"/>, at most one.
+    ///
+    /// <b>The boundary is one, and that is inherited rather than tuned.</b> This rule's predecessor
+    /// already justified tolerating a lone outlier, so one is the number that keeps the outlier case
+    /// working; two is the smallest count that cannot be a single fact about the data. It is the
+    /// same claim the share test makes, applied where a fraction of a small n cannot express it.
+    ///
+    /// <b>#337 predicted a different mechanism, and it was measured to be the wrong one.</b> The
+    /// issue expected components of near-identical points to survive as collapsed PAIRS that this
+    /// rule would miss because they hold two points, and proposed plumbing per-component variances
+    /// in to reject them. The winning fit contains no such pairs — they are split into singletons —
+    /// so variances are not consulted here and the plumbing was reverted after being built. A
+    /// per-component variance test could not have separated the two cases anyway: on two tight blobs
+    /// the legitimate components are also pinned to the floor, so rejecting floored components would
+    /// reject the fit #337 explicitly required to keep working.
+    ///
     /// Counts hard assignments rather than summing responsibilities. It is exact: a component that
     /// genuinely owns exactly two points sums its responsibilities to slightly under two (measured:
     /// 1.9988) because the other components keep a sliver of the mass, so a threshold on the soft
@@ -132,6 +160,7 @@ internal static class GaussianMixtureModel
         }
 
         int pointsInRealComponents = 0;
+        int lonelyComponents = 0;
         for (int j = 0; j < k; j++)
         {
             if (counts[j] == 0)
@@ -143,6 +172,15 @@ internal static class GaussianMixtureModel
             {
                 pointsInRealComponents += counts[j];
             }
+            else
+            {
+                lonelyComponents++;
+            }
+        }
+
+        if (lonelyComponents > MaximumLonelyComponents)
+        {
+            return true;
         }
 
         return pointsInRealComponents * 2 <= gmmResult.Assignments.Length;
