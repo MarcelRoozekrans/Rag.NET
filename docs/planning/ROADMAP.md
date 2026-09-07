@@ -6049,7 +6049,7 @@ while its own scan reports **74**: the comment counts packages and the scan coun
 which is not packable. Both numbers were right and neither said which it was. Now recorded, because
 the gap looked like a defect for a minute.
 
-### Phase 6.2.14: Deletion Reaches the RAPTOR Leaves — stop deleted content coming back searchable [status: active 2026-09-07 — added the same day from issue #338, the highest-severity item on the tracker]
+### Phase 6.2.14: Deletion Reaches the RAPTOR Leaves — stop deleted content coming back searchable [status: complete 2026-09-07 — added and shipped the same day. `IDocumentScopedStore` in `Rag.NET.Abstractions`, which `IRaptorLeafStore` extends; cleared by `DeleteAsync` and unconditionally by `StorageBehavior`. Four mutation checks, the decisive one being the DI registration. Previously active 2026-09-07 — added the same day from issue #338, the highest-severity item on the tracker]
 **Surface:** Backend
 **HelpWanted:** no
 
@@ -6072,14 +6072,23 @@ already clears — `IVectorStore`, `IBm25Index`, `IParentChunkStore`, `IRagDataM
 are the same change, and it is the pattern this codebase already uses five times. The third option,
 a deletion event, would invent a mechanism to avoid a pattern that exists.
 
-**The second face is a decision rather than a bug, and it was taken deliberately.**
-`OverwriteBehavior` strands tail entries on re-ingest and says so: *"making delete-before-insert
-unconditional would change what `Overwrite` means for every existing caller"* — recorded twice, for
-the vector store and for parent chunks. **Leaves are treated as the exception, on the operator's
-2026-09-07 call**, because the consequence differs in kind rather than degree: a stranded vector
-chunk stays attributed to its document and a later `DeleteAsync` removes it, whereas a stranded leaf
-is summarised into `raptor://corpus-tree` under no document id — unattributable, unremovable and
-searchable. That reasoning is written beside the existing limitation rather than left implicit.
+**The second face was framed as an exception and turned out not to be one.** The design started
+from `OverwriteBehavior`'s recorded position — *"making delete-before-insert unconditional would
+change what `Overwrite` means for every existing caller"* — and treated leaves as a deliberate
+departure from it. **Running the first test showed why that was wrong: `Overwrite` defaults to
+false, so nothing fired on a plain re-ingest, which is the common path.**
+
+There are two groups, not one policy. `StorageBehavior.RemovePreviousAppendOnlyEntriesAsync` clears
+BM25 and the data manager on **every** ingest; the vector store and parent chunks are the ones
+deliberately stranded. **Leaves belong with BM25** — append-only per `(documentId, chunkIndex)`,
+exactly as postings are, and #336 is the same accumulation arriving at BM25 from the other
+direction. So the purge is unconditional and consistent rather than exceptional, and it is in both
+places for the reason BM25 is: `Overwrite` promises the document is gone up front *whatever happens
+next*, and `StorageBehavior` never runs when the replacement fails to parse.
+
+**Why it is not simply left stranded:** a stranded vector chunk is stale content still attributed to
+its document, and a later `DeleteAsync` removes it. A stranded leaf becomes a summary under no
+document id — unattributable, unremovable, searchable.
 
 **Exit condition:** deleting a document removes its leaves, proven by a test that builds a corpus
 tree AFTER the delete and asserts the deleted text is absent from what the tree was built over;
@@ -6089,6 +6098,32 @@ Known Limitations entry for #338 is removed rather than reworded.
 **What it does not promise:** retroactive cleanup. Summaries already written under
 `raptor://corpus-tree` from previously-deleted documents carry no document id and this phase cannot
 find them — a store written before the fix needs its tree rebuilt, and the guide will say so.
+
+**Completed:** 2026-09-07
+
+**Design:** the abstraction is one method and no marker properties, resolved as a collection so a
+package core cannot name may register its own without coordination.
+
+**THE DECISIVE GUARD IS THE DI REGISTRATION, and every other test would have passed without it.**
+`PipelineIngestor` and `StorageBehavior` iterate `IEnumerable<IDocumentScopedStore>`; the container
+does not resolve a base interface from a derived registration, so registering only
+`IRaptorLeafStore` leaves that collection empty. Every purge loop then runs zero times, everything
+compiles, and every test using a substitute registered directly as `IDocumentScopedStore` still
+passes — **the same silent shape as the defect being fixed**. `UseRaptor` therefore registers the
+same instance twice, and `UseRaptor_RegistersTheLeafStoreAsADocumentScopedStore_AndTheSameInstance`
+asserts identity rather than mere resolvability: two registrations each constructing their own
+`SqliteRaptorLeafStore` would open two connections to one file and delete from a store nothing else
+writes to.
+
+**Four mutations, each failing exactly its own guard:** removing the `DeleteAsync` purge, removing
+the `StorageBehavior` purge, removing the DI registration, and — earlier — the discovery that
+`Overwrite` defaults to false, which is what corrected the design from "leaves are an exception" to
+"leaves belong with BM25".
+
+**`docs/guide/raptor.md`'s Known Limitations entry is removed rather than reworded**, and replaced
+by a resolved note carrying the one thing the fix cannot do: summaries already written from
+previously-deleted documents carry no document id, so a store built before this needs its tree
+rebuilt for them to disappear.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to

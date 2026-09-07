@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Ingestion;
@@ -232,6 +233,54 @@ public class ReIngestReplaceTests
         Assert.True(
             subjectVectorChunks > controlVectorChunks,
             $"orphan tail chunks are expected to survive ({subjectVectorChunks} vs {controlVectorChunks})");
+    }
+
+    /// <summary>
+    /// A document-scoped store is purged on re-ingest, unlike the vector store's orphan tail.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Document-scoped stores join the group BM25 is already in, rather than the stranded
+    /// one.</b> <c>StorageBehavior.RemovePreviousAppendOnlyEntriesAsync</c> clears BM25 and the
+    /// data manager on EVERY ingest, while the vector store and parent chunks are deliberately
+    /// left stranded — see <see cref="Ingest_ShorterDocument_LeavesOrphanTailChunks"/>. Leaves are
+    /// append-only per <c>(documentId, chunkIndex)</c> exactly as BM25 postings are, so they
+    /// belong with BM25; #336 is the same accumulation arriving at BM25 from the other direction.
+    /// </para>
+    /// <para>
+    /// <b>Why it is not left stranded like the vector store.</b> A stranded vector chunk is stale
+    /// content still attributed to its document, and a later <c>DeleteAsync</c> removes it. A
+    /// stranded RAPTOR leaf is read back on the next corpus build and stored as a summary under
+    /// <c>raptor://corpus-tree</c> with <b>no document id</b> — nothing can attribute it, no
+    /// deletion can reach it, and it is searchable (#338).
+    /// </para>
+    /// <para>
+    /// <b>Overwrite is not required</b>, and this test deliberately does not set it: the purge is
+    /// unconditional, so a plain re-ingest — the common path — is covered too.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Ingest_SameDocumentTwice_PurgesDocumentScopedStores()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var scoped = Substitute.For<IDocumentScopedStore>();
+
+        using var vectorStore = new InMemoryVectorStore();
+        var services = new ServiceCollection();
+        services.AddSingleton<IVectorStore>(vectorStore);
+        services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(new ConstantEmbedder());
+        services.AddSingleton(scoped);
+        services.AddRagNet();
+        await using var sp = services.BuildServiceProvider();
+
+        var ingestor = sp.GetRequiredService<IIngestor>();
+        _ = await IngestAsync(ingestor, "doc-1", MakeParagraph(0), ct);
+        _ = await IngestAsync(ingestor, "doc-1", MakeParagraph(1), ct);
+
+        // Once per ingest: Overwrite purges up front, so the second run clears the first's leaves
+        // before writing its own. The first run purges a store that holds nothing, which the
+        // interface requires to be a no-op rather than an error.
+        await scoped.Received(2).RemoveDocumentAsync("doc-1", Arg.Any<CancellationToken>());
     }
 
     /// <summary>

@@ -38,6 +38,9 @@ public sealed class OverwriteBehavior : IIngestionBehavior
     [Inject] public IBm25Index Bm25Index { get; set; } = null!;
     [Inject(Required = false)] public IRagDataManager? DataManager { get; set; }
 
+    /// <summary>Document-scoped stores outside this assembly — see #338.</summary>
+    [Inject] public IEnumerable<IDocumentScopedStore> DocumentScopedStores { get; set; } = [];
+
     public async ValueTask<IngestionResult> HandleAsync(
         IngestionContext ctx, CancellationToken ct,
         Func<IngestionContext, CancellationToken, ValueTask<IngestionResult>> next)
@@ -47,6 +50,14 @@ public sealed class OverwriteBehavior : IIngestionBehavior
             await VectorStore.DeleteByDocumentIdAsync(ctx.Metadata.DocumentId, ct).ConfigureAwait(false);
             Bm25Index.Remove(ctx.Metadata.DocumentId);
             DataManager?.Remove(ctx.Metadata.DocumentId);
+
+            // Purged here for the same reason BM25 is: Overwrite promises the document is gone up
+            // front WHATEVER HAPPENS NEXT, and StorageBehavior never runs when the replacement
+            // fails to parse. StorageBehavior purges these unconditionally too -- both are needed,
+            // and Ingest_OverwriteThenUnparseableContent_LeavesNothingInBm25 pins the reasoning
+            // for the BM25 half. #338.
+            foreach (var store in DocumentScopedStores)
+                await store.RemoveDocumentAsync(ctx.Metadata.DocumentId, ct).ConfigureAwait(false);
         }
 
         return await next(ctx, ct).ConfigureAwait(false);

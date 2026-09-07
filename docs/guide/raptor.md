@@ -399,33 +399,23 @@ options.TargetClusterSize = 100; // Floor on cluster count — must be greater t
 
 ## Known Limitations
 
-These apply under `Corpus` scope. Both are open issues, not this guide's suggestion for how to
-work around them — there is currently no workaround short of the fixes tracked in the issues
-below.
+This applies under `Corpus` scope. It is an open issue, not this guide's suggestion for how to
+work around it — there is currently no workaround short of the fix tracked in the issue below.
 
-### Deleting a document does not delete its RAPTOR leaves (#338)
+### Deletion reaches the leaves (#338, fixed)
 
-`PipelineIngestor.DeleteAsync` clears the vector store, BM25 index, parent store, data manager and
-version store for a document — but it never calls `IRaptorLeafStore.RemoveDocumentAsync`. That
-method exists on the interface; nothing in the product calls it.
+**Resolved in Phase 6.2.14.** `IRaptorLeafStore` extends `IDocumentScopedStore`
+(`Rag.NET.Abstractions`), and both `PipelineIngestor.DeleteAsync` and
+`StorageBehavior` clear every registered document-scoped store — so deleting a document removes its
+leaves, and re-ingesting a shorter one strands none. The purge on re-ingest is unconditional rather
+than gated on `Overwrite`, which places leaves alongside the BM25 index rather than alongside the
+vector store's deliberately-stranded tail.
 
-Concretely: ingest a document under `Corpus` scope, then delete it. It disappears from search
-immediately, as expected. But its chunks are still sitting in the leaf store, and the next corpus
-build (debounced or forced via `RaptorTreeRebuilder.RebuildAsync`) reads that leaf text back out,
-sends it to the LLM, and stores a fresh summary under `raptor://corpus-tree`. The deleted document's
-content becomes searchable again — through a summary chunk with no document id to trace it back to,
-and no delete operation that removes it, because the summary is filed under the corpus id, not the
-document's.
-
-A second, related gap: `OverwriteBehavior` deletes a document's vector-store entries before
-re-ingesting it, but the leaf store only *upserts* leaves by `(document_id, chunk_index)`. If the
-new version of a document is shorter than the old one, the old version's tail leaves (indices past
-the new chunk count) are never overwritten and never deleted — they strand in the leaf store and
-keep contributing to future corpus builds.
-
-Neither of these can be fixed by adding a call to `RemoveDocumentAsync` from core: core cannot
-reference `Rag.NET.Raptor.Store` (the dependency direction runs the other way), so a real fix needs
-a new abstraction core can depend on. That is out of scope for this phase; #338 tracks it.
+**One thing the fix cannot do: clean up retroactively.** Summaries already written under
+`raptor://corpus-tree` from documents deleted *before* this landed carry no document id, so nothing
+can identify which of them came from deleted material. A store built before the fix needs its tree
+rebuilt — `RaptorTreeRebuilder.RebuildAsync` after the deleted documents are gone from the leaf
+store — for those summaries to disappear.
 
 ### #336 is on by default now that `Corpus` is the default scope
 

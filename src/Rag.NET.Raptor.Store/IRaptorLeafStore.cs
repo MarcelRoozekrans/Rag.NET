@@ -18,7 +18,7 @@ namespace Rag.NET.Raptor.Store;
 /// nothing is paid for.
 /// </para>
 /// </remarks>
-public interface IRaptorLeafStore : IAsyncDisposable
+public interface IRaptorLeafStore : IAsyncDisposable, Rag.NET.Abstractions.IDocumentScopedStore
 {
     /// <summary>Creates or migrates any backing storage the store needs.</summary>
     /// <param name="cancellationToken">Cancels the initialisation.</param>
@@ -53,5 +53,6 @@ public interface IRaptorLeafStore : IAsyncDisposable
     /// <param name="documentId">The document whose leaves are removed.</param>
     /// <param name="cancellationToken">Cancels the delete.</param>
     /// <returns>A task that completes when the rows are gone.</returns>
-    Task RemoveDocumentAsync(string documentId, CancellationToken cancellationToken = default);
+    // RemoveDocumentAsync is inherited from IDocumentScopedStore -- core deletes through that
+    // interface, because Rag.NET cannot reference this assembly.
 }
