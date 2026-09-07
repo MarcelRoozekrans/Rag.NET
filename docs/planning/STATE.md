@@ -1114,8 +1114,16 @@ much larger than answer generation's.
 
 **Last landed on `main`:** **#491** as `94a3d86d` (2026-09-07) — the BM25 doc-id allocator, closing
 #490 and #487. Verify by content: `AddWithId` in `InMemoryBm25Index.cs`. Before it, in order:
-**#489**/**#488** (#337's variance floor), **#486** (#336), **#485** (#338), and
-**#484**/**#483**/**#481** (the MCP write surface and the `pack-validate` failures it exposed).
+**#489** (#337's variance floor), **#488** (#336), **#486** (#338), **#485** (an unrelated
+provider fix — StefH's #435, which closes no issue automatically), and **#484** (the MCP write
+surface, #198).
+
+**These four attributions were each off by one when first written on 2026-09-07, and were corrected
+the same day.** The commit that introduced them argued this file must be trustworthy; it then
+misattributed every fix it listed, because the list was written from memory of the session rather
+than from `git log`. **Read a PR number here as a claim to check, not a fact** — `gh pr view <n>
+--json closingIssuesReferences` answers it in one command, and `git log --oneline origin/main`
+shows which PR carried which subject.
 
 **Verifying a removal needs a scoped grep.** `GetNextBm25DocId` was deleted in #491, but a bare
 `git grep -l` for it on `origin/main` returns **14 files** and reads like a failed removal. Every one
@@ -1296,17 +1304,17 @@ the decision was reversed once pre-1.0 was recognised as the moment to take the 
 needed. **`docs/guide/raptor.md`'s Known Limitations still describes the pre-fix state — check it
 against this list before quoting it.**
 
-- **#338 — CLOSED** in #485. `DeleteAsync` ignored the leaf store, so a deleted document's text could
+- **#338 — CLOSED** in #486. `DeleteAsync` ignored the leaf store, so a deleted document's text could
   be re-read, summarised and stored as searchable content under `raptor://corpus-tree` —
   untraceable and undeletable, live on the default path. Fixed by `IDocumentScopedStore` in core,
   which is the abstraction this entry predicted would be needed. **The entry's framing was wrong in
   one respect:** the purge was described as an exception to `Overwrite` stranding, and the first test
   written from that framing failed with zero calls, because `Overwrite` defaults to false.
-- **#336 — CLOSED** in #486. Corpus summaries accumulated in the BM25 index on every
+- **#336 — CLOSED** in #488. Corpus summaries accumulated in the BM25 index on every
   ingest-triggered rebuild, and `RebuildAsync` bypassed BM25 entirely. **The issue's own preferred
   fix was not taken** — it would have removed summaries from BM25 altogether, changing what
   retrieval can find.
-- **#337 — PARTLY FIXED** in #488. The absolute `1e-6` is gone, replaced by a scale-relative floor,
+- **#337 — PARTLY FIXED** in #489. The absolute `1e-6` is gone, replaced by a scale-relative floor,
   `max(1e-12, 0.001 x mean variance)`. **Still open:** the near-duplicate characterisation. The
   fraction the issue suggested broke four existing guards; the shipped value came from measurement.
 - **#487 and #490 — CLOSED** in #491, and neither existed when this section was written. Both were

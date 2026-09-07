@@ -399,8 +399,9 @@ options.TargetClusterSize = 100; // Floor on cluster count — must be greater t
 
 ## Known Limitations
 
-This applies under `Corpus` scope. It is an open issue, not this guide's suggestion for how to
-work around it — there is currently no workaround short of the fix tracked in the issue below.
+These apply under `Corpus` scope. **Most of what this section once listed is now fixed.** The
+entries are kept rather than deleted, each with what its fix could *not* do, because a store built
+before a fix can still carry the consequences. One facet remains genuinely open and is marked so.
 
 ### Deletion reaches the leaves (#338, fixed)
 
@@ -417,10 +418,10 @@ can identify which of them came from deleted material. A store built before the 
 rebuilt — `RaptorTreeRebuilder.RebuildAsync` after the deleted documents are gone from the leaf
 store — for those summaries to disappear.
 
-### The corpus tree and its two stores (#336 fixed; #487 open)
+### The corpus tree and its two stores (#336 and #487 fixed; one facet open)
 
 Corpus summaries are filed under the single reserved id `raptor://corpus-tree`, which is not the id
-of any document being ingested. Three consequences followed from that; **one is fixed and two are
+of any document being ingested. Three consequences followed from that; **two are fixed and one is
 not.**
 
 **Fixed in Phase 6.2.15 — BM25 postings no longer accumulate.**
@@ -439,13 +440,22 @@ retrieval can still return. The 6.2.15 fix deliberately did **not** touch the ve
 upserts on `(DocumentId, ChunkIndex)` and was never the half that accumulated without bound — so
 this facet is unchanged.
 
-**Still open — `RaptorTreeRebuilder.RebuildAsync` bypasses BM25 entirely ([#487]).** It writes the
-rebuilt tree through `IVectorStore` directly with no corresponding BM25 update, so after a rebuild
-the two stores disagree: the vector store holds the new tree, BM25 holds whatever the ingest path
-last wrote. Earlier in this guide `RebuildAsync` is offered as the way to force a tree current —
-**that remedy still carries this caveat**: it makes the vector store's copy current and not BM25's.
-Fixing it means deciding where BM25 doc ids come from when no ingest is in progress, which is why it
-is filed rather than folded into #336.
+**Fixed in Phase 6.2.17 — `RebuildAsync` now writes BM25 ([#487]).** It used to write the rebuilt
+tree through `IVectorStore` directly with no corresponding BM25 update, so after a rebuild the two
+stores disagreed: the vector store held the new tree, BM25 held whatever the ingest path last wrote.
+Earlier in this guide `RebuildAsync` is offered as the way to force a tree current, and **that
+remedy no longer carries this caveat** — it now makes both copies current, removing and re-adding
+the corpus id so a shrinking tree leaves no surplus postings behind.
+
+**What blocked it was one level down, and worse than this entry.** Fixing it meant deciding where
+BM25 doc ids come from when no ingest is in progress — and the answer turned out to be that the
+caller should never have supplied them. The allocator lived in `PipelineIngestor`, counting from 0
+each process, while a persisted index reloads the ids it wrote; after a restart it handed out ids
+the index already held, and `Add` silently dropped the chunk on collision ([#490]). At shipped
+defaults with `UseSqlitePersistence`, **every document ingested after a restart was missing from
+keyword and hybrid search**. `IBm25Index.Add` now takes a chunk and returns the id it assigned, so
+there is no id for a caller to get wrong.
 
 [#487]: https://github.com/MarcelRoozekrans/Rag.NET/issues/487
+[#490]: https://github.com/MarcelRoozekrans/Rag.NET/issues/490
 
