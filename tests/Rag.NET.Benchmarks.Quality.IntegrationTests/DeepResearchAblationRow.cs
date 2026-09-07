@@ -81,10 +81,10 @@ public sealed class DeepResearchAblationRow : AblationRow, IDisposable
     /// The observable trace of "the model said insufficient and sub-queries were retrieved". Zero
     /// across a whole run means every reply short-circuited and the figure is the control's.
     /// </remarks>
-    public int ExpandedQueryCount { get; private set; }
+    public int DivergedQueryCount { get; private set; }
 
     /// <summary>Chunks added across every expansion, summed.</summary>
-    public int AddedChunkCount { get; private set; }
+    public int IntroducedChunkCount { get; private set; }
 
     /// <summary>Largest page this row returned, against <see cref="RequestedTopK"/>.</summary>
     /// <remarks>Evidence for issue #475, recorded rather than asserted away.</remarks>
@@ -102,7 +102,7 @@ public sealed class DeepResearchAblationRow : AblationRow, IDisposable
 
     /// <inheritdoc/>
     public override string Name =>
-        "+deep research (model-judged sufficiency, sub-queries folded in, page NOT capped to TopK)";
+        "+deep research (model-judged sufficiency, sub-queries fused by RRF, page capped to TopK)";
 
     /// <inheritdoc/>
     public override async Task<IReadOnlyList<ChunkHit>> RetrieveAsync(
@@ -132,11 +132,29 @@ public sealed class DeepResearchAblationRow : AblationRow, IDisposable
 
         QueryCount++;
 
-        var added = deep.Value.Count - control.Value.Count;
-        if (added > 0)
+        // EXPANSION IS DETECTED BY CONTENT, NOT BY PAGE SIZE, and that is a correction.
+        //
+        // This used to be `deep.Count - control.Count > 0`, which worked only because nothing
+        // truncated the deep page. Since #475 capped it to TopK the two pages are the same length
+        // by construction, so the old test read zero on every query and failed a run in which all
+        // 657 model calls had replayed. A mechanism guard whose detection depended on the defect it
+        // sat beside is no guard at all once the defect is fixed.
+        //
+        // Comparing the pages themselves is also strictly stronger than the size check ever was: a
+        // run whose sub-queries returned nothing the control had not already found would have
+        // passed the old check on page growth alone, while producing a figure identical to the
+        // control's.
+        var controlKeys = Keys(control.Value);
+        var deepKeys = Keys(deep.Value);
+
+        if (!deepKeys.SequenceEqual(controlKeys))
+            DivergedQueryCount++;
+
+        var inControl = new HashSet<(string DocumentId, int ChunkIndex)>(controlKeys);
+        foreach (var key in deepKeys)
         {
-            ExpandedQueryCount++;
-            AddedChunkCount += added;
+            if (!inControl.Contains(key))
+                IntroducedChunkCount++;
         }
 
         if (deep.Value.Count > LargestPage)
@@ -163,12 +181,27 @@ public sealed class DeepResearchAblationRow : AblationRow, IDisposable
             $"{datasetName}: the deep-research row retrieved for no queries, so there is nothing to judge.");
 
         Assert.True(
-            ExpandedQueryCount > 0,
+            DivergedQueryCount > 0,
             FormattableString.Invariant(
-                $"{datasetName}: none of {QueryCount} queries expanded past the control's page, ") +
+                $"{datasetName}: all {QueryCount} queries returned exactly the control's page, ") +
             "so either the model called every context sufficient or every sufficiency reply was " +
             "unreadable and short-circuited. DeepResearchRetriever cannot tell those apart from " +
             "outside and neither can this figure, which is plain dense retrieval under another name.");
+    }
+
+    /// <summary>The (document, chunk) identity of each hit, in rank order.</summary>
+    /// <remarks>
+    /// Order is part of the comparison deliberately. Deep research can return exactly the control's
+    /// chunks in a different order — rank fusion reorders even when it introduces nothing — and that
+    /// is still the loop having changed the answer, which is what the guard exists to establish.
+    /// </remarks>
+    private static List<(string DocumentId, int ChunkIndex)> Keys(IReadOnlyList<SearchResult> page)
+    {
+        var keys = new List<(string, int)>(page.Count);
+        foreach (var hit in page)
+            keys.Add((hit.Chunk.DocumentId.Value, hit.Chunk.ChunkIndex));
+
+        return keys;
     }
 
     /// <inheritdoc/>
