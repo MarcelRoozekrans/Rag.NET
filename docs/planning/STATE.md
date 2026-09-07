@@ -1,6 +1,20 @@
 # Session State
 
-**Last updated:** 2026-09-06 — **6.2.1 NOW OWNS NO ALLOWLIST ENTRIES.** All four LLM-funded
+**Last updated:** 2026-09-07 — **FIVE PHASES SHIPPED SINCE 6.2.1 CLOSED, AND THIS FILE RECORDED
+NONE OF THEM UNTIL NOW.** 6.2.13-6.2.17 are all on `main`: the MCP write surface (#198), the RAPTOR
+leaf purge (#338), the corpus-tree BM25 accumulation (#336), the GMM variance floor (#337, partly),
+and the BM25 doc-id allocator (#490, closing #487). **The tail of this file still said #336 and #338
+"remain open by decision" while both were closed.** That is the fourth time this document has gone
+stale at a merge — the exact failure its own Working State section was rewritten to prevent,
+reappearing in a section that rewrite does not cover.
+
+**One defect shape accounts for four of the five.** Code that succeeds while doing nothing: a
+swallowed exception, a duplicate id that returns, a rebuilder that never calls BM25, a `Use*` nobody
+invoked. None of them failed; all of them lied, and every one was found by running something rather
+than by reading. **Where a guard is cheap, prefer a throw to a tolerant return** — #490 was silent
+data loss precisely because the collision path was `return`.
+
+**Previously, 2026-09-06:** **6.2.1 NOW OWNS NO ALLOWLIST ENTRIES.** All four LLM-funded
 entries are discharged: Self-Query and LLM Metadata Extraction on the 5th, Deep Research, Mind-Map
 and Conversational Memory on the 6th. The phase's exit condition is met on every clause it owns;
 what remains on `SectionsAwaitingExercise` belongs to 6.1 and 6.2. **Two lessons outrank the
@@ -22,7 +36,14 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.1 — Retrieval & Answer Sweep — **COMPLETE 2026-09-06.** Every exit-condition clause
+**Phase:** 6.2.17 — BM25 doc-id allocation — **COMPLETE 2026-09-07** (#491, `94a3d86d`). **No phase
+is currently open.** Five closed since 6.2.1: **6.2.13** MCP authenticated write surface (#198, new
+package `Rag.NET.Mcp.AspNetCore`, 72 -> 73), **6.2.14** RAPTOR leaf purge on delete (#338),
+**6.2.15** corpus-tree BM25 accumulation (#336), **6.2.16** the GMM variance floor (#337 — the
+absolute `1e-6` is fixed; the near-duplicate residue is still open), **6.2.17** BM25 doc-id
+allocation (#490, closing #487). The next phase is 6.3 Release v1.0, still blocked on 6.1.
+
+**Previously:** 6.2.1 — Retrieval & Answer Sweep — **COMPLETE 2026-09-06.** Every exit-condition clause
 met; the allowlist clause was amended the same day from "the guards' allowlist is empty" to "carries
 no entry owned by this phase", with the original wording and the 47-entry count kept in `ROADMAP.md`
 so the change is reviewable. **The next phase is 6.3 Release v1.0, and it is blocked on 6.1** — 18
@@ -309,7 +330,34 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**6.2.1 has nothing left of its own.** All three clauses of its exit condition are met: the
+**6.2.1 closed on 2026-09-06 and five phases have shipped since. The text below is kept for its
+reasoning, not as a next step.** What is actually open, in the order worth taking it:
+
+1. **#337's residue.** The floor is fixed and mutation-checked; what remains is the near-duplicate
+   characterisation the issue also describes. Smallest well-understood item.
+2. **#475** — filed while fixing #338, not yet scoped.
+3. **The security-position document.** #198 shipped the authenticated MCP transport, but nothing
+   states the project's posture in prose. **Related, and it corrects an alarm rather than raising
+   one:** the five Dependabot alerts on `main` were triaged 2026-09-07 and **none reach the shipped
+   NuGet packages.** `image-size` and `nltk` (both high) have **no patch** and live in the Docusaurus
+   build and the Python comparison harness; `qs` (medium, patched at 6.16.0) enters via
+   `webpack-dev-server` and reaches only `npm start`. A one-line `overrides` entry fixes the only
+   fixable one. **This does not gate v1.0** — a .NET consumer's dependency closure contains none of
+   it.
+4. **#184** — breaking, and pre-1.0 is the moment for it.
+5. **#314** — the xunit-dotnet v4 major bump, which deserves to be its own piece of work rather than
+   a line inside someone else's.
+
+**6.1 remains the only thing between the project and the v1.0 tag**, blocked on accounts rather than
+effort. Nothing above changes that.
+
+**Twenty-one merged local branches are left behind** as of 2026-09-07 on a synced `main`. They are
+noise in every subsequent `git branch`; deleting them is safe once each is verified on `main` by
+content — not by a MERGED label, for the reason this file repeats elsewhere.
+
+---
+
+**Superseded 2026-09-07, kept for the reasoning. 6.2.1 has nothing left of its own.** All three clauses of its exit condition are met: the
 pipeline-parity test is in the fast tier, no allowlist entry is owned by this phase, and every row
 6.0 classified as *plan* here carries its pointer and its pin. **The next decision is whether to
 close the phase** — `complete-phase` — and then what Milestone 6 does about 6.1, which is the only
@@ -1064,7 +1112,18 @@ much larger than answer generation's.
 > really on `main`, grep for the symbol — do not trust a PR's MERGED label, which has been wrong
 > here before.
 
-**Last landed on `main`:** **#471** as `b014217d` (2026-09-06) — metadata extraction measured on two
+**Last landed on `main`:** **#491** as `94a3d86d` (2026-09-07) — the BM25 doc-id allocator, closing
+#490 and #487. Verify by content: `AddWithId` in `InMemoryBm25Index.cs`. Before it, in order:
+**#489**/**#488** (#337's variance floor), **#486** (#336), **#485** (#338), and
+**#484**/**#483**/**#481** (the MCP write surface and the `pack-validate` failures it exposed).
+
+**Verifying a removal needs a scoped grep.** `GetNextBm25DocId` was deleted in #491, but a bare
+`git grep -l` for it on `origin/main` returns **14 files** and reads like a failed removal. Every one
+is a dated record under `docs/plans/`, where it correctly survives as history. Restricted to
+`src tests benchmarks` it returns none. **Scope the grep to where the symbol would matter before
+concluding anything from its count** — in either direction.
+
+Before them, **#471** as `b014217d` (2026-09-06) — metadata extraction measured on two
 corpora. Verify by content: `98.79` in `BeirMetadataExtractionTests.cs`. Before it **#476** as
 `2342df31` — deep research, and the `ResponseFormat` cache fix; verify by content:
 `RenderResponseFormat` in `CachedGraphRagClient.cs`. **Both verified on `main` by content rather
@@ -1231,17 +1290,31 @@ editing this file. **Re-read it against `git branch --show-current` before trust
 a mismatch as evidence the rest of this file may also predate the last merge — on 2026-08-25 it did,
 by five phases.
 
-**Issues from the 6.2.3 work:** #331, #332, #333 fixed and auto-closed on merge. **#336, #337 and
-#338 remain open by decision**, each documented in `docs/guide/raptor.md`'s Known Limitations:
+**Issues from the 6.2.3 work:** #331, #332, #333 fixed and auto-closed on merge. **#336 and #338 are
+CLOSED as of 2026-09-07; #337 is partly fixed.** They stood deferred "by decision" for two weeks, and
+the decision was reversed once pre-1.0 was recognised as the moment to take the breaking changes they
+needed. **`docs/guide/raptor.md`'s Known Limitations still describes the pre-fix state — check it
+against this list before quoting it.**
 
-- **#338 is the one that matters most.** `DeleteAsync` does not touch the leaf store, so a deleted
-  document's text can be read back, summarised, and stored as searchable content under
-  `raptor://corpus-tree` — untraceable and undeletable. Live on the default path. A real fix needs
-  an abstraction in core.
-- **#336** — corpus summaries accumulate in the BM25 index on every ingest-triggered rebuild, and
-  `RebuildAsync` bypasses BM25 entirely.
-- **#337** — the variance floor is an absolute `1e-6`, so near-duplicate vectors still score as a
-  near-perfect fit.
+- **#338 — CLOSED** in #485. `DeleteAsync` ignored the leaf store, so a deleted document's text could
+  be re-read, summarised and stored as searchable content under `raptor://corpus-tree` —
+  untraceable and undeletable, live on the default path. Fixed by `IDocumentScopedStore` in core,
+  which is the abstraction this entry predicted would be needed. **The entry's framing was wrong in
+  one respect:** the purge was described as an exception to `Overwrite` stranding, and the first test
+  written from that framing failed with zero calls, because `Overwrite` defaults to false.
+- **#336 — CLOSED** in #486. Corpus summaries accumulated in the BM25 index on every
+  ingest-triggered rebuild, and `RebuildAsync` bypassed BM25 entirely. **The issue's own preferred
+  fix was not taken** — it would have removed summaries from BM25 altogether, changing what
+  retrieval can find.
+- **#337 — PARTLY FIXED** in #488. The absolute `1e-6` is gone, replaced by a scale-relative floor,
+  `max(1e-12, 0.001 x mean variance)`. **Still open:** the near-duplicate characterisation. The
+  fraction the issue suggested broke four existing guards; the shipped value came from measurement.
+- **#487 and #490 — CLOSED** in #491, and neither existed when this section was written. Both were
+  found by asking why #336's rebuilder could not write to BM25. The allocator beneath it handed out
+  ids the index already held after a restart, and `Add` dropped the chunk on collision, so **every
+  document ingested after a restart was missing from keyword and hybrid search** at shipped
+  defaults. A third instance in `GraphProjectionRebuilder` was never filed — found only by looking
+  at the sibling.
 
 **Carry this into 6.1 and 6.2's remaining `unit` packages.** 6.2.3 found three separate test-fixture
 defects, each of which made a real failure unreachable while the suite stayed green. `VerifiedBy=unit`
