@@ -506,8 +506,8 @@ services.AddRagNet(b => b
 flowchart TD
     Q["User query"] --> INNER["Inner IRetriever<br>initial retrieval (depth 0)"]
     INNER --> JUDGE["LLM sufficiency check<br>{sufficient, subQueries}"]
-    JUDGE -- "sufficient = true OR depth ≥ MaxDepth" --> DEDUP["Deduplicate by DocumentId+ChunkIndex<br>keep highest score per chunk"]
-    DEDUP --> OUT["IReadOnlyList&lt;SearchResult&gt;"]
+    JUDGE -- "sufficient = true OR depth ≥ MaxDepth" --> FUSE["Fuse rankings by RRF<br>then take TopK"]
+    FUSE --> OUT["IReadOnlyList&lt;SearchResult&gt;"]
     JUDGE -- "sufficient = false" --> FAN["Retrieve each sub-query<br>in sequence"]
     FAN --> MERGE["Merge + deduplicate<br>depth++"]
     MERGE --> JUDGE
@@ -522,6 +522,17 @@ The LLM responds with a small JSON payload:
 ```
 
 If the LLM returns malformed JSON or fails entirely (network error, timeout), the loop stops and the current accumulated results are returned — no data is lost.
+
+### What comes back
+
+**The page is capped at `RetrievalOptions.TopK`**, like every other retrieval path. Until #475 was fixed it was not: the initial page and every sub-query's page were concatenated and returned whole, so asking for 10 could return up to 100 at the shipped defaults.
+
+**The order comes from fusing the rankings, not from comparing their scores.** Each retrieval — the original query and every sub-query — is a ranking in its own right, but their scores are not comparable: a chunk scoring 0.9 against a generated sub-query is not better than one scoring 0.8 against the question you asked. Reciprocal Rank Fusion uses only each hit's *position* within its own ranking, which is comparable, and is the same fusion hybrid search already applies. A chunk that several sub-queries independently rank highly can therefore outrank the original query's top hit — that consensus is the point of decomposing the question.
+
+Two consequences worth knowing:
+
+- **`SearchResult.Score` on an expanded page is an RRF score, not a similarity.** It is on the same scale hybrid search returns, and is comparable only within the page. Apply `MinScore` through `RetrievalOptions`, where it reaches the store before fusion, rather than filtering the returned scores yourself.
+- **When nothing expands, nothing is rewritten.** If the model calls the first page sufficient, the inner retriever's results are passed straight through with their original scores.
 
 ### Error handling
 

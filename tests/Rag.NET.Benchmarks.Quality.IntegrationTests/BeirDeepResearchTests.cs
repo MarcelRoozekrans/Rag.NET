@@ -19,14 +19,23 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// no question. Its control is the Real dense figure on the same corpus.
 /// </para>
 /// <para>
-/// <b>Two properties of the shipped feature travel with this figure and cannot be separated from
-/// it.</b> First, the page is <b>not capped to <c>TopK</c></b>: the union of the inner page and
-/// every sub-query's page is deduplicated and returned whole, so it is larger than the control's —
-/// issue #475, characterised in <c>DeepResearchRetrieverTests</c>. Second, that union is sorted by
-/// score, and a sub-query's scores come from a different query vector than the caller's, so a
-/// chunk scoring well against a sub-query can outrank one scoring well against the question asked.
-/// Measuring it as it ships was a deliberate choice: fixing the contract on the way to a benchmark
-/// would publish a figure for code no released version has.
+/// <b>THE PUBLISHED FIGURE DESCRIBES PRE-#475 BEHAVIOUR AND HAS NOT BEEN RE-MEASURED.</b> Two
+/// properties travelled with it and both are now fixed. First, the page was <b>not capped to
+/// <c>TopK</c></b>: the union of the inner page and every sub-query's page was deduplicated and
+/// returned whole — 1,260 against the control's 250, 5.04x. Second, that union was sorted by score,
+/// and a sub-query's scores come from a different query vector than the caller's, so a chunk
+/// scoring well against a sub-query outranked one scoring well against the question asked.
+/// Measuring as-shipped was deliberate: fixing the contract on the way to a benchmark would have
+/// published a figure for code no released version had.
+/// </para>
+/// <para>
+/// <b>So the recorded +0.02477 is a figure for a page this cell no longer produces</b>, and the
+/// ROADMAP entry says so. Both halves plausibly contributed to it: nDCG@10 reads the top ten of
+/// whatever is returned, and a 5x larger candidate pool has more chances to put a relevant chunk
+/// there. <b>Re-running should cost nothing</b> — the sufficiency prompts are built from the
+/// accumulated union, which the fix did not touch, so every one of the 647 cached calls still keys
+/// identically. It has not been run because that is a spend decision even when the expected spend
+/// is zero, and a cache miss is real money.
 /// </para>
 /// <para>
 /// <b>THE CELL CAN SILENTLY MEASURE NOTHING, which is what the guard is for.</b>

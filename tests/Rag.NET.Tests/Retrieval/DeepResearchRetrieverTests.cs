@@ -93,22 +93,47 @@ public class DeepResearchRetrieverTests
             .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// A chunk both queries found appears once, and finding it twice makes it rank higher rather
+    /// than merely keeping the larger of two scores.
+    /// </summary>
+    /// <remarks>
+    /// This replaced <c>DuplicateChunks_Deduplicated_HighestScoreKept</c>, which asserted that the
+    /// survivor kept <c>0.9</c>. Deduplication is unchanged — the assertion that changed is what
+    /// the survivor's score means. "Keep the highest" picked the larger of two numbers produced by
+    /// two different query vectors, which is the comparison #475 says cannot be made. Under rank
+    /// fusion the two sightings <i>accumulate</i>, so agreement between the question and its
+    /// sub-query is what promotes the chunk. Rewritten rather than widened, deliberately.
+    /// </remarks>
     [Fact]
-    public async Task DuplicateChunks_Deduplicated_HighestScoreKept()
+    public async Task ChunkFoundByBothQueries_AppearsOnce_AndOutranksChunksFoundByOne()
     {
         var ct = TestContext.Current.CancellationToken;
         var inner = Substitute.For<IRetriever>();
         var chatClient = Substitute.For<IChatClient>();
-        inner.RetrieveAsync("q",    Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0, 0.9)));
-        inner.RetrieveAsync("sub1", Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0, 0.7)));
+
+        // doc1 is found by both. doc3 has the highest raw score of anything here and is found only
+        // by the sub-query, so under the old "sort by score" it would have led the page.
+        inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(Ok(MakeResult("doc1", 0, 0.9), MakeResult("doc2", 0, 0.5)));
+        inner.RetrieveAsync("sub1", Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(Ok(MakeResult("doc1", 0, 0.7), MakeResult("doc3", 0, 0.99)));
         ReturnInsufficientThenSufficient(chatClient, "sub1");
 
         var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
-        var result = await sut.RetrieveAsync("q", null, ct);
+        var result = await sut.RetrieveAsync("q", new RetrievalOptions { TopK = 10 }, ct);
 
         Assert.True(result.IsSuccess);
-        Assert.Single(result.Value);
-        Assert.Equal(0.9, result.Value[0].Score);
+
+        // Deduplicated: three distinct chunks from four hits.
+        Assert.Equal(3, result.Value.Count);
+        Assert.Single(result.Value, r => string.Equals(r.Chunk.DocumentId.Value, "doc1", StringComparison.Ordinal));
+
+        // And the one both queries ranked first leads, ahead of the higher raw score.
+        Assert.Equal("doc1", result.Value[0].Chunk.DocumentId.Value);
+        Assert.True(
+            result.Value[0].Score > result.Value[1].Score,
+            "a chunk found by both rankings must score above one found by a single ranking");
     }
 
     [Fact]
@@ -269,13 +294,13 @@ public class DeepResearchRetrieverTests
     /// question actually asked. Any nDCG read off this page inherits that.
     /// </para>
     /// <para>
-    /// Written while scoping the Phase 6.2.1 retrieval cell, from reading the shipped code rather
-    /// than from a failure. If the truncation is added, this test SHOULD fail — change it then,
-    /// deliberately, rather than widening it now.
+    /// <b>Both halves are now fixed (#475), and this test was inverted rather than widened</b> — it
+    /// previously asserted <c>topK + 3 * topK</c> and carried a message saying it should fail when
+    /// the truncation landed. It did, and this is that rewrite.
     /// </para>
     /// </remarks>
     [Fact]
-    public async Task ReturnedPage_CanExceedTopK_BecauseNothingTruncatesTheUnion()
+    public async Task ReturnedPage_IsTruncatedToTopK()
     {
         var ct = TestContext.Current.CancellationToken;
         var inner = Substitute.For<IRetriever>();
@@ -305,10 +330,79 @@ public class DeepResearchRetrieverTests
         var result = await sut.RetrieveAsync("q", new RetrievalOptions { TopK = topK }, ct);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(topK + (3 * topK), result.Value.Count);
-        Assert.True(
-            result.Value.Count > topK,
-            $"asked for {topK} and got {result.Value.Count}; if this now holds at {topK}, the " +
-            "truncation was added and this characterisation test needs rewriting rather than deleting.");
+        Assert.Equal(
+            topK,
+            result.Value.Count);
+    }
+
+    /// <summary>
+    /// The caller's own top hit survives truncation even when a sub-query returns chunks with
+    /// higher raw scores. This is the half of #475 that truncation alone would have made worse.
+    /// </summary>
+    /// <remarks>
+    /// Sorting the union by score and cutting at <c>TopK</c> would return <c>sub-a</c> and
+    /// <c>sub-b</c> here — 0.99 and 0.98 against the primary's 0.50 and 0.40 — dropping the chunks
+    /// the caller's actual question ranked first. Those scores come from a different query vector,
+    /// so the comparison that produces that page is not a valid one. Rank fusion takes each
+    /// ranking's leader instead.
+    /// </remarks>
+    [Fact]
+    public async Task HigherScoringSubQueryChunks_DoNotDisplaceThePrimaryQuerysTopHit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+
+        inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(Ok(MakeResult("primary-a", 0, 0.50), MakeResult("primary-b", 0, 0.40)));
+        inner.RetrieveAsync("s1", Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(Ok(MakeResult("sub-a", 0, 0.99), MakeResult("sub-b", 0, 0.98)));
+        ReturnInsufficientThenSufficient(chatClient, "s1");
+
+        var sut = new DeepResearchRetriever(
+            inner, chatClient, new DeepResearchOptions { SubQueryCount = 1 });
+
+        var result = await sut.RetrieveAsync("q", new RetrievalOptions { TopK = 2 }, ct);
+
+        Assert.True(result.IsSuccess);
+        var ids = result.Value.Select(r => r.Chunk.DocumentId.Value).ToArray();
+
+        Assert.Equal(2, ids.Length);
+        Assert.Contains("primary-a", ids, StringComparer.Ordinal);
+        Assert.Contains("sub-a", ids, StringComparer.Ordinal);
+        Assert.DoesNotContain(
+            "sub-b",
+            ids,
+            StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// When nothing expands, the retriever is a pass-through and scores are left alone.
+    /// </summary>
+    /// <remarks>
+    /// Fusing a single ranking with nothing is arithmetically harmless but would still rewrite
+    /// every <see cref="SearchResult.Score"/> onto the RRF scale — turning 0.9 into 1/61 — for a
+    /// call that added no information. Anything downstream reading the score would see a value it
+    /// could not interpret, produced by a stage that did nothing.
+    /// </remarks>
+    [Fact]
+    public async Task SufficientOnFirstPass_LeavesScoresOnTheInnerRetrieversScale()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+
+        inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(Ok(MakeResult("doc1", 0, 0.9)));
+        ReturnSufficient(chatClient);
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", new RetrievalOptions { TopK = 5 }, ct);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value);
+        Assert.Equal(
+            0.9,
+            result.Value[0].Score);
     }
 }

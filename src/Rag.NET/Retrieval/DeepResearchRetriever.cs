@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Search;
 using ZeroAlloc.Results;
 
 namespace Rag.NET.Retrieval;
@@ -12,6 +13,13 @@ namespace Rag.NET.Retrieval;
 public sealed class DeepResearchRetriever : IRetriever
 {
     private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// Used only to read <see cref="RetrievalOptions.TopK"/>'s documented default when the caller
+    /// passes no options. Reading it from the type rather than repeating <c>5</c> here means the
+    /// contract has one definition, not two that can drift.
+    /// </summary>
+    private static readonly RetrievalOptions _defaultOptions = new();
 
     private readonly IRetriever _inner;
     private readonly IChatClient _chatClient;
@@ -39,7 +47,19 @@ public sealed class DeepResearchRetriever : IRetriever
         if (!result.IsSuccess)
             return result;
 
+        var topK = (options ?? _defaultOptions).TopK;
+
+        // Two collections with two jobs, deliberately not one.
+        //
+        // `chunks` is the accumulated union and exists ONLY to be shown to the sufficiency check --
+        // the model has to see everything gathered so far to judge whether more is needed, so it
+        // must not be truncated. `rankings` keeps each retrieval's page intact and in its own rank
+        // order, because that is the only comparable thing about them (see the fusion below).
         var chunks = result.Value.ToList();
+        var rankings = new List<(IReadOnlyList<SearchResult> Hits, double Weight)>
+        {
+            (result.Value, 1.0),
+        };
 
         for (int depth = 0; depth < _options.MaxDepth; depth++)
         {
@@ -56,7 +76,10 @@ public sealed class DeepResearchRetriever : IRetriever
                 {
                     var sub = await _inner.RetrieveAsync(subQuery, options, cancellationToken).ConfigureAwait(false);
                     if (sub.IsSuccess)
+                    {
                         chunks.AddRange(sub.Value);
+                        rankings.Add((sub.Value, 1.0));
+                    }
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
@@ -68,7 +91,50 @@ public sealed class DeepResearchRetriever : IRetriever
             chunks = Deduplicate(chunks);
         }
 
-        return Result<IReadOnlyList<SearchResult>, RagError>.Success(chunks.AsReadOnly());
+        return Result<IReadOnlyList<SearchResult>, RagError>.Success(
+            BuildPage(result.Value, rankings, topK));
+    }
+
+    /// <summary>
+    /// Turns the retrievals gathered above into the page the caller asked for: at most
+    /// <paramref name="topK"/> results (#475), ordered by fusing the rankings rather than by
+    /// comparing their scores.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Truncating the old score-sorted union would have been the smaller change and the wrong
+    /// one.</b> A sub-query's scores come from a different query vector than the caller's, so a
+    /// chunk scoring 0.9 against <i>"what did X cost"</i> outranks one scoring 0.8 against the
+    /// question actually asked. While nothing truncated, that only mis-<i>ordered</i> the page.
+    /// Cutting it at <c>TopK</c> on that same ordering would have promoted it to deciding
+    /// <i>content</i> — the caller's best-matching chunks dropped in favour of a sub-query's
+    /// inflated ones. Fixing the contract that way trades a documented over-fetch for a silent
+    /// quality loss.
+    /// </para>
+    /// <para>
+    /// Reciprocal Rank Fusion reads only each hit's <b>position</b> in its own ranking, which is
+    /// the one thing comparable across query vectors, and is what <c>EnsembleBehavior</c>'s
+    /// client-side hybrid path already applies at this same boundary. A chunk several sub-queries
+    /// independently rank highly can therefore outrank the primary query's top hit — consensus
+    /// beating a single opinion, which is the point of having decomposed the question at all.
+    /// </para>
+    /// <para>
+    /// <b>The no-expansion case stays a pass-through.</b> When the model was satisfied on the first
+    /// pass — or every sub-query failed — there is one ranking, and fusing it with nothing would be
+    /// arithmetically harmless but would still rewrite every <see cref="SearchResult.Score"/> onto
+    /// the RRF scale for a call that added no information. The inner page is returned with its
+    /// scores untouched, trimmed only if the inner retriever itself overshot.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<SearchResult> BuildPage(
+        IReadOnlyList<SearchResult> primary,
+        List<(IReadOnlyList<SearchResult> Hits, double Weight)> rankings,
+        int topK)
+    {
+        if (rankings.Count == 1)
+            return primary.Count <= topK ? primary : [.. primary.Take(topK)];
+
+        return RrfMerger.MergeMany(rankings, topK, RrfMerger.DefaultK);
     }
 
     private static List<SearchResult> Deduplicate(List<SearchResult> chunks)

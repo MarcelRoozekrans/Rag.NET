@@ -5216,6 +5216,22 @@ previously threw, so none of the ~86,510 entries on disk has one.
 operator's call; fixing the contract on the way to a benchmark would publish a figure for code no
 released version has.
 
+> **SUPERSEDED 2026-09-07 — #475 IS FIXED, AND THE FIGURES ABOVE DESCRIBE A PAGE THE CELL NO LONGER
+> PRODUCES.** The page is now capped at `TopK` and ordered by Reciprocal Rank Fusion over the
+> rankings instead of by raw score. **The +0.02477 has not been re-measured**, and both fixed
+> properties plausibly fed it: nDCG@10 reads the top ten of what is returned, and a 5.04x larger
+> candidate pool has more chances to put a relevant chunk there. The entry's own reading — *"a
+> larger search, not a better ranker"* — is the reason to expect movement rather than to assume
+> none.
+>
+> **Re-running is expected to cost $0.00 and has not been done.** The sufficiency prompts are built
+> from the accumulated union, which the fix deliberately left alone, so all 647 cached calls still
+> key identically; the earlier run replayed in 73.6 s. It is left for the operator because a
+> re-run is a spend decision even when the expected spend is zero — a cache miss is real money, and
+> this phase has already funded one run that a previous session had silently already paid for.
+>
+> **Do not quote the deep research row without this note** until it is re-measured.
+
 **657 model calls against the 900 the counting pass priced** — the ceiling behaved as a ceiling,
 because `MaxDepth` bounds the calls and the loop stops early on any query called sufficient (116 of
 300 never expanded). 1,980.5 s generating, 73.6 s replaying, a 27x gap that is the model calls and

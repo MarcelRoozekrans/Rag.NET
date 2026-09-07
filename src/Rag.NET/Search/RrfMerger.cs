@@ -8,7 +8,12 @@ namespace Rag.NET.Search;
 /// </summary>
 internal static class RrfMerger
 {
-    private const int DefaultK = 60;
+    /// <summary>
+    /// The standard RRF rank constant. Internal rather than private because
+    /// <see cref="Rag.NET.Retrieval.DeepResearchRetriever"/> fuses its own rankings with the same
+    /// merger and must not pick a second, silently different value.
+    /// </summary>
+    internal const int DefaultK = 60;
 
     internal static IReadOnlyList<SearchResult> Merge(
         IReadOnlyList<SearchResult> dense,
