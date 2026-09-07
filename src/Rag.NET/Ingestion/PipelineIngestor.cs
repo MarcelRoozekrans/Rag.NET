@@ -25,6 +25,15 @@ public sealed class PipelineIngestor : IIngestor
     [Inject(Required = false)] public IParentChunkStore? ParentStore { get; set; }
     [Inject(Required = false)] public IRagDataManager? DataManager { get; set; }
     [Inject(Required = false)] public IEmbeddingVersionStore? VersionStore { get; set; }
+
+    /// <summary>Stores outside this assembly that hold document-derived data — see #338.</summary>
+    /// <remarks>
+    /// A collection, and defaulted to empty, so a package registering one needs no coordination
+    /// with core and none being registered is the ordinary case rather than a missing dependency.
+    /// <c>IRaptorLeafStore</c> is the first: it lives in <c>Rag.NET.Raptor.Store</c>, which this
+    /// assembly cannot reference, so before this it was simply never told about deletions.
+    /// </remarks>
+    [Inject] public IEnumerable<IDocumentScopedStore> DocumentScopedStores { get; set; } = [];
     [Inject(Required = false)] public ILogger<PipelineIngestor>? Logger { get; set; }
 
     private int _nextBm25DocId;
@@ -90,6 +99,13 @@ public sealed class PipelineIngestor : IIngestor
         DataManager?.Remove(documentId);
         if (VersionStore is not null)
             await VersionStore.RemoveAsync(documentId, cancellationToken).ConfigureAwait(false);
+
+        // Everything above is an interface in Rag.NET.Abstractions. So is this one, and for the
+        // same reason -- but it is a collection because the stores implementing it live in
+        // packages core cannot name. Without it a deleted document's RAPTOR leaves survived, and
+        // the next corpus build turned them into a searchable summary carrying no document id.
+        foreach (var store in DocumentScopedStores)
+            await store.RemoveDocumentAsync(documentId, cancellationToken).ConfigureAwait(false);
     }
 
     private Result<IngestionResult, RagError>? ValidateRequest(

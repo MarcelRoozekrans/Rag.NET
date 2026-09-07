@@ -23,6 +23,9 @@ public sealed class StorageBehavior : IIngestionBehavior
     [Inject(Required = false)] public EmbeddingVersioningOptions? VersioningOptions { get; set; }
     [Inject(Required = false)] public ILogger<StorageBehavior>? Logger { get; set; }
 
+    /// <summary>Document-scoped stores in packages this assembly cannot name — see #338.</summary>
+    [Inject] public IEnumerable<IDocumentScopedStore> DocumentScopedStores { get; set; } = [];
+
     /// <summary>One-time flag for the identity-unresolvable warning (0 = not yet logged).</summary>
     private int _identityWarningLogged;
 
@@ -49,8 +52,8 @@ public sealed class StorageBehavior : IIngestionBehavior
             Message = $"Stored {ctx.EmbeddedChunks.Count} chunks",
         });
 
-        // Storing is a replace, not an append — see RemovePreviousAppendOnlyEntries.
-        RemovePreviousAppendOnlyEntries(ctx);
+        // Storing is a replace, not an append — see RemovePreviousAppendOnlyEntriesAsync.
+        await RemovePreviousAppendOnlyEntriesAsync(ctx, ct).ConfigureAwait(false);
 
         foreach (ref readonly var ec in CollectionsMarshal.AsSpan(ctx.EmbeddedChunks))
             Bm25Index.Add(ctx.GetNextBm25DocId(), ec.Chunk);
@@ -107,10 +110,20 @@ public sealed class StorageBehavior : IIngestionBehavior
     /// See <c>docs/plans/2026-07-27-service-bus-ingestion-design.md</c> §1.
     /// </para>
     /// </summary>
-    private void RemovePreviousAppendOnlyEntries(IngestionContext ctx)
+    private async Task RemovePreviousAppendOnlyEntriesAsync(IngestionContext ctx, CancellationToken ct)
     {
         Bm25Index.Remove(ctx.Metadata.DocumentId);
         DataManager?.Remove(ctx.Metadata.DocumentId);
+
+        // Document-scoped stores belong to THIS group rather than to the stranded one above, and
+        // the reason is the same one that puts BM25 here: they are append-only per
+        // (documentId, chunkIndex), so a shorter replacement leaves the previous version's tail
+        // behind for good. For RAPTOR leaves that tail is then read back on the next corpus build
+        // and stored as a summary under raptor://corpus-tree carrying NO document id -- so unlike
+        // a stranded vector chunk it cannot be attributed, cannot be deleted, and is searchable.
+        // #338; #336 is the same accumulation reaching BM25 from the other direction.
+        foreach (var store in DocumentScopedStores)
+            await store.RemoveDocumentAsync(ctx.Metadata.DocumentId, ct).ConfigureAwait(false);
     }
 
     /// <summary>

@@ -67,6 +67,14 @@ public static class RagBuilderExtensions
             // own schema in its constructor (#353), so there is no sync-over-async on the path
             // that first resolves it.
             builder.Services.AddSingleton<IRaptorLeafStore>(_ => new SqliteRaptorLeafStore(leafStorePath));
+
+            // The SAME instance, registered again under the interface core deletes through.
+            // Registering only IRaptorLeafStore leaves IEnumerable<IDocumentScopedStore> empty --
+            // the container does not resolve a base interface from a derived registration -- and
+            // the delete loop would iterate nothing while compiling and passing. That is the exact
+            // silent shape #338 was: a wired-looking path that removes no leaves.
+            builder.Services.AddSingleton<Rag.NET.Abstractions.IDocumentScopedStore>(
+                sp => sp.GetRequiredService<IRaptorLeafStore>());
         }
 
         builder.Services.AddSingleton<RaptorIngestionBehavior>(sp =>

@@ -60,6 +60,55 @@ public class RagBuilderExtensionsTests
         Assert.Equal(RaptorRetrievalMode.Boost, opts.Mode);
     }
 
+    /// <summary>
+    /// The leaf store is resolvable as <see cref="IDocumentScopedStore"/>, which is how core
+    /// deletes through it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the assertion the #338 fix actually turns on, and the easiest one to leave
+    /// missing.</b> <c>PipelineIngestor</c> and <c>StorageBehavior</c> iterate
+    /// <c>IEnumerable&lt;IDocumentScopedStore&gt;</c>. The container does <b>not</b> resolve a base
+    /// interface from a derived registration, so registering only <c>IRaptorLeafStore</c> leaves
+    /// that collection empty — every purge loop runs zero times, everything compiles, and every
+    /// test using a substitute registered directly as <c>IDocumentScopedStore</c> still passes.
+    /// That is the same shape as the defect being fixed: a wired-looking path that removes nothing.
+    /// </para>
+    /// <para>
+    /// It asserts the <b>same instance</b> rather than merely a resolvable one: two registrations
+    /// each newing up their own <c>SqliteRaptorLeafStore</c> would open two connections to one file
+    /// and delete from a store nothing else writes to.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task UseRaptor_RegistersTheLeafStoreAsADocumentScopedStore_AndTheSameInstance()
+    {
+        var leafStorePath = Path.Combine(Path.GetTempPath(), $"ragnet-leaf-{Guid.NewGuid():N}.db");
+        try
+        {
+            var builder = ConfiguredRagBuilder.Create();
+            var services = builder.Services;
+
+            builder.UseRaptor(o => o.TreeScope = RaptorTreeScope.Corpus, leafStorePath: leafStorePath);
+
+            await using (var sp = services.BuildServiceProvider())
+            {
+                var asLeafStore = sp.GetRequiredService<IRaptorLeafStore>();
+                var scoped = sp.GetServices<IDocumentScopedStore>().ToList();
+
+                Assert.Single(scoped);
+                Assert.Same(asLeafStore, scoped[0]);
+            }
+        }
+        finally
+        {
+            // The store holds a SQLite connection, and Microsoft.Data.Sqlite pools it, so disposing
+            // the provider is not enough to release the file on Windows.
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (File.Exists(leafStorePath)) File.Delete(leafStorePath);
+        }
+    }
+
     [Fact]
     public void UseRaptor_RegistersIngestionBehavior()
     {

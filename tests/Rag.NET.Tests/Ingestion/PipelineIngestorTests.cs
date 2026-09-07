@@ -19,6 +19,7 @@ public class PipelineIngestorTests
         IParentChunkStore? parentStore = null,
         IRagDataManager? dataManager = null,
         IEmbeddingVersionStore? versionStore = null,
+        IEnumerable<IDocumentScopedStore>? documentScopedStores = null,
         Pipeline<IngestionContext, IngestionResult>? pipeline = null) =>
         new()
         {
@@ -31,6 +32,7 @@ public class PipelineIngestorTests
             ParentStore = parentStore,
             DataManager = dataManager,
             VersionStore = versionStore,
+            DocumentScopedStores = documentScopedStores ?? [],
         };
 
     [Fact]
@@ -73,6 +75,45 @@ public class PipelineIngestorTests
         bm25.Received(1).Remove("doc-1");
         parentStore.Received(1).Remove("doc-1");
         dataManager.Received(1).Remove("doc-1");
+    }
+
+    /// <summary>
+    /// Deleting a document tells every registered document-scoped store to forget it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The gap this closes is #338, and it was silent by construction.</b>
+    /// <c>IRaptorLeafStore</c> lives in a package core cannot reference, so deletion never reached
+    /// it: the leaves survived, the next corpus build read their text back, and the summary landed
+    /// under <c>raptor://corpus-tree</c> carrying no document id — unattributable, unremovable and
+    /// searchable. <c>RemoveDocumentAsync</c> had existed since #331 with zero production callers.
+    /// </para>
+    /// <para>
+    /// Two stores rather than one, because the collection is the point: the interface exists so
+    /// packages core cannot name may register their own, and a loop that only ever ran once would
+    /// not show that.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task DeleteAsync_TellsEveryDocumentScopedStoreToForgetTheDocument()
+    {
+        var first = Substitute.For<IDocumentScopedStore>();
+        var second = Substitute.For<IDocumentScopedStore>();
+        var sut = CreateSut(documentScopedStores: [first, second]);
+        var ct = TestContext.Current.CancellationToken;
+
+        await sut.DeleteAsync("doc-1", ct);
+
+        await first.Received(1).RemoveDocumentAsync("doc-1", ct);
+        await second.Received(1).RemoveDocumentAsync("doc-1", ct);
+    }
+
+    /// <summary>None registered is the ordinary case, not a missing dependency.</summary>
+    [Fact]
+    public async Task DeleteAsync_WithNoDocumentScopedStores_DoesNotThrow()
+    {
+        var sut = CreateSut(documentScopedStores: []);
+        await sut.DeleteAsync("doc-1", TestContext.Current.CancellationToken);
     }
 
     [Fact]
