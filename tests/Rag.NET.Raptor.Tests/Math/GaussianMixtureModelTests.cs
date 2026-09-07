@@ -85,6 +85,100 @@ public class GaussianMixtureModelTests
         }
     }
 
+    /// <summary>Three blobs are three blobs whatever the data's units are.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The property an absolute variance floor cannot have (#337).</b> The floor exists to stop
+    /// a component's variance reaching zero, and "near zero" is a statement about the data's scale
+    /// — but it was the constant <c>1e-6</c>, a standard deviation of 0.001, applied to embeddings
+    /// that are not required to be unit-scale.
+    /// </para>
+    /// <para>
+    /// <b>Measured before the fix: <c>small=1, unit=3, large=3</c>.</b> Scaled down by 1,000 the
+    /// entire dataset sat under the floor, every component floored to the same value, BIC could no
+    /// longer tell them apart, and clustering collapsed to a single cluster. The floor is now a
+    /// fraction of the data's own mean variance, so all three agree.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void SelectK_IsInvariantToTheScaleOfTheData()
+    {
+        static float[][] Make(double scale, int seed)
+        {
+            var rng = new Random(seed);
+            var data = new float[24][];
+            for (var i = 0; i < 24; i++)
+            {
+                data[i] = new float[8];
+                var offset = (i / 8) * 1.0;
+                for (var d = 0; d < 8; d++)
+                    data[i][d] = (float)(scale * (offset + rng.NextDouble() * 0.05));
+            }
+
+            return data;
+        }
+
+        var small = GaussianMixtureModel.SelectK(Make(0.001, 3), maxK: 8);
+        var unit = GaussianMixtureModel.SelectK(Make(1.0, 3), maxK: 8);
+        var large = GaussianMixtureModel.SelectK(Make(1000.0, 3), maxK: 8);
+
+        Assert.Equal(unit, small);
+        Assert.Equal(unit, large);
+    }
+
+    /// <summary>
+    /// Near-identical vectors STILL drive k to the ceiling. This pins the residue #337 named.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Characterisation, not an endorsement — and deliberately not fixed here.</b> A component
+    /// of near-identical points has near-zero spread, floors, and scores as a near-perfect fit;
+    /// unlike a singleton it holds two points, so #333's degenerate-fit rule does not reject it.
+    /// With 20 points containing five near-identical pairs, <c>SelectK</c> returns the maximum k of
+    /// 10: it isolates everything it can.
+    /// </para>
+    /// <para>
+    /// <b>Why the data-scaled floor did not close it, measured rather than argued.</b> At a floor
+    /// of 1/100th of the data's variance this test passes (k drops to 2) — and four of #345's
+    /// cluster-size-floor tests go red, because a floor coarse enough to blunt a degenerate
+    /// component is also coarse enough to blunt legitimate tight ones, so components collapse
+    /// together and the empty ones are dropped. At 1/1000th every one of those guards is green and
+    /// this behaviour returns. #337 was explicit that a change must not buy well-behaved k by
+    /// making clustering useless, so the floor stayed at the fraction that keeps the guarantees.
+    /// </para>
+    /// <para>
+    /// Closing it properly means rejecting fits whose components have COLLAPSED, at the level
+    /// <c>IsDegenerateFit</c> already rejects fits whose components are ALONE — a different
+    /// mechanism from the floor, needing the variances plumbed into the rejection path and a
+    /// threshold validated against a real corpus rather than this fixture. Tracked on #337.
+    /// </para>
+    /// <para>
+    /// <b>If this test starts failing, that is the fix landing.</b> Replace it with the assertion
+    /// it currently inverts rather than widening it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void SelectK_IsStillDrivenToTheCeiling_ByNearDuplicateVectors()
+    {
+        var rng = new Random(Seed: 5);
+        var data = new float[20][];
+        for (var i = 0; i < 20; i++)
+        {
+            data[i] = new float[8];
+            for (var d = 0; d < 8; d++)
+            {
+                // Ten broadly-spread points, then five near-identical pairs.
+                data[i][d] = i < 10
+                    ? (float)rng.NextDouble()
+                    : (float)(0.5 + ((i - 10) / 2) * 0.1 + rng.NextDouble() * 1e-5);
+            }
+        }
+
+        var k = GaussianMixtureModel.SelectK(data, maxK: 10);
+
+        Assert.Equal(10, k);
+    }
+
     [Fact]
     public void SelectK_StillSeparates_WellSeparatedClusters()
     {
