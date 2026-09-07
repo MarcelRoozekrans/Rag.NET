@@ -398,7 +398,13 @@ public static class RagPipelineExtensions
             {
                 var storedETag = await hashStore.GetETagAsync(providerId, entry.Id, cancellationToken).ConfigureAwait(false);
                 if (string.Equals(entry.ETag, storedETag, StringComparison.Ordinal))
+                {
+                    // Records that this run looked. Nothing else on this path writes: the content
+                    // is never opened and the hash never read, so without this a store cannot tell
+                    // "checked, unchanged" from "not seen since the last change" -- #435.
+                    await hashStore.TouchAsync(providerId, entry.Id, cancellationToken).ConfigureAwait(false);
                     return EntryOutcome.Skipped;
+                }
             }
 
             var rawStream = await entry.OpenContentAsync(cancellationToken).ConfigureAwait(false);
@@ -453,6 +459,10 @@ public static class RagPipelineExtensions
             // Only refresh ETag when there's a non-null ETag to store
             if (entry.ETag is not null)
                 await hashStore.SetAsync(providerId, entry.Id, entry.ETag, hash, cancellationToken).ConfigureAwait(false);
+
+            // Unconditional, unlike the ETag refresh above: an entry with no ETag reaches here on
+            // every run and wrote nothing at all before this.
+            await hashStore.TouchAsync(providerId, entry.Id, cancellationToken).ConfigureAwait(false);
             return EntryOutcome.Skipped;
         }
 
