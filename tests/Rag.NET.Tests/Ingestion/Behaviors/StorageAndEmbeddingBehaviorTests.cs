@@ -114,6 +114,59 @@ public class StorageAndEmbeddingBehaviorTests
 
     // ── StorageBehavior ───────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Previous append-only entries are purged for ids the context names, not only for the
+    /// document being ingested.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>One ingest can carry chunks belonging to another document.</b> Under
+    /// <c>RaptorTreeScope.Corpus</c> the RAPTOR behaviour appends the whole corpus tree to whichever
+    /// article triggered the rebuild, with each summary filed under <c>raptor://corpus-tree</c>.
+    /// Purging only <c>Metadata.DocumentId</c> meant the previous tree's BM25 postings were never
+    /// removed and every rebuild appended another full copy — unbounded growth of exactly the
+    /// duplication this method exists to prevent (#336).
+    /// </para>
+    /// <para>
+    /// The vector store is not purged for these ids and must not be: it upserts on
+    /// <c>(DocumentId, ChunkIndex)</c>, so it was never the half that accumulated, and deleting
+    /// there would reintroduce the shrinking-tree strand this does not address.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Storage_PurgesAppendOnlyEntries_ForAdditionalDocumentIds()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var vectorStore = Substitute.For<IVectorStore>();
+        var bm25 = Substitute.For<IBm25Index>();
+        var dataManager = Substitute.For<IRagDataManager>();
+
+        var sut = new StorageBehavior
+        {
+            VectorStore = vectorStore,
+            Bm25Index = bm25,
+            DataManager = dataManager,
+        };
+
+        var ctx = MakeContext();
+        ctx.AdditionalAppendOnlyPurgeIds.Add("raptor://corpus-tree");
+        ctx.EmbeddedChunks.Add(new EmbeddedChunk
+        {
+            Chunk = new TextChunk { Text = "hello", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 },
+            Embedding = new float[] { 0.5f },
+        });
+
+        _ = await sut.HandleAsync(ctx, ct, NeverCalledNext);
+
+        bm25.Received(1).Remove("raptor://corpus-tree");
+        dataManager.Received(1).Remove("raptor://corpus-tree");
+
+        // The ingesting document is still purged, and the vector store is still not.
+        bm25.Received(1).Remove(ctx.Metadata.DocumentId);
+        await vectorStore.DidNotReceive().DeleteByDocumentIdAsync(
+            "raptor://corpus-tree", Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task StorageBehavior_CallsVectorStore_Bm25_And_DataManager()
     {
