@@ -5216,21 +5216,44 @@ previously threw, so none of the ~86,510 entries on disk has one.
 operator's call; fixing the contract on the way to a benchmark would publish a figure for code no
 released version has.
 
-> **SUPERSEDED 2026-09-07 — #475 IS FIXED, AND THE FIGURES ABOVE DESCRIBE A PAGE THE CELL NO LONGER
-> PRODUCES.** The page is now capped at `TopK` and ordered by Reciprocal Rank Fusion over the
-> rankings instead of by raw score. **The +0.02477 has not been re-measured**, and both fixed
-> properties plausibly fed it: nDCG@10 reads the top ten of what is returned, and a 5.04x larger
-> candidate pool has more chances to put a relevant chunk there. The entry's own reading — *"a
-> larger search, not a better ranker"* — is the reason to expect movement rather than to assume
-> none.
+> **SUPERSEDED 2026-09-07 — RE-MEASURED AFTER #475, AND THE GAIN NEARLY DOUBLED.**
 >
-> **Re-running is expected to cost $0.00 and has not been done.** The sufficiency prompts are built
-> from the accumulated union, which the fix deliberately left alone, so all 647 cached calls still
-> key identically; the earlier run replayed in 73.6 s. It is left for the operator because a
-> re-run is a spend decision even when the expected spend is zero — a cache miss is real money, and
-> this phase has already funded one run that a previous session had silently already paid for.
+> | | before #475 | after #475 | control |
+> | --- | --- | --- | --- |
+> | nDCG@10 | 0.70219 | **0.71913** | 0.67742 |
+> | Recall@10 | 0.82622 | **0.83789** | 0.81322 |
+> | MRR@10 | 0.66642 | **0.68314** | 0.63757 |
+> | Δ nDCG@10 | +0.02477 | **+0.04171** | — |
 >
-> **Do not quote the deep research row without this note** until it is re-measured.
+> **That makes it the largest gain any technique has had on SciFact**, ahead of HyDE's +0.03647,
+> where before it was second. **All 657 calls replayed from cache for $0.00**, exactly as predicted:
+> the sufficiency prompts are built from the accumulated union, which the fix deliberately left
+> untouched.
+>
+> **THE READING INVERTS.** The entry above says to read the old figure as *"a larger search, not a
+> better ranker"*, and that was right — the page was not capped and the largest returned 1,260
+> against a TopK of 250. Both sides now return at most 250, so the new gain is bought by **ordering
+> the same-sized page better**, not by returning more of it. MRR moved most of the three (+0.04557
+> against Recall's +0.02467), which is what a ranking improvement looks like rather than a wider net.
+>
+> That the number went **up** when the over-fetch was removed is the strongest evidence for what
+> #475 claimed: the old top ten was selected by comparing scores taken against different query
+> vectors, a comparison with no meaning, and replacing it with rank fusion was worth more than the
+> extra 1,010 chunks were.
+>
+> **The cell's mechanism guard had to be rewritten, because the fix broke its detection method.** It
+> counted expansion as *"the deep page is longer than the control's"*, which the cap makes false by
+> construction: the first re-run reported 0 of 300 expanded while all 657 model calls replayed. It
+> now compares pages by content and order — immune to the cap, and strictly stronger than the length
+> check, which a run finding nothing new would have passed. Both agree on this data at 184 of 300.
+>
+> **Reproducing it needs a clean checkout, for a reason nobody has explained.** These figures come
+> from a pristine `git worktree` of the fixing commit, where the run replays 657 hits / 0 misses,
+> reproduced three times. The same commit in the primary working tree reports 0 hits / 300 misses on
+> identical tracked content, identical embeddings (20,155 hits / 0 misses both ways) and after clean
+> rebuilds of every assembly on the key path. It costs nothing either way — `RefuseOnMiss` throws
+> rather than calling — but **read 0 hits as "wrong checkout", not "empty cache", until this is
+> understood.**
 
 **657 model calls against the 900 the counting pass priced** — the ceiling behaved as a ceiling,
 because `MaxDepth` bounds the calls and the loop stops early on any query called sufficient (116 of

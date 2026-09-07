@@ -274,33 +274,36 @@ public static class BeirReproduction
         new(
             "scifact",
             BeirProtocol.RealDeepResearch,
-            [0.70219],
-            "MEASURED 2026-09-06, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 0.70219, " +
-            "Recall@10 0.82622, MRR@10 0.66642 over the 300 judged queries; 20,155 units over " +
-            "5,183 documents; 1,980.5 s; 657 model calls. **Against its control, the Real cell's " +
-            "0.67742, this is +0.02477 -- the second-largest gain any technique has had on " +
-            "SciFact**, behind HyDE's +0.03647 and ahead of hybrid BM25's +0.01880, SPLADE's " +
-            "+0.01276 and reranking's +0.01266. The loop provably ran: 184 of 300 queries expanded " +
-            "past the control's page and 73,727 chunks were added in total. " +
-            "**MRR rose more than Recall (+0.02885 against +0.01300), which is the interesting " +
-            "half.** A technique that only widened the candidate set would move Recall and leave " +
-            "the top of the ranking alone; the chunks the sub-queries pull in are landing HIGH and " +
-            "being relevant, not merely landing. " +
-            "**READ IT AS A LARGER SEARCH, NOT A BETTER RANKER.** This cell retrieves up to ten " +
-            "times per query where the control retrieves once, and the page is NOT capped to TopK " +
-            "(issue #475): the largest returned 1,260 against a TopK of 250, 5.04x. Both sides are " +
-            "scored at the same depth so the comparison is sound, but the gain is bought with " +
-            "retrieval work and model calls rather than with a cleverer ordering -- and that " +
-            "ordering mixes scores taken against different query vectors, so it is not even " +
-            "internally comparable. " +
-            "**657 calls, not the 900 the counting pass priced**: MaxDepth bounds the calls and the " +
-            "loop stops early on any query called sufficient, so 900 was a ceiling behaving as one. " +
-            "SUPERSEDED TEXT: NEVER RUN -- Phase 6.2.1 wired this cell and has not measured it. " +
-            "**A figure identical to the control was the failure mode watched for, and it HAPPENED " +
-            "on the first attempt**: DeepResearchRetriever catches every exception as \"sufficient\", " +
-            "CachedGraphRagClient refused the ResponseFormat it sets, and the run reproduced " +
-            "0.67742 exactly with 0 hits and 0 misses. AssertTheLoopActuallyRan failed that run " +
-            "rather than pinning it."),
+            [0.71913],
+            "RE-MEASURED 2026-09-07 after #475, Windows 11, .NET 10, CPU ONNX Runtime: nDCG@10 " +
+            "0.71913, Recall@10 0.83789, MRR@10 0.68314 over the 300 judged queries; 20,155 units " +
+            "over 5,183 documents; 657 model calls, ALL 657 REPLAYED FROM CACHE at a cost of " +
+            "$0.00 -- the sufficiency prompts are built from the accumulated union, which the fix " +
+            "deliberately left untouched, so every key still matched. " +
+            "**Against its control, the Real cell's 0.67742, this is +0.04171 -- the LARGEST gain " +
+            "any technique has had on SciFact**, ahead of HyDE's +0.03647, hybrid BM25's " +
+            "+0.01880, SPLADE's +0.01276 and reranking's +0.01266. The loop provably ran: 184 of " +
+            "300 queries returned a page differing from the control's and 14,206 chunks appeared " +
+            "that the control did not return. " +
+            "**THE READING IS NOW THE OPPOSITE OF WHAT IT WAS.** The superseded entry said to read " +
+            "it as a larger search and not a better ranker, because the page was not capped and " +
+            "the largest returned 1,260 against a TopK of 250. It is capped now: both sides return " +
+            "at most 250, so the gain is bought by ORDERING the same-sized page better, not by " +
+            "returning more of it. MRR rose most of the three (+0.04557 against Recall's +0.02467), " +
+            "which is what a ranking improvement looks like. " +
+            "**AND IT IS BIGGER THAN THE FIGURE IT REPLACES**, 0.70219/+0.02477, measured " +
+            "2026-09-06 on the uncapped page. Capping to TopK and fusing the rankings by rank " +
+            "instead of by score did not cost the technique its gain -- it nearly doubled it. That " +
+            "is consistent with what #475 said was wrong: the old page was ordered by comparing " +
+            "scores taken against different query vectors, so its top ten was chosen by a " +
+            "comparison that had no meaning. " +
+            "SUPERSEDED TEXT: MEASURED 2026-09-06: nDCG@10 0.70219, Recall@10 0.82622, MRR@10 " +
+            "0.66642; 1,980.5 s; 657 model calls; +0.02477 over control, second-largest gain " +
+            "behind HyDE. Page NOT capped to TopK (issue #475), largest 1,260 against 250, 5.04x. " +
+            "Before that: NEVER RUN -- and the first attempt reproduced the control exactly with " +
+            "0 hits and 0 misses, because DeepResearchRetriever catches every exception as " +
+            "\"sufficient\" and CachedGraphRagClient refused the ResponseFormat it sets. " +
+            "AssertTheLoopActuallyRan failed that run rather than pinning it."),
         new(
             "scifact",
             BeirProtocol.RealTagFiltered,

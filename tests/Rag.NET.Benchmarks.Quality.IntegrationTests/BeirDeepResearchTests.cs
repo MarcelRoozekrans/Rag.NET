@@ -29,13 +29,32 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// published a figure for code no released version had.
 /// </para>
 /// <para>
-/// <b>So the recorded +0.02477 is a figure for a page this cell no longer produces</b>, and the
-/// ROADMAP entry says so. Both halves plausibly contributed to it: nDCG@10 reads the top ten of
-/// whatever is returned, and a 5x larger candidate pool has more chances to put a relevant chunk
-/// there. <b>Re-running should cost nothing</b> — the sufficiency prompts are built from the
-/// accumulated union, which the fix did not touch, so every one of the 647 cached calls still keys
-/// identically. It has not been run because that is a spend decision even when the expected spend
-/// is zero, and a cache miss is real money.
+/// <b>RE-MEASURED 2026-09-07, and the fix did not cost the technique its gain — it nearly doubled
+/// it.</b> nDCG@10 0.70219 → <b>0.71913</b>, against the same 0.67742 control: +0.02477 → <b>+0.04171</b>,
+/// which makes it the largest gain any technique has had on SciFact. All 657 calls replayed from
+/// cache for <b>$0.00</b>, exactly as predicted — the sufficiency prompts are built from the
+/// accumulated union, which the fix deliberately left untouched.
+/// </para>
+/// <para>
+/// <b>THE GUARD BELOW HAD TO CHANGE, BECAUSE THE FIX BROKE ITS DETECTION METHOD.</b> It counted a
+/// query as expanded when the deep page was LONGER than the control's. Capping to <c>TopK</c> makes
+/// the two the same length by construction, so the first re-run reported 0 of 300 expanded while
+/// all 657 model calls replayed — a guard reading "the loop never ran" over a run in which it
+/// demonstrably had. It now compares the pages by CONTENT and order, which is both immune to the
+/// cap and strictly stronger: a run whose sub-queries found nothing the control had not already
+/// returned would have passed the old length check while producing the control's own figure. On
+/// this data the two agree exactly — 184 of 300, the same count the length check reported before
+/// the cap.
+/// </para>
+/// <para>
+/// <b>One caveat on reproducing this.</b> The figures here come from a pristine <c>git worktree</c>
+/// checkout of the commit that fixed #475, where the run replays 657 hits and 0 misses. The same
+/// commit in the primary working tree reproducibly reports 0 hits and 300 misses and therefore
+/// fails the guard, on identical tracked content, identical embeddings (20,155 hits, 0 misses in
+/// both) and after clean rebuilds of every assembly on the key path. The cause was not found. It
+/// never costs anything — a miss in <c>RefuseOnMiss</c> mode throws rather than calling — but
+/// <b>if this cell reports 0 hits, try a fresh checkout before concluding anything about the
+/// cache.</b>
 /// </para>
 /// <para>
 /// <b>THE CELL CAN SILENTLY MEASURE NOTHING, which is what the guard is for.</b>
@@ -114,8 +133,8 @@ public sealed class BeirDeepResearchTests(ITestOutputHelper output)
         _output.WriteLine(FormattableString.Invariant($"""
             === {descriptor.Name} · {row.Name} ===
             MaxDepth {options.MaxDepth}, SubQueryCount {options.SubQueryCount}.
-            {row.QueryCount} queries: {row.ExpandedQueryCount} expanded past the control's page, {row.QueryCount - row.ExpandedQueryCount} did not.
-            {row.AddedChunkCount} chunks added in total; largest page returned {row.LargestPage} against a TopK of {row.RequestedTopK} (issue #475).
+            {row.QueryCount} queries: {row.DivergedQueryCount} returned a page differing from the control's, {row.QueryCount - row.DivergedQueryCount} returned it unchanged.
+            {row.IntroducedChunkCount} chunks appeared that the control did not return; largest page {row.LargestPage} against a TopK of {row.RequestedTopK} (capped since #475).
             cache: {cache.Hits} hits, {cache.Misses} misses (misses are what was paid for).
             {run.Describe()}
             Its control is the Real dense cell on this corpus, NOT a deep-research parity sibling.
