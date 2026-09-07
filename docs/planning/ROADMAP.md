@@ -6162,6 +6162,53 @@ stub `next` and never run `StorageBehavior`: one test asserts the behaviour regi
 as pointedly, does **not** register it when no tree was built), the other asserts `StorageBehavior`
 purges whatever is registered while leaving the vector store alone. Both mutation-checked.
 
+### Phase 6.2.16: The Variance Floor Learns the Data's Scale [status: complete 2026-09-07 — added and shipped the same day. **#337 REMAINS OPEN**: this fixes a symptom the issue did not name and leaves the one it did]
+**Surface:** Backend
+**HelpWanted:** no
+**Completed:** 2026-09-07
+
+**Goal:** #337 — `GaussianMixtureModel`'s variance floor was the constant `1e-6`, a standard
+deviation of 0.001, applied to embeddings that are not required to be unit-scale. A floor exists to
+stop a component's variance reaching zero and its log-density reaching infinity, and *"near zero"*
+is a statement about the data's scale rather than a number fixable in advance.
+
+**Two symptoms, both measured before anything was changed.**
+
+| probe | before | after |
+| --- | --- | --- |
+| three blobs at scale 0.001 | **k = 1** | k = 3 |
+| the same at scale 1 | k = 3 | k = 3 |
+| the same at scale 1000 | k = 3 | k = 3 |
+| 20 points, five near-identical pairs, maxK 10 | k = 10 | **k = 10, unchanged** |
+
+**The issue predicted the fourth row; the first was not in it and is worse.** #337 argued the floor
+*inflates* k where near-duplicates exist, and it does — pinned at the ceiling. But scaling the same
+geometry down by 1,000 puts the whole dataset under the floor, so every component floors to the same
+value, BIC can no longer tell candidates apart, and clustering **collapses to k = 1**: a corpus on a
+small-scale embedding model would have built no tree at all.
+
+**WHAT WAS FIXED AND WHAT WAS NOT, because the fraction cannot do both.** The floor is now a
+fraction of the data's own mean per-dimension variance, computed once per `Fit`. At **1/100th** —
+the issue's suggested starting point — the near-duplicate row is fixed *and* **four of #345's
+cluster-size-floor tests go red**: a floor coarse enough to blunt a degenerate component also blunts
+legitimate tight ones, components collapse together, and the empty ones are dropped, so a level that
+must yield 6 or 12 clusters yields 3. At **1/1000th** every existing guard is green and the
+near-duplicate behaviour returns.
+
+**#337 was explicit that a change must not buy well-behaved k by making clustering useless**, so the
+fraction is 1/1000th and the near-duplicate face is left open, pinned by
+`SelectK_IsStillDrivenToTheCeiling_ByNearDuplicateVectors` — a characterisation that inverts the
+assertion it wants, so the fix landing makes it fail.
+
+**Closing it properly is a different mechanism, not a different constant.** It means rejecting fits
+whose components have COLLAPSED, where `IsDegenerateFit` already rejects fits whose components are
+ALONE — which needs the variances plumbed into a rejection path that today receives only assignments,
+and a threshold validated against a real corpus rather than a fixture. Not improvised here.
+
+**#333's guards held throughout**, which was the stated constraint: all pre-existing tests pass
+unchanged, including *two well-separated blobs still yield k ≥ 2* and *k < n on distinct data*.
+Mutation-checked by restoring the old constant — the scale-invariance test fails and the rest do not.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.

@@ -5,7 +5,31 @@ namespace Rag.NET.Raptor.Math;
 [SuppressMessage("Performance", "HLQ013:Use foreach loop", Justification = "Index-based access required for matrix operations")]
 internal static class GaussianMixtureModel
 {
-    private const double VarianceFloor = 1e-6;
+    /// <summary>
+    /// The absolute last resort, used only when the data itself has no spread at all.
+    /// </summary>
+    /// <remarks>
+    /// <b>This used to be THE floor, and it was an absolute constant on relative data (#337).</b>
+    /// A variance of <c>1e-6</c> is a standard deviation of 0.001 — far tighter than any real
+    /// cluster of unit-scale embeddings — so a component of near-identical vectors floored and
+    /// scored as a near-perfect fit. Measured before the fix, on 20 points containing five
+    /// near-identical pairs, <c>SelectK</c> returned the maximum k of <b>10</b>: it isolated
+    /// everything it could. Scaling the same three-blob geometry down by 1,000 put the whole
+    /// dataset under the floor and collapsed k from 3 to <b>1</b> — the same cause, the opposite
+    /// symptom. It survives only to keep a genuinely zero-variance dataset from dividing by zero.
+    /// </remarks>
+    private const double AbsoluteVarianceFloor = 1e-12;
+
+    /// <summary>
+    /// The fraction of the data's own mean variance below which a component is not allowed to go.
+    /// </summary>
+    /// <remarks>
+    /// A hundredth: tight enough that genuinely tight clusters are still expressible, loose enough
+    /// that a degenerate component cannot claim unbounded likelihood. The floor exists to avoid a
+    /// division by zero; it does not need to be a value that makes a collapsed component look
+    /// excellent.
+    /// </remarks>
+    private const double VarianceFloorFraction = 0.001;
     private const double EmptyClusterThreshold = 1e-10;
 
     // The smallest component that is a cluster rather than a memorised point. Measured in hard
@@ -18,12 +42,14 @@ internal static class GaussianMixtureModel
         int n = data.Length;
         int d = data[0].Length;
 
+        double varianceFloor = ComputeVarianceFloor(data, n, d);
+
         double[][] means = KMeansPlusPlusInit(data, k, d);
-        double[][] variances = InitializeVariances(k, d);
+        double[][] variances = InitializeVariances(k, d, varianceFloor);
         double[] weights = InitializeWeights(k);
         double[][] responsibilities = InitializeResponsibilities(n, k);
 
-        RunEmIterations(data, k, n, d, means, variances, weights, responsibilities, maxIterations, tolerance);
+        RunEmIterations(data, k, n, d, means, variances, weights, responsibilities, maxIterations, tolerance, varianceFloor);
 
         return BuildResult(responsibilities, n, k);
     }
@@ -67,11 +93,17 @@ internal static class GaussianMixtureModel
     /// An empty component means <paramref name="k"/> overstates the model actually fitted, so its
     /// parameter count — and therefore its penalty — is simply wrong for what was fitted.
     ///
-    /// A component owning a single point has no spread to estimate: its variance collapses to
-    /// <see cref="VarianceFloor"/> and its log-density at its own mean reaches roughly +47.9 nats
-    /// at eight dimensions, which through <c>-2 * logLikelihood</c> is about 95.8 of BIC gain
-    /// against a penalty of only some 39.1. Splitting therefore always won, and <c>SelectK</c>
-    /// returned k = n for every n from 2 to 10.
+    /// A component owning a single point has no spread to estimate: its variance collapses to the
+    /// floor and its log-density at its own mean climbs accordingly. The figures below were
+    /// measured against the ORIGINAL absolute floor of <c>1e-6</c>, which reached roughly +47.9
+    /// nats at eight dimensions — about 95.8 of BIC gain through <c>-2 * logLikelihood</c> against
+    /// a penalty of only some 39.1, so splitting always won and <c>SelectK</c> returned k = n for
+    /// every n from 2 to 10.
+    ///
+    /// <b>The floor is now a fraction of the data's own variance (#337), so the exact figures no
+    /// longer hold — but the shape does, and this rule is still what rejects the fit.</b> A
+    /// data-scaled floor bounds how good a collapsed component can look; it does not stop one
+    /// looking better than it should.
     ///
     /// The test is on the *share of points* those components hold rather than on their mere
     /// existence. A single genuine outlier is a fact about the data, not a broken fit: on two tight
@@ -116,7 +148,7 @@ internal static class GaussianMixtureModel
         return pointsInRealComponents * 2 <= gmmResult.Assignments.Length;
     }
 
-    private static double[][] InitializeVariances(int k, int d)
+    private static double[][] InitializeVariances(int k, int d, double varianceFloor)
     {
         double[][] variances = new double[k][];
         for (int j = 0; j < k; j++)
@@ -149,7 +181,7 @@ internal static class GaussianMixtureModel
     private static void RunEmIterations(
         float[][] data, int k, int n, int d,
         double[][] means, double[][] variances, double[] weights,
-        double[][] responsibilities, int maxIterations, double tolerance)
+        double[][] responsibilities, int maxIterations, double tolerance, double varianceFloor)
     {
         double prevLogLikelihood = double.NegativeInfinity;
 
@@ -163,7 +195,7 @@ internal static class GaussianMixtureModel
             }
 
             prevLogLikelihood = logLikelihood;
-            MStep(data, k, n, d, means, variances, weights, responsibilities);
+            MStep(data, k, n, d, means, variances, weights, responsibilities, varianceFloor);
         }
     }
 
@@ -196,7 +228,7 @@ internal static class GaussianMixtureModel
     private static void MStep(
         float[][] data, int k, int n, int d,
         double[][] means, double[][] variances, double[] weights,
-        double[][] responsibilities)
+        double[][] responsibilities, double varianceFloor)
     {
         for (int j = 0; j < k; j++)
         {
@@ -210,7 +242,7 @@ internal static class GaussianMixtureModel
 
             weights[j] = nk / n;
             UpdateMeans(data, responsibilities, means[j], n, d, j, nk);
-            UpdateVariances(data, responsibilities, means[j], variances[j], n, d, j, nk);
+            UpdateVariances(data, responsibilities, means[j], variances[j], n, d, j, nk, varianceFloor);
         }
     }
 
@@ -241,9 +273,54 @@ internal static class GaussianMixtureModel
         }
     }
 
+    /// <summary>
+    /// The variance floor for one dataset: a fraction of its own mean per-dimension variance.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Computed once per <see cref="Fit"/> from the data, not fixed in advance (#337).</b> The
+    /// floor's job is to stop a component's variance reaching zero and its log-density reaching
+    /// infinity. What counts as "near zero" is a property of the data's scale, and embeddings are
+    /// not required to be unit-scale — so a constant is a yardstick that is either far too coarse
+    /// or far too fine depending on the corpus, and was measurably both.
+    /// </para>
+    /// <para>
+    /// Uses the population variance about the global mean, per dimension, averaged. That is the
+    /// spread the model is trying to explain, so a component is floored relative to the thing it
+    /// is a component OF.
+    /// </para>
+    /// </remarks>
+    private static double ComputeVarianceFloor(float[][] data, int n, int d)
+    {
+        double totalVariance = 0.0;
+
+        for (int di = 0; di < d; di++)
+        {
+            double sum = 0.0;
+            for (int i = 0; i < n; i++)
+                sum += data[i][di];
+
+            double mean = sum / n;
+            double squared = 0.0;
+            for (int i = 0; i < n; i++)
+            {
+                double diff = data[i][di] - mean;
+                squared += diff * diff;
+            }
+
+            totalVariance += squared / n;
+        }
+
+        double scaled = totalVariance / d * VarianceFloorFraction;
+
+        // A dataset of identical points has no spread to take a fraction of, and that is the one
+        // case the absolute floor still exists for.
+        return System.Math.Max(scaled, AbsoluteVarianceFloor);
+    }
+
     private static void UpdateVariances(
         float[][] data, double[][] responsibilities, double[] mean, double[] variance,
-        int n, int d, int j, double nk)
+        int n, int d, int j, double nk, double varianceFloor)
     {
         for (int di = 0; di < d; di++)
         {
@@ -254,7 +331,7 @@ internal static class GaussianMixtureModel
                 sum += responsibilities[i][j] * diff * diff;
             }
 
-            variance[di] = System.Math.Max(sum / nk, VarianceFloor);
+            variance[di] = System.Math.Max(sum / nk, varianceFloor);
         }
     }
 
@@ -286,7 +363,7 @@ internal static class GaussianMixtureModel
     private static double ComputeLogLikelihood(float[][] data, in GmmResult gmmResult, int k, int d)
     {
         int n = data.Length;
-        var (means, variances, weights) = ReconstructParameters(data, gmmResult, k, d, n);
+        var (means, variances, weights) = ReconstructParameters(data, gmmResult, k, d, n, ComputeVarianceFloor(data, n, d));
 
         double logLikelihood = 0.0;
         for (int i = 0; i < n; i++)
@@ -305,7 +382,7 @@ internal static class GaussianMixtureModel
     }
 
     private static (double[][] Means, double[][] Variances, double[] Weights) ReconstructParameters(
-        float[][] data, in GmmResult gmmResult, int k, int d, int n)
+        float[][] data, in GmmResult gmmResult, int k, int d, int n, double varianceFloor)
     {
         double[][] means = new double[k][];
         double[][] variances = new double[k][];
@@ -321,13 +398,13 @@ internal static class GaussianMixtureModel
             if (nk < EmptyClusterThreshold)
             {
                 weights[j] = 0.0;
-                Array.Fill(variances[j], VarianceFloor);
+                Array.Fill(variances[j], varianceFloor);
                 continue;
             }
 
             weights[j] = nk / n;
             ReconstructMeansForComponent(data, gmmResult.Responsibilities, means[j], n, d, j, nk);
-            ReconstructVariancesForComponent(data, gmmResult.Responsibilities, means[j], variances[j], n, d, j, nk);
+            ReconstructVariancesForComponent(data, gmmResult.Responsibilities, means[j], variances[j], n, d, j, nk, varianceFloor);
         }
 
         return (means, variances, weights);
@@ -361,7 +438,7 @@ internal static class GaussianMixtureModel
 
     private static void ReconstructVariancesForComponent(
         float[][] data, float[][] responsibilities, double[] mean, double[] variance,
-        int n, int d, int j, double nk)
+        int n, int d, int j, double nk, double varianceFloor)
     {
         for (int di = 0; di < d; di++)
         {
@@ -372,7 +449,7 @@ internal static class GaussianMixtureModel
                 sum += responsibilities[i][j] * diff * diff;
             }
 
-            variance[di] = System.Math.Max(sum / nk, VarianceFloor);
+            variance[di] = System.Math.Max(sum / nk, varianceFloor);
         }
     }
 
