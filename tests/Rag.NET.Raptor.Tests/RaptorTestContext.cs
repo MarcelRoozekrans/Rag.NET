@@ -26,7 +26,6 @@ internal sealed class RaptorTestContext
         {
             Stream = Stream.Null,
             Metadata = new DocumentMetadata { DocumentId = new DocumentId(documentId), FileName = "test.txt", ContentType = "text/plain" },
-            GetNextBm25DocId = () => 0,
         };
 
         var rng = new Random(SeedFor(documentId));

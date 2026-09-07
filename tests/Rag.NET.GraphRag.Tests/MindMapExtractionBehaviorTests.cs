@@ -20,7 +20,6 @@ public class MindMapExtractionBehaviorTests
         {
             Stream = Stream.Null,
             Metadata = new DocumentMetadata { DocumentId = new DocumentId(docId), FileName = "test.txt" },
-            GetNextBm25DocId = () => 0,
         };
         ctx.Chunks.Add(new TextChunk
         {
@@ -94,7 +93,6 @@ public class MindMapExtractionBehaviorTests
         {
             Stream = Stream.Null,
             Metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.txt" },
-            GetNextBm25DocId = () => 0,
         };
         ctx.Chunks.Add(new TextChunk { Text = "First chunk.", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
         ctx.Chunks.Add(new TextChunk { Text = "Second chunk.", DocumentId = new DocumentId("doc-1"), ChunkIndex = 1 });
@@ -122,7 +120,6 @@ public class MindMapExtractionBehaviorTests
         {
             Stream = Stream.Null,
             Metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.txt" },
-            GetNextBm25DocId = () => 0,
         };
         // No chunks added
 

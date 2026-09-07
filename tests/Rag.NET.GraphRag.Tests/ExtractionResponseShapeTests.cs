@@ -82,7 +82,6 @@ public class ExtractionResponseShapeTests : IAsyncDisposable
                 DocumentId = new DocumentId("provider-error-doc"),
                 FileName = "provider-error.txt",
             },
-            GetNextBm25DocId = () => 0,
         };
         ctx.Chunks.Add(new TextChunk
         {
@@ -140,7 +139,6 @@ public class ExtractionResponseShapeTests : IAsyncDisposable
                 DocumentId = new DocumentId("shape-doc"),
                 FileName = "shape.txt",
             },
-            GetNextBm25DocId = () => 0,
         };
         ctx.Chunks.Add(new TextChunk
         {

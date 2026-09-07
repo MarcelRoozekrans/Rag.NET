@@ -25,7 +25,8 @@ namespace Rag.NET.Raptor;
 /// </remarks>
 /// <param name="behavior">The tree-building implementation, shared with the ingestion path.</param>
 /// <param name="vectorStore">Where the summary chunks are written.</param>
-public sealed class RaptorTreeRebuilder(RaptorIngestionBehavior behavior, IVectorStore vectorStore)
+public sealed class RaptorTreeRebuilder(
+    RaptorIngestionBehavior behavior, IVectorStore vectorStore, IBm25Index bm25Index)
 {
     /// <summary>Rebuilds the tree over every stored leaf and replaces the stored summaries.</summary>
     /// <param name="cancellationToken">Cancellation.</param>
@@ -40,7 +41,6 @@ public sealed class RaptorTreeRebuilder(RaptorIngestionBehavior behavior, IVecto
                 DocumentId = new DocumentId(RaptorCorpusDocumentId.Value),
                 FileName = RaptorCorpusDocumentId.Value,
             },
-            GetNextBm25DocId = () => 0,
         };
 
         var count = await behavior.BuildCorpusTreeNowAsync(ctx, cancellationToken).ConfigureAwait(false);
@@ -56,6 +56,18 @@ public sealed class RaptorTreeRebuilder(RaptorIngestionBehavior behavior, IVecto
         await vectorStore
             .StoreAsync(ctx.EmbeddedChunks, cancellationToken)
             .ConfigureAwait(false);
+
+        // BM25 too, which this used to skip entirely (#487). Without it a rebuild left the two
+        // stores disagreeing: the vector store held the new tree while BM25 held whatever the
+        // ingest path last wrote, so the rebuilt summaries were invisible to keyword and hybrid
+        // search and the stale ones were still returned. Remove-then-add for the same reason the
+        // vector store is deleted first -- clustering is not stable across runs, so a shorter tree
+        // must not leave the surplus behind.
+        bm25Index.Remove(RaptorCorpusDocumentId.Value);
+        foreach (ref readonly var embedded in System.Runtime.InteropServices.CollectionsMarshal.AsSpan(ctx.EmbeddedChunks))
+        {
+            bm25Index.Add(embedded.Chunk);
+        }
 
         return count;
     }

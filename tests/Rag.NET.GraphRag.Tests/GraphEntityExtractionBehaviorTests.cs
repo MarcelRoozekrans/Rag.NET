@@ -206,7 +206,6 @@ public class GraphEntityExtractionBehaviorTests : IAsyncDisposable
         {
             Stream = Stream.Null,
             Metadata = new DocumentMetadata { DocumentId = new DocumentId("empty-doc"), FileName = "empty.txt" },
-            GetNextBm25DocId = () => 0,
         };
         // No chunks added to ctx
 
@@ -228,7 +227,6 @@ public class GraphEntityExtractionBehaviorTests : IAsyncDisposable
         {
             Stream = Stream.Null,
             Metadata = new DocumentMetadata { DocumentId = new DocumentId("test-doc"), FileName = "test.txt" },
-            GetNextBm25DocId = () => 0,
         };
 
         ctx.Chunks.Add(new TextChunk

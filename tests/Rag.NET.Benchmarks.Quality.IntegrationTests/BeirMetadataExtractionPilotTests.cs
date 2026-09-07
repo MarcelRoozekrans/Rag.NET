@@ -160,7 +160,6 @@ public sealed class BeirMetadataExtractionPilotTests(ITestOutputHelper output)
         {
             Stream = Stream.Null,
             Metadata = metadata,
-            GetNextBm25DocId = () => 0,
         };
 
         foreach (var chunk in chunks)

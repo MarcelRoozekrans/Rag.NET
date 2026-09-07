@@ -102,7 +102,7 @@ public sealed class HybridBm25AblationRow : AblationRow, IDisposable
         {
             for (var i = 0; i < units.Count; i++)
             {
-                index.Add(i, units[i]);
+                index.Add(units[i]);
             }
 
             return new HybridBm25AblationRow(index);

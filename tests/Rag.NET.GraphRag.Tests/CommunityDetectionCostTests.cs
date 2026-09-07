@@ -3,6 +3,7 @@ using NSubstitute;
 using Rag.NET.Graph;
 using Rag.NET.Ingestion;
 using Rag.NET.Models;
+using Rag.NET.Search;
 using Rag.NET.Models.Options;
 using Rag.NET.Storage;
 using Xunit;
@@ -138,7 +139,7 @@ public sealed class CommunityDetectionCostTests : IAsyncDisposable
         Assert.Equal(1, counting.PageRankWriteBacks);
 
         using var vectorStore = new InMemoryVectorStore();
-        var sut = new GraphProjectionRebuilder(behaviour, vectorStore);
+        var sut = new GraphProjectionRebuilder(behaviour, vectorStore, new InMemoryBm25Index());
 
         var communities = await sut.RebuildAsync(TestContext.Current.CancellationToken);
 
@@ -159,7 +160,7 @@ public sealed class CommunityDetectionCostTests : IAsyncDisposable
             _chatClient, _embedder, _inner, new GraphRagOptions { Enabled = true });
 
         using var vectorStore = new InMemoryVectorStore();
-        var sut = new GraphProjectionRebuilder(behaviour, vectorStore);
+        var sut = new GraphProjectionRebuilder(behaviour, vectorStore, new InMemoryBm25Index());
 
         _ = await sut.RebuildAsync(TestContext.Current.CancellationToken);
 
@@ -255,7 +256,6 @@ public sealed class CommunityDetectionCostTests : IAsyncDisposable
     {
         Stream = Stream.Null,
         Metadata = new DocumentMetadata { DocumentId = new DocumentId(documentId), FileName = "test.txt" },
-        GetNextBm25DocId = () => 0,
     };
 
     /// <summary>Delegates to a real store and counts the two whole-graph operations.</summary>
@@ -304,5 +304,44 @@ public sealed class CommunityDetectionCostTests : IAsyncDisposable
             inner.DeleteByDocumentIdAsync(documentId, ct);
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// A projection rebuild replaces the report chunks' BM25 postings as well as their vectors.
+    /// </summary>
+    /// <remarks>
+    /// <b>The same defect #487 recorded for <c>RaptorTreeRebuilder</c>, in the sibling nobody had
+    /// looked at.</b> <c>RebuildAsync</c> wrote through <c>IVectorStore</c> and never touched
+    /// <c>IBm25Index</c>, so after a rebuild the vector store held the new community reports while
+    /// BM25 held the previous run's: the rebuilt reports were invisible to keyword and hybrid
+    /// search and the stale ones were still returned. It could not be fixed before #490 moved id
+    /// allocation into the index — there was no allocator a caller outside an ingest could use.
+    /// </remarks>
+    [Fact]
+    public async Task RebuildAsync_ReplacesTheReportsBm25Postings()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var bm25 = new InMemoryBm25Index();
+
+        bm25.Add(new TextChunk
+        {
+            Text = "stale report quokka",
+            DocumentId = new DocumentId(GraphProjectionRebuilder.ReportDocumentId),
+            ChunkIndex = 0,
+        });
+        Assert.Single(bm25.Search("quokka", topK: 10));
+
+        SetupModels();
+        await SeedTwoCliquesAsync();
+        var behaviour = new CommunityDetectionBehavior(
+            _chatClient, _embedder, _inner, new GraphRagOptions { Enabled = true });
+
+        using var vectorStore = new InMemoryVectorStore();
+        var rebuilder = new GraphProjectionRebuilder(behaviour, vectorStore, bm25);
+
+        var communities = await rebuilder.RebuildAsync(ct);
+        Assert.True(communities > 0, "the fixture must produce at least one community for this to mean anything");
+
+        Assert.Empty(bm25.Search("quokka", topK: 10));
     }
 }

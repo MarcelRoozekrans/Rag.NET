@@ -6209,6 +6209,64 @@ and a threshold validated against a real corpus rather than a fixture. Not impro
 unchanged, including *two well-separated blobs still yield k ≥ 2* and *k < n on distinct data*.
 Mutation-checked by restoring the old constant — the scale-invariance test fails and the rest do not.
 
+### Phase 6.2.17: BM25 Ids Belong to the Index [status: complete 2026-09-07 — added and shipped the same day; closes #490 and unblocks #487, which it also closes]
+**Surface:** Backend
+**HelpWanted:** no
+**Completed:** 2026-09-07
+
+**Goal:** #487 asked why `RaptorTreeRebuilder` cannot write BM25. Answering it found a worse defect
+underneath, filed as **#490**, and fixing that root cause closes both.
+
+**#490, measured across one process boundary:**
+
+```
+second.Search("alpha") -> 1 hit     (the document from before the restart)
+second.Search("bravo") -> 0 hits    (the one added after it — silently not indexed)
+```
+
+`PipelineIngestor` allocated BM25 ids from a private per-instance counter starting at 0.
+`SqliteBm25Index.InitialiseCore` reloads the ids it persisted. So **after a restart the allocator
+handed out ids the index already held**, and `InMemoryBm25Index.Add` hit
+`if (_docs.ContainsKey(docId)) return;` — dropping the chunk with no error, no log line and no
+return value a caller could check. Worse, `SqliteBm25Index.Add` had already run
+`INSERT OR REPLACE`, so the persisted row held the **new** chunk under the **old** chunk's id while
+memory held the old one; the two stores disagreed until the next restart swapped which was visible.
+
+**At shipped defaults with `UseSqlitePersistence`, every document ingested after a process restart
+was missing from keyword and hybrid search** — which reads as a relevance problem rather than a
+missing document.
+
+**The allocator was in the wrong place, and that is the whole fix.** Only the index knows which ids
+are taken, so `IBm25Index.Add` now takes a chunk and returns the id it assigned.
+`IngestionContext.GetNextBm25DocId`, `PipelineIngestor`'s counter, and both rebuilders'
+`() => 0` stubs are gone. `InMemoryBm25Index.AddWithId` stays `internal` for the one path that
+legitimately supplies an id — `SqliteBm25Index` restoring what it persisted — and seeds the
+allocator above every restored id.
+
+**#487 falls out of it.** `RaptorTreeRebuilder` can now remove and re-add the corpus tree's
+postings, so a rebuild no longer leaves the vector store holding the new tree while BM25 holds
+whatever ingest last wrote. Remove-then-add, for the reason the vector store is deleted first:
+clustering is not stable across runs and a shorter tree must not strand the surplus.
+
+**Breaking**, deliberately: `Add(int, TextChunk)` is gone rather than kept as an overload, because
+an id nobody can pass is an id nobody can collide. Third interface change this milestone taken on
+the same pre-1.0 reasoning.
+
+**Two more gaps closed on the operator's "fix it thoroughly", rather than left as follow-ups.**
+
+`GraphProjectionRebuilder` had **the identical defect to #487's** — deletes and stores community
+reports through `IVectorStore`, never touching BM25 — in the sibling nobody had looked at. It was
+unfixable for the same reason and is fixed by the same allocator. A rebuild no longer leaves the
+vector store holding the new reports while BM25 returns the previous run's.
+
+And `Add`'s silent return on a duplicate id is now a throw. **That silence is what turned #490 from
+a collision into missing data**: the chunk was dropped with nothing to observe it by. The public
+path allocates so it cannot collide, and `AddWithId`'s only caller replays a primary key — so a
+duplicate now means a caller reintroduced the bug, and it says so instead of losing the document.
+
+**Four mutations, each failing exactly its own guard:** removing the allocator's seeding fails both
+#490 tests; neutralising either rebuilder's BM25 write fails its own test.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.

@@ -262,7 +262,6 @@ public sealed class RelationshipWeightBoundTests : IAsyncDisposable
                 DocumentId = new DocumentId(DocumentId),
                 FileName = "test.txt",
             },
-            GetNextBm25DocId = () => 0,
         };
 
         ctx.Chunks.Add(new TextChunk

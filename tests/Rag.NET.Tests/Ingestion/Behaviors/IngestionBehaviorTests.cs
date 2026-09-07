@@ -29,7 +29,6 @@ public class IngestionBehaviorTests
             },
             Options = options,
             Progress = progress,
-            GetNextBm25DocId = () => 1,
         };
     }
 

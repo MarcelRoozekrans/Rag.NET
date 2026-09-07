@@ -4,6 +4,7 @@ using Rag.NET.Benchmarks.Quality;
 using Rag.NET.Benchmarks.Quality.GraphExtractions;
 using Rag.NET.Ingestion;
 using Rag.NET.Models;
+using Rag.NET.Search;
 using Rag.NET.Models.Options;
 using Rag.NET.Raptor;
 using Rag.NET.Raptor.Store;
@@ -119,7 +120,7 @@ internal sealed class RaptorRun : IAsyncDisposable
 
         _leafStore = scope == RaptorTreeScope.Corpus ? new SqliteRaptorLeafStore(leafStorePath) : null;
         _behavior = new RaptorIngestionBehavior(_summariser, _embedder, options, _leafStore);
-        _rebuilder = scope == RaptorTreeScope.Corpus ? new RaptorTreeRebuilder(_behavior, _store) : null;
+        _rebuilder = scope == RaptorTreeScope.Corpus ? new RaptorTreeRebuilder(_behavior, _store, new InMemoryBm25Index()) : null;
     }
 
     /// <summary>
@@ -442,7 +443,6 @@ internal sealed class RaptorRun : IAsyncDisposable
         {
             Stream = Stream.Null,
             Metadata = new DocumentMetadata { DocumentId = new DocumentId(documentId), FileName = documentId },
-            GetNextBm25DocId = static () => 0,
         };
         ctx.EmbeddedChunks.AddRange(embedded);
 

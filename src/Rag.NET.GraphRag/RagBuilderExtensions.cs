@@ -108,7 +108,8 @@ public static class RagBuilderExtensions
         builder.Services.AddSingleton<GraphProjectionRebuilder>(sp =>
             new GraphProjectionRebuilder(
                 sp.GetRequiredService<CommunityDetectionBehavior>(),
-                sp.GetRequiredService<IVectorStore>()));
+                sp.GetRequiredService<IVectorStore>(),
+                sp.GetRequiredService<IBm25Index>()));
 
         RegisterLocalSearch(builder.Services, options, localSearch);
 

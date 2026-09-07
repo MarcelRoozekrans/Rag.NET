@@ -56,7 +56,6 @@ public class PdfPageAttributionTests
                 FileName = "two-pages.pdf",
                 ContentType = "application/pdf",
             },
-            GetNextBm25DocId = () => 0,
         };
         var behavior = new ParseBehavior
         {

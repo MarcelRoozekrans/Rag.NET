@@ -21,7 +21,6 @@ public class TagIngestionBehaviorTests
                 FileName   = "doc1.pdf",
                 Tags       = tags ?? new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
             },
-            GetNextBm25DocId = () => 0,
         };
 
     private static IEmbeddingGenerator<string, Embedding<float>> MockEmbedder(float[] vector)

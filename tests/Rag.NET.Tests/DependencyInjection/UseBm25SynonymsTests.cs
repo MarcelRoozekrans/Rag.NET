@@ -31,7 +31,7 @@ public class UseBm25SynonymsTests
         var index = sp.GetRequiredService<InMemoryBm25Index>();
 
         // Verify synonym expansion works end-to-end via DI
-        index.Add(0, new Rag.NET.Models.TextChunk
+        index.Add(new Rag.NET.Models.TextChunk
         {
             Text = "kubernetes deployment",
             DocumentId = new Rag.NET.Models.DocumentId("doc-1"),

@@ -23,7 +23,6 @@ public class ParseBehaviorRefinementTests
                 FileName = "test.txt",
                 ContentType = contentType,
             },
-            GetNextBm25DocId = () => 0,
         };
     }
 

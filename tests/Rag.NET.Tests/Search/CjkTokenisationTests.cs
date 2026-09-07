@@ -79,8 +79,8 @@ public sealed class CjkTokenisationTests
     public void AChineseQueryRetrievesTheChineseDocument()
     {
         using var index = new InMemoryBm25Index();
-        index.Add(1, Chunk("doc-cn", "人工智能是未来的核心技术"));
-        index.Add(2, Chunk("doc-other", "今天天气很好我们去公园散步"));
+        index.Add(Chunk("doc-cn", "人工智能是未来的核心技术"));
+        index.Add(Chunk("doc-other", "今天天气很好我们去公园散步"));
 
         var hits = index.Search("人工智能", 5);
 

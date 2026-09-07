@@ -26,7 +26,7 @@ public class SqliteBm25IndexSynonymTests : IAsyncDisposable
     {
         var synonyms = new SynonymMap([["k8s", "kubernetes"]]);
         _sut = new SqliteBm25Index(_dbPath, synonymMap: synonyms);
-        _sut.Add(0, MakeChunk("deploying kubernetes clusters"));
+        _sut.Add(MakeChunk("deploying kubernetes clusters"));
 
         var results = _sut.Search("k8s", topK: 5);
 
@@ -37,7 +37,7 @@ public class SqliteBm25IndexSynonymTests : IAsyncDisposable
     public void Search_NoSynonymMap_ExistingBehaviourUnchanged()
     {
         _sut = new SqliteBm25Index(_dbPath);
-        _sut.Add(0, MakeChunk("kubernetes cluster"));
+        _sut.Add(MakeChunk("kubernetes cluster"));
 
         var results = _sut.Search("k8s", topK: 5);
 
@@ -49,7 +49,7 @@ public class SqliteBm25IndexSynonymTests : IAsyncDisposable
     {
         var synonyms = new SynonymMap();
         _sut = new SqliteBm25Index(_dbPath, synonymMap: synonyms);
-        _sut.Add(0, MakeChunk("javascript framework"));
+        _sut.Add(MakeChunk("javascript framework"));
 
         Assert.Empty(_sut.Search("js", topK: 5));
 

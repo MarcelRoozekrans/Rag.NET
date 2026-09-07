@@ -646,7 +646,6 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
         {
             Stream = Stream.Null,
             Metadata = new DocumentMetadata { DocumentId = new DocumentId("test-doc"), FileName = "test.txt" },
-            GetNextBm25DocId = () => 0,
         };
     }
 

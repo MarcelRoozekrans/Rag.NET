@@ -33,7 +33,6 @@ public class ParseBehaviorChunkIndexTests
             FileName = "test.txt",
             ContentType = "text/plain",
         },
-        GetNextBm25DocId = () => 0,
     };
 
     private static ValueTask<IngestionResult> NoopNext(IngestionContext ctx, CancellationToken ct) =>

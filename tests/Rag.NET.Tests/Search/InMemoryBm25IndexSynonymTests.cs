@@ -14,7 +14,7 @@ public class InMemoryBm25IndexSynonymTests
     {
         var synonyms = new SynonymMap([["k8s", "kubernetes"]]);
         var index = new InMemoryBm25Index(synonyms);
-        index.Add(0, Chunk("deploying kubernetes clusters"));
+        index.Add(Chunk("deploying kubernetes clusters"));
 
         var results = index.Search("k8s", topK: 5);
 
@@ -26,7 +26,7 @@ public class InMemoryBm25IndexSynonymTests
     {
         var synonyms = new SynonymMap([["k8s", "kubernetes"]]);
         var index = new InMemoryBm25Index(synonyms);
-        index.Add(0, Chunk("k8s deployment guide"));
+        index.Add(Chunk("k8s deployment guide"));
 
         var results = index.Search("kubernetes", topK: 5);
 
@@ -37,7 +37,7 @@ public class InMemoryBm25IndexSynonymTests
     public void Search_NoSynonymMap_ExistingBehaviourUnchanged()
     {
         var index = new InMemoryBm25Index();
-        index.Add(0, Chunk("kubernetes cluster"));
+        index.Add(Chunk("kubernetes cluster"));
 
         // No synonyms — "k8s" should NOT match
         var results = index.Search("k8s", topK: 5);
@@ -50,7 +50,7 @@ public class InMemoryBm25IndexSynonymTests
     {
         var synonyms = new SynonymMap([["MI", "myocardial infarction", "heart attack"]]);
         var index = new InMemoryBm25Index(synonyms);
-        index.Add(0, Chunk("patient had a myocardial infarction"));
+        index.Add(Chunk("patient had a myocardial infarction"));
 
         Assert.NotEmpty(index.Search("MI", topK: 5));
         Assert.NotEmpty(index.Search("heart attack", topK: 5));
@@ -62,7 +62,7 @@ public class InMemoryBm25IndexSynonymTests
     {
         var synonyms = new SynonymMap();
         var index = new InMemoryBm25Index(synonyms);
-        index.Add(0, Chunk("javascript framework"));
+        index.Add(Chunk("javascript framework"));
 
         // Before synonym
         Assert.Empty(index.Search("js", topK: 5));

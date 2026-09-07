@@ -20,7 +20,6 @@ public class LlmMetadataExtractionBehaviorTests
                 DocumentId = new DocumentId("doc-1"),
                 FileName = "test.txt",
             },
-            GetNextBm25DocId = () => 1,
         };
         ctx.Chunks.AddRange(chunks);
         return ctx;

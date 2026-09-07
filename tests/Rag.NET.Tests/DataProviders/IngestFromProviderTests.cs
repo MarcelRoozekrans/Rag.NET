@@ -188,7 +188,6 @@ public sealed class IngestFromProviderTests : IDisposable
         {
             Stream = Stream.Null,
             Metadata = capturedMetadata[0],
-            GetNextBm25DocId = () => 0,
         };
         ctx.Chunks.Add(new TextChunk { Text = "chunk", DocumentId = new DocumentId("typed-1"), ChunkIndex = 0 });
         ctx.Chunks.Add(new TextChunk
@@ -1250,7 +1249,6 @@ public sealed class IngestFromProviderTests : IDisposable
         {
             Stream           = Stream.Null,
             Metadata         = metadata,
-            GetNextBm25DocId = () => 0,
         };
         chunkCtx.Chunks.Add(new TextChunk
         {

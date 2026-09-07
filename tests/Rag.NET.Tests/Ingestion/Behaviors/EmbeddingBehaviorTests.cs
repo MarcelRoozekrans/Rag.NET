@@ -29,7 +29,6 @@ public class EmbeddingBehaviorTests
             },
             Progress = progress,
             Options = options,
-            GetNextBm25DocId = () => 42,
         };
     }
 

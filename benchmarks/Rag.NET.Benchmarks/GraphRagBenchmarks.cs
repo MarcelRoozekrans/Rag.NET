@@ -251,7 +251,6 @@ public class GraphRagBenchmarks
             FileName = "bench.txt",
             ContentType = "text/plain",
         },
-        GetNextBm25DocId = () => 0,
     };
 
     private static RetrievalContext CreateRetrievalContext() => new()

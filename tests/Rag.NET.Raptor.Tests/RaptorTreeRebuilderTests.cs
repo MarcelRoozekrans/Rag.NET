@@ -1,6 +1,7 @@
 using Rag.NET.Abstractions;
 using Rag.NET.Ingestion;
 using Rag.NET.Models;
+using Rag.NET.Search;
 using Rag.NET.Raptor.Store;
 using NSubstitute;
 using Xunit;
@@ -34,7 +35,7 @@ public class RaptorTreeRebuilderTests
 
         var options = new RaptorOptions { TreeScope = RaptorTreeScope.Corpus };
         var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options, leafStore);
-        var rebuilder = new RaptorTreeRebuilder(behavior, vectorStore);
+        var rebuilder = new RaptorTreeRebuilder(behavior, vectorStore, new InMemoryBm25Index());
 
         var count = await rebuilder.RebuildAsync(TestContext.Current.CancellationToken);
 
@@ -65,7 +66,7 @@ public class RaptorTreeRebuilderTests
 
         var options = new RaptorOptions { TreeScope = RaptorTreeScope.Corpus, CorpusGrowthThreshold = 0.50 };
         var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options, leafStore);
-        var rebuilder = new RaptorTreeRebuilder(behavior, vectorStore);
+        var rebuilder = new RaptorTreeRebuilder(behavior, vectorStore, new InMemoryBm25Index());
 
         await rebuilder.RebuildAsync(TestContext.Current.CancellationToken);
         var callsAfterRebuild = _helpers.ChatClient.ReceivedCalls().Count();
@@ -100,4 +101,63 @@ public class RaptorTreeRebuilderTests
         return leaves;
     }
 #pragma warning restore HLQ013
+
+    /// <summary>
+    /// A rebuild replaces the tree's BM25 postings as well as its vectors.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is #487.</b> <c>RebuildAsync</c> wrote through <c>IVectorStore</c> and never touched
+    /// <c>IBm25Index</c>, so after a rebuild the two stores disagreed: the vector store held the
+    /// new tree while BM25 held whatever the ingest path last wrote. The rebuilt summaries were
+    /// invisible to keyword and hybrid search and the stale ones were still being returned — and
+    /// the guide offers <c>RebuildAsync</c> as the way to force a tree current.
+    /// </para>
+    /// <para>
+    /// <b>It could not be fixed without #490 first.</b> Writing BM25 needs doc ids, and the only
+    /// allocator was a counter private to <c>PipelineIngestor</c>; both rebuilders stubbed it as
+    /// <c>() =&gt; 0</c>, which would have indexed the first summary and silently dropped every
+    /// other one. The index allocates now, so a caller with no ingest in flight can write to it.
+    /// </para>
+    /// <para>
+    /// Remove-then-add, for the reason the vector store is deleted first: clustering is not stable
+    /// across runs, so a shorter tree must not leave the previous run's surplus behind.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task RebuildAsync_ReplacesTheTreesBm25Postings()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _helpers.SetupChatClient("a summary");
+        _helpers.SetupEmbedder(dims: 8);
+
+        var vectorStore = Substitute.For<IVectorStore>();
+        using var bm25 = new InMemoryBm25Index();
+
+        // A previous tree's postings, which the rebuild must replace rather than accumulate.
+        bm25.Add(new TextChunk
+        {
+            Text = "stale summary quokka",
+            DocumentId = new DocumentId(RaptorCorpusDocumentId.Value),
+            ChunkIndex = 0,
+        });
+        Assert.Single(bm25.Search("quokka", topK: 10));
+
+        await using var leafStore = new SqliteRaptorLeafStore(":memory:");
+        await leafStore.InitializeAsync(ct);
+        await leafStore.AddLeavesAsync(TwentyLeaves(), ct);
+
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.Corpus };
+        var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options, leafStore);
+        var rebuilder = new RaptorTreeRebuilder(behavior, vectorStore, bm25);
+
+        var count = await rebuilder.RebuildAsync(ct);
+        Assert.True(count > 0);
+
+        // The stale posting is gone...
+        Assert.Empty(bm25.Search("quokka", topK: 10));
+
+        // ...and the rebuilt tree is lexically searchable, which it never was before.
+        Assert.NotEmpty(bm25.Search("summary", topK: 10));
+    }
 }

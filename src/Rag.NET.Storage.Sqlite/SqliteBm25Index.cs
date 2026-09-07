@@ -27,11 +27,17 @@ public sealed class SqliteBm25Index : IBm25Index
         _memory = new InMemoryBm25Index(synonymMap);
     }
 
-    public void Add(int docId, TextChunk chunk)
+    /// <inheritdoc/>
+    public int Add(TextChunk chunk)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         EnsureInitialised();
-        _memory.Add(docId, chunk);
+
+        // The in-memory index allocates, and it has been seeded above every id LoadIntoMemory
+        // restored -- so an id handed out here cannot collide with one already persisted. Before
+        // #490 the caller allocated from a counter that restarted at 0 each process, and this
+        // line dropped the chunk while the INSERT below overwrote the previous document's row.
+        var docId = _memory.Add(chunk);
         using var conn = SqliteStoreHelper.OpenConnection(_dbPath);
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -48,6 +54,7 @@ public sealed class SqliteBm25Index : IBm25Index
         cmd.Parameters.AddWithValue("$text", chunk.Text);
         cmd.Parameters.AddWithValue("$meta", MetadataSerializer.SerializeMetadata(chunk.Metadata));
         cmd.ExecuteNonQuery();
+        return docId;
     }
 
     public void Remove(string documentId)
@@ -217,6 +224,6 @@ public sealed class SqliteBm25Index : IBm25Index
         }
 
         foreach (ref readonly var row in CollectionsMarshal.AsSpan(rows))
-            _memory.Add(row.docId, row.chunk);
+            _memory.AddWithId(row.docId, row.chunk);
     }
 }

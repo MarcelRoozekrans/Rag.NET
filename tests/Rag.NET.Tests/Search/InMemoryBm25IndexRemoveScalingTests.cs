@@ -33,7 +33,7 @@ public class InMemoryBm25IndexRemoveScalingTests
                 for (var t = 0; t < TermsPerChunk; t++)
                     terms.Add("term" + rng.Next(2000).ToString(CultureInfo.InvariantCulture));
 
-                index.Add(++docId, new TextChunk
+                index.Add(new TextChunk
                 {
                     Text = string.Join(' ', terms),
                     DocumentId = new DocumentId("doc-" + d.ToString(CultureInfo.InvariantCulture)),
@@ -75,13 +75,13 @@ public class InMemoryBm25IndexRemoveScalingTests
     public void Remove_ThenReAdd_ReindexesTheDocument()
     {
         using var index = new InMemoryBm25Index();
-        index.Add(1, new TextChunk { Text = "quokka telemetry", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
+        index.Add(new TextChunk { Text = "quokka telemetry", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
 
         index.Remove("doc-1");
         Assert.Empty(index.Search("quokka", topK: 5));
 
         // A fresh internal doc id, exactly as StorageBehavior supplies on a re-ingest.
-        index.Add(2, new TextChunk { Text = "quokka telemetry", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
+        index.Add(new TextChunk { Text = "quokka telemetry", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
         Assert.Single(index.Search("quokka", topK: 5));
 
         // And removing again finds it under its new id.
@@ -95,10 +95,10 @@ public class InMemoryBm25IndexRemoveScalingTests
     {
         var ct = TestContext.Current.CancellationToken;
         using var index = new InMemoryBm25Index();
-        index.Add(1, new TextChunk { Text = "quokka telemetry", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
+        index.Add(new TextChunk { Text = "quokka telemetry", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
 
         await index.ClearAsync(ct);
-        index.Add(2, new TextChunk { Text = "quokka telemetry", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
+        index.Add(new TextChunk { Text = "quokka telemetry", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
 
         Assert.Single(index.Search("quokka", topK: 5));
 
@@ -113,7 +113,7 @@ public class InMemoryBm25IndexRemoveScalingTests
         using var index = new InMemoryBm25Index();
         for (var i = 0; i < 5; i++)
         {
-            index.Add(i + 1, new TextChunk
+            index.Add(new TextChunk
             {
                 Text = "quokka telemetry chunk " + i.ToString(CultureInfo.InvariantCulture),
                 DocumentId = new DocumentId("doc-1"),
@@ -121,7 +121,7 @@ public class InMemoryBm25IndexRemoveScalingTests
             });
         }
 
-        index.Add(99, new TextChunk { Text = "quokka elsewhere", DocumentId = new DocumentId("doc-2"), ChunkIndex = 0 });
+        index.Add(new TextChunk { Text = "quokka elsewhere", DocumentId = new DocumentId("doc-2"), ChunkIndex = 0 });
 
         Assert.Equal(6, index.Search("quokka", topK: 50).Count);
 

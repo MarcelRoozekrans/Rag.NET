@@ -41,7 +41,8 @@ namespace Rag.NET.GraphRag;
 /// <param name="vectorStore">Where the report chunks are written.</param>
 public sealed class GraphProjectionRebuilder(
     CommunityDetectionBehavior behavior,
-    IVectorStore vectorStore)
+    IVectorStore vectorStore,
+    IBm25Index bm25Index)
 {
     /// <summary>
     /// The document id community report chunks are stored under.
@@ -85,7 +86,6 @@ public sealed class GraphProjectionRebuilder(
                 DocumentId = new DocumentId(ReportDocumentId),
                 FileName = ReportDocumentId,
             },
-            GetNextBm25DocId = () => 0,
         };
 
         var communities = await behavior.DetectNowAsync(ctx, cancellationToken).ConfigureAwait(false);
@@ -101,6 +101,19 @@ public sealed class GraphProjectionRebuilder(
         await vectorStore
             .StoreAsync(ctx.EmbeddedChunks, cancellationToken)
             .ConfigureAwait(false);
+
+        // BM25 too, which this used to skip entirely -- the same defect #487 recorded for
+        // RaptorTreeRebuilder, in the sibling nobody had looked at. Without it a rebuild left the
+        // vector store holding the new community reports while BM25 held the previous run's, so
+        // the rebuilt reports were invisible to keyword and hybrid search and the stale ones were
+        // still returned. Remove-then-add for the reason the vector store is deleted first:
+        // community detection is not stable across runs, so a smaller projection must not leave
+        // the surplus behind.
+        bm25Index.Remove(ReportDocumentId);
+        foreach (ref readonly var embedded in System.Runtime.InteropServices.CollectionsMarshal.AsSpan(ctx.EmbeddedChunks))
+        {
+            bm25Index.Add(embedded.Chunk);
+        }
 
         return communities;
     }

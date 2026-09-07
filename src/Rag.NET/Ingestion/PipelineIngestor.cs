@@ -36,7 +36,6 @@ public sealed class PipelineIngestor : IIngestor
     [Inject] public IEnumerable<IDocumentScopedStore> DocumentScopedStores { get; set; } = [];
     [Inject(Required = false)] public ILogger<PipelineIngestor>? Logger { get; set; }
 
-    private int _nextBm25DocId;
 
     public async Task<Result<IngestionResult, RagError>> IngestAsync(
         Stream document,
@@ -55,7 +54,6 @@ public sealed class PipelineIngestor : IIngestor
             Metadata = metadata,
             Options = options,
             Progress = progress,
-            GetNextBm25DocId = () => System.Threading.Interlocked.Increment(ref _nextBm25DocId),
         };
 
         using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.ingest");

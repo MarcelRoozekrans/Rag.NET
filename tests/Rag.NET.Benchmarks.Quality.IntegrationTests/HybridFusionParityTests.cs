@@ -192,7 +192,7 @@ public sealed class HybridFusionParityTests
         var index = new InMemoryBm25Index();
         for (var i = 0; i < Corpus.Length; i++)
         {
-            index.Add(i, new TextChunk
+            index.Add(new TextChunk
             {
                 Text = Corpus[i],
                 DocumentId = new DocumentId(FormattableString.Invariant($"doc-{i}")),

@@ -56,7 +56,7 @@ public sealed class StorageBehavior : IIngestionBehavior
         await RemovePreviousAppendOnlyEntriesAsync(ctx, ct).ConfigureAwait(false);
 
         foreach (ref readonly var ec in CollectionsMarshal.AsSpan(ctx.EmbeddedChunks))
-            Bm25Index.Add(ctx.GetNextBm25DocId(), ec.Chunk);
+            Bm25Index.Add(ec.Chunk);
 
         DataManager?.Add(ctx.Metadata, ctx.Chunks);
 
@@ -75,7 +75,7 @@ public sealed class StorageBehavior : IIngestionBehavior
     /// upsert, so that re-ingesting a document replaces it instead of doubling it.
     /// <para>
     /// <see cref="IBm25Index"/> is keyed by a per-ingest integer doc id
-    /// (<see cref="IngestionContext.GetNextBm25DocId"/> hands out a fresh one every call), and
+    /// (the index assigns a fresh one per chunk -- see IBm25Index.Add), and
     /// <see cref="IRagDataManager.Add"/> is likewise append-only — so without this, a second
     /// ingest of the same document produced a second complete set of postings: duplicate hits
     /// and inflated term statistics in keyword and hybrid search.

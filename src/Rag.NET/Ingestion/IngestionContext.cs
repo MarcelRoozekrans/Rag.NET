@@ -33,7 +33,6 @@ public sealed class IngestionContext
 
     // ── Counter delegate — facade provides this so StorageBehavior
     //    assigns unique BM25 doc IDs across concurrent ingest calls ─────────
-    public required Func<int> GetNextBm25DocId     { get; init; }
 
     /// <summary>
     /// Document ids <b>other than</b> <see cref="Metadata"/>'s whose previous append-only entries

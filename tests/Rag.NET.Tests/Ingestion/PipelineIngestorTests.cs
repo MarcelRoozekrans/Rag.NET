@@ -137,30 +137,6 @@ public class PipelineIngestorTests
     }
 
     [Fact]
-    public async Task IngestAsync_GetNextBm25DocId_IncrementsPerCall()
-    {
-        var capturedIds = new List<int>();
-        var pipeline = new Pipeline<IngestionContext, IngestionResult>((ctx, _) =>
-        {
-            capturedIds.Add(ctx.GetNextBm25DocId());
-            capturedIds.Add(ctx.GetNextBm25DocId());
-            return ValueTask.FromResult(new IngestionResult { DocumentId = ctx.Metadata.DocumentId, ChunksStored = 0 });
-        });
-        var sut = CreateSut(pipeline: pipeline);
-        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "f.txt" };
-        var ct = TestContext.Current.CancellationToken;
-
-        _ = await sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: ct);
-        _ = await sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: ct);
-
-        // Across two calls, the IDs should monotonically increase (thread-safe Interlocked.Increment)
-        Assert.Equal(4, capturedIds.Count);
-        Assert.True(capturedIds[0] < capturedIds[1]);
-        Assert.True(capturedIds[1] < capturedIds[2]);
-        Assert.True(capturedIds[2] < capturedIds[3]);
-    }
-
-    [Fact]
     public async Task IngestAsync_OpensDocumentIdScope_CoveringThePipelineExecution()
     {
         var logger = new FakeLogger<PipelineIngestor>();

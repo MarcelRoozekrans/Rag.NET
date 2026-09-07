@@ -77,7 +77,6 @@ public sealed class GraphRagTelemetryTests : IAsyncDisposable
         {
             Stream = Stream.Null,
             Metadata = new DocumentMetadata { DocumentId = new DocumentId("test-doc"), FileName = "test.txt" },
-            GetNextBm25DocId = () => 0,
         };
         ctx.Chunks.Add(new TextChunk
         {

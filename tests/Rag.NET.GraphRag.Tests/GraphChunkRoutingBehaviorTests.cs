@@ -98,7 +98,6 @@ public sealed class GraphChunkRoutingBehaviorTests
     {
         Stream = Stream.Null,
         Metadata = new DocumentMetadata { DocumentId = new DocumentId("doc1"), FileName = "doc1.txt" },
-        GetNextBm25DocId = () => 0,
     };
 
     private static EmbeddedChunk Chunk(string text, string? graphType, int index)
