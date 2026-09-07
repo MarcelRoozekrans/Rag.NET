@@ -6049,6 +6049,47 @@ while its own scan reports **74**: the comment counts packages and the scan coun
 which is not packable. Both numbers were right and neither said which it was. Now recorded, because
 the gap looked like a defect for a minute.
 
+### Phase 6.2.14: Deletion Reaches the RAPTOR Leaves — stop deleted content coming back searchable [status: active 2026-09-07 — added the same day from issue #338, the highest-severity item on the tracker]
+**Surface:** Backend
+**HelpWanted:** no
+
+**Goal:** close #338. `PipelineIngestor.DeleteAsync` clears the vector store, BM25, parent chunks,
+the data manager and the version store — and **not** `IRaptorLeafStore`. Under
+`RaptorTreeScope.Corpus`, which is the **shipped default** (`RaptorOptions.cs:159`), the next corpus
+build reads a deleted document's leaf text back out, sends it to the model, and stores the summary
+as retrievable content under `raptor://corpus-tree`. **It carries no document id**, so no later
+`DeleteAsync` can remove it and nobody can discover which summaries came from deleted material. For
+anyone using deletion to honour an erasure request, the operation is defeated.
+
+**`IRaptorLeafStore.RemoveDocumentAsync` already exists and has zero production callers** — the
+interface, the SQLite implementation and one test reference it, and nothing else. The method was
+built and never wired.
+
+**The issue offered three options; the code collapses them to one.** Everything `DeleteAsync`
+already clears — `IVectorStore`, `IBm25Index`, `IParentChunkStore`, `IRagDataManager`,
+`IEmbeddingVersionStore` — is an interface in `Rag.NET.Abstractions` injected with
+`[Inject(Required = false)]`. So "an optional core hook" and "a deletable side-store abstraction"
+are the same change, and it is the pattern this codebase already uses five times. The third option,
+a deletion event, would invent a mechanism to avoid a pattern that exists.
+
+**The second face is a decision rather than a bug, and it was taken deliberately.**
+`OverwriteBehavior` strands tail entries on re-ingest and says so: *"making delete-before-insert
+unconditional would change what `Overwrite` means for every existing caller"* — recorded twice, for
+the vector store and for parent chunks. **Leaves are treated as the exception, on the operator's
+2026-09-07 call**, because the consequence differs in kind rather than degree: a stranded vector
+chunk stays attributed to its document and a later `DeleteAsync` removes it, whereas a stranded leaf
+is summarised into `raptor://corpus-tree` under no document id — unattributable, unremovable and
+searchable. That reasoning is written beside the existing limitation rather than left implicit.
+
+**Exit condition:** deleting a document removes its leaves, proven by a test that builds a corpus
+tree AFTER the delete and asserts the deleted text is absent from what the tree was built over;
+re-ingesting a shorter document strands no leaves; both mutation-checked; `docs/guide/raptor.md`'s
+Known Limitations entry for #338 is removed rather than reworded.
+
+**What it does not promise:** retroactive cleanup. Summaries already written under
+`raptor://corpus-tree` from previously-deleted documents carry no document id and this phase cannot
+find them — a store written before the fix needs its tree rebuilt, and the guide will say so.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
