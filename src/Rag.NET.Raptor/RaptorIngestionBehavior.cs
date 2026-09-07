@@ -42,29 +42,7 @@ public sealed class RaptorIngestionBehavior(
 
         if (options.TreeScope == RaptorTreeScope.Corpus)
         {
-            await PersistLeavesAsync(ctx, ct).ConfigureAwait(false);
-
-            var leafCount = await leafStore!.CountAsync(ct).ConfigureAwait(false);
-            if (ShouldBuild(leafCount))
-            {
-                var leaves = await leafStore.GetAllLeavesAsync(ct).ConfigureAwait(false);
-                if (leaves.Count > 1)
-                {
-                    using var corpusActivity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.raptor.build");
-                    corpusActivity?.SetTag("document.id", RaptorCorpusDocumentId.Value);
-
-                    var corpusSummaryCount = await BuildTreeAsync(
-                        ctx,
-                        ToEmbeddedChunks(leaves),
-                        new DocumentId(RaptorCorpusDocumentId.Value),
-                        firstChunkIndex: 0,
-                        corpusActivity,
-                        ct).ConfigureAwait(false);
-
-                    corpusActivity?.SetTag("raptor.summary.count", corpusSummaryCount);
-                }
-            }
-
+            await BuildCorpusScopeAsync(ctx, ct).ConfigureAwait(false);
             return await next(ctx, ct).ConfigureAwait(false);
         }
 
@@ -227,6 +205,50 @@ public sealed class RaptorIngestionBehavior(
     /// </remarks>
     /// <param name="leaves">The leaves to convert.</param>
     /// <returns>One <see cref="EmbeddedChunk"/> per leaf.</returns>
+    /// <summary>
+    /// The corpus-scope path: persist this document's leaves, and rebuild the whole tree when the
+    /// corpus has grown enough to be worth it.
+    /// </summary>
+    /// <remarks>
+    /// Extracted from <c>HandleAsync</c> rather than inlined, so the two scopes read as the two
+    /// separate paths they are.
+    /// </remarks>
+    private async Task BuildCorpusScopeAsync(IngestionContext ctx, CancellationToken ct)
+    {
+
+            await PersistLeavesAsync(ctx, ct).ConfigureAwait(false);
+
+            var leafCount = await leafStore!.CountAsync(ct).ConfigureAwait(false);
+            if (ShouldBuild(leafCount))
+            {
+                var leaves = await leafStore.GetAllLeavesAsync(ct).ConfigureAwait(false);
+                if (leaves.Count > 1)
+                {
+                    using var corpusActivity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.raptor.build");
+                    corpusActivity?.SetTag("document.id", RaptorCorpusDocumentId.Value);
+
+                    var corpusSummaryCount = await BuildTreeAsync(
+                        ctx,
+                        ToEmbeddedChunks(leaves),
+                        new DocumentId(RaptorCorpusDocumentId.Value),
+                        firstChunkIndex: 0,
+                        corpusActivity,
+                        ct).ConfigureAwait(false);
+
+                    // The tree just appended to ctx.EmbeddedChunks belongs to the corpus id, not to
+                    // the article being ingested, so StorageBehavior would never purge the PREVIOUS
+                    // tree's BM25 postings and each rebuild would append another full copy (#336).
+                    // Registered only when a tree was actually produced: asking for a purge of
+                    // chunks this ingest does not then re-add would delete the standing tree's
+                    // postings and put nothing back.
+                    if (corpusSummaryCount > 0)
+                        ctx.AdditionalAppendOnlyPurgeIds.Add(RaptorCorpusDocumentId.Value);
+
+                    corpusActivity?.SetTag("raptor.summary.count", corpusSummaryCount);
+                }
+            }
+    }
+
     private static List<EmbeddedChunk> ToEmbeddedChunks(IReadOnlyList<RaptorLeaf> leaves)
     {
         var result = new List<EmbeddedChunk>(leaves.Count);

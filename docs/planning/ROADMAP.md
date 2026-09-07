@@ -6125,6 +6125,43 @@ by a resolved note carrying the one thing the fix cannot do: summaries already w
 previously-deleted documents carry no document id, so a store built before this needs its tree
 rebuilt for them to disappear.
 
+### Phase 6.2.15: The Corpus Tree Stops Accumulating in BM25 [status: complete 2026-09-07 — added and shipped the same day from #336, the sibling of 6.2.14 in the same "nothing prunes the corpus tree" family]
+**Surface:** Backend
+**HelpWanted:** no
+**Completed:** 2026-09-07
+
+**Goal:** close #336. Under `RaptorTreeScope.Corpus` the whole corpus tree is appended to whichever
+article triggered the rebuild, with every summary filed under `raptor://corpus-tree`.
+`StorageBehavior` purged previous append-only entries for `ctx.Metadata.DocumentId` only — never the
+corpus id — so **every rebuild appended another full copy of the tree's postings to BM25**, without
+bound. The vector store was spared only because it upserts on `(DocumentId, ChunkIndex)`; BM25
+appends.
+
+**The fix is a seam, not a special case.** `IngestionContext.AdditionalAppendOnlyPurgeIds` lets a
+behaviour name document ids other than the one being ingested whose append-only entries must go, and
+`StorageBehavior` honours it. `RaptorIngestionBehavior` registers the corpus id — **only when a tree
+was actually produced**, because asking for a purge of chunks this ingest does not then re-add would
+delete the standing tree's postings and put nothing back, turning a duplication bug into a
+disappearance one.
+
+**The issue's alternative was weighed and rejected on evidence.** It proposed routing every
+corpus-tree write through `RaptorTreeRebuilder`'s delete-then-store, removing the special case
+rather than adding a seam. Reading the rebuilder killed it: **it writes vectors directly and never
+touches `IBm25Index`**, so that route would have removed corpus summaries from BM25 entirely — and
+it also skips sparse vectors and version stamping. The ingest path keeps the tree inside the one
+storage path that does all three.
+
+**That reading found a second defect, filed rather than folded in: #487.** After a rebuild the two
+stores disagree — the vector store holds the new tree, BM25 still holds whatever ingest last wrote.
+Fixing it means deciding where BM25 doc ids come from when no ingest is in progress: the only real
+allocator is a counter on `PipelineIngestor`, and both rebuilders stub `GetNextBm25DocId` as
+`() => 0` precisely because they never reach BM25. Wider than this issue, so it is its own.
+
+**Proved at the seam rather than end to end**, because the RAPTOR tests drive `HandleAsync` with a
+stub `next` and never run `StorageBehavior`: one test asserts the behaviour registers the id (and,
+as pointedly, does **not** register it when no tree was built), the other asserts `StorageBehavior`
+purges whatever is registered while leaving the vector store alone. Both mutation-checked.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.

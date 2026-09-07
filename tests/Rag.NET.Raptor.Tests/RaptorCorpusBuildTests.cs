@@ -40,6 +40,50 @@ public class RaptorCorpusBuildTests
             c => Assert.Equal(RaptorCorpusDocumentId.Value, c.Chunk.DocumentId.Value));
     }
 
+    /// <summary>
+    /// A corpus build asks for the previous tree's append-only entries to be purged.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the RAPTOR half of #336; <c>StorageBehavior</c> holds the other.</b> The tree is
+    /// appended to the ingesting article's <c>EmbeddedChunks</c> but filed under
+    /// <c>raptor://corpus-tree</c>, so nothing purged the previous tree's BM25 postings and every
+    /// rebuild appended another full copy without bound.
+    /// </para>
+    /// <para>
+    /// <b>The negative case matters as much as the positive one.</b> Registering the id when no
+    /// tree was produced would purge the standing tree's postings and put nothing back — turning a
+    /// duplication bug into a disappearance one.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task CorpusBuild_AsksForThePreviousTreesPostingsToBePurged()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var leafStore = new SqliteRaptorLeafStore(":memory:");
+        await leafStore.InitializeAsync(ct);
+
+        _helpers.SetupChatClient("a summary");
+        _helpers.SetupEmbedder(dims: 8);
+
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.Corpus, CorpusGrowthThreshold = 0 };
+        var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options, leafStore);
+
+        // First ingest: one document's worth of leaves, too few to cluster into a tree.
+        var first = _helpers.CreateContext(chunkCount: 1, documentId: "doc-0");
+        await behavior.HandleAsync(first, ct, static (c, _) => ValueTask.FromResult(
+            new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
+
+        Assert.DoesNotContain(RaptorCorpusDocumentId.Value, first.AdditionalAppendOnlyPurgeIds);
+
+        // Second ingest: now the corpus has enough leaves, so a tree is built and appended.
+        var second = _helpers.CreateContext(chunkCount: 4, documentId: "doc-1");
+        await behavior.HandleAsync(second, ct, static (c, _) => ValueTask.FromResult(
+            new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
+
+        Assert.Contains(RaptorCorpusDocumentId.Value, second.AdditionalAppendOnlyPurgeIds);
+    }
+
     [Fact]
     public async Task CorpusSummaries_HaveUniqueChunkIndexes_AcrossEveryLevel()
     {

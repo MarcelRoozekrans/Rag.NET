@@ -115,6 +115,17 @@ public sealed class StorageBehavior : IIngestionBehavior
         Bm25Index.Remove(ctx.Metadata.DocumentId);
         DataManager?.Remove(ctx.Metadata.DocumentId);
 
+        // One ingest can carry chunks belonging to another document -- the corpus RAPTOR tree is
+        // appended to whichever article triggered the rebuild, under raptor://corpus-tree. Purging
+        // only Metadata.DocumentId left those postings to accumulate on every rebuild, without
+        // bound, which is exactly what this method exists to prevent (#336). The vector store was
+        // spared only because it upserts on (DocumentId, ChunkIndex); BM25 appends.
+        foreach (var documentId in ctx.AdditionalAppendOnlyPurgeIds)
+        {
+            Bm25Index.Remove(documentId);
+            DataManager?.Remove(documentId);
+        }
+
         // Document-scoped stores belong to THIS group rather than to the stranded one above, and
         // the reason is the same one that puts BM25 here: they are append-only per
         // (documentId, chunkIndex), so a shorter replacement leaves the previous version's tail
