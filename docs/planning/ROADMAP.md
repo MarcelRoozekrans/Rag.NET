@@ -6594,6 +6594,59 @@ Mutations: deleting the mapping branch — the variant that actually compiles �
 tests. A third guard pins that unrelated failures still map to `StorageFailed`, so widening the
 branch cannot pass.
 
+### Phase 6.2.24: Keyed Chunk Lookup on PgVector [status: complete 2026-09-08 — #318, first of seven backends]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** GraphRAG's local search puts the source chunks behind its selected entities in front of
+the model, chosen by graph provenance and never by score — so it reads by key or not at all. Only
+`InMemoryVectorStore` implemented `IChunkLookup`, which means **every remote store returned an empty
+Sources section and left half a 12,000-token context budget unspent**, silently: an empty section
+looks like a graph with no sources rather than a store that cannot answer.
+
+**PgVector matches the pairs in the database.**
+
+```sql
+FROM rag_chunks c
+JOIN unnest($1::text[], $2::int[]) AS k(document_id, chunk_index)
+  ON c.document_id = k.document_id AND c.chunk_index = k.chunk_index
+```
+
+`unnest` over two arrays yields one row per position, so the pairs match as pairs in one statement
+with two parameters, whatever the key count. An `IN ((..),(..))` list would emit different query
+text for every distinct count — defeating the plan cache and approaching the parameter limit on the
+few-dozen-key batches local search actually sends. The join is the filter, so a missing key needs no
+handling, which is the contract: a document deleted since extraction leaves the graph naming chunks
+that no longer exist.
+
+**Six tests against real PostgreSQL, three mutations, each caught by its own test:**
+
+| mutation | caught by |
+| --- | --- |
+| `chunk_index >= 0` — the unsigned assumption | `NegativeChunkIndicesAreKeysLikeAnyOther` |
+| pairs matched independently of the document | the pairing test, and the absence test |
+| metadata dropped from the projection | `MetadataComesBackWithTheChunk` |
+
+**The first is the one that matters: every other test still passes with it in place.**
+`GraphEntityExtractionBehavior` assigns `-(i + 1)` to synthetic entity and relationship chunks, so
+negative indices are exactly the rows GraphRAG asks for — a backend filter assuming unsigned would
+return nothing for precisely the lookups this capability exists to serve.
+
+**The issue's stated blocker was already disproved.** #318 says the seven backends "cannot be
+exercised here without accounts", which was the reason they were not implemented alongside the
+interface. All seven were run locally on 2026-09-08 against existing container fixtures; that is
+what lets each implementation be written against a real backend instead of shipped unverified.
+
+**Qdrant is not a copy of this, which is why it is not in here.** `QdrantVectorStore.CreatePointId`
+returns `Guid.NewGuid()`, so point ids are random rather than derived from the key: its lookup has
+to be a payload filter over `document_id`/`chunk_index`, not an id fetch. Real design per backend
+rather than a translation of the SQL, and recorded rather than rushed.
+
+**Remaining: Qdrant, Pinecone, Weaviate, Redis, Chroma, Azure AI Search.** The last carries its own
+caveat — the simulator implements no OData filters, so it may not be exercisable locally even though
+its project runs.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
