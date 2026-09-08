@@ -217,9 +217,9 @@ store. Leave the default `true` in your own store; `ResilientVectorStore` overri
 what its inner store can do, and `FederatedVectorStore` reports whether *any* member can.
 
 **Currently implemented by:** `InMemoryVectorStore`, `PgVectorStore`, `QdrantVectorStore`,
-`RedisVectorStore`, `WeaviateVectorStore`, `PineconeVectorStore` and `ChromaVectorStore`, and
-forwarded by `ResilientVectorStore` and `FederatedVectorStore`. Only Azure AI Search does not
-implement it yet — see #318.
+`RedisVectorStore`, `WeaviateVectorStore`, `PineconeVectorStore`, `ChromaVectorStore`
+and `AzureAISearchVectorStore` — that is every store — and forwarded by
+`ResilientVectorStore` and `FederatedVectorStore` (#318).
 
 **How the keys are matched differs per backend, and the difference is not cosmetic.** PgVector zips
 the pairs in SQL with `unnest` over two arrays. Qdrant cannot use point ids at all — they are random
@@ -233,6 +233,14 @@ Pinecone and Chroma are like Redis: their record ids are derived (`documentId:ch
 lookup is a fetch by id with no query and no filter. Chroma needed a `/get` endpoint added to its
 client first — a derived id is no use if the API cannot ask for one, and its `/get` returns *flat*
 arrays where `/query` returns one row per query embedding.
+
+Azure AI Search needed its **document key** changed before a lookup was expressible at all. The key
+was a random GUID, so identity lived only in fields — and filtering on `chunk_index` is impossible
+because that field is not `IsFilterable`. The key is now
+`Base64Url(documentId + "
+" + chunkIndex)`: Base64Url because Azure permits only letters, digits,
+`_`, `-` and `=` in a key, so raw concatenation fails outright on an id containing a slash, a space
+or non-ASCII text. The same change made writes upsert rather than duplicate (#517).
 
 **If the backend's query is built by string concatenation, escape the document id.** Weaviate's
 lookup does; removing that escaping passed every test until one was added using an id containing a
