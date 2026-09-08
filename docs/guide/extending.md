@@ -216,9 +216,16 @@ forward it, so an `is IChunkLookup` test alone would report the capability for e
 store. Leave the default `true` in your own store; `ResilientVectorStore` overrides it to report
 what its inner store can do, and `FederatedVectorStore` reports whether *any* member can.
 
-**Currently implemented by:** `InMemoryVectorStore` and `PgVectorStore`, and forwarded by
-`ResilientVectorStore` and `FederatedVectorStore`. The remaining remote backends (Qdrant, Pinecone,
-Weaviate, Redis, Chroma, Azure AI Search) do not implement it yet — see #318.
+**Currently implemented by:** `InMemoryVectorStore`, `PgVectorStore` and `QdrantVectorStore`, and
+forwarded by `ResilientVectorStore` and `FederatedVectorStore`. The remaining remote backends
+(Pinecone, Weaviate, Redis, Chroma, Azure AI Search) do not implement it yet — see #318.
+
+**How the keys are matched differs per backend, and the difference is not cosmetic.** PgVector zips
+the pairs in SQL with `unnest` over two arrays. Qdrant cannot use point ids at all — they are
+random GUIDs, unrelated to the chunk's identity — so it filters on the `document_id` and
+`chunk_index` payload fields, one nested `must` per key inside a single `should`. Whatever the
+mechanism, **the pairs must be matched as pairs**: conditions on the two fields independently
+return another document's chunk at the same index.
 
 PgVector matches the pairs in the database rather than expanding them into the SQL: `unnest` over
 two arrays yields one row per position, so a single statement with two parameters serves any key
