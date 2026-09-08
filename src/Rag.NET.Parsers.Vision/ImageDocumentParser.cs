@@ -63,9 +63,39 @@ public partial class ImageDocumentParser(
             new TextContent(prompt),
         ]);
 
-        var response = await activeClient
-            .GetResponseAsync([message], cancellationToken: ct)
-            .ConfigureAwait(false);
+        ChatResponse response;
+        try
+        {
+            response = await activeClient
+                .GetResponseAsync([message], cancellationToken: ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // The caller's token, not a provider failure. Never reclassified.
+            throw;
+        }
+        catch (BudgetExceededException)
+        {
+            // This library's own stop signal, raised by a decorator around the client rather than
+            // by the provider. Reclassifying it as a model failure would invite the retry that
+            // FallbackChatClient.IsTransient exists to prevent -- retrying past a spend limit is
+            // the one response a blown budget must never produce.
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Translated rather than propagated: see VisionDescriptionException for why the types
+            // that arrive here -- ArgumentOutOfRangeException from the OpenAI SDK's finish-reason
+            // validator, ClientResultException on HTTP 429 -- are not something a caller can
+            // reasonably catch. Not swallowed: an empty description would ingest as a document with
+            // no content, which is worse than a failure because nothing downstream can tell it from
+            // an image the model found nothing in.
+            LogDescriptionFailed(_logger, fileName, ex);
+
+            throw new VisionDescriptionException(
+                $"The vision model could not describe '{fileName}': {ex.Message}", fileName, ex);
+        }
 
         return response.Text ?? string.Empty;
     }
@@ -103,4 +133,9 @@ public partial class ImageDocumentParser(
     [LoggerMessage(EventId = 1703571814, EventName = "log_ocr_failed", Level = LogLevel.Warning,
         Message = "OCR failed for '{FileName}'; falling back to vision LLM.")]
     private static partial void LogOcrFailed(ILogger logger, string fileName, Exception ex);
+
+    [LoggerMessage(EventId = 1268340915, EventName = "log_vision_description_failed",
+        Level = LogLevel.Warning,
+        Message = "The vision model could not describe '{FileName}'; the parse fails for this file.")]
+    private static partial void LogDescriptionFailed(ILogger logger, string fileName, Exception ex);
 }

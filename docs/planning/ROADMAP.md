@@ -6395,6 +6395,205 @@ component adds parameters without likelihood, so BIC already avoids it — but n
 where the mutant differs, so any test written would have passed with the rule deleted. Filed as
 **#498**.
 
+### Phase 6.2.20: The Airtable Benchmark Discrepancy, Explained [status: complete 2026-09-08 — closes #207; a recording error, not a regression]
+**Surface:** Benchmarks
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** answer the question #207 actually asked — not whether the new Airtable figures are right,
+but **what the old ones were measuring**, since two of the three normal explanations were already
+excluded by evidence and nobody had offered a mechanism for the third.
+
+**THE ANSWER: ONE CONNECTOR, TWO HARNESS MODES, ONE TABLE.** `b202d5ec` (2026-04-13) introduced
+`[IterationSetup]` to the mocked connectors and published a table in which the three `Airtable — *`
+rows still carry `[GlobalSetup]` numbers while the Shared Ingestion `Airtable` row carries
+`[IterationSetup]` numbers.
+
+Measured 2026-09-08 on code byte-unchanged since that commit:
+
+| `AirtableBenchmarks` | Mean | Allocated |
+| --- | ---: | ---: |
+| as it ships, `[IterationSetup]` | 149.9 μs | 75.89 KB |
+| same code, reverted to `[GlobalSetup]` | **21.9 μs** | 57.17 KB |
+
+**The mode alone is worth 6.9x**, and the `[GlobalSetup]` figures reproduce what `b202d5ec`'s
+*parent* published — 22.8, 37.2 and 24.0 μs — to within 0.7–6%. The 4–5x was never a regression.
+A residual ~+24% allocation since April is real and matches the per-record metadata `cabe77a8` and
+`a89f779e` added.
+
+**THREE OF THE ISSUE'S OWN CLAIMS WERE WRONG, AND FINDING THAT OUT WAS THE WORK.**
+
+1. **"The rows may never have been re-run."** They were. `Airtable — DeltaWithFilter`'s allocation
+   moved **48.53 → 48.54 KB** across that commit — ten bytes, which no copy-paste produces. The
+   issue checked two rows' allocations, found them unchanged, and did not check the third.
+2. **The equivalence was only ever verified at HEAD.** The issue cites today's line numbers to argue
+   the two benchmarks measure the same work. Verified at `b202d5ec` itself: same factory defaults,
+   `[IterationSetup]` present in both classes, bodies character-identical apart from names.
+3. **Its step 1 is not executable.** "Check out `b202d5ec` and re-run" fails — the commit's package
+   references float (`Version="0.*"`, `"1.*"`), so it now resolves today's `ZeroAlloc.ValueObjects`
+   generator, whose emitted `ToString` collides with the April source. Patching past the dead
+   generator path and the CVE-as-error failures still ends there, and a sufficiently patched build
+   would not be the April build anyway.
+
+**SETTLED BY AN INVARIANT INSTEAD OF A REBUILD.** `AirtableBenchmarks` calls
+`ConnectorIngestionBenchmarks.CreateAirtableProvider` directly, so both rows exercise the same
+factory with the same arguments: provider changes, SDK changes and machine changes move them
+together, and **the ratio between them cannot change**. Neither benchmark file has been touched
+since April. Yet the ratio went **5.4 → 1.015**, with allocation now identical to the byte. A ratio
+that cannot move, moved — so at least one April figure was not produced by the April run.
+
+**A GUARD NOW ENFORCES IT, BECAUSE NOTHING READ THIS PAGE.** No test in the repository opened
+`docs/reference/benchmarks.md`, which is how a mixed-mode table survived four months and a 1 μs
+transcription slip survived three weeks. `BenchmarkSelfConsistencyTests` asserts the two rows
+publish the same allocation — allocation rather than mean, because means drift ~8% between sessions
+and allocation does not. Two mutations: April's own values fail it with the right message, and a
+broken parse fails loudly rather than passing silently.
+
+**Also fixed:** `Airtable — DeltaWithFilter` published 121.0 μs where the 2026-08-14 artifact says
+121,986.667 ns = **122.0 μs**. Verified against the artifact rather than taken from the issue.
+
+**What the guard cannot do:** both rows re-recorded in the same wrong mode would satisfy it. It says
+the page does not contradict itself, not that the numbers are right. Comparing the page against a
+run is impossible here — BenchmarkDotNet's artifacts are not tracked.
+
+### Phase 6.2.21: A Failing Vision Model Says So [status: complete 2026-09-08 — closes #497; the larger defect it exposed is filed as #504]
+**Surface:** Parsers
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** stop a vision-provider failure arriving as an exception nobody can catch.
+
+**What a caller actually saw.** OpenRouter answers `finish_reason: "error"` on an upstream failure
+and the OpenAI SDK throws `ArgumentOutOfRangeException: Unknown ChatFinishReason value` from a
+validation helper — thrown by an assembly this library depends on transitively, indistinguishable
+from a genuine argument bug in the caller's own code, and named in no contract Rag.NET publishes. A
+second, unrelated mode arrives as `ClientResultException: HTTP 429`. One catch could express
+neither.
+
+**Now `VisionDescriptionException`**, carrying the file name so a handler can act on it without
+parsing prose, preserving the inner exception, and logged at warning. Cancellation propagates
+untouched.
+
+**It does not swallow, deliberately.** An empty description would ingest the image as a document
+with no content: retrievable, and indistinguishable from an image the model genuinely found nothing
+in. A parser that fails loudly costs one document; a parser that fails quietly costs the corpus's
+credibility. That alternative is one of the four mutations, and two guards reject it.
+
+**The tests run without a network, which is the point.** The defect was found by a live integration
+test that failed twice in one afternoon with two different causes — a rate nobody controls, and a
+bug that would otherwise be re-diagnosed every time it appeared. Both observed shapes are
+reproduced from a substitute.
+
+Four mutations, each caught by its own guard: no translation, cancellation catch removed, inner
+exception dropped, and failure swallowed into an empty description.
+
+**THE ISSUE'S SEVERITY CLAIM WAS WRONG, AND CHECKING IT FOUND THE REAL DEFECT.** #497 implied a
+parse failure might abort more than the file. It does not: `ParseBehavior` does not catch, but
+`PipelineIngestor` catches per document and returns a failed `Result`, so the batch continues.
+
+Reading that catch showed what does go wrong — filed as **#504**:
+
+```csharp
+catch (Exception ex)
+    return Result<IngestionResult, RagError>.Failure(new RagError.StorageFailed(ex));
+```
+
+**Every non-parser ingestion failure is reported as `StorageFailed`**, including a rate-limited
+vision model at parse time. `RagError.TransportFailed`'s own remarks draw the line — *"Distinct
+from `StorageFailed`, which covers failures of a `IVectorStore`/persistence operation"* — so the
+mapping contradicts the union's documentation. An operator seeing it goes and inspects a vector
+store that was never asked to do anything.
+
+**Not fixed here, on purpose.** The honest fix needs two API decisions that belong to the operator:
+whether `RagError` gains a case (breaking for exhaustive switches — cheap now, not later), and
+which of the 80 `IChatClient` consumers translate. Pattern-matching SDK exception types inside core
+would mean depending on every provider SDK, which is worse than the problem.
+
+### Phase 6.2.22: Why the Empty-Component Rule Stays [status: complete 2026-09-08 — closes #498; measured, kept, and deliberately left untested]
+**Surface:** Backend
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** answer a mutation that survived phase 6.2.19's run. Deleting `IsDegenerateFit`'s
+empty-component rejection changed no test, and #498 asked the only question that settles it: **can
+BIC ever prefer a fit with an empty component?**
+
+**MEASURED, NOT REASONED.** 840 synthetic datasets built to provoke exactly that — tight blobs
+given more components than they can fill, exact duplicates, scale extremes, and a diffuse
+background around tight clusters, the last chosen because a broad component can hold real mixture
+weight while being **no point's argmax**: zero hard assignments, so the rule fires, yet still
+lifting the likelihood, so BIC might want it.
+
+| | |
+| --- | ---: |
+| candidate fits examined | 9,280 |
+| fits containing an empty component | **4,131 (44.5%)** |
+| datasets where disabling the rule changes `SelectK` | **0** |
+
+**NEITHER OF THE ISSUE'S TWO PROPOSED OUTCOMES WAS RIGHT.** It offered "the rule is unreachable, so
+document or delete it" or "there is a dataset where BIC prefers such a fit, and that dataset is the
+missing test". The rule is reached constantly — nearly half of all candidates — and there is no such
+dataset, because BIC declines those fits on its own: an empty component contributes no likelihood
+while still adding `2d + 1` parameters, so the penalty rises with nothing to offset it.
+
+**What the rule actually buys is the `continue`.** Rejecting here skips `ComputeLogLikelihood` for
+44.5% of candidate fits. That is the reason to keep it now that the correctness argument is known
+to be redundant, and it is a better reason than the one the code gave.
+
+**NO TEST WAS ADDED, ON PURPOSE.** Deleting the rejection is behaviourally invisible through every
+public surface — `SelectK` returns the same k either way — so any test written against it would
+pass with the rule removed. That is the kind of guard this repository treats as worse than none.
+The mutation survives deliberately, and the remarks on `IsDegenerateFit` now carry the figures so a
+future mutation run finds the answer rather than re-deriving it.
+
+**The redundancy is conditional and the note says so.** It holds only while the scoring is BIC with
+that penalty term. Change the scoring and the rule becomes load-bearing again.
+
+### Phase 6.2.23: A Model Failure Is Not a Storage Failure [status: complete 2026-09-08 — closes #504; breaking, and taken now for that reason]
+**Surface:** Core
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** `PipelineIngestor` ended in a catch-all that mapped every non-parser failure to
+`RagError.StorageFailed` — whose own remarks scope it to `IVectorStore`/persistence. A
+rate-limited vision model at parse time therefore sent an operator to inspect a store that had not
+been asked to do anything.
+
+**Adds `RagError.ModelCallFailed`**, plus `ModelCallException` in Abstractions as the marker the
+ingestor maps. **Breaking for callers writing exhaustive switch expressions**, which is the reason
+to do it now rather than after 1.0; the operator chose this over reusing `TransportFailed`/
+`HttpFailed`, whose documented meanings ("no HTTP response was received") a 429 contradicts.
+
+**Classification happens where the knowledge is.** Only the component that made the call knows a
+model was involved. Core deliberately does not pattern-match `ClientResultException`,
+`RequestFailedException` and their equivalents — that would mean referencing every provider SDK
+from `Rag.NET`, which is worse than the problem.
+
+**THE SCOPE WAS FAR SMALLER THAN THE ISSUE CLAIMED.** #504 estimated that most of the ~9
+ingestion-path model callers would need translating. Checked one by one: proposition and resume
+chunking, graph entity extraction, mind-map extraction, both LLM sanitisers and core's own metadata
+extraction **all catch locally and degrade**, so their failures never reach the ingestor and were
+never misclassified. Only `RaptorIngestionBehavior` and `CommunityDetectionBehavior` propagate.
+
+**AND WRAPPING THOSE TWO WAS WRONG — THE SWEEP CAUGHT IT, NOT REVIEW.** Their `IChatClient` is
+frequently not a provider: under the benchmark harness it is a `GraphExtractionCache` opened
+refuse-on-miss, which throws **instead of** calling the model, carrying a message that is the
+experiment's protection. The wrap relabelled that as *"the model could not generate a community
+report"* when no model was called, and two guards that pin the refusal by type failed. Reverted.
+
+**The same hazard applies to `BudgetExceededException`**, which `FallbackChatClient.IsTransient`
+already pins by type so a blown budget cannot trigger a retry past the limit. Wrapping it would
+have invited exactly that. The vision parser now rethrows both cancellation and a blown budget
+untouched before translating anything else, with a guard for each.
+
+**So a call-site `catch` is the wrong seam wherever the client may be decorated**, and extending
+this to the two propagating behaviours needs something that can tell a decorator's refusal from a
+provider failure. That does not exist yet and is recorded on #504 rather than guessed at.
+
+Mutations: deleting the mapping branch — the variant that actually compiles — fails both mapping
+tests. A third guard pins that unrelated failures still map to `StorageFailed`, so widening the
+branch cannot pass.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
