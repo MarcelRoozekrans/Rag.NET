@@ -217,9 +217,9 @@ store. Leave the default `true` in your own store; `ResilientVectorStore` overri
 what its inner store can do, and `FederatedVectorStore` reports whether *any* member can.
 
 **Currently implemented by:** `InMemoryVectorStore`, `PgVectorStore`, `QdrantVectorStore`,
-`RedisVectorStore`, `WeaviateVectorStore` and `PineconeVectorStore`, and forwarded by
-`ResilientVectorStore` and `FederatedVectorStore`. The remaining remote backends (Chroma, Azure AI
-Search) do not implement it yet — see #318.
+`RedisVectorStore`, `WeaviateVectorStore`, `PineconeVectorStore` and `ChromaVectorStore`, and
+forwarded by `ResilientVectorStore` and `FederatedVectorStore`. Only Azure AI Search does not
+implement it yet — see #318.
 
 **How the keys are matched differs per backend, and the difference is not cosmetic.** PgVector zips
 the pairs in SQL with `unnest` over two arrays. Qdrant cannot use point ids at all — they are random
@@ -229,8 +229,10 @@ key *is* the identity, so it reads hashes directly and never queries the index a
 GraphQL `where` of Or-composed And pairs, built as its own query because a keyed read has no vector,
 no hybrid argument and no `_additional` to select.
 
-Pinecone is like Redis: its record id is derived (`documentId:chunkIndex`), so the lookup is a
-`Fetch` by id with no query and no filter.
+Pinecone and Chroma are like Redis: their record ids are derived (`documentId:chunkIndex`), so the
+lookup is a fetch by id with no query and no filter. Chroma needed a `/get` endpoint added to its
+client first — a derived id is no use if the API cannot ask for one, and its `/get` returns *flat*
+arrays where `/query` returns one row per query embedding.
 
 **If the backend's query is built by string concatenation, escape the document id.** Weaviate's
 lookup does; removing that escaping passed every test until one was added using an id containing a
