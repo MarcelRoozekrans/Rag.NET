@@ -6820,6 +6820,48 @@ test has been the only thing catching an unsigned-index implementation on all fi
 Azure AI Search may not be locally exercisable at all, since its simulator implements no OData
 filters.
 
+### Phase 6.2.29: Keyed Chunk Lookup on Chroma [status: complete 2026-09-08 — #318, sixth of seven]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** the backend that needed a new endpoint, deliberately left out of 6.2.26 rather than
+rushed.
+
+**IT LOOKED LIKE REDIS AND WAS NOT.** Chroma's record id is derived the same way —
+`RecordId` composes `documentId + ":" + chunkIndex` — so it appeared to be another direct fetch. But
+`IChromaApi` carried only `/query` and `/delete`, and **`/query` cannot serve a keyed read at all**:
+local search picks its chunks by graph provenance and no embedding returns them. A derived id is no
+use if the API cannot ask for one.
+
+**So this adds `/get`**, with `ChromaGetRequest` and `ChromaGetResponse`.
+
+**The response type is separate from `ChromaQueryResponse` for a concrete reason.** `/query` answers
+per query embedding, so its arrays are arrays of rows and the store takes the first; `/get` answers
+for one set of ids, so its arrays are the records themselves. Modelling `/get` with the query type
+would have compiled and then read the first record's fields as if they were a whole row.
+
+**Same directional constraint as Pinecone.** `BuildChunk` refuses to recover identity from a record
+id because a document id may contain the `:` separator, so ids are constructed and never parsed, and
+the identity comes back out of metadata. Pinned by a test using an id with two colons.
+
+**Seven tests against a real Chroma, green on the first run. Four mutations, each caught:**
+
+| mutation | caught by |
+| --- | --- |
+| index made unsigned (`abs`) | **only** the negative-index test |
+| index dropped from the record id | three tests |
+| identity parsed from the record id | the separator test, and the metadata test |
+| `metadatas` dropped from the include list | five tests |
+
+**Six backends in, six different mechanisms, and one constant.** SQL row-zipping, payload filter,
+direct key read, GraphQL where, id fetch, and now an endpoint that had to be added. Not one was a
+translation of the last — and the negative-index test has been the only thing catching an
+unsigned-index implementation on **all six**.
+
+**Only Azure AI Search remains.** Its simulator implements no OData filters, so whether it can be
+verified locally at all needs establishing before an implementation is written, rather than after.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
