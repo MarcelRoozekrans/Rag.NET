@@ -127,38 +127,64 @@ public class GaussianMixtureModelTests
     }
 
     /// <summary>
-    /// Near-identical vectors STILL drive k to the ceiling. This pins the residue #337 named.
+    /// Near-identical vectors no longer inflate k, and the count no longer moves with
+    /// <c>maxK</c> (#337).
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Characterisation, not an endorsement — and deliberately not fixed here.</b> A component
-    /// of near-identical points has near-zero spread, floors, and scores as a near-perfect fit;
-    /// unlike a singleton it holds two points, so #333's degenerate-fit rule does not reject it.
-    /// With 20 points containing five near-identical pairs, <c>SelectK</c> returns the maximum k of
-    /// 10: it isolates everything it can.
+    /// <b>This replaced <c>SelectK_IsStillDrivenToTheCeiling_ByNearDuplicateVectors</c>, which
+    /// asserted 10 and carried a note saying that its failure would be the fix landing.</b> It
+    /// failed at 7, and this is that rewrite — the assertion it inverted, not a widened version of
+    /// it.
     /// </para>
     /// <para>
-    /// <b>Why the data-scaled floor did not close it, measured rather than argued.</b> At a floor
-    /// of 1/100th of the data's variance this test passes (k drops to 2) — and four of #345's
-    /// cluster-size-floor tests go red, because a floor coarse enough to blunt a degenerate
-    /// component is also coarse enough to blunt legitimate tight ones, so components collapse
-    /// together and the empty ones are dropped. At 1/1000th every one of those guards is green and
-    /// this behaviour returns. #337 was explicit that a change must not buy well-behaved k by
-    /// making clustering useless, so the floor stayed at the fraction that keeps the guarantees.
+    /// <b>It asserts the property rather than the number.</b> The defect was never "k is 10"; it
+    /// was that k rose to meet whatever ceiling it was given, so a caller could not choose
+    /// <c>maxK</c> without also choosing the answer. Pinning 7 would restate the measurement and
+    /// break on any numerical drift that left the property intact. Stability across three ceilings
+    /// is what a caller can rely on. (Measured 2026-09-07: 7 at all three.)
     /// </para>
     /// <para>
-    /// Closing it properly means rejecting fits whose components have COLLAPSED, at the level
-    /// <c>IsDegenerateFit</c> already rejects fits whose components are ALONE — a different
-    /// mechanism from the floor, needing the variances plumbed into the rejection path and a
-    /// threshold validated against a real corpus rather than this fixture. Tracked on #337.
+    /// <b>The issue's characterisation was slightly wrong, and the correction is worth keeping.</b>
+    /// #337 described this as k pinning to the ceiling, which held at <c>maxK</c> 10 — the only
+    /// value it was measured at. Given more room the old code returned 11 at both 15 and 19: it
+    /// saturated a little above the ceiling it was first seen at rather than tracking it forever.
+    /// Inflation driven by the data's duplicates, not an unbounded climb.
     /// </para>
     /// <para>
-    /// <b>If this test starts failing, that is the fix landing.</b> Replace it with the assertion
-    /// it currently inverts rather than widening it.
+    /// <b>And the mechanism was not the one predicted either.</b> #337 expected components of
+    /// near-identical points to survive as collapsed pairs that
+    /// <see cref="GaussianMixtureModel"/>'s degenerate-fit rule would miss because they hold two
+    /// points. Measured, the winning fit does not contain those pairs: at k = 10 its components are
+    /// sized 4,1,1,1,2,1,6,1,2,1 — the pairs are split, and <b>six singletons</b> carry the
+    /// likelihood. The old rule tolerated them because it only rejects when most points are alone,
+    /// and six of twenty is not most.
     /// </para>
     /// </remarks>
     [Fact]
-    public void SelectK_IsStillDrivenToTheCeiling_ByNearDuplicateVectors()
+    public void SelectK_DoesNotRiseToMeetTheCeiling_WhenNearDuplicatesArePresent()
+    {
+        var data = NearDuplicatePairs();
+
+        var atTen = GaussianMixtureModel.SelectK(data, maxK: 10);
+        var atFifteen = GaussianMixtureModel.SelectK(data, maxK: 15);
+        var atNineteen = GaussianMixtureModel.SelectK(data, maxK: 19);
+
+        Assert.Equal(atTen, atFifteen);
+        Assert.Equal(atTen, atNineteen);
+
+        Assert.True(
+            atTen < 10,
+            $"SelectK returned k={atTen} for 20 points containing five near-identical pairs; " +
+            "the duplicates are inflating k again.");
+    }
+
+    /// <summary>
+    /// Twenty points: ten spread broadly, then five near-identical pairs at 0.5, 0.6, 0.7, 0.8
+    /// and 0.9. Within a pair the coordinates differ by about 1e-5, far below any floor scaled to
+    /// this data, so each pair has no measurable spread of its own.
+    /// </summary>
+    private static float[][] NearDuplicatePairs()
     {
         var rng = new Random(Seed: 5);
         var data = new float[20][];
@@ -167,16 +193,13 @@ public class GaussianMixtureModelTests
             data[i] = new float[8];
             for (var d = 0; d < 8; d++)
             {
-                // Ten broadly-spread points, then five near-identical pairs.
                 data[i][d] = i < 10
                     ? (float)rng.NextDouble()
                     : (float)(0.5 + ((i - 10) / 2) * 0.1 + rng.NextDouble() * 1e-5);
             }
         }
 
-        var k = GaussianMixtureModel.SelectK(data, maxK: 10);
-
-        Assert.Equal(10, k);
+        return data;
     }
 
     [Fact]
