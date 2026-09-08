@@ -6647,6 +6647,58 @@ rather than a translation of the SQL, and recorded rather than rushed.
 caveat — the simulator implements no OData filters, so it may not be exercisable locally even though
 its project runs.
 
+### Phase 6.2.25: Keyed Chunk Lookup on Qdrant [status: complete 2026-09-08 — #318, second of seven]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** the second backend, and the one 6.2.24 deliberately left out on the suspicion that it was
+not a translation of the SQL. It was not.
+
+**QDRANT CANNOT ANSWER THIS BY POINT ID.** `CreatePointId` returns `Guid.NewGuid()`, so a point's id
+carries no relationship to its `(document_id, chunk_index)` — Qdrant is told the identity only as
+payload. The lookup is a `Scroll` over a filter, and the id is never consulted. A subclass
+overriding `CreatePointId` to something derived does not change that, because the payload is written
+either way.
+
+**The pairs are matched as pairs by nesting:**
+
+```csharp
+var pair = new Filter();
+pair.Must.Add(MatchKeyword("document_id", key.DocumentId));
+pair.Must.Add(Match("chunk_index", key.ChunkIndex));
+filter.Should.Add(new Condition { Filter = pair });
+```
+
+One `must` of both fields per key, inside a single `should`. **Flattening those conditions into the
+`should` is the natural mistake** — it matches any document with a requested index — and it is the
+first of three mutations, caught by both the pairing test and the negative-index test.
+
+`Scroll` rather than `Query` because there is no query vector: the premise of this capability is
+that no vector returns these chunks. The limit is the key count, since `(document_id, chunk_index)`
+is unique per stored chunk.
+
+**Six tests against a real Qdrant, green on the first run. Three mutations, each caught:**
+
+| mutation | caught by |
+| --- | --- |
+| pairs flattened into one `should` | the pairing test, and the negative-index test |
+| index ignored, document only | the same two |
+| metadata dropped from the payload mapping | `MetadataComesBackWithTheChunk` |
+
+**Also shares the payload mapping.** Search and lookup read different point types — `ScoredPoint`
+and `RetrievedPoint` — off the same payload fields, so `MapChunk` is now one method. Two copies of
+"what a stored chunk is" would drift, and the drift would show up as a lookup that disagrees with
+search about the same row.
+
+**Twice now the mechanism has differed from what the previous backend suggested** — SQL row-zipping,
+then a payload filter because ids are random. The remaining five are read individually rather than
+translated.
+
+**Remaining: Pinecone, Weaviate, Redis, Chroma, Azure AI Search.** The last still carries its own
+caveat: the simulator implements no OData filters, so it may not be exercisable locally even though
+its project runs.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.

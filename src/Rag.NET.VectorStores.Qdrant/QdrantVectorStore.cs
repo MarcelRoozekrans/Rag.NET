@@ -17,7 +17,7 @@ namespace Rag.NET.Qdrant;
 /// pipelines skip sparse work entirely instead of computing vectors that could never be
 /// stored.
 /// </summary>
-public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposable
+public class QdrantVectorStore : IVectorStore, ICollectionManageable, IChunkLookup, IDisposable
 {
     private readonly VectorStoreInitialisationGate _initGate = new();
 
@@ -224,6 +224,73 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
     /// because Qdrant's match condition has no double form. Metadata stored before values
     /// carried types is all strings, so non-string filters do not match it until re-ingested.
     /// </summary>
+    /// <summary>
+    /// Returns the chunks for the given keys, in one scroll. Missing keys are simply absent (#318).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This cannot be a point-id fetch, which is the difference from every SQL backend.</b>
+    /// <see cref="CreatePointId"/> returns <see cref="Guid.NewGuid"/>, so a point's id carries no
+    /// relationship to its <c>(document_id, chunk_index)</c> — Qdrant is told the identity only as
+    /// payload. The lookup is therefore a filter over that payload, and the id is never consulted.
+    /// A subclass overriding <see cref="CreatePointId"/> to something derived does not change this:
+    /// the payload is written either way, so this keeps working for both.
+    /// </para>
+    /// <para>
+    /// <b>The pairs are matched as pairs.</b> Each key becomes a nested <c>must</c> of
+    /// <c>document_id</c> and <c>chunk_index</c>, and those go into one <c>should</c> — so a key
+    /// naming a document that exists at an index that does not cannot pull in another document's
+    /// chunk at that index. Filtering on the two fields independently would do exactly that.
+    /// </para>
+    /// <para>
+    /// <b><c>Scroll</c> rather than <c>Query</c>, because there is no query vector.</b> The whole
+    /// point of this capability is that the chunks are chosen by graph provenance and no vector
+    /// returns them. The limit is the key count: at most one point can match each key, since
+    /// <c>(document_id, chunk_index)</c> is unique per stored chunk.
+    /// </para>
+    /// <para>
+    /// <b>Negative chunk indices are ordinary here.</b>
+    /// <c>GraphEntityExtractionBehavior</c> assigns <c>-(i + 1)</c> to synthetic entity and
+    /// relationship chunks, so those are exactly the rows GraphRAG asks for; the payload field is a
+    /// signed integer and the condition is equality rather than a range.
+    /// </para>
+    /// </remarks>
+    /// <param name="keys">Chunk identities to fetch.</param>
+    /// <param name="cancellationToken">Cancels the lookup.</param>
+    /// <returns>The chunks that exist, in unspecified order.</returns>
+    public async Task<IReadOnlyList<TextChunk>> GetChunksAsync(
+        IReadOnlyList<ChunkKey> keys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        if (keys.Count == 0)
+            return [];
+
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
+
+        var filter = new Filter();
+        foreach (var key in keys)
+        {
+            var pair = new Filter();
+            pair.Must.Add(MatchKeyword("document_id", key.DocumentId));
+            pair.Must.Add(Match("chunk_index", key.ChunkIndex));
+            filter.Should.Add(new Condition { Filter = pair });
+        }
+
+        var points = await Client.ScrollAsync(
+            CollectionName,
+            filter: filter,
+            limit: (uint)keys.Count,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        var chunks = new List<TextChunk>(keys.Count);
+        foreach (var point in points.Result)
+            chunks.Add(MapChunk(point.Payload));
+
+        return chunks;
+    }
+
     private protected static Filter? BuildMetadataFilter(IDictionary<string, MetadataValue>? metadataFilter)
     {
         if (metadataFilter is not { Count: > 0 })
@@ -249,10 +316,24 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
         return filter;
     }
 
-    private protected static SearchResult MapScoredPoint(ScoredPoint point)
+    private protected static SearchResult MapScoredPoint(ScoredPoint point) => new()
+    {
+        Chunk = MapChunk(point.Payload),
+        Score = point.Score,
+    };
+
+    /// <summary>
+    /// Materialises a chunk from a point's payload. Shared by search and by the keyed lookup, which
+    /// read different point types — <c>ScoredPoint</c> and <c>RetrievedPoint</c> — but the same
+    /// fields, so the two must not drift into disagreeing about what a stored chunk is.
+    /// </summary>
+    /// <param name="payload">The point's payload.</param>
+    /// <returns>The chunk it encodes.</returns>
+    private protected static TextChunk MapChunk(
+        Google.Protobuf.Collections.MapField<string, Value> payload)
     {
         Dictionary<string, MetadataValue> metadata;
-        if (point.Payload.TryGetValue("metadata", out var metaValue))
+        if (payload.TryGetValue("metadata", out var metaValue))
         {
             var metadataResult = MetadataSerializer.DeserializeMetadata(metaValue.StringValue);
             metadata = metadataResult.IsSuccess
@@ -264,16 +345,12 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
             metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         }
 
-        return new SearchResult
+        return new TextChunk
         {
-            Chunk = new TextChunk
-            {
-                Text = point.Payload["text"].StringValue,
-                DocumentId = new DocumentId(point.Payload["document_id"].StringValue),
-                ChunkIndex = (int)point.Payload["chunk_index"].IntegerValue,
-                Metadata = metadata,
-            },
-            Score = point.Score,
+            Text = payload["text"].StringValue,
+            DocumentId = new DocumentId(payload["document_id"].StringValue),
+            ChunkIndex = (int)payload["chunk_index"].IntegerValue,
+            Metadata = metadata,
         };
     }
 }
