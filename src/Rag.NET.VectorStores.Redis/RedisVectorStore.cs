@@ -39,7 +39,7 @@ namespace Rag.NET.VectorStores.Redis;
 /// approximation.
 /// </para>
 /// </summary>
-public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IDisposable
+public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChunkLookup, IDisposable
 {
     /// <summary>The field the KNN clause aliases its distance into.</summary>
     private const string ScoreField = "vector_score";
@@ -264,6 +264,98 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IDis
 
         activity?.SetTag("result.count", results.Count);
         return results;
+    }
+
+    /// <summary>
+    /// Returns the chunks for the given keys, read straight from their hashes. Missing keys are
+    /// simply absent (#318).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Redis needs no query for this, which makes it the opposite of Qdrant.</b> A chunk's key
+    /// <em>is</em> its identity — <see cref="KeyFor"/> composes <c>prefix + documentId + ":" +
+    /// chunkIndex</c> — so the lookup is a direct hash read per key and never touches RediSearch.
+    /// That also sidesteps the TAG escaping the index path needs: a document id containing a hyphen
+    /// or colon is only syntax inside a query, and there is no query here.
+    /// </para>
+    /// <para>
+    /// <b>The reads are issued together and awaited together.</b> StackExchange.Redis pipelines
+    /// concurrently-issued commands on one connection, so this is one round trip's worth of latency
+    /// for the few-dozen-key batches local search sends, rather than one per key.
+    /// </para>
+    /// <para>
+    /// <b>A missing key returns an empty hash rather than an error</b>, which is the contract: a
+    /// document deleted since extraction leaves the graph naming chunks that no longer exist.
+    /// </para>
+    /// <para>
+    /// <b>These chunks carry no metadata, and neither do this store's search results.</b>
+    /// <see cref="StoreAsync"/> persists only <c>document_id</c>, <c>chunk_index</c>, <c>text</c>
+    /// and the embedding, so there is nothing to return — a pre-existing property of this backend
+    /// rather than something the keyed read drops. A caller sees the same shape from either path,
+    /// which is the important part; that Redis stores no metadata at all is tracked separately.
+    /// </para>
+    /// </remarks>
+    /// <param name="keys">Chunk identities to fetch.</param>
+    /// <param name="cancellationToken">Cancels the lookup.</param>
+    /// <returns>The chunks that exist, in unspecified order.</returns>
+    public async Task<IReadOnlyList<TextChunk>> GetChunksAsync(
+        IReadOnlyList<ChunkKey> keys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        if (keys.Count == 0)
+            return [];
+
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
+
+        var database = Database;
+        var reads = new Task<HashEntry[]>[keys.Count];
+        for (var i = 0; i < keys.Count; i++)
+            reads[i] = database.HashGetAllAsync(KeyFor(keys[i].DocumentId, keys[i].ChunkIndex));
+
+        var hashes = await Task.WhenAll(reads).ConfigureAwait(false);
+
+        var chunks = new List<TextChunk>(keys.Count);
+        foreach (var hash in hashes)
+        {
+            if (hash.Length == 0)
+                continue;
+
+            chunks.Add(MapChunk(hash));
+        }
+
+        return chunks;
+    }
+
+    /// <summary>Materialises a chunk from the hash <see cref="StoreAsync"/> wrote.</summary>
+    /// <param name="hash">The hash entries for one key.</param>
+    /// <returns>The chunk it encodes, without metadata — this store persists none.</returns>
+    private static TextChunk MapChunk(HashEntry[] hash)
+    {
+        string text = string.Empty;
+        string documentId = string.Empty;
+        var chunkIndex = 0;
+
+        // Plain iteration: HashEntry is not a readonly struct, so a ref-readonly loop copies it
+        // on every member access anyway (EPS06).
+        foreach (var entry in hash)
+        {
+            var name = entry.Name.ToString();
+            if (string.Equals(name, TextField, StringComparison.Ordinal))
+                text = entry.Value.ToString();
+            else if (string.Equals(name, DocumentIdField, StringComparison.Ordinal))
+                documentId = entry.Value.ToString();
+            else if (string.Equals(name, ChunkIndexField, StringComparison.Ordinal))
+                chunkIndex = (int)entry.Value;
+        }
+
+        return new TextChunk
+        {
+            Text = text,
+            DocumentId = new DocumentId(documentId),
+            ChunkIndex = chunkIndex,
+        };
     }
 
     /// <inheritdoc />

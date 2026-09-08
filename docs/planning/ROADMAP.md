@@ -6699,6 +6699,49 @@ translated.
 caveat: the simulator implements no OData filters, so it may not be exercisable locally even though
 its project runs.
 
+### Phase 6.2.26: Keyed Chunk Lookup on Redis [status: complete 2026-09-08 — #318, third of seven]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** the third backend, and a third distinct mechanism.
+
+**Redis is the inverse of Qdrant.** A chunk's key *is* its identity — `KeyFor` composes
+`prefix + documentId + ":" + chunkIndex` — so the lookup is a direct hash read per key and never
+touches RediSearch. The reads are issued together and awaited together, which StackExchange.Redis
+pipelines onto one connection: roughly one round trip's latency for the few-dozen-key batches local
+search sends, rather than one per key.
+
+**It also sidesteps escaping that the search path needs.** The store escapes the characters
+RediSearch treats as syntax before putting a document id in a TAG filter. A direct key read parses
+nothing, so an id containing `:` or `-` matches itself — pinned by
+`ADocumentIdContainingSearchSyntaxIsFoundAnyway`.
+
+**Seven tests against real Redis. Three mutations, each caught:**
+
+| mutation | caught by |
+| --- | --- |
+| index dropped from the key composition | three tests |
+| index made unsigned (`abs`) | **only** the negative-index test |
+| empty hashes no longer skipped | the absence test |
+
+**Three backends in, the unsigned-index mutation has been caught only by the negative-index test
+every time.** It is the difference between a working implementation and one that returns nothing for
+exactly the rows GraphRAG asks for, and nothing else notices.
+
+**FOUND RATHER THAN FIXED: `RedisVectorStore` PERSISTS NO METADATA.** `StoreAsync` writes only
+`document_id`, `chunk_index`, `text` and the embedding, so neither search nor this lookup can return
+any. `MetadataIsAbsentBecauseTheStorePersistsNone` asserts that rather than skipping the case, so the
+limitation is visible where someone would look for it and the test fails the day `StoreAsync` starts
+storing metadata — pointing at the lookup that should then return it. Worth its own issue: GraphRAG
+local search puts these chunks in front of a model.
+
+**Chroma was scoped out after reading it.** Its record id is derived like Redis's
+(`documentId:chunkIndex`), so it looks like the same shape — but its HTTP client has no `get`
+endpoint, so one has to be added. That is more than a translation and is left for its own change.
+
+**Remaining: Pinecone, Weaviate, Chroma, Azure AI Search.**
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
