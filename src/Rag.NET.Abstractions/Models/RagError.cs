@@ -55,4 +55,30 @@ public abstract record RagError
     /// </summary>
     /// <param name="Inner">The transport-level exception that was caught.</param>
     public sealed record TransportFailed(Exception Inner) : RagError;
+
+    /// <summary>
+    /// A call to a language model failed — the provider returned an error, rate-limited the
+    /// request, or answered with something its SDK could not read.
+    /// <para>
+    /// Distinct from <see cref="StorageFailed"/>, which covers an <c>IVectorStore</c>/persistence
+    /// operation. Before this case existed every non-parser ingestion failure was reported as
+    /// <see cref="StorageFailed"/> (#504), so a rate-limited vision model at parse time sent an
+    /// operator to inspect a vector store that had not been asked to do anything.
+    /// </para>
+    /// <para>
+    /// Distinct from <see cref="HttpFailed"/> and <see cref="TransportFailed"/> in <i>what</i>
+    /// failed rather than in how far it got: those describe a call to a data provider or another
+    /// external service, this one a completion. A model failure may be transient — a 429 usually
+    /// is, an unreadable response often is — so retrying is frequently the right response, which is
+    /// exactly the decision <see cref="StorageFailed"/> made unavailable.
+    /// </para>
+    /// <para>
+    /// Raised only by components that <b>know</b> they called a model: they throw
+    /// <see cref="ModelCallException"/> and the pipeline maps it here. Failures from model calls
+    /// that do not yet translate still arrive as <see cref="StorageFailed"/> — see
+    /// <see cref="ModelCallException"/> for which those are.
+    /// </para>
+    /// </summary>
+    /// <param name="Inner">The model-call exception that was caught.</param>
+    public sealed record ModelCallFailed(Exception Inner) : RagError;
 }

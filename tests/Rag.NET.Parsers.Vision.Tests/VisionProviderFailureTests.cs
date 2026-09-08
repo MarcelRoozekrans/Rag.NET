@@ -111,6 +111,27 @@ public class VisionProviderFailureTests
     }
 
     /// <summary>
+    /// A blown budget is this library's own stop signal, raised by a decorator around the client,
+    /// and must not be reclassified as a provider failure.
+    /// </summary>
+    /// <remarks>
+    /// Wrapping it would invite exactly the response a spend limit exists to prevent. The same
+    /// hazard is why <c>FallbackChatClient.IsTransient</c> pins <c>BudgetExceededException</c> by
+    /// type before any other test: a transient classification there would retry against the next
+    /// provider and keep spending past the limit.
+    /// </remarks>
+    [Fact]
+    public async Task ABlownBudget_PropagatesRatherThanBeingWrapped()
+    {
+        var budget = new BudgetExceededException(CostWindow.Day, limit: 1.00m, spend: 1.25m);
+
+        var caught = await ParseAndCatchAsync(budget);
+
+        Assert.IsNotType<VisionDescriptionException>(caught);
+        Assert.Same(budget, caught);
+    }
+
+    /// <summary>
     /// The wrapping must not have changed the working path: a provider that answers still yields
     /// its description. Without this, a mutation that threw unconditionally would satisfy every
     /// assertion above.

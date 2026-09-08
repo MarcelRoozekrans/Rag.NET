@@ -43,7 +43,7 @@ namespace Rag.NET.Parsers.Vision;
 /// <param name="innerException">The provider or SDK exception, preserved for diagnosis.</param>
 public sealed class VisionDescriptionException(
     string message, string fileName, Exception innerException)
-    : Exception(message, innerException)
+    : Rag.NET.Models.ModelCallException(message, innerException)
 {
     /// <summary>
     /// The image being described when the call failed. Carried separately from the message so a

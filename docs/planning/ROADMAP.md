@@ -6549,6 +6549,51 @@ future mutation run finds the answer rather than re-deriving it.
 **The redundancy is conditional and the note says so.** It holds only while the scoring is BIC with
 that penalty term. Change the scoring and the rule becomes load-bearing again.
 
+### Phase 6.2.23: A Model Failure Is Not a Storage Failure [status: complete 2026-09-08 — closes #504; breaking, and taken now for that reason]
+**Surface:** Core
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** `PipelineIngestor` ended in a catch-all that mapped every non-parser failure to
+`RagError.StorageFailed` — whose own remarks scope it to `IVectorStore`/persistence. A
+rate-limited vision model at parse time therefore sent an operator to inspect a store that had not
+been asked to do anything.
+
+**Adds `RagError.ModelCallFailed`**, plus `ModelCallException` in Abstractions as the marker the
+ingestor maps. **Breaking for callers writing exhaustive switch expressions**, which is the reason
+to do it now rather than after 1.0; the operator chose this over reusing `TransportFailed`/
+`HttpFailed`, whose documented meanings ("no HTTP response was received") a 429 contradicts.
+
+**Classification happens where the knowledge is.** Only the component that made the call knows a
+model was involved. Core deliberately does not pattern-match `ClientResultException`,
+`RequestFailedException` and their equivalents — that would mean referencing every provider SDK
+from `Rag.NET`, which is worse than the problem.
+
+**THE SCOPE WAS FAR SMALLER THAN THE ISSUE CLAIMED.** #504 estimated that most of the ~9
+ingestion-path model callers would need translating. Checked one by one: proposition and resume
+chunking, graph entity extraction, mind-map extraction, both LLM sanitisers and core's own metadata
+extraction **all catch locally and degrade**, so their failures never reach the ingestor and were
+never misclassified. Only `RaptorIngestionBehavior` and `CommunityDetectionBehavior` propagate.
+
+**AND WRAPPING THOSE TWO WAS WRONG — THE SWEEP CAUGHT IT, NOT REVIEW.** Their `IChatClient` is
+frequently not a provider: under the benchmark harness it is a `GraphExtractionCache` opened
+refuse-on-miss, which throws **instead of** calling the model, carrying a message that is the
+experiment's protection. The wrap relabelled that as *"the model could not generate a community
+report"* when no model was called, and two guards that pin the refusal by type failed. Reverted.
+
+**The same hazard applies to `BudgetExceededException`**, which `FallbackChatClient.IsTransient`
+already pins by type so a blown budget cannot trigger a retry past the limit. Wrapping it would
+have invited exactly that. The vision parser now rethrows both cancellation and a blown budget
+untouched before translating anything else, with a guard for each.
+
+**So a call-site `catch` is the wrong seam wherever the client may be decorated**, and extending
+this to the two propagating behaviours needs something that can tell a decorator's refusal from a
+provider failure. That does not exist yet and is recorded on #504 rather than guessed at.
+
+Mutations: deleting the mapping branch — the variant that actually compiles — fails both mapping
+tests. A third guard pins that unrelated failures still map to `StorageFailed`, so widening the
+branch cannot pass.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
