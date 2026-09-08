@@ -6742,6 +6742,45 @@ endpoint, so one has to be added. That is more than a translation and is left fo
 
 **Remaining: Pinecone, Weaviate, Chroma, Azure AI Search.**
 
+### Phase 6.2.27: Keyed Chunk Lookup on Weaviate [status: complete 2026-09-08 — #318, fourth of seven]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** the fourth backend, and a fourth mechanism. Weaviate has object UUIDs this store never
+derives from the chunk, so the identity lives in properties and the lookup is a GraphQL `where` of
+Or-composed And pairs. It needs its own query builder rather than the search one: a keyed read has
+no vector, no hybrid argument, and no `_additional` to select.
+
+**MUTATION TESTING FOUND A MISSING GUARD, NOT A PASSING ONE.** Replacing `GraphQlString(...)` with
+raw interpolation of the document id **survived all eight tests** — none of their ids contained a
+quote or backslash, so nothing exercised the escaping. That is a malformed query at best and an
+injected one at worst.
+
+The escaping itself was correct, copied from the store's existing helper. The tests simply never
+verified it, and without the mutation this would have shipped believing they did.
+`ADocumentIdContainingGraphQlSyntaxIsFoundAnyway` now uses an id containing both, and catches it.
+
+**Four mutations, each caught:**
+
+| mutation | caught by |
+| --- | --- |
+| pairs flattened (`And` → `Or`) | three tests |
+| index made unsigned (`abs`) | **only** the negative-index test |
+| document id no longer escaped | the new escaping test (survived before it) |
+| — | — |
+
+**Two guards came from reading the schema rather than the contract.** `document_id` is declared with
+`field` tokenization so an `Equal` matches the whole id rather than its word tokens — without it
+`doc-1` matches `doc-2` through their shared `doc` token, which is now pinned. And `chunk_index` is
+a Weaviate `int`, so `valueInt` takes a negative directly.
+
+**Four backends in, the pattern holds and so does the exception.** The mechanisms have differed
+every time — SQL row-zipping, payload filter, direct key read, GraphQL where — while the
+negative-index test has been the only thing catching the unsigned-index mutation on all four.
+
+**Remaining: Pinecone, Chroma, Azure AI Search.**
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
