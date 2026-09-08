@@ -6509,6 +6509,46 @@ whether `RagError` gains a case (breaking for exhaustive switches — cheap now,
 which of the 80 `IChatClient` consumers translate. Pattern-matching SDK exception types inside core
 would mean depending on every provider SDK, which is worse than the problem.
 
+### Phase 6.2.22: Why the Empty-Component Rule Stays [status: complete 2026-09-08 — closes #498; measured, kept, and deliberately left untested]
+**Surface:** Backend
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** answer a mutation that survived phase 6.2.19's run. Deleting `IsDegenerateFit`'s
+empty-component rejection changed no test, and #498 asked the only question that settles it: **can
+BIC ever prefer a fit with an empty component?**
+
+**MEASURED, NOT REASONED.** 840 synthetic datasets built to provoke exactly that — tight blobs
+given more components than they can fill, exact duplicates, scale extremes, and a diffuse
+background around tight clusters, the last chosen because a broad component can hold real mixture
+weight while being **no point's argmax**: zero hard assignments, so the rule fires, yet still
+lifting the likelihood, so BIC might want it.
+
+| | |
+| --- | ---: |
+| candidate fits examined | 9,280 |
+| fits containing an empty component | **4,131 (44.5%)** |
+| datasets where disabling the rule changes `SelectK` | **0** |
+
+**NEITHER OF THE ISSUE'S TWO PROPOSED OUTCOMES WAS RIGHT.** It offered "the rule is unreachable, so
+document or delete it" or "there is a dataset where BIC prefers such a fit, and that dataset is the
+missing test". The rule is reached constantly — nearly half of all candidates — and there is no such
+dataset, because BIC declines those fits on its own: an empty component contributes no likelihood
+while still adding `2d + 1` parameters, so the penalty rises with nothing to offset it.
+
+**What the rule actually buys is the `continue`.** Rejecting here skips `ComputeLogLikelihood` for
+44.5% of candidate fits. That is the reason to keep it now that the correctness argument is known
+to be redundant, and it is a better reason than the one the code gave.
+
+**NO TEST WAS ADDED, ON PURPOSE.** Deleting the rejection is behaviourally invisible through every
+public surface — `SelectK` returns the same k either way — so any test written against it would
+pass with the rule removed. That is the kind of guard this repository treats as worse than none.
+The mutation survives deliberately, and the remarks on `IsDegenerateFit` now carry the figures so a
+future mutation run finds the answer rather than re-deriving it.
+
+**The redundancy is conditional and the note says so.** It holds only while the scoring is BIC with
+that penalty term. Change the scoring and the rule becomes load-bearing again.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
