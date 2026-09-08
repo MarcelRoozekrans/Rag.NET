@@ -6594,6 +6594,154 @@ Mutations: deleting the mapping branch — the variant that actually compiles �
 tests. A third guard pins that unrelated failures still map to `StorageFailed`, so widening the
 branch cannot pass.
 
+### Phase 6.2.24: Keyed Chunk Lookup on PgVector [status: complete 2026-09-08 — #318, first of seven backends]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** GraphRAG's local search puts the source chunks behind its selected entities in front of
+the model, chosen by graph provenance and never by score — so it reads by key or not at all. Only
+`InMemoryVectorStore` implemented `IChunkLookup`, which means **every remote store returned an empty
+Sources section and left half a 12,000-token context budget unspent**, silently: an empty section
+looks like a graph with no sources rather than a store that cannot answer.
+
+**PgVector matches the pairs in the database.**
+
+```sql
+FROM rag_chunks c
+JOIN unnest($1::text[], $2::int[]) AS k(document_id, chunk_index)
+  ON c.document_id = k.document_id AND c.chunk_index = k.chunk_index
+```
+
+`unnest` over two arrays yields one row per position, so the pairs match as pairs in one statement
+with two parameters, whatever the key count. An `IN ((..),(..))` list would emit different query
+text for every distinct count — defeating the plan cache and approaching the parameter limit on the
+few-dozen-key batches local search actually sends. The join is the filter, so a missing key needs no
+handling, which is the contract: a document deleted since extraction leaves the graph naming chunks
+that no longer exist.
+
+**Six tests against real PostgreSQL, three mutations, each caught by its own test:**
+
+| mutation | caught by |
+| --- | --- |
+| `chunk_index >= 0` — the unsigned assumption | `NegativeChunkIndicesAreKeysLikeAnyOther` |
+| pairs matched independently of the document | the pairing test, and the absence test |
+| metadata dropped from the projection | `MetadataComesBackWithTheChunk` |
+
+**The first is the one that matters: every other test still passes with it in place.**
+`GraphEntityExtractionBehavior` assigns `-(i + 1)` to synthetic entity and relationship chunks, so
+negative indices are exactly the rows GraphRAG asks for — a backend filter assuming unsigned would
+return nothing for precisely the lookups this capability exists to serve.
+
+**The issue's stated blocker was already disproved.** #318 says the seven backends "cannot be
+exercised here without accounts", which was the reason they were not implemented alongside the
+interface. All seven were run locally on 2026-09-08 against existing container fixtures; that is
+what lets each implementation be written against a real backend instead of shipped unverified.
+
+**Qdrant is not a copy of this, which is why it is not in here.** `QdrantVectorStore.CreatePointId`
+returns `Guid.NewGuid()`, so point ids are random rather than derived from the key: its lookup has
+to be a payload filter over `document_id`/`chunk_index`, not an id fetch. Real design per backend
+rather than a translation of the SQL, and recorded rather than rushed.
+
+**Remaining: Qdrant, Pinecone, Weaviate, Redis, Chroma, Azure AI Search.** The last carries its own
+caveat — the simulator implements no OData filters, so it may not be exercisable locally even though
+its project runs.
+
+### Phase 6.2.25: Keyed Chunk Lookup on Qdrant [status: complete 2026-09-08 — #318, second of seven]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** the second backend, and the one 6.2.24 deliberately left out on the suspicion that it was
+not a translation of the SQL. It was not.
+
+**QDRANT CANNOT ANSWER THIS BY POINT ID.** `CreatePointId` returns `Guid.NewGuid()`, so a point's id
+carries no relationship to its `(document_id, chunk_index)` — Qdrant is told the identity only as
+payload. The lookup is a `Scroll` over a filter, and the id is never consulted. A subclass
+overriding `CreatePointId` to something derived does not change that, because the payload is written
+either way.
+
+**The pairs are matched as pairs by nesting:**
+
+```csharp
+var pair = new Filter();
+pair.Must.Add(MatchKeyword("document_id", key.DocumentId));
+pair.Must.Add(Match("chunk_index", key.ChunkIndex));
+filter.Should.Add(new Condition { Filter = pair });
+```
+
+One `must` of both fields per key, inside a single `should`. **Flattening those conditions into the
+`should` is the natural mistake** — it matches any document with a requested index — and it is the
+first of three mutations, caught by both the pairing test and the negative-index test.
+
+`Scroll` rather than `Query` because there is no query vector: the premise of this capability is
+that no vector returns these chunks. The limit is the key count, since `(document_id, chunk_index)`
+is unique per stored chunk.
+
+**Six tests against a real Qdrant, green on the first run. Three mutations, each caught:**
+
+| mutation | caught by |
+| --- | --- |
+| pairs flattened into one `should` | the pairing test, and the negative-index test |
+| index ignored, document only | the same two |
+| metadata dropped from the payload mapping | `MetadataComesBackWithTheChunk` |
+
+**Also shares the payload mapping.** Search and lookup read different point types — `ScoredPoint`
+and `RetrievedPoint` — off the same payload fields, so `MapChunk` is now one method. Two copies of
+"what a stored chunk is" would drift, and the drift would show up as a lookup that disagrees with
+search about the same row.
+
+**Twice now the mechanism has differed from what the previous backend suggested** — SQL row-zipping,
+then a payload filter because ids are random. The remaining five are read individually rather than
+translated.
+
+**Remaining: Pinecone, Weaviate, Redis, Chroma, Azure AI Search.** The last still carries its own
+caveat: the simulator implements no OData filters, so it may not be exercisable locally even though
+its project runs.
+
+### Phase 6.2.26: Keyed Chunk Lookup on Redis [status: complete 2026-09-08 — #318, third of seven]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** the third backend, and a third distinct mechanism.
+
+**Redis is the inverse of Qdrant.** A chunk's key *is* its identity — `KeyFor` composes
+`prefix + documentId + ":" + chunkIndex` — so the lookup is a direct hash read per key and never
+touches RediSearch. The reads are issued together and awaited together, which StackExchange.Redis
+pipelines onto one connection: roughly one round trip's latency for the few-dozen-key batches local
+search sends, rather than one per key.
+
+**It also sidesteps escaping that the search path needs.** The store escapes the characters
+RediSearch treats as syntax before putting a document id in a TAG filter. A direct key read parses
+nothing, so an id containing `:` or `-` matches itself — pinned by
+`ADocumentIdContainingSearchSyntaxIsFoundAnyway`.
+
+**Seven tests against real Redis. Three mutations, each caught:**
+
+| mutation | caught by |
+| --- | --- |
+| index dropped from the key composition | three tests |
+| index made unsigned (`abs`) | **only** the negative-index test |
+| empty hashes no longer skipped | the absence test |
+
+**Three backends in, the unsigned-index mutation has been caught only by the negative-index test
+every time.** It is the difference between a working implementation and one that returns nothing for
+exactly the rows GraphRAG asks for, and nothing else notices.
+
+**FOUND RATHER THAN FIXED: `RedisVectorStore` PERSISTS NO METADATA.** `StoreAsync` writes only
+`document_id`, `chunk_index`, `text` and the embedding, so neither search nor this lookup can return
+any. `MetadataIsAbsentBecauseTheStorePersistsNone` asserts that rather than skipping the case, so the
+limitation is visible where someone would look for it and the test fails the day `StoreAsync` starts
+storing metadata — pointing at the lookup that should then return it. Worth its own issue: GraphRAG
+local search puts these chunks in front of a model.
+
+**Chroma was scoped out after reading it.** Its record id is derived like Redis's
+(`documentId:chunkIndex`), so it looks like the same shape — but its HTTP client has no `get`
+endpoint, so one has to be added. That is more than a translation and is left for its own change.
+
+**Remaining: Pinecone, Weaviate, Chroma, Azure AI Search.**
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.

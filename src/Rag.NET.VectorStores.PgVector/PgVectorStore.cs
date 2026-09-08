@@ -17,7 +17,7 @@ namespace Rag.NET.PgVector;
 /// pipelines skip sparse work entirely instead of computing SPLADE vectors that nothing could
 /// store.
 /// </summary>
-public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDisposable
+public partial class PgVectorStore : IVectorStore, ICollectionManageable, IChunkLookup, IDisposable
 {
     /// <summary>
     /// pgvector refuses to build an HNSW index on a column wider than this
@@ -263,6 +263,80 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
             }
         }
     }
+
+    /// <summary>
+    /// Returns the chunks for the given keys, in one round trip. Missing keys are simply absent
+    /// (#318).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The pairs are zipped in the database rather than expanded into the SQL.</b> Postgres
+    /// <c>unnest</c> over two arrays yields one row per position, so joining against it matches
+    /// <c>(document_id, chunk_index)</c> exactly — a single statement with two parameters, whatever
+    /// the key count. Building an <c>IN ((..),(..))</c> list instead would produce a different
+    /// query text for every distinct key count, defeating the plan cache and running into the
+    /// parameter limit on the few-dozen-key batches local search actually sends.
+    /// </para>
+    /// <para>
+    /// <b>The join is the filter, so absence needs no handling.</b> A key with no row contributes
+    /// nothing, which is the contract: a document deleted since extraction leaves the graph naming
+    /// chunks that no longer exist, and that is not a reason to fail a query.
+    /// </para>
+    /// <para>
+    /// <b>Negative chunk indices work because nothing here assumes otherwise.</b>
+    /// <c>GraphEntityExtractionBehavior</c> assigns <c>-(i + 1)</c> to synthetic entity and
+    /// relationship chunks, so those are exactly the rows GraphRAG asks for; <c>chunk_index</c> is
+    /// a signed <c>integer</c> column and the comparison is equality, not a range.
+    /// </para>
+    /// </remarks>
+    /// <param name="keys">Chunk identities to fetch.</param>
+    /// <param name="cancellationToken">Cancels the lookup.</param>
+    /// <returns>The chunks that exist, in unspecified order.</returns>
+    public async Task<IReadOnlyList<TextChunk>> GetChunksAsync(
+        IReadOnlyList<ChunkKey> keys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        if (keys.Count == 0)
+            return [];
+
+        var documentIds = new string[keys.Count];
+        var chunkIndices = new int[keys.Count];
+        for (var i = 0; i < keys.Count; i++)
+        {
+            documentIds[i] = keys[i].DocumentId;
+            chunkIndices[i] = keys[i].ChunkIndex;
+        }
+
+        var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using (conn.ConfigureAwait(false))
+        {
+            var cmd = new NpgsqlCommand(LookupSql, conn);
+            await using (cmd.ConfigureAwait(false))
+            {
+                cmd.Parameters.AddWithValue(documentIds);
+                cmd.Parameters.AddWithValue(chunkIndices);
+
+                var chunks = new List<TextChunk>(keys.Count);
+                var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                await using (reader.ConfigureAwait(false))
+                {
+                    while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                        chunks.Add(ReadChunk(reader));
+                }
+
+                return chunks;
+            }
+        }
+    }
+
+    private const string LookupSql = """
+        SELECT c.document_id, c.chunk_index, c.text, c.metadata
+        FROM rag_chunks c
+        JOIN unnest($1::text[], $2::int[]) AS k(document_id, chunk_index)
+          ON c.document_id = k.document_id AND c.chunk_index = k.chunk_index
+        """;
 
     private static string SearchSql(bool hasFilter)
     {

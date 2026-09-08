@@ -216,9 +216,28 @@ forward it, so an `is IChunkLookup` test alone would report the capability for e
 store. Leave the default `true` in your own store; `ResilientVectorStore` overrides it to report
 what its inner store can do, and `FederatedVectorStore` reports whether *any* member can.
 
-**Currently implemented by:** `InMemoryVectorStore`, and forwarded by `ResilientVectorStore` and
-`FederatedVectorStore`. The remote backends (Qdrant, Pinecone, Weaviate, Redis, Chroma, PgVector,
-Azure AI Search) do not implement it yet — see #318.
+**Currently implemented by:** `InMemoryVectorStore`, `PgVectorStore`, `QdrantVectorStore` and
+`RedisVectorStore`, and forwarded by `ResilientVectorStore` and `FederatedVectorStore`. The
+remaining remote backends (Pinecone, Weaviate, Chroma, Azure AI Search) do not implement it yet —
+see #318.
+
+**How the keys are matched differs per backend, and the difference is not cosmetic.** PgVector zips
+the pairs in SQL with `unnest` over two arrays. Qdrant cannot use point ids at all — they are random
+GUIDs, unrelated to the chunk's identity — so it filters on the `document_id` and `chunk_index`
+payload fields, one nested `must` per key inside a single `should`. Redis is the inverse again: the
+key *is* the identity, so it reads hashes directly and never queries the index at all.
+
+Whatever the mechanism, **the pairs must be matched as pairs**: conditions on the two fields
+independently return another document's chunk at the same index. And **a negative `chunk_index` has
+to work** — `GraphEntityExtractionBehavior` assigns `-(i + 1)` to synthetic entity and relationship
+chunks, so those are exactly the rows this capability is asked for. On three backends so far, an
+implementation assuming unsigned indices passed every test except that one.
+
+PgVector matches the pairs in the database rather than expanding them into the SQL: `unnest` over
+two arrays yields one row per position, so a single statement with two parameters serves any key
+count. Building an `IN ((..),(..))` list instead produces different query text for every key count,
+which defeats the plan cache. Whatever a backend's equivalent is, **the pairs have to be matched as
+pairs** — matching `chunk_index` alone returns another document's chunk at that index.
 
 ### Optional: `ICollectionManageable`
 
