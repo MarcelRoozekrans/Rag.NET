@@ -76,6 +76,15 @@ public sealed class PipelineIngestor : IIngestor
             return Result<IngestionResult, RagError>.Failure(new RagError.NoParserFound(ex.ContentType));
         }
         catch (OperationCanceledException) { throw; }
+        catch (ModelCallException ex)
+        {
+            // Before this case existed the catch-all below reported a failed completion as
+            // StorageFailed, whose own remarks scope it to IVectorStore/persistence — so an
+            // operator was sent to inspect a store that had not been asked to do anything (#504).
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            RagTelemetry.IngestErrors.Add(1);
+            return Result<IngestionResult, RagError>.Failure(new RagError.ModelCallFailed(ex));
+        }
         catch (Exception ex)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
