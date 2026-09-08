@@ -6395,6 +6395,67 @@ component adds parameters without likelihood, so BIC already avoids it — but n
 where the mutant differs, so any test written would have passed with the rule deleted. Filed as
 **#498**.
 
+### Phase 6.2.20: The Airtable Benchmark Discrepancy, Explained [status: complete 2026-09-08 — closes #207; a recording error, not a regression]
+**Surface:** Benchmarks
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** answer the question #207 actually asked — not whether the new Airtable figures are right,
+but **what the old ones were measuring**, since two of the three normal explanations were already
+excluded by evidence and nobody had offered a mechanism for the third.
+
+**THE ANSWER: ONE CONNECTOR, TWO HARNESS MODES, ONE TABLE.** `b202d5ec` (2026-04-13) introduced
+`[IterationSetup]` to the mocked connectors and published a table in which the three `Airtable — *`
+rows still carry `[GlobalSetup]` numbers while the Shared Ingestion `Airtable` row carries
+`[IterationSetup]` numbers.
+
+Measured 2026-09-08 on code byte-unchanged since that commit:
+
+| `AirtableBenchmarks` | Mean | Allocated |
+| --- | ---: | ---: |
+| as it ships, `[IterationSetup]` | 149.9 μs | 75.89 KB |
+| same code, reverted to `[GlobalSetup]` | **21.9 μs** | 57.17 KB |
+
+**The mode alone is worth 6.9x**, and the `[GlobalSetup]` figures reproduce what `b202d5ec`'s
+*parent* published — 22.8, 37.2 and 24.0 μs — to within 0.7–6%. The 4–5x was never a regression.
+A residual ~+24% allocation since April is real and matches the per-record metadata `cabe77a8` and
+`a89f779e` added.
+
+**THREE OF THE ISSUE'S OWN CLAIMS WERE WRONG, AND FINDING THAT OUT WAS THE WORK.**
+
+1. **"The rows may never have been re-run."** They were. `Airtable — DeltaWithFilter`'s allocation
+   moved **48.53 → 48.54 KB** across that commit — ten bytes, which no copy-paste produces. The
+   issue checked two rows' allocations, found them unchanged, and did not check the third.
+2. **The equivalence was only ever verified at HEAD.** The issue cites today's line numbers to argue
+   the two benchmarks measure the same work. Verified at `b202d5ec` itself: same factory defaults,
+   `[IterationSetup]` present in both classes, bodies character-identical apart from names.
+3. **Its step 1 is not executable.** "Check out `b202d5ec` and re-run" fails — the commit's package
+   references float (`Version="0.*"`, `"1.*"`), so it now resolves today's `ZeroAlloc.ValueObjects`
+   generator, whose emitted `ToString` collides with the April source. Patching past the dead
+   generator path and the CVE-as-error failures still ends there, and a sufficiently patched build
+   would not be the April build anyway.
+
+**SETTLED BY AN INVARIANT INSTEAD OF A REBUILD.** `AirtableBenchmarks` calls
+`ConnectorIngestionBenchmarks.CreateAirtableProvider` directly, so both rows exercise the same
+factory with the same arguments: provider changes, SDK changes and machine changes move them
+together, and **the ratio between them cannot change**. Neither benchmark file has been touched
+since April. Yet the ratio went **5.4 → 1.015**, with allocation now identical to the byte. A ratio
+that cannot move, moved — so at least one April figure was not produced by the April run.
+
+**A GUARD NOW ENFORCES IT, BECAUSE NOTHING READ THIS PAGE.** No test in the repository opened
+`docs/reference/benchmarks.md`, which is how a mixed-mode table survived four months and a 1 μs
+transcription slip survived three weeks. `BenchmarkSelfConsistencyTests` asserts the two rows
+publish the same allocation — allocation rather than mean, because means drift ~8% between sessions
+and allocation does not. Two mutations: April's own values fail it with the right message, and a
+broken parse fails loudly rather than passing silently.
+
+**Also fixed:** `Airtable — DeltaWithFilter` published 121.0 μs where the 2026-08-14 artifact says
+121,986.667 ns = **122.0 μs**. Verified against the artifact rather than taken from the issue.
+
+**What the guard cannot do:** both rows re-recorded in the same wrong mode would satisfy it. It says
+the page does not contradict itself, not that the numbers are right. Comparing the page against a
+run is impossible here — BenchmarkDotNet's artifacts are not tracked.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
