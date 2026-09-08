@@ -606,24 +606,52 @@ compare them against sections measured at `UnrollFactor=16`.
 | Zendesk — ArticlesHtmlStripping | 5 (~10 KB HTML) | 54.4 μs | 760.88 KB |
 | Airtable — FullTraversal | 20 | 123.9 μs | 59.87 KB |
 | Airtable — WithAttachments | 10 (2 attachments) | 206.1 μs | 93.31 KB |
-| Airtable — DeltaWithFilter | 20 | 121.0 μs | 60.00 KB |
+| Airtable — DeltaWithFilter | 20 | 122.0 μs | 60.00 KB |
 
-**The three Airtable rows moved by 3–5×, and it is not clear why.** They are much the largest
-movement on the page: 26.0 → 123.9 μs, 42.2 → 206.1 μs, 30.2 → 121.0 μs.
+**The three Airtable rows moved by 3–5×, and the reason is now known: the old figures were
+measured in a different harness mode from the row beside them (#207).** They were never a
+regression, and nothing needs re-recording.
 
-This is not session variance — two independent runs 24 hours apart agree to within 8% — and it is
-not a harness change, since `AirtableBenchmarks` has declared `[IterationSetup]` since 2026-04-13.
+**What was wrong.** The commit that introduced `[IterationSetup]` to the mocked connectors,
+`b202d5ec` (2026-04-13), published a table in which the three `Airtable — *` rows still carry
+`[GlobalSetup]` numbers while the `Airtable` row in Shared Ingestion carries `[IterationSetup]`
+numbers. One connector, two harness modes, one table.
 
-What the new figures do is make Airtable *self-consistent*. `Airtable — FullTraversal` and the
-`Airtable` row in Shared Ingestion enumerate the same 20 items through the same provider, and now
-report 123.9 μs / 59.87 KB against 119.0 μs / 59.87 KB — the same work, the same allocation to the
-byte. In the 2026-07-31 table those two rows read 26.0 μs and 140.5 μs, a 5.4× disagreement that
-nothing in the code explains. Airtable is also measured at `InvocationCount=1`, where GitLab and
-Gmail — the other two NSubstitute connectors — have always sat above 100 μs.
+**Measured 2026-09-08 on the current code, which is byte-unchanged since that commit** — neither
+`AirtableBenchmarks.cs` nor `ConnectorIngestionBenchmarks.cs` has been touched since:
 
-So the likelier reading is that the old Airtable figures were the anomaly rather than these. That
-is a reading, not a finding: it was not bisected, and it should be settled by measurement rather
-than by argument before anyone relies on either number.
+| `AirtableBenchmarks` | Mean | Allocated |
+| --- | ---: | ---: |
+| as it ships, `[IterationSetup]` | 149.9 μs | 75.89 KB |
+| same code, reverted to `[GlobalSetup]` | **21.9 μs** | 57.17 KB |
+
+**The harness mode alone accounts for 6.9× in time**, on one machine in one sitting. And the
+`[GlobalSetup]` figures reproduce what `b202d5ec`'s *parent* had published — 22.8, 37.2 and 24.0 μs
+— to within 0.7–6%. The three rows published *at* `b202d5ec` (26.0, 42.2, 30.2 μs) sit alongside
+those, not alongside the ~124 μs the same code produces under the mode that commit had just
+introduced.
+
+**The rows were re-run, which is the part that misleads.** `Airtable — DeltaWithFilter`'s allocation
+moved 48.53 → 48.54 KB across that commit — ten bytes, which no copy-paste produces. So the numbers
+came from a real run; that run simply did not have `[IterationSetup]` applied to this class. "The
+rows were never refreshed" is the natural hypothesis and it is wrong.
+
+**Why `[IterationSetup]` costs so much here.** It forces BenchmarkDotNet to `InvocationCount=1,
+UnrollFactor=1`, so per-iteration overhead is no longer amortised across thousands of invocations,
+and `MemoryDiagnoser` attributes the mock reconstruction to the measurement — visible above as
++18.7 KB. The run emits a `MinIterationTime` warning saying as much. Both rows now pay it, which is
+why they agree.
+
+**What is left, and it is small.** Allocation has genuinely risen since April — 48.42 → 59.87 KB
+under a like-for-like comparison — consistent with the per-record metadata that `cabe77a8` and
+`a89f779e` added to the Airtable provider. That is a real change of about +24%, not 4–5×.
+
+**The current figures are self-consistent, which is the check that catches this.**
+`Airtable — FullTraversal` and the `Airtable` row in Shared Ingestion enumerate the same 20 items
+through the same provider — `AirtableBenchmarks` calls the other class's factory directly — and
+report 123.9 μs / 59.87 KB against 119.0 μs / 59.87 KB: the same allocation to the byte. A
+re-measurement on 2026-09-08 put them at 149.9 and 147.7 μs with **identical** 75.89 KB. Two rows
+that must agree are worth keeping adjacent for exactly this reason.
 
 **Notes:**
 - All measurements use mocked HTTP/IMAP backends — no network I/O.
