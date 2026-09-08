@@ -42,6 +42,23 @@ public sealed class SettlePolicyTests
         Assert.Equal(IngestionOutcome.TransientFailure,
             new RagError.StorageFailed(new IOException("disk")).Classify());
 
+    /// <summary>
+    /// A failed model call is transient: a 429 or an unreadable completion usually succeeds on the
+    /// next attempt, which is exactly what a redelivery is for.
+    /// </summary>
+    /// <remarks>
+    /// <c>Classify</c>'s default arm already says "any error added later: assume transient", so
+    /// <see cref="RagError.ModelCallFailed"/> was classified correctly the moment it existed (#504).
+    /// This pins it anyway: the default makes the answer accidental, and a later reader deciding
+    /// how to settle a model failure should find the decision written down rather than infer it
+    /// from a fallthrough.
+    /// </remarks>
+    [Fact]
+    public void Classify_ModelCallFailed_IsTransient() =>
+        Assert.Equal(IngestionOutcome.TransientFailure,
+            new RagError.ModelCallFailed(
+                new ModelCallException("rate limited", new InvalidOperationException("429"))).Classify());
+
     [Fact]
     public void Classify_TransportFailed_IsTransient() =>
         Assert.Equal(IngestionOutcome.TransientFailure,
