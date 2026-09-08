@@ -100,6 +100,27 @@ internal static class GaussianMixtureModel
     /// An empty component means <paramref name="k"/> overstates the model actually fitted, so its
     /// parameter count — and therefore its penalty — is simply wrong for what was fitted.
     ///
+    /// <b>That rejection is redundant with BIC, and it is kept for cost rather than correctness
+    /// (#498).</b> Measured over 840 synthetic datasets — tight blobs given more components than
+    /// they can fill, exact duplicates, scale extremes, and a diffuse background around tight
+    /// clusters — <b>4,131 of 9,280 candidate fits (44.5%) contain an empty component, and
+    /// disabling this rejection changes <see cref="SelectK"/>'s answer on none of the 840</b>. BIC
+    /// declines those fits on its own: an empty component contributes no likelihood while still
+    /// adding <c>2d + 1</c> parameters, so the penalty rises and nothing offsets it.
+    ///
+    /// So the rule is neither unreachable nor load-bearing. What it buys is the <c>continue</c> in
+    /// <see cref="SelectK"/>: rejecting here skips <c>ComputeLogLikelihood</c> for nearly half of
+    /// all candidate fits, which is the reason to keep it now that the correctness argument is
+    /// known to be redundant.
+    ///
+    /// <b>No test covers it, and none can.</b> Deleting the rejection is behaviourally invisible
+    /// through every public surface — <see cref="SelectK"/> returns the same k either way — so any
+    /// test written against it would pass with the rule removed, which is the kind of guard this
+    /// repository treats as worse than none. The mutation survives on purpose; this paragraph is
+    /// what a future mutation run should find instead of re-deriving it. The redundancy holds only
+    /// while the scoring is BIC with that penalty term: change the scoring and this becomes
+    /// load-bearing again.
+    ///
     /// A component owning a single point has no spread to estimate: its variance collapses to the
     /// floor and its log-density at its own mean climbs accordingly. The figures below were
     /// measured against the ORIGINAL absolute floor of <c>1e-6</c>, which reached roughly +47.9
