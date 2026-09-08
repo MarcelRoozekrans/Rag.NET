@@ -6781,6 +6781,45 @@ negative-index test has been the only thing catching the unsigned-index mutation
 
 **Remaining: Pinecone, Chroma, Azure AI Search.**
 
+### Phase 6.2.28: Keyed Chunk Lookup on Pinecone [status: complete 2026-09-08 — #318, fifth of seven]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** the fifth backend, and the second of the derived-id shape. `RecordId` composes
+`documentId + ":" + chunkIndex`, so the key is reconstructible and the lookup is a `Fetch` — no
+query vector, no filter. Same shape as Redis; the opposite of Qdrant, whose ids are random GUIDs.
+
+**THE INTERESTING CONSTRAINT IS DIRECTIONAL.** `BuildChunk` deliberately refuses to recover identity
+from a record id, because a document id may itself contain the `:` separator — it reads
+`document_id` and `chunk_index` out of metadata and throws if they are missing. Constructing an id
+has no such ambiguity, since a chunk index cannot contain a colon. So this lookup builds ids and
+never parses them, and the identity still comes back out of metadata.
+
+That is pinned by `ADocumentIdContainingTheSeparatorRoundTrips`, using an id with two colons. It
+catches the mutation that recovers identity by splitting the record id — the exact shortcut the
+store's own remarks warn against.
+
+**Seven tests against Pinecone Local, three mutations, each caught:**
+
+| mutation | caught by |
+| --- | --- |
+| index made unsigned (`abs`) | **only** the negative-index test |
+| index dropped from the record id | three tests |
+| identity parsed from the record id | the separator test, and the metadata test |
+
+**One index for the whole class, deleted in teardown.** Pinecone Local allocates one data-plane port
+per index from a range of ten, so an index leaked by a failing test starves later ones. Each test
+uses its own document ids rather than its own index.
+
+**Five backends in, the exception still holds.** The mechanisms have differed at every one — SQL
+row-zipping, payload filter, direct key read, GraphQL where, id fetch — while the negative-index
+test has been the only thing catching an unsigned-index implementation on all five.
+
+**Remaining: Chroma and Azure AI Search.** Chroma needs a `get` endpoint added to its HTTP client;
+Azure AI Search may not be locally exercisable at all, since its simulator implements no OData
+filters.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.

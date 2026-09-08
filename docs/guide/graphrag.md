@@ -405,8 +405,8 @@ implementation this follows, and for the deviations it cannot avoid.
 
 The Sources section needs a vector store implementing `IChunkLookup` — the source chunks are chosen
 by graph provenance, not by score, so there is no query that returns them. `InMemoryVectorStore`,
-`PgVectorStore`, `QdrantVectorStore`, `RedisVectorStore` and `WeaviateVectorStore` implement it; the
-remaining remote backends do not yet (#318). Note that Redis stores no chunk metadata at all, so its chunks arrive
+`PgVectorStore`, `QdrantVectorStore`, `RedisVectorStore`, `WeaviateVectorStore` and
+`PineconeVectorStore` implement it; the remaining remote backends do not yet (#318). Note that Redis stores no chunk metadata at all, so its chunks arrive
 with none — the same as its search results. Without it, local
 search logs a warning and Sources comes back empty, spending half the budget on nothing.
 
