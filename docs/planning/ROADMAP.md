@@ -6456,6 +6456,59 @@ broken parse fails loudly rather than passing silently.
 the page does not contradict itself, not that the numbers are right. Comparing the page against a
 run is impossible here — BenchmarkDotNet's artifacts are not tracked.
 
+### Phase 6.2.21: A Failing Vision Model Says So [status: complete 2026-09-08 — closes #497; the larger defect it exposed is filed as #504]
+**Surface:** Parsers
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** stop a vision-provider failure arriving as an exception nobody can catch.
+
+**What a caller actually saw.** OpenRouter answers `finish_reason: "error"` on an upstream failure
+and the OpenAI SDK throws `ArgumentOutOfRangeException: Unknown ChatFinishReason value` from a
+validation helper — thrown by an assembly this library depends on transitively, indistinguishable
+from a genuine argument bug in the caller's own code, and named in no contract Rag.NET publishes. A
+second, unrelated mode arrives as `ClientResultException: HTTP 429`. One catch could express
+neither.
+
+**Now `VisionDescriptionException`**, carrying the file name so a handler can act on it without
+parsing prose, preserving the inner exception, and logged at warning. Cancellation propagates
+untouched.
+
+**It does not swallow, deliberately.** An empty description would ingest the image as a document
+with no content: retrievable, and indistinguishable from an image the model genuinely found nothing
+in. A parser that fails loudly costs one document; a parser that fails quietly costs the corpus's
+credibility. That alternative is one of the four mutations, and two guards reject it.
+
+**The tests run without a network, which is the point.** The defect was found by a live integration
+test that failed twice in one afternoon with two different causes — a rate nobody controls, and a
+bug that would otherwise be re-diagnosed every time it appeared. Both observed shapes are
+reproduced from a substitute.
+
+Four mutations, each caught by its own guard: no translation, cancellation catch removed, inner
+exception dropped, and failure swallowed into an empty description.
+
+**THE ISSUE'S SEVERITY CLAIM WAS WRONG, AND CHECKING IT FOUND THE REAL DEFECT.** #497 implied a
+parse failure might abort more than the file. It does not: `ParseBehavior` does not catch, but
+`PipelineIngestor` catches per document and returns a failed `Result`, so the batch continues.
+
+Reading that catch showed what does go wrong — filed as **#504**:
+
+```csharp
+catch (Exception ex)
+    return Result<IngestionResult, RagError>.Failure(new RagError.StorageFailed(ex));
+```
+
+**Every non-parser ingestion failure is reported as `StorageFailed`**, including a rate-limited
+vision model at parse time. `RagError.TransportFailed`'s own remarks draw the line — *"Distinct
+from `StorageFailed`, which covers failures of a `IVectorStore`/persistence operation"* — so the
+mapping contradicts the union's documentation. An operator seeing it goes and inspects a vector
+store that was never asked to do anything.
+
+**Not fixed here, on purpose.** The honest fix needs two API decisions that belong to the operator:
+whether `RagError` gains a case (breaking for exhaustive switches — cheap now, not later), and
+which of the 80 `IChatClient` consumers translate. Pattern-matching SDK exception types inside core
+would mean depending on every provider SDK, which is worse than the problem.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
