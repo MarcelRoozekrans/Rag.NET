@@ -196,8 +196,11 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
 
         foreach (var key in _filterableKeys)
         {
-            // caseSensitive: MetadataValue compares strings ordinally, and a TAG field folds case
-            // by default — without this, "ACME" would answer a filter for "acme".
+            // caseSensitive: the value is Base64Url-encoded before it is stored as a tag, and
+            // Base64Url's alphabet uses both letter cases, so two different values can encode to
+            // tokens that are themselves case-variants of one another; a case-folding TAG field
+            // would match one against the other. See
+            // RedisMetadataFilterTests.ABase64UrlCaseVariantOfAStoredTokenDoesNotMatchIt.
             _ = schema.AddTagField(MetadataFieldName(key), caseSensitive: true);
         }
 

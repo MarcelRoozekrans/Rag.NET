@@ -226,6 +226,50 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
         Assert.True(found, "Expected an md_tenant attribute in the index schema.");
     }
 
+    /// <summary>
+    /// <b>Proves the schema flag actually changes matching, not just that it is declared.</b>
+    /// <see cref="FilterableKeysAreDeclaredAsCaseSensitiveTagFields"/> only checks that
+    /// <c>CASESENSITIVE</c> is present in <c>FT.INFO</c>; it takes on faith that the attribute
+    /// does something. The reason it must: <c>MetadataToken</c> Base64Url-encodes the value
+    /// before it is stored as a tag, and Base64Url's alphabet uses both letter cases, so two
+    /// <em>different</em> values can encode to tokens that are themselves case-variants of one
+    /// another — three NUL bytes encode to <c>AAAA</c>, and the UTF-8 bytes of <c>"h\0\0"</c>
+    /// encode to <c>aAAA</c>, differing only in the second character's case. Under a
+    /// case-folding TAG field, a filter for one would wrongly match a chunk holding the other.
+    /// </summary>
+    [Fact]
+    public async Task ABase64UrlCaseVariantOfAStoredTokenDoesNotMatchIt()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var threeNulBytes = new string([(char)0, (char)0, (char)0]);
+        var hThenTwoNulBytes = new string(['h', (char)0, (char)0]);
+
+        // Sanity-check the premise: the two values really do tokenise to case-variant strings,
+        // not to two unrelated strings that merely happen to both fail to match.
+        var storedToken = RedisVectorStore.MetadataToken((MetadataValue)threeNulBytes);
+        var queriedToken = RedisVectorStore.MetadataToken((MetadataValue)hThenTwoNulBytes);
+        Assert.Equal("s:AAAA", storedToken, StringComparer.Ordinal);
+        Assert.Equal("s:aAAA", queriedToken, StringComparer.Ordinal);
+        Assert.Equal(storedToken, queriedToken, StringComparer.OrdinalIgnoreCase);
+
+        await _store.StoreAsync(
+            [Chunk("doc-nul", "nul-tenant", [1f, 0f, 0f, 0f], ("tenant", threeNulBytes))], ct);
+
+        var results = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f },
+            new SearchOptions
+            {
+                TopK = 5,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                {
+                    ["tenant"] = hThenTwoNulBytes,
+                },
+            },
+            ct);
+
+        Assert.Empty(results);
+    }
+
     /// <summary>Case is significant: TAG fields fold case unless declared not to.</summary>
     [Fact]
     public async Task AFilterDoesNotMatchAValueDifferingOnlyInCase()
