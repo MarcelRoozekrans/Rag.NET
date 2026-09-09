@@ -7022,21 +7022,25 @@ case-variant token, failing without the flag and passing with it. The flag is no
 structurally (`FT.INFO` asserts `CASESENSITIVE` is declared) and behaviourally (the two tokens
 are proven not to collide).
 
-**The unsigned-index streak — six for six on the backends before this one — breaks here, and not
-by error.** 6.2.24 through 6.2.30 each record that a test storing negative chunk indices was the
-only thing catching an unsigned `chunk_index`. On Redis it caught nothing: both `StoreAsync` and
-`GetChunksAsync` go through the one shared `KeyFor`, so applying `Math.Abs` there is
+**The unsigned-index streak — six for six on the backends before this one — does not settle what
+it looks like it settles.** On Redis, applying `Math.Abs` inside `KeyFor` caught nothing:
+`StoreAsync` and `GetChunksAsync` both go through that one shared helper, so the mutation is
 self-consistent between write and read, and the existing test's indices (`-1, -2, 0`) never share
 a magnitude with another index in the same test — the mutation only breaks a pair whose absolute
-values coincide, and this test never produced one. **This is a difference of mutation site, not a
-gap in the six prior write-ups**: there, the mutation was applied to a stored `chunk_index` field,
-where a written value and a later-read value are compared directly and a sign change is visible
-immediately; here it was applied to a helper shared by both the write and the read path, where the
-corruption is symmetric and invisible unless the test data collides on magnitude. Which site each
-of the six prior phases mutated is not recorded, so this is not a claim that they tested less
-rigorously — only that the shared-helper site is the harder one to catch, and this is the first
-phase to have used it. Closed with a test storing chunk index `1` and `-1` for the same document,
-which do collide under `Math.Abs`.
+values coincide, and this test never produced one. **The same conditions held at 6.2.26**, the
+phase that built this store's keyed lookup: `git show 72f96677` shows `KeyFor` already the single
+helper called by both `StoreAsync` and the newly added `GetChunksAsync`, and
+`NegativeChunkIndicesAreKeysLikeAnyOther` storing the identical `-1, -2, 0`. Yet 6.2.26's own
+record reports the abs mutation caught, "only" by that negative-index test. **Exactly one of two
+things is true, and the record does not say which**: 6.2.26 mutated the stored `chunk_index`
+field — a different site, caught immediately, correctly recorded — or it mutated the shared
+helper and the "caught" claim was never actually run against the code this phase ran it against.
+Nothing in 6.2.26's write-up names the line it changed, so there is no way to tell from here which
+happened. **What follows either way**: a mutation's site decides how strong the test is, and
+naming the mutation without naming the line makes a sweep unreproducible — "six for six" and
+"seven for seven" describe a streak nobody can check. The actionable lesson is to record the site,
+not just the mutation, from here on. Closed on Redis with a test storing chunk index `1` and `-1`
+for the same document, which do collide under `Math.Abs`.
 
 **The documentation itself claimed a fallback that never existed, which is plausibly why the
 missing filter survived this long.** `docs/guide/vector-stores.md` told readers that Redis lacked
