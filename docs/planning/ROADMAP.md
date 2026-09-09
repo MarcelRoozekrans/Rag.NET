@@ -7053,6 +7053,40 @@ downstream; no pipeline stage filters anything. A reader who noticed Redis was m
 was told, in the same paragraph, that something else covered it. Corrected as part of this
 phase's documentation.
 
+### Phase 6.2.32: A Corrupt Blob Is Not an Empty One [status: pending — added 2026-09-09, #521]
+**Surface:** Storage
+**HelpWanted:** no
+
+**Goal:** the six sites that read a corrupt metadata blob and return an empty dictionary say so
+instead, matching the two that already do.
+
+**#521 says three stores; scoping it found six sites across five components.** The issue was filed
+from the vector-store angle during 6.2.31 and named PgVector, Qdrant and Azure AI Search. It missed
+`SqliteBm25Index` and `SqliteDocumentStore` — and the latter has **two** sites, one of them reading
+`DocumentMetadata.Tags` rather than chunk metadata, so the same swallow shape reaches a second data
+type.
+
+**The split is six-to-two, and the two are the only ones anybody ever reviewed.** Weaviate throws
+because of a 2026-07-25 review finding (`98b327fd`) that deliberately replaced the tolerant default,
+naming what the others still do: *"silently returning the chunk with empty metadata"*. Redis throws
+because 6.2.31 followed that precedent. The other six are the pre-review default from `179e4f8e`,
+a mechanical serializer migration in April that nobody has revisited.
+
+**The missing-versus-corrupt distinction is already safe, which is what makes this small.**
+`MetadataSerializer.DeserializeMetadata(null)` and `("")` both return **Success with an empty
+dictionary**; only a `JsonException` produces `Failure`. So replacing a fallback with a throw cannot
+fire on an absent field — only on genuinely malformed stored JSON. No upgrade hazard, no data
+migration.
+
+**Open questions for the design, and they are not all the same answer.** Whether a throw is right at
+every site: `SqliteBm25Index` reads inside a search loop, where one corrupt row would fail a whole
+query, which is a different trade from a keyed read of one chunk. Whether the throwing helper should
+move into `MetadataSerializer` so a seventh site cannot be written the swallowing way — and if so,
+how the caller's identity reaches the message, since each store names its own document and chunk.
+
+**Nobody has observed a corrupt blob in the wild.** This is posture and consistency, not a live
+incident, and the phase should say so rather than inflate it.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
