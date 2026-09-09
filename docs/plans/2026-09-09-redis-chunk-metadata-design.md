@@ -54,11 +54,31 @@ Three routes were considered.
 
 **A — grow the schema on demand.** Write each entry as a prefixed flat field and `FT.ALTER SCHEMA
 ADD` the first time a key appears. Any key becomes filterable with no configuration. `Alter` and
-`AlterAsync` exist in NRedisStack 1.7.4, so the API is there. **Rejected on an unverified
-behaviour:** whether `FT.ALTER` indexes documents that already exist. If it does not, chunks written
-before a key was declared are invisible to a filter on it — the same silent miss this phase exists
-to remove, reintroduced through a different door. Docker was unavailable at design time, so this was
-not settled by measurement; it is recorded as the one fact that could promote A over B later.
+`AlterAsync` exist in NRedisStack 1.7.4, so the API is there.
+
+**Originally rejected on an unverified behaviour — and the measurement went the other way.**
+Measured 2026-09-09 on `redis/redis-stack-server:latest` (Redis 7.4.7, RediSearch module 21020):
+a document written *before* `FT.ALTER SCHEMA ADD` was found by a search on the newly added
+attribute, without being rewritten. A control document written after the alter confirmed the query
+syntax, so the result is meaningful rather than a broken probe. **`FT.ALTER` does reindex.**
+
+**B still stands, for three reasons the original rejection did not rest on:**
+
+1. **The behaviour is a version observation, not a cited guarantee.** This store's own docs admit
+   consumers on "Redis Stack, or Redis 8 and later"; the measurement covers one module version. A
+   design whose correctness turns on undocumented reindex behaviour fails silently on the versions
+   it was not measured against — which is the exact failure mode the rejection was protecting
+   against, relocated rather than removed.
+2. **A puts schema mutation on the write path.** `StoreAsync` would have to notice an unseen key and
+   issue `FT.ALTER` mid-ingest, with two concurrent writers racing to add the same attribute, and an
+   attribute ceiling driven by user data rather than by configuration.
+3. **A cannot throw on a key that was never stored.** Under B, filtering on an undeclared key is an
+   exception. Under A there are no declarations, so a filter on a key nothing ever wrote returns an
+   empty result — indistinguishable from "no chunk matched". That is the same silence this phase
+   exists to remove.
+
+The measurement is recorded rather than acted on: it removes one argument against A and leaves
+three. Should the project later want A, this section is where the case starts.
 
 **C — post-filter in process with over-fetch**, using the existing `MetadataFilterMatcher`. Any key
 works with no schema change. **Rejected:** a selective filter then under-fills the page, which is
