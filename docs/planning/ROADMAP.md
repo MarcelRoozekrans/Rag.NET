@@ -6742,6 +6742,126 @@ endpoint, so one has to be added. That is more than a translation and is left fo
 
 **Remaining: Pinecone, Weaviate, Chroma, Azure AI Search.**
 
+### Phase 6.2.27: Keyed Chunk Lookup on Weaviate [status: complete 2026-09-08 — #318, fourth of seven]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** the fourth backend, and a fourth mechanism. Weaviate has object UUIDs this store never
+derives from the chunk, so the identity lives in properties and the lookup is a GraphQL `where` of
+Or-composed And pairs. It needs its own query builder rather than the search one: a keyed read has
+no vector, no hybrid argument, and no `_additional` to select.
+
+**MUTATION TESTING FOUND A MISSING GUARD, NOT A PASSING ONE.** Replacing `GraphQlString(...)` with
+raw interpolation of the document id **survived all eight tests** — none of their ids contained a
+quote or backslash, so nothing exercised the escaping. That is a malformed query at best and an
+injected one at worst.
+
+The escaping itself was correct, copied from the store's existing helper. The tests simply never
+verified it, and without the mutation this would have shipped believing they did.
+`ADocumentIdContainingGraphQlSyntaxIsFoundAnyway` now uses an id containing both, and catches it.
+
+**Four mutations, each caught:**
+
+| mutation | caught by |
+| --- | --- |
+| pairs flattened (`And` → `Or`) | three tests |
+| index made unsigned (`abs`) | **only** the negative-index test |
+| document id no longer escaped | the new escaping test (survived before it) |
+| — | — |
+
+**Two guards came from reading the schema rather than the contract.** `document_id` is declared with
+`field` tokenization so an `Equal` matches the whole id rather than its word tokens — without it
+`doc-1` matches `doc-2` through their shared `doc` token, which is now pinned. And `chunk_index` is
+a Weaviate `int`, so `valueInt` takes a negative directly.
+
+**Four backends in, the pattern holds and so does the exception.** The mechanisms have differed
+every time — SQL row-zipping, payload filter, direct key read, GraphQL where — while the
+negative-index test has been the only thing catching the unsigned-index mutation on all four.
+
+**Remaining: Pinecone, Chroma, Azure AI Search.**
+
+### Phase 6.2.28: Keyed Chunk Lookup on Pinecone [status: complete 2026-09-08 — #318, fifth of seven]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** the fifth backend, and the second of the derived-id shape. `RecordId` composes
+`documentId + ":" + chunkIndex`, so the key is reconstructible and the lookup is a `Fetch` — no
+query vector, no filter. Same shape as Redis; the opposite of Qdrant, whose ids are random GUIDs.
+
+**THE INTERESTING CONSTRAINT IS DIRECTIONAL.** `BuildChunk` deliberately refuses to recover identity
+from a record id, because a document id may itself contain the `:` separator — it reads
+`document_id` and `chunk_index` out of metadata and throws if they are missing. Constructing an id
+has no such ambiguity, since a chunk index cannot contain a colon. So this lookup builds ids and
+never parses them, and the identity still comes back out of metadata.
+
+That is pinned by `ADocumentIdContainingTheSeparatorRoundTrips`, using an id with two colons. It
+catches the mutation that recovers identity by splitting the record id — the exact shortcut the
+store's own remarks warn against.
+
+**Seven tests against Pinecone Local, three mutations, each caught:**
+
+| mutation | caught by |
+| --- | --- |
+| index made unsigned (`abs`) | **only** the negative-index test |
+| index dropped from the record id | three tests |
+| identity parsed from the record id | the separator test, and the metadata test |
+
+**One index for the whole class, deleted in teardown.** Pinecone Local allocates one data-plane port
+per index from a range of ten, so an index leaked by a failing test starves later ones. Each test
+uses its own document ids rather than its own index.
+
+**Five backends in, the exception still holds.** The mechanisms have differed at every one — SQL
+row-zipping, payload filter, direct key read, GraphQL where, id fetch — while the negative-index
+test has been the only thing catching an unsigned-index implementation on all five.
+
+**Remaining: Chroma and Azure AI Search.** Chroma needs a `get` endpoint added to its HTTP client;
+Azure AI Search may not be locally exercisable at all, since its simulator implements no OData
+filters.
+
+### Phase 6.2.29: Keyed Chunk Lookup on Chroma [status: complete 2026-09-08 — #318, sixth of seven]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-08
+
+**Goal:** the backend that needed a new endpoint, deliberately left out of 6.2.26 rather than
+rushed.
+
+**IT LOOKED LIKE REDIS AND WAS NOT.** Chroma's record id is derived the same way —
+`RecordId` composes `documentId + ":" + chunkIndex` — so it appeared to be another direct fetch. But
+`IChromaApi` carried only `/query` and `/delete`, and **`/query` cannot serve a keyed read at all**:
+local search picks its chunks by graph provenance and no embedding returns them. A derived id is no
+use if the API cannot ask for one.
+
+**So this adds `/get`**, with `ChromaGetRequest` and `ChromaGetResponse`.
+
+**The response type is separate from `ChromaQueryResponse` for a concrete reason.** `/query` answers
+per query embedding, so its arrays are arrays of rows and the store takes the first; `/get` answers
+for one set of ids, so its arrays are the records themselves. Modelling `/get` with the query type
+would have compiled and then read the first record's fields as if they were a whole row.
+
+**Same directional constraint as Pinecone.** `BuildChunk` refuses to recover identity from a record
+id because a document id may contain the `:` separator, so ids are constructed and never parsed, and
+the identity comes back out of metadata. Pinned by a test using an id with two colons.
+
+**Seven tests against a real Chroma, green on the first run. Four mutations, each caught:**
+
+| mutation | caught by |
+| --- | --- |
+| index made unsigned (`abs`) | **only** the negative-index test |
+| index dropped from the record id | three tests |
+| identity parsed from the record id | the separator test, and the metadata test |
+| `metadatas` dropped from the include list | five tests |
+
+**Six backends in, six different mechanisms, and one constant.** SQL row-zipping, payload filter,
+direct key read, GraphQL where, id fetch, and now an endpoint that had to be added. Not one was a
+translation of the last — and the negative-index test has been the only thing catching an
+unsigned-index implementation on **all six**.
+
+**Only Azure AI Search remains.** Its simulator implements no OData filters, so whether it can be
+verified locally at all needs establishing before an implementation is written, rather than after.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.

@@ -28,7 +28,7 @@ namespace Rag.NET.Weaviate;
 /// <c>MinScore</c> is applied to the mapped score, <c>TopK</c> becomes <c>limit</c>.
 /// </para>
 /// </summary>
-public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable, IDisposable
+public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable, IChunkLookup, IDisposable
 {
     private readonly IWeaviateApi _api;
     private readonly WeaviateOptions _options;
@@ -462,6 +462,108 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         return score.ValueKind == JsonValueKind.String
             ? double.Parse(score.GetString()!, CultureInfo.InvariantCulture)
             : score.GetDouble();
+    }
+
+    /// <summary>
+    /// Returns the chunks for the given keys, in one GraphQL <c>Get</c>. Missing keys are simply
+    /// absent (#318).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A fourth mechanism again.</b> PgVector zips the pairs in SQL, Qdrant filters on payload
+    /// because its ids are random, Redis reads the key directly because the key is the identity.
+    /// Weaviate has object UUIDs this store never derives from the chunk, so the identity lives in
+    /// properties and the lookup is a <c>where</c> — but unlike search there is no vector, no
+    /// hybrid argument and no <c>_additional</c> to select, so it cannot reuse
+    /// <see cref="BuildGetQuery"/>.
+    /// </para>
+    /// <para>
+    /// <b>The pairs are matched as pairs.</b> Each key becomes an <c>And</c> of
+    /// <c>document_id</c> and <c>chunk_index</c>, and those are <c>Or</c>-composed. Filtering the
+    /// two properties independently would return another document's chunk at the same index.
+    /// </para>
+    /// <para>
+    /// <b><c>document_id</c> is <c>field</c>-tokenized</b>, which the class schema sets so an
+    /// <c>Equal</c> matches the whole id rather than its word tokens — the same reason
+    /// delete-by-document needs it. A word-tokenized property would let <c>doc-1</c> match a filter
+    /// for <c>doc-2</c> through their shared <c>doc</c> token.
+    /// </para>
+    /// <para>
+    /// <b>Negative chunk indices are ordinary.</b> <c>chunk_index</c> is a Weaviate <c>int</c> and
+    /// the condition is <c>Equal</c>, so <c>-(i + 1)</c> — what
+    /// <c>GraphEntityExtractionBehavior</c> assigns to synthetic entity and relationship chunks —
+    /// matches like any other value.
+    /// </para>
+    /// </remarks>
+    /// <param name="keys">Chunk identities to fetch.</param>
+    /// <param name="cancellationToken">Cancels the lookup.</param>
+    /// <returns>The chunks that exist, in unspecified order.</returns>
+    public async Task<IReadOnlyList<TextChunk>> GetChunksAsync(
+        IReadOnlyList<ChunkKey> keys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        if (keys.Count == 0)
+            return [];
+
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+
+        var hits = await ExecuteGetQueryAsync(BuildLookupQuery(keys), cancellationToken)
+            .ConfigureAwait(false);
+
+        if (hits.ValueKind != JsonValueKind.Array)
+            return [];
+
+        var chunks = new List<TextChunk>(keys.Count);
+        foreach (var hit in hits.EnumerateArray())
+        {
+            var documentId = hit.GetProperty("document_id").GetString()!;
+            var chunkIndex = hit.GetProperty("chunk_index").GetInt32();
+            chunks.Add(new TextChunk
+            {
+                Text = hit.GetProperty("text").GetString() ?? string.Empty,
+                DocumentId = new DocumentId(documentId),
+                ChunkIndex = chunkIndex,
+                Metadata = DeserializeMetadataOrThrow(hit, documentId, chunkIndex),
+            });
+        }
+
+        return chunks;
+    }
+
+    /// <summary>
+    /// The <c>Get</c> query for a keyed lookup: a <c>where</c> of Or-composed And pairs, no search
+    /// argument, and no <c>_additional</c> because there is no score to read.
+    /// </summary>
+    /// <param name="keys">The identities to match.</param>
+    /// <returns>The GraphQL query.</returns>
+    private string BuildLookupQuery(IReadOnlyList<ChunkKey> keys)
+    {
+        var sb = new StringBuilder(256);
+        sb.Append("{ Get { ").Append(_options.ClassName).Append('(');
+        if (_options.Tenant is { } tenant)
+            sb.Append("tenant: ").Append(GraphQlString(tenant)).Append(", ");
+
+        // At most one object can match each key, so the key count is the limit.
+        sb.Append("limit: ").Append(keys.Count.ToString(CultureInfo.InvariantCulture));
+        sb.Append(", where: {operator: Or, operands: [");
+
+        for (var i = 0; i < keys.Count; i++)
+        {
+            if (i > 0)
+                sb.Append(", ");
+
+            sb.Append("{operator: And, operands: [")
+              .Append("{path: [\"document_id\"], operator: Equal, valueText: ")
+              .Append(GraphQlString(keys[i].DocumentId))
+              .Append("}, {path: [\"chunk_index\"], operator: Equal, valueInt: ")
+              .Append(keys[i].ChunkIndex.ToString(CultureInfo.InvariantCulture))
+              .Append("}]}");
+        }
+
+        sb.Append("]}) { text document_id chunk_index metadata_json } } }");
+        return sb.ToString();
     }
 
     private string BuildGetQuery(string searchArgument, SearchOptions options, string additionalField)

@@ -36,13 +36,16 @@ namespace Rag.NET.Chroma;
 /// failure throws.
 /// </para>
 /// </summary>
-public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDisposable
+public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IChunkLookup, IDisposable
 {
     private static readonly FrozenDictionary<string, string> CosineSpaceMetadata =
         new Dictionary<string, string>(StringComparer.Ordinal) { ["hnsw:space"] = "cosine" }
             .ToFrozenDictionary(StringComparer.Ordinal);
 
     private static readonly string[] IncludeSections = ["documents", "metadatas", "distances"];
+
+    /// <summary>A keyed fetch ranks nothing, so it asks for no distances.</summary>
+    private static readonly string[] LookupIncludeSections = ["documents", "metadatas"];
 
     private readonly IChromaApi _api;
     private readonly ChromaOptions _options;
@@ -437,7 +440,25 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
         string recordId,
         string? document,
         Dictionary<string, JsonElement>? metadata,
-        double score)
+        double score) => new()
+    {
+        Chunk = BuildChunk(recordId, document, metadata),
+        Score = score,
+    };
+
+    /// <summary>
+    /// Materialises a chunk from one record. Shared by search and by the keyed lookup, which read
+    /// the same fields off differently shaped responses — nested rows from <c>/query</c>, flat
+    /// arrays from <c>/get</c> — so the two cannot drift on what a stored chunk is.
+    /// </summary>
+    /// <param name="recordId">The record id, for the corruption message only — never parsed.</param>
+    /// <param name="document">The stored document text.</param>
+    /// <param name="metadata">The record's metadata, carrying the identity.</param>
+    /// <returns>The chunk it encodes.</returns>
+    private static TextChunk BuildChunk(
+        string recordId,
+        string? document,
+        Dictionary<string, JsonElement>? metadata)
     {
         if (metadata is null
             || !metadata.TryGetValue("document_id", out var documentId)
@@ -457,17 +478,78 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
             chunkMetadata[kvp.Key] = FromChromaValue(kvp.Value);
         }
 
-        return new SearchResult
+        return new TextChunk
         {
-            Chunk = new TextChunk
-            {
-                Text = document ?? string.Empty,
-                DocumentId = new DocumentId(documentId.GetString()!),
-                ChunkIndex = chunkIndex.GetInt32(),
-                Metadata = chunkMetadata,
-            },
-            Score = score,
+            Text = document ?? string.Empty,
+            DocumentId = new DocumentId(documentId.GetString()!),
+            ChunkIndex = chunkIndex.GetInt32(),
+            Metadata = chunkMetadata,
         };
+    }
+
+    /// <summary>
+    /// Returns the chunks for the given keys, by fetching their record ids. Missing keys are simply
+    /// absent (#318).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This needed a new endpoint, which is why Chroma was not done alongside Redis.</b> Its
+    /// record id is derived the same way — <c>RecordId</c> composes
+    /// <c>documentId + ":" + chunkIndex</c> — so it looks like the same shape, but the API surface
+    /// carried only <c>/query</c> and <c>/delete</c>. <c>/query</c> cannot serve this at all: local
+    /// search picks its chunks by graph provenance and there is no embedding that returns them.
+    /// </para>
+    /// <para>
+    /// <b>Ids are constructed, never parsed</b>, exactly as <see cref="BuildChunk"/> requires: a
+    /// document id may contain the <c>:</c> separator, so recovering identity from an id is
+    /// ambiguous while building one is not. The identity comes back out of metadata.
+    /// </para>
+    /// <para>
+    /// <b>The response is flat where the query response is nested</b>, which is why
+    /// <see cref="ChromaGetResponse"/> exists rather than reusing
+    /// <see cref="ChromaQueryResponse"/>: the latter's arrays are one row per query embedding.
+    /// </para>
+    /// </remarks>
+    /// <param name="keys">Chunk identities to fetch.</param>
+    /// <param name="cancellationToken">Cancels the lookup.</param>
+    /// <returns>The chunks that exist, in unspecified order.</returns>
+    public async Task<IReadOnlyList<TextChunk>> GetChunksAsync(
+        IReadOnlyList<ChunkKey> keys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        if (keys.Count == 0)
+            return [];
+
+        var ids = new List<string>(keys.Count);
+        for (var i = 0; i < keys.Count; i++)
+            ids.Add(RecordId(keys[i].DocumentId, keys[i].ChunkIndex));
+
+        var request = new ChromaGetRequest { Ids = ids, Include = LookupIncludeSections };
+        var response = await ExecuteOnCollectionAsync(
+            "get",
+            collectionId => _api.GetRecordsAsync(
+                _options.Tenant, _options.Database, collectionId, request, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+
+        if (response.Ids is not { Count: > 0 } foundIds)
+            return [];
+
+        var documents = response.Documents;
+        var metadatas = response.Metadatas;
+        if ((documents is not null && documents.Count != foundIds.Count)
+            || (metadatas is not null && metadatas.Count != foundIds.Count))
+        {
+            throw new InvalidOperationException(
+                "Chroma get response returned ragged documents/metadatas for the returned records.");
+        }
+
+        var chunks = new List<TextChunk>(foundIds.Count);
+        for (var i = 0; i < foundIds.Count; i++)
+            chunks.Add(BuildChunk(foundIds[i], documents?[i], metadatas?[i]));
+
+        return chunks;
     }
 
     /// <summary>

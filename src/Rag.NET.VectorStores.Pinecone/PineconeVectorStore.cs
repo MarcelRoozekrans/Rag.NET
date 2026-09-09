@@ -37,7 +37,7 @@ namespace Rag.NET.Pinecone;
 /// disposal interface, so there is nothing to release.
 /// </para>
 /// </summary>
-public class PineconeVectorStore : IVectorStore, ICollectionManageable, IDisposable
+public class PineconeVectorStore : IVectorStore, ICollectionManageable, IChunkLookup, IDisposable
 {
     /// <summary>
     /// Records per upsert request: 1536-dim embeddings weigh ~6 KB each, so 100 stays
@@ -448,15 +448,28 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable, IDisposa
     /// store posture is to throw naming the record, never to guess from the record id
     /// (document ids may themselves contain the <c>:</c> separator).
     /// </summary>
-    private static SearchResult BuildResult(ScoredVector match, double score)
+    private static SearchResult BuildResult(ScoredVector match, double score) => new()
     {
-        var metadata = match.Metadata;
+        Chunk = BuildChunk(match.Metadata, match.Id),
+        Score = score,
+    };
+
+    /// <summary>
+    /// Materialises a chunk from a record's metadata. Shared by search and by the keyed lookup,
+    /// which read different record types — <c>ScoredVector</c> and <c>Vector</c> — carrying the same
+    /// metadata, so the two cannot drift on what a stored chunk is.
+    /// </summary>
+    /// <param name="metadata">The record's metadata.</param>
+    /// <param name="recordId">The record id, for the corruption message only.</param>
+    /// <returns>The chunk it encodes.</returns>
+    private static TextChunk BuildChunk(Metadata? metadata, string recordId)
+    {
         if (metadata is null
             || !metadata.TryGetValue("document_id", out var documentId) || documentId?.IsT0 != true
             || !metadata.TryGetValue("chunk_index", out var chunkIndex) || chunkIndex?.IsT1 != true)
         {
             throw new InvalidOperationException(
-                $"Pinecone record '{match.Id}' is missing its document_id/chunk_index metadata.");
+                $"Pinecone record '{recordId}' is missing its document_id/chunk_index metadata.");
         }
 
         var text = metadata.TryGetValue("text", out var textValue) && textValue?.IsT0 == true
@@ -471,17 +484,73 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable, IDisposa
                 chunkMetadata[kvp.Key] = FromPineconeValue(value);
         }
 
-        return new SearchResult
+        return new TextChunk
         {
-            Chunk = new TextChunk
-            {
-                Text = text,
-                DocumentId = new DocumentId(documentId.AsT0),
-                ChunkIndex = (int)chunkIndex.AsT1,
-                Metadata = chunkMetadata,
-            },
-            Score = score,
+            Text = text,
+            DocumentId = new DocumentId(documentId.AsT0),
+            ChunkIndex = (int)chunkIndex.AsT1,
+            Metadata = chunkMetadata,
         };
+    }
+
+    /// <summary>
+    /// Returns the chunks for the given keys, by fetching their record ids. Missing keys are simply
+    /// absent (#318).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Pinecone can answer by id, because this store derives one.</b> <see cref="RecordId"/>
+    /// composes <c>documentId + ":" + chunkIndex</c>, so the key is reconstructible and the lookup
+    /// is a <c>Fetch</c> — no query vector, no filter. That is the same shape Redis has and the
+    /// opposite of Qdrant, whose ids are random GUIDs.
+    /// </para>
+    /// <para>
+    /// <b>Ids are constructed here, never parsed.</b> <see cref="BuildChunk"/> deliberately refuses
+    /// to recover identity from a record id because a document id may itself contain the <c>:</c>
+    /// separator. Constructing has no such ambiguity — the chunk index cannot contain a colon — so
+    /// this direction is safe while the reverse is not, and the identity still comes back out of
+    /// metadata rather than out of the id.
+    /// </para>
+    /// <para>
+    /// <b>A missing key is simply not in the response.</b> Pinecone's fetch returns only the records
+    /// it has, which is the contract: a document deleted since extraction leaves the graph naming
+    /// chunks that no longer exist.
+    /// </para>
+    /// <para>
+    /// <b>Negative chunk indices need nothing special</b> — they become part of the id text, and
+    /// <c>GraphEntityExtractionBehavior</c> assigns <c>-(i + 1)</c> to synthetic entity and
+    /// relationship chunks, so those are exactly the records GraphRAG asks for.
+    /// </para>
+    /// </remarks>
+    /// <param name="keys">Chunk identities to fetch.</param>
+    /// <param name="cancellationToken">Cancels the lookup.</param>
+    /// <returns>The chunks that exist, in unspecified order.</returns>
+    public async Task<IReadOnlyList<TextChunk>> GetChunksAsync(
+        IReadOnlyList<ChunkKey> keys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        if (keys.Count == 0)
+            return [];
+
+        var ids = new List<string>(keys.Count);
+        for (var i = 0; i < keys.Count; i++)
+            ids.Add(RecordId(keys[i].DocumentId, keys[i].ChunkIndex));
+
+        var index = await GetIndexAsync(cancellationToken).ConfigureAwait(false);
+        var response = await index.FetchAsync(
+            new FetchRequest { Ids = ids, Namespace = _options.Namespace },
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        if (response.Vectors is not { Count: > 0 } vectors)
+            return [];
+
+        var chunks = new List<TextChunk>(vectors.Count);
+        foreach (var kvp in vectors)
+            chunks.Add(BuildChunk(kvp.Value.Metadata, kvp.Key));
+
+        return chunks;
     }
 
     private async Task<List<string>> ListChunkIdsAsync(

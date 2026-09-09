@@ -65,6 +65,18 @@ internal interface IChromaApi
         [Body] ChromaQueryRequest body,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Fetches records by id. Ids with no record are absent from the response rather than an
+    /// error, which is what <c>IChunkLookup</c> requires (#318).
+    /// </summary>
+    [Post("/api/v2/tenants/{tenant}/databases/{database}/collections/{collectionId}/get")]
+    Task<Result<ChromaGetResponse, ZeroAlloc.Rest.HttpError>> GetRecordsAsync(
+        string tenant,
+        string database,
+        string collectionId,
+        [Body] ChromaGetRequest body,
+        CancellationToken cancellationToken = default);
+
     [Post("/api/v2/tenants/{tenant}/databases/{database}/collections/{collectionId}/delete")]
     Task<Result<ChromaDeleteRecordsResponse, ZeroAlloc.Rest.HttpError>> DeleteRecordsAsync(
         string tenant,
