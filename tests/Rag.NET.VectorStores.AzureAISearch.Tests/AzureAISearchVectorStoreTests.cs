@@ -239,7 +239,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
                 new SearchOptions { TopK = 10, MinScore = 0.9 },
                 TestContext.Current.CancellationToken);
 
-            Assert.NotEmpty(results);
+            Assert.Equal(2, results.Count);
         }
         finally
         {

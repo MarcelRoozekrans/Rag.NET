@@ -435,10 +435,10 @@ public class WeaviateVectorStoreTests
         var results = await store.HybridSearchAsync(
             "zebra",
             new float[] { 1.0f, 0.0f, 0.0f },
-            new SearchOptions { TopK = 2, MinScore = 0.9 },
+            new SearchOptions { TopK = 10, MinScore = 0.9 },
             TestContext.Current.CancellationToken);
 
-        Assert.NotEmpty(results);
+        Assert.Equal(3, results.Count);
     }
 
     private WeaviateVectorStore CreateStore(string className, string? tenant = null) =>
