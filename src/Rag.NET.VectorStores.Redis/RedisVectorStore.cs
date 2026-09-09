@@ -1,5 +1,7 @@
+using System.Buffers.Text;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Text;
 using NRedisStack.RedisStackCommands;
 using NRedisStack.Search;
 using NRedisStack.Search.Literals.Enums;
@@ -49,6 +51,7 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     private const string DocumentIdField = "document_id";
     private const string ChunkIndexField = "chunk_index";
     private const string MetadataField = "metadata";
+    private const string MetadataFieldPrefix = "md_";
 
     private readonly VectorStoreInitialisationGate _initGate = new();
     private readonly IConnectionMultiplexer _redis;
@@ -455,7 +458,7 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     /// <returns>The escaped value.</returns>
     internal static string EscapeTag(string value)
     {
-        var escaped = new System.Text.StringBuilder(value.Length);
+        var escaped = new StringBuilder(value.Length);
         foreach (var character in value)
         {
             if (!char.IsLetterOrDigit(character) && character != '_')
@@ -467,6 +470,48 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         }
 
         return escaped.ToString();
+    }
+
+    /// <summary>The hash field and index attribute a filterable metadata key is stored under.</summary>
+    /// <param name="key">The metadata key.</param>
+    /// <returns>The namespaced field name, e.g. <c>md_tenant</c>.</returns>
+    internal static string MetadataFieldName(string key) => MetadataFieldPrefix + key;
+
+    /// <summary>
+    /// The TAG token one filterable metadata value is stored and queried as: its kind, a colon,
+    /// then the Base64Url of its canonical text.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The kind prefix is the typed half of the contract.</b> <c>SearchOptions.MetadataFilter</c>
+    /// matches typed — a filter of <c>3</c> must not match the string <c>"3"</c> — and without the
+    /// prefix both render as <c>3</c>.
+    /// </para>
+    /// <para>
+    /// <b>The value is encoded, not escaped, because a TAG field splits on a separator</b>
+    /// (<c>,</c> by default). No separator character is safe when a value can contain any
+    /// character, and Base64Url's alphabet contains none of them. Dropping the encoding is the
+    /// simplification that passes every test whose values are well-behaved words.
+    /// </para>
+    /// <para>
+    /// <b>The text comes from <see cref="MetadataValue.ToString"/></b>, which already emits
+    /// invariant numbers, <c>true</c>/<c>false</c>, and the shared date format — so the write path
+    /// and the filter path are one accessor and cannot drift.
+    /// </para>
+    /// </remarks>
+    /// <param name="value">The metadata value.</param>
+    /// <returns>The token.</returns>
+    internal static string MetadataToken(MetadataValue value)
+    {
+        var kind = value.Kind switch
+        {
+            MetadataValueKind.Number => 'n',
+            MetadataValueKind.Boolean => 'b',
+            MetadataValueKind.DateTimeOffset => 'd',
+            _ => 's',
+        };
+
+        return $"{kind}:{Base64Url.EncodeToString(Encoding.UTF8.GetBytes(value.ToString()))}";
     }
 
     public void Dispose()
