@@ -7078,11 +7078,27 @@ dictionary**; only a `JsonException` produces `Failure`. So replacing a fallback
 fire on an absent field — only on genuinely malformed stored JSON. No upgrade hazard, no data
 migration.
 
-**Open questions for the design, and they are not all the same answer.** Whether a throw is right at
-every site: `SqliteBm25Index` reads inside a search loop, where one corrupt row would fail a whole
-query, which is a different trade from a keyed read of one chunk. Whether the throwing helper should
-move into `MetadataSerializer` so a seventh site cannot be written the swallowing way — and if so,
-how the caller's identity reaches the message, since each store names its own document and chunk.
+**The six sites do not all have the same blast radius**, which is the design's real question.
+Read rather than inferred from the call-site names:
+
+| site | method | what a throw costs |
+| --- | --- | --- |
+| `SqliteBm25Index` | `LoadIntoMemory` | the index fails to **load** — a startup failure, not a query one |
+| `SqliteDocumentStore` | `GetDocumentsAsync` (tags) | one corrupt row fails the whole document **listing** |
+| `SqliteDocumentStore` | `GetChunksAsync` | that one document's chunks fail |
+| PgVector | `ReadChunk` | one hit fails its search or keyed read |
+| Qdrant | `MapChunk` | same |
+| Azure AI Search | `ReadMetadata` | same, and only on the legacy field — `metadata_entries` is tried first |
+
+**An earlier draft of this block said `SqliteBm25Index` read inside a search loop and that one
+corrupt row would fail a whole query. That was inferred from the call site and is wrong** — it is a
+load path, which is the *easiest* place to fail loudly, not the hardest. Corrected before the
+design was written.
+
+The listing case is the widest, and Weaviate's reviewed decision already accepts that shape: its
+throw is on the search path, where one corrupt hit fails the search. The second question is whether
+the throwing helper belongs in `MetadataSerializer` so a seventh site cannot be written the
+swallowing way, and if so how the caller's identity reaches the message.
 
 **Nobody has observed a corrupt blob in the wild.** This is posture and consistency, not a live
 incident, and the phase should say so rather than inflate it.
