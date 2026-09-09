@@ -45,7 +45,7 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 
 - [x] **Milestone 5 complete** — closed 2026-08-15 by audit, verdict PASS.
 - [ ] **All planned phases complete** — what remains is **three**: 6.1 Recorded Responses
-      (blocked on accounts, still gating the tag), 6.2.31 Redis chunk metadata (#513, pending), and
+      (blocked on accounts, still gating the tag), 6.2.31 Redis chunk metadata (#513, active), and
       6.3 Release v1.0. **Corrected 2026-09-09 — the fourth drift of this line.** It said "6.2.1
       Retrieval & Answer Sweep (active)" for three days after that phase closed on 2026-09-06, and
       it listed none of 6.2.13–6.2.30, which is nineteen phases. The Phases table below stayed
