@@ -7140,6 +7140,8 @@ incident, and the phase should say so rather than inflate it.
 ### Phase 6.2.33: A Fused Score Is Not a Similarity [status: pending — added 2026-09-09, #530 then #328]
 **Surface:** Storage
 **HelpWanted:** no
+**Design:** `docs/plans/2026-09-09-hybrid-score-scale-design.md`
+**Plan:** `docs/plans/2026-09-09-hybrid-score-scale-implementation.md`
 
 **Goal:** the two stores that return backend-fused hybrid scores stop reporting them as
 similarities, and stop thresholding on them — after which #328's semantic ranker lands as the third
@@ -7149,6 +7151,20 @@ case of the same rule rather than a decision invented for it.
 ranker off "pending the score-scale decision" and nobody took it. Scoping it found that the decision
 is not hypothetical: `AzureAISearchVectorStore` and `WeaviateVectorStore` already return fused
 scores and already apply a similarity-shaped `MinScore` to them.
+
+**And that scoping was itself corrected before any code was written — the severity was smaller than
+it first read.** `EnsembleBehavior.CanDispatchNatively` already requires `MinScore` to be exactly
+`0.0` before it will dispatch to either store's native hybrid query, so a pipeline caller who sets a
+threshold was never handed a mis-thresholded fused score — the request quietly takes the
+client-side RRF path instead, which is deliberate and pre-existing. **This is not a live
+wrong-results defect for pipeline users; it never was.** What remains is narrower: `HybridSearchAsync`
+is public API on a public store class, and a caller reaching it *directly* — bypassing the pipeline —
+got `MinScore` applied to an ordinal fused score with nothing to warn them, and neither store declared
+a scale a capability probe could discover. The design record checked for the exact mistake this
+milestone made one phase earlier before repeating it: 6.2.31 told readers "filtering happens in the
+pipeline instead" about metadata, and it did not; this phase's own first draft came close to the same
+shape of overstatement about `MinScore` and was corrected before it shipped as a claim rather than
+after.
 
 **The library defines the rule, uses it, and these two do not participate.**
 `ScoreScale.OpaqueRanking` says in its own remarks that RRF and unbounded backend hybrid scores are
@@ -7176,6 +7192,44 @@ threshold are testable without an Azure account. #328's half needs a real resour
 higher, billable, region-limited), so it carries the account constraint 6.1 has.
 
 **No consumer has reported either.** Found by reading, in the class of #56.
+
+**#530's half landed exactly as scoped, and it is cheaper than the goal line makes it sound.**
+`IHybridSearchable` gained `HybridScoreScale`, defaulted to `ScoreScale.OpaqueRanking`. Because it is
+defaulted, `AzureAISearchVectorStore` and `WeaviateVectorStore` both became correct **without
+overriding anything** — the whole reason for putting the declaration on the interface rather than on
+each store. Cheap now, with one implementer of `IScoreScaleAware` and two of `IHybridSearchable`;
+adding a member to a public interface after v1.0 is a breaking change. Each store's hybrid path also
+stopped forwarding `options.MinScore` into its result mapping — ignored rather than refused, on
+purpose: `MinScore` lives on shared `RetrievalOptions` and is copied into every path's
+`SearchOptions`, so a caller with a perfectly sensible dense-path threshold should not start crashing
+the moment a store advertises hybrid.
+
+**The mutation sweep found an unprotected capability, not a bug in this phase's own change.**
+Alongside reverting each store's new `MinScore` skip and each new declaration, the sweep also ran a
+control mutation against the capability this phase must *not* regress: hardcoding `minScore: 0.0`
+into Azure's own **dense** `SearchAsync` call, a path this phase does not touch. The whole Azure AI
+Search suite stayed green anyway — dense `MinScore` had no test at all. Weaviate's equivalent
+mutation was already caught by an existing test (`Search_TopKAndMinScore_Honored`), so the gap was
+Azure's alone. Closed with `Search_MinScore_FiltersByCosineSimilarity`, pinned against the local
+simulator's score mapping (cosine similarity 1.0 → score 1.0, 0.8 → ~0.8333, 0.0 → 0.5), and a 0.9
+threshold that keeps only the identical vector.
+
+**A test that could not fail was caught during implementation, not left for the sweep.** Weaviate's
+first hybrid `MinScore` test stored one chunk that matched both the keyword and the vector query — a
+candidate topping both arms of a relative-score fusion scores 1.0, so no threshold at or below 1.0
+could ever filter it, and the test would have passed whether or not the fix existed. Diagnosed rather
+than tuned away: the fix reuses the three-chunk topology from the existing fusion test instead, with
+the vector match ("alpha") and the keyword match ("zebra") on separate chunks, so each chunk's fused
+score stays below the 0.9 threshold and the page is genuinely empty before the fix.
+
+Both suites re-run clean after all four commits: Azure AI Search 36 passed (1 pre-existing,
+unrelated skip), Weaviate 30 passed.
+
+**#328 remains open and is not touched here.** The semantic ranker lands on top of this declaration
+as a third case of the same rule, per the Goal above, but it needs a real, billable Azure resource —
+the local simulator accepts a `semantic` index configuration and a `queryType=semantic` query and
+returns HTTP 200 with no `rerankerScore` at all, so a test written the obvious way would pass whether
+or not ranking actually happened. That half carries 6.1's account constraint and stays pending.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
