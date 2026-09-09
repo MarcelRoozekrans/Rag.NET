@@ -17,16 +17,26 @@ public static class RedisBuilderExtensions
     /// </param>
     /// <param name="indexName">The RediSearch index to create and query.</param>
     /// <param name="vectorDimensions">Dense embedding dimensions; must match the generator's.</param>
+    /// <param name="filterableMetadataKeys">
+    /// Metadata keys that may be used in <c>MetadataFilter</c>. They become case-sensitive TAG
+    /// attributes in the index, so they must be known when the index is created. **A filter naming
+    /// a key that is not declared here throws** rather than returning an unfiltered page — Redis is
+    /// the only backend in this library that requires the declaration, because RediSearch filters
+    /// only on attributes the schema names.
+    /// </param>
     /// <returns>The same builder, for chaining.</returns>
     public static TBuilder UseRedis<TBuilder>(
         this TBuilder builder,
         string configuration,
         string indexName = "ragnet-idx",
-        int vectorDimensions = 1536)
+        int vectorDimensions = 1536,
+        IReadOnlyList<string>? filterableMetadataKeys = null)
         where TBuilder : IRagBuilder
     {
         ArgumentNullException.ThrowIfNull(builder);
-        return Register(builder, new RedisVectorStore(configuration, indexName, vectorDimensions));
+        return Register(
+            builder,
+            new RedisVectorStore(configuration, indexName, vectorDimensions, filterableMetadataKeys));
     }
 
     /// <summary>
@@ -38,16 +48,25 @@ public static class RedisBuilderExtensions
     /// <param name="redis">The existing connection.</param>
     /// <param name="indexName">The RediSearch index to create and query.</param>
     /// <param name="vectorDimensions">Dense embedding dimensions; must match the generator's.</param>
+    /// <param name="filterableMetadataKeys">
+    /// Metadata keys that may be used in <c>MetadataFilter</c>. They become case-sensitive TAG
+    /// attributes in the index, so they must be known when the index is created. **A filter naming
+    /// a key that is not declared here throws** rather than returning an unfiltered page — Redis is
+    /// the only backend in this library that requires the declaration, because RediSearch filters
+    /// only on attributes the schema names.
+    /// </param>
     /// <returns>The same builder, for chaining.</returns>
     public static TBuilder UseRedis<TBuilder>(
         this TBuilder builder,
         IConnectionMultiplexer redis,
         string indexName = "ragnet-idx",
-        int vectorDimensions = 1536)
+        int vectorDimensions = 1536,
+        IReadOnlyList<string>? filterableMetadataKeys = null)
         where TBuilder : IRagBuilder
     {
         ArgumentNullException.ThrowIfNull(builder);
-        return Register(builder, new RedisVectorStore(redis, indexName, vectorDimensions));
+        return Register(
+            builder, new RedisVectorStore(redis, indexName, vectorDimensions, filterableMetadataKeys));
     }
 
     private static TBuilder Register<TBuilder>(TBuilder builder, RedisVectorStore store)

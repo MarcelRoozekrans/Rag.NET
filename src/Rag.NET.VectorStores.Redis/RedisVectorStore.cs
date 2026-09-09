@@ -59,13 +59,30 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     private readonly string _indexName;
     private readonly string _keyPrefix;
     private readonly int _vectorDimensions;
+    private readonly IReadOnlyList<string> _filterableKeys;
 
     /// <summary>Creates a store against a Redis connection string.</summary>
     /// <param name="configuration">A StackExchange.Redis configuration string, e.g. <c>localhost:6379</c>.</param>
     /// <param name="indexName">The RediSearch index to create and query.</param>
     /// <param name="vectorDimensions">The embedding width; must match the generator's.</param>
-    public RedisVectorStore(string configuration, string indexName = "ragnet-idx", int vectorDimensions = 1536)
-        : this(ConnectionMultiplexer.Connect(configuration), indexName, vectorDimensions, ownsConnection: true)
+    /// <param name="filterableMetadataKeys">
+    /// Metadata keys that may be used in <c>MetadataFilter</c>. They become case-sensitive TAG
+    /// attributes in the index, so they must be known when the index is created. **A filter naming
+    /// a key that is not declared here throws** rather than returning an unfiltered page — Redis is
+    /// the only backend in this library that requires the declaration, because RediSearch filters
+    /// only on attributes the schema names.
+    /// </param>
+    public RedisVectorStore(
+        string configuration,
+        string indexName = "ragnet-idx",
+        int vectorDimensions = 1536,
+        IReadOnlyList<string>? filterableMetadataKeys = null)
+        : this(
+            ConnectionMultiplexer.Connect(configuration),
+            indexName,
+            vectorDimensions,
+            ownsConnection: true,
+            filterableMetadataKeys)
     {
     }
 
@@ -73,13 +90,28 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     /// <param name="redis">An existing multiplexer — the common case when Redis is already used for caching.</param>
     /// <param name="indexName">The RediSearch index to create and query.</param>
     /// <param name="vectorDimensions">The embedding width; must match the generator's.</param>
-    public RedisVectorStore(IConnectionMultiplexer redis, string indexName = "ragnet-idx", int vectorDimensions = 1536)
-        : this(redis, indexName, vectorDimensions, ownsConnection: false)
+    /// <param name="filterableMetadataKeys">
+    /// Metadata keys that may be used in <c>MetadataFilter</c>. They become case-sensitive TAG
+    /// attributes in the index, so they must be known when the index is created. **A filter naming
+    /// a key that is not declared here throws** rather than returning an unfiltered page — Redis is
+    /// the only backend in this library that requires the declaration, because RediSearch filters
+    /// only on attributes the schema names.
+    /// </param>
+    public RedisVectorStore(
+        IConnectionMultiplexer redis,
+        string indexName = "ragnet-idx",
+        int vectorDimensions = 1536,
+        IReadOnlyList<string>? filterableMetadataKeys = null)
+        : this(redis, indexName, vectorDimensions, ownsConnection: false, filterableMetadataKeys)
     {
     }
 
     private RedisVectorStore(
-        IConnectionMultiplexer redis, string indexName, int vectorDimensions, bool ownsConnection)
+        IConnectionMultiplexer redis,
+        string indexName,
+        int vectorDimensions,
+        bool ownsConnection,
+        IReadOnlyList<string>? filterableMetadataKeys)
     {
         ArgumentNullException.ThrowIfNull(redis);
         ArgumentException.ThrowIfNullOrWhiteSpace(indexName);
@@ -90,6 +122,9 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         _keyPrefix = indexName + ":";
         _vectorDimensions = vectorDimensions;
         _ownsConnection = ownsConnection;
+        _filterableKeys = filterableMetadataKeys is null
+            ? []
+            : [.. filterableMetadataKeys];
     }
 
     private IDatabase Database => _redis.GetDatabase();
@@ -119,16 +154,24 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         var schema = new Schema()
             .AddTagField(DocumentIdField)
             .AddNumericField(ChunkIndexField)
-            .AddTextField(TextField)
-            .AddVectorField(
-                EmbeddingField,
-                Schema.VectorField.VectorAlgo.HNSW,
-                new Dictionary<string, object>(StringComparer.Ordinal)
-                {
-                    ["TYPE"] = "FLOAT32",
-                    ["DIM"] = vectorDimensions.ToString(CultureInfo.InvariantCulture),
-                    ["DISTANCE_METRIC"] = "COSINE",
-                });
+            .AddTextField(TextField);
+
+        foreach (var key in _filterableKeys)
+        {
+            // caseSensitive: MetadataValue compares strings ordinally, and a TAG field folds case
+            // by default — without this, "ACME" would answer a filter for "acme".
+            _ = schema.AddTagField(MetadataFieldName(key), caseSensitive: true);
+        }
+
+        _ = schema.AddVectorField(
+            EmbeddingField,
+            Schema.VectorField.VectorAlgo.HNSW,
+            new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["TYPE"] = "FLOAT32",
+                ["DIM"] = vectorDimensions.ToString(CultureInfo.InvariantCulture),
+                ["DISTANCE_METRIC"] = "COSINE",
+            });
 
         _ = await Database.FT().CreateAsync(
             collectionName,
@@ -205,7 +248,7 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         for (var i = 0; i < chunks.Count; i++)
         {
             var chunk = chunks[i];
-            var entries = new HashEntry[]
+            var entries = new List<HashEntry>(5 + _filterableKeys.Count)
             {
                 new(DocumentIdField, chunk.Chunk.DocumentId.Value),
                 new(ChunkIndexField, chunk.Chunk.ChunkIndex),
@@ -214,7 +257,15 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
                 new(EmbeddingField, ToBytes(chunk.Embedding.Span)),
             };
 
-            await database.HashSetAsync(KeyFor(chunk.Chunk.DocumentId.Value, chunk.Chunk.ChunkIndex), entries)
+            foreach (var key in _filterableKeys)
+            {
+                if (chunk.Chunk.Metadata.TryGetValue(key, out var value))
+                    entries.Add(new HashEntry(MetadataFieldName(key), MetadataToken(value)));
+            }
+
+            await database.HashSetAsync(
+                    KeyFor(chunk.Chunk.DocumentId.Value, chunk.Chunk.ChunkIndex),
+                    [.. entries])
                 .ConfigureAwait(false);
         }
     }
