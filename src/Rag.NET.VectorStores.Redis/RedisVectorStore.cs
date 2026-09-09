@@ -124,7 +124,64 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         _ownsConnection = ownsConnection;
         _filterableKeys = filterableMetadataKeys is null
             ? []
-            : [.. filterableMetadataKeys];
+            : ValidateFilterableKeys(filterableMetadataKeys);
+    }
+
+    /// <summary>
+    /// Rejects a declared filterable key that would break silently later instead of loudly now.
+    /// </summary>
+    /// <remarks>
+    /// <c>MetadataFieldName</c> is raw concatenation and the field name is spliced into every
+    /// filtered query <b>unescaped</b> (only the value is escaped). A key outside
+    /// <c>[A-Za-z0-9_]</c> — <c>tenant-id</c>, say — becomes the attribute <c>md_tenant-id</c>:
+    /// <c>FT.CREATE</c> accepts it and the <see cref="VerifyFilterableKeysAreIndexedAsync"/> guard
+    /// finds the name and passes, and only then does every filtered query break, because DIALECT 2
+    /// reads the hyphen inside <c>@md_tenant-id:{…}</c> as NOT. A duplicate would otherwise fail at
+    /// <c>FT.CREATE</c> on first use rather than at construction, and a null or blank key would
+    /// silently produce the field <c>md_</c>. Failing here, at construction, is the posture this
+    /// design takes everywhere else a bad configuration is detectable up front.
+    /// </remarks>
+    /// <param name="filterableMetadataKeys">The keys as supplied to the constructor.</param>
+    /// <returns>The validated keys, in order.</returns>
+    /// <exception cref="ArgumentException">A key is null/whitespace, invalid, or a duplicate.</exception>
+    private static string[] ValidateFilterableKeys(IReadOnlyList<string> filterableMetadataKeys)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var validated = new List<string>(filterableMetadataKeys.Count);
+        foreach (var key in filterableMetadataKeys)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new ArgumentException(
+                    "A filterable metadata key cannot be null or whitespace: it becomes the " +
+                    "RediSearch attribute name, and a blank one would produce the field 'md_'.",
+                    nameof(filterableMetadataKeys));
+            }
+
+            foreach (var character in key)
+            {
+                if (!char.IsAsciiLetterOrDigit(character) && character != '_')
+                {
+                    throw new ArgumentException(
+                        $"Filterable metadata key '{key}' contains '{character}', which is " +
+                        "outside [A-Za-z0-9_]. The key becomes the RediSearch attribute name " +
+                        $"unescaped inside every filtered query — DIALECT 2 would read a " +
+                        $"character like '-' as NOT rather than part of the field name.",
+                        nameof(filterableMetadataKeys));
+                }
+            }
+
+            if (!seen.Add(key))
+            {
+                throw new ArgumentException(
+                    $"Filterable metadata key '{key}' is declared more than once.",
+                    nameof(filterableMetadataKeys));
+            }
+
+            validated.Add(key);
+        }
+
+        return [.. validated];
     }
 
     private IDatabase Database => _redis.GetDatabase();
