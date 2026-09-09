@@ -114,6 +114,33 @@ public sealed class RedisChunkLookupTests : IAsyncLifetime
         Assert.DoesNotContain(found, c => string.Equals(c.Text, "ordinary", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// <b>A negative index and its positive counterpart must not collide.</b> The negative-index
+    /// trap above uses only negative indices, so it cannot tell a real per-sign key apart from one
+    /// that discards the sign (e.g. via <c>Math.Abs</c> in <c>KeyFor</c>): with only -1, -2, and 0
+    /// in play, an absolute-value key never re-derives an index another stored chunk already used.
+    /// Storing both <c>1</c> and <c>-1</c> for the same document forces that collision to surface —
+    /// a sign-discarding key would overwrite one chunk with the other and then read the survivor
+    /// back for both.
+    /// </summary>
+    [Fact]
+    public async Task PositiveAndNegativeChunkIndicesOfTheSameMagnitudeAreDistinctKeys()
+    {
+        await StoreAsync(
+            Chunk("graph", 1, "positive one"),
+            Chunk("graph", -1, "negative one"));
+
+        var found = await _store.GetChunksAsync(
+            [new ChunkKey("graph", 1), new ChunkKey("graph", -1)],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, found.Count);
+        Assert.Contains(found, c =>
+            string.Equals(c.Text, "positive one", StringComparison.Ordinal) && c.ChunkIndex == 1);
+        Assert.Contains(found, c =>
+            string.Equals(c.Text, "negative one", StringComparison.Ordinal) && c.ChunkIndex == -1);
+    }
+
     /// <summary>A key with no stored chunk is absent, not an error.</summary>
     [Fact]
     public async Task AKeyWithNoStoredChunkIsAbsentRatherThanAnError()

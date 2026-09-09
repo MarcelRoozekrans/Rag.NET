@@ -1,3 +1,4 @@
+using NRedisStack.RedisStackCommands;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using StackExchange.Redis;
@@ -185,6 +186,44 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
 
         var only = Assert.Single(results);
         Assert.Equal("doc-x", only.Chunk.DocumentId.Value);
+    }
+
+    /// <summary>
+    /// <b>The schema itself must declare the TAG field case-sensitive, not just happen to behave
+    /// that way.</b> <see cref="AFilterDoesNotMatchAValueDifferingOnlyInCase"/> cannot tell case
+    /// folding apart from a dropped <c>caseSensitive: true</c>: <c>MetadataToken</c> Base64Url-
+    /// encodes the value first, and two differently-cased source strings almost never produce
+    /// tokens that are themselves case-variants of each other, so RediSearch's default case
+    /// folding would not make them collide even without the flag. Reading <c>FT.INFO</c> checks
+    /// the schema attribute directly rather than through that indirection.
+    /// </summary>
+    [Fact]
+    public async Task FilterableKeysAreDeclaredAsCaseSensitiveTagFields()
+    {
+        var info = await _connection.GetDatabase().FT().InfoAsync("filter-idx");
+
+        var found = false;
+        foreach (var attribute in info.Attributes)
+        {
+            var isTenantField = false;
+            var isCaseSensitive = false;
+            foreach (var value in attribute.Values)
+            {
+                var text = value.ToString();
+                if (string.Equals(text, "md_tenant", StringComparison.Ordinal))
+                    isTenantField = true;
+                if (string.Equals(text, "CASESENSITIVE", StringComparison.Ordinal))
+                    isCaseSensitive = true;
+            }
+
+            if (!isTenantField)
+                continue;
+
+            found = true;
+            Assert.True(isCaseSensitive, "md_tenant should be declared CASESENSITIVE.");
+        }
+
+        Assert.True(found, "Expected an md_tenant attribute in the index schema.");
     }
 
     /// <summary>Case is significant: TAG fields fold case unless declared not to.</summary>
