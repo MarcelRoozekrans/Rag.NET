@@ -126,6 +126,29 @@ public class AzureAISearchBuilderExtensionsTests
         Assert.IsType<AzureAISearchVectorStore>(provider.GetRequiredService<IVectorStore>());
     }
 
+    /// <summary>
+    /// Forty-nine is rejected, and this test exists because the mutation sweep proved the boundary
+    /// was not pinned. With only a k=10 rejection and a k=50 acceptance, shifting the threshold
+    /// from 50 to 11 passed every test while wrongly accepting 49 — the exact value Microsoft's
+    /// guidance is about, since the ranker takes "up to 50 matches as input".
+    /// </summary>
+    [Fact]
+    public void EnablingTheRankerWithKJustBelowFiftyIsRejected()
+    {
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ServiceCollection().AddRagNet(rag => rag.UseAzureAISearch(
+                new Uri("https://test.search.windows.net"),
+                "test-index",
+                new AzureKeyCredential("dummy-key"),
+                configure: o =>
+                {
+                    o.EnableSemanticRanking = true;
+                    o.KNearestNeighborsCount = 49;
+                })));
+
+        Assert.Contains("50", error.Message, StringComparison.Ordinal);
+    }
+
     /// <summary>Fifty exactly is the documented minimum, not a value to reject.</summary>
     [Fact]
     public void EnablingTheRankerWithKAtFiftyIsAccepted()
