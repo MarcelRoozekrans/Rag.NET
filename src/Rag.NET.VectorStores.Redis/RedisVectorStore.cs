@@ -48,6 +48,7 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     private const string TextField = "text";
     private const string DocumentIdField = "document_id";
     private const string ChunkIndexField = "chunk_index";
+    private const string MetadataField = "metadata";
 
     private readonly VectorStoreInitialisationGate _initGate = new();
     private readonly IConnectionMultiplexer _redis;
@@ -206,6 +207,7 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
                 new(DocumentIdField, chunk.Chunk.DocumentId.Value),
                 new(ChunkIndexField, chunk.Chunk.ChunkIndex),
                 new(TextField, chunk.Chunk.Text),
+                new(MetadataField, MetadataSerializer.SerializeMetadata(chunk.Chunk.Metadata)),
                 new(EmbeddingField, ToBytes(chunk.Embedding.Span)),
             };
 
@@ -287,13 +289,6 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     /// <b>A missing key returns an empty hash rather than an error</b>, which is the contract: a
     /// document deleted since extraction leaves the graph naming chunks that no longer exist.
     /// </para>
-    /// <para>
-    /// <b>These chunks carry no metadata, and neither do this store's search results.</b>
-    /// <see cref="StoreAsync"/> persists only <c>document_id</c>, <c>chunk_index</c>, <c>text</c>
-    /// and the embedding, so there is nothing to return — a pre-existing property of this backend
-    /// rather than something the keyed read drops. A caller sees the same shape from either path,
-    /// which is the important part; that Redis stores no metadata at all is tracked separately.
-    /// </para>
     /// </remarks>
     /// <param name="keys">Chunk identities to fetch.</param>
     /// <param name="cancellationToken">Cancels the lookup.</param>
@@ -330,12 +325,13 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
 
     /// <summary>Materialises a chunk from the hash <see cref="StoreAsync"/> wrote.</summary>
     /// <param name="hash">The hash entries for one key.</param>
-    /// <returns>The chunk it encodes, without metadata — this store persists none.</returns>
+    /// <returns>The chunk it encodes, including its metadata.</returns>
     private static TextChunk MapChunk(HashEntry[] hash)
     {
         string text = string.Empty;
         string documentId = string.Empty;
         var chunkIndex = 0;
+        RedisValue metadata = RedisValue.Null;
 
         // Plain iteration: HashEntry is not a readonly struct, so a ref-readonly loop copies it
         // on every member access anyway (EPS06).
@@ -348,6 +344,8 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
                 documentId = entry.Value.ToString();
             else if (string.Equals(name, ChunkIndexField, StringComparison.Ordinal))
                 chunkIndex = (int)entry.Value;
+            else if (string.Equals(name, MetadataField, StringComparison.Ordinal))
+                metadata = entry.Value;
         }
 
         return new TextChunk
@@ -355,7 +353,35 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
             Text = text,
             DocumentId = new DocumentId(documentId),
             ChunkIndex = chunkIndex,
+            Metadata = DecodeMetadata(metadata, documentId, chunkIndex),
         };
+    }
+
+    /// <summary>
+    /// Decodes the <c>metadata</c> hash field. A <b>missing</b> field is a hash written before this
+    /// store persisted metadata and reads as empty; a field that is <b>present and corrupt</b>
+    /// throws, because on this store a chunk that reads as having no metadata is indistinguishable
+    /// from the defect #513 fixed. Matches <c>WeaviateVectorStore</c>'s reviewed posture (#521).
+    /// </summary>
+    /// <param name="raw">The raw field value, or a null <see cref="RedisValue"/> when absent.</param>
+    /// <param name="documentId">Named in the exception, so a corrupt chunk is findable.</param>
+    /// <param name="chunkIndex">Named in the exception.</param>
+    /// <returns>The decoded metadata; empty when the field is absent.</returns>
+    private static IDictionary<string, MetadataValue> DecodeMetadata(
+        RedisValue raw, string documentId, int chunkIndex)
+    {
+        if (raw.IsNullOrEmpty)
+            return new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
+
+        var result = MetadataSerializer.DeserializeMetadata(raw.ToString());
+        if (result.IsFailure)
+        {
+            throw new InvalidOperationException(
+                $"Redis hash '{documentId}:{chunkIndex.ToString(CultureInfo.InvariantCulture)}' " +
+                $"has a corrupt {MetadataField} field.");
+        }
+
+        return result.Value;
     }
 
     /// <inheritdoc />
