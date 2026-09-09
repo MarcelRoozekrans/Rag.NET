@@ -4,6 +4,7 @@ using Azure.Search.Documents.Indexes;
 using AzureSearchClientOptions = Azure.Search.Documents.SearchClientOptions;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
 
@@ -100,5 +101,58 @@ public class AzureAISearchSemanticConfigurationTests : IAsyncLifetime
         // index.SemanticSearch = new SemanticSearch() would rewrite every existing index on the
         // next initialisation, and this must fail if that happens.
         Assert.Null(index.Value.SemanticSearch);
+    }
+
+    /// <summary>
+    /// <b>The simulator accepts semantic ranking and does not perform it</b>, which is exactly the
+    /// failure this guard exists for. Measured 2026-09-09: it takes a semantic index configuration
+    /// (HTTP 201) and a semantic query (HTTP 200 with results) and returns no rerankerScore at all.
+    /// A real service does the same when the tier or region lacks the ranker, or when the
+    /// configuration name does not match — every one of those a silent downgrade to ordinary
+    /// scoring, with the caller believing results were reranked.
+    /// </summary>
+    /// <remarks>
+    /// This test therefore asserts the guard against a service that genuinely does not rank, rather
+    /// than against a mock. It is the strongest evidence available without a billable Azure
+    /// resource, and it is why the feature can ship at all.
+    /// </remarks>
+    [Fact]
+    public async Task RequestingTheRankerFromAServiceThatDoesNotRank_Throws()
+    {
+        var indexName = $"ragnet-sem-{Guid.CreateVersion7():N}"[..24];
+        using var sut = new AzureAISearchVectorStore(
+            _endpoint,
+            indexName,
+            _credential,
+            vectorDimensions: 3,
+            _clientOptions,
+            new AzureAISearchOptions { EnableSemanticRanking = true });
+
+        await sut.InitializeAsync(TestContext.Current.CancellationToken);
+
+        var docId = $"ais-{Guid.CreateVersion7():N}";
+        await sut.StoreAsync(
+            [
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk
+                    {
+                        Text = "semantic ranking candidate",
+                        DocumentId = new DocumentId(docId),
+                        ChunkIndex = 0,
+                    },
+                    Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+                },
+            ],
+            TestContext.Current.CancellationToken);
+        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 1 },
+                TestContext.Current.CancellationToken));
+
+        Assert.Contains(indexName, exception.Message, StringComparison.Ordinal);
     }
 }
