@@ -101,11 +101,29 @@ One JSON blob rather than flat fields for the return path, so a metadata key nam
 same way. **Both change or neither should**: a store that returns metadata from a keyed lookup and
 none from a search is the divergence 6.2.25 pulled Qdrant's mapping into one `MapChunk` to prevent.
 
-**On a blob that will not deserialize, fall back to an empty dictionary**, matching PgVector
-(`PgVectorStore.cs:940-943`). A throw was considered and declined: the failure is per-chunk, and a
-single corrupt value taking down an entire search is a worse outcome than a chunk that reads as
-having no metadata. **This is the one place in this design where a tolerant return is chosen over a
-throw, and it is chosen for cross-store consistency**, not convenience.
+**On a blob that will not deserialize, throw**, naming the document and chunk — matching
+`WeaviateVectorStore.cs:444-449`.
+
+**Corrected 2026-09-09, after this section was first approved.** It originally specified an empty-
+dictionary fallback "matching PgVector, for cross-store consistency". Checking the provenance showed
+the argument was backwards. Four stores deserialize a metadata blob: Weaviate throws; PgVector,
+Qdrant and Azure AI Search return an empty dictionary. But the three are not three judgements — they
+are the pre-review default from `179e4f8e` (2026-04-11, a mechanical serializer migration), and
+Weaviate's throw is `98b327fd` (2026-07-25), a **review finding that deliberately replaced** that
+default. Its commit message names what the other three still do: *"silently returning the chunk with
+empty metadata"*.
+
+So the majority carries no reasoning, and copying it would have copied the shape a review already
+rejected — into the one store where a chunk reading as "no metadata" is indistinguishable from the
+defect this phase exists to fix.
+
+The inconsistency in the other three is filed as **#521** and is not touched here.
+
+Numbers, booleans and dates are rendered by `MetadataValue.ToString()` on both the write and the
+filter path — it already emits `InvariantCulture` for numbers, `true`/`false` for booleans and
+`MetadataDateFormat.Format` for dates. **This supersedes §3.3's hand-rolled
+`double.ToString(CultureInfo.InvariantCulture)`**: one existing accessor cannot drift from itself,
+which is stronger than two formatters a test has to keep in agreement.
 
 ### 3.3 Filtering — TAG for every kind, with the kind inside the value
 
