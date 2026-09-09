@@ -1,3 +1,6 @@
+using System.Buffers;
+using System.Buffers.Text;
+using System.Text;
 using Rag.NET.Models;
 using Xunit;
 
@@ -47,18 +50,30 @@ public sealed class RedisMetadataTokenTests
     }
 
     /// <summary>
-    /// Every kind round-trips through one canonical textual form — <c>MetadataValue.ToString()</c>
-    /// — so the write path and the filter path cannot drift.
+    /// A string token carries the string kind prefix and decodes to the original value, verifying
+    /// that <c>MetadataValue.ToString()</c> round-trips through Base64Url encoding.
     /// </summary>
     [Theory]
     [InlineData("plain")]
     [InlineData("with spaces and : colons")]
     [InlineData("")]
-    public void AStringTokenIsStableForTheSameValue(string value)
+    public void AStringTokenCarriesItsKindAndDecodesBackToItsValue(string value)
     {
-        Assert.Equal(
-            RedisVectorStore.MetadataToken((MetadataValue)value),
-            RedisVectorStore.MetadataToken((MetadataValue)value));
+        var token = RedisVectorStore.MetadataToken((MetadataValue)value);
+
+        Assert.True(token.StartsWith("s:", StringComparison.Ordinal), $"Token should start with 's:' but was '{token}'");
+
+        var colonIndex = token.IndexOf(':');
+        var encodedPart = token.AsSpan(colonIndex + 1);
+
+        // Decode the Base64Url part
+        var buffer = new byte[Base64Url.GetMaxDecodedLength(encodedPart.Length)];
+        var status = Base64Url.DecodeFromChars(encodedPart, buffer, out _, out var bytesDecoded, isFinalBlock: true);
+
+        Assert.True(status == OperationStatus.Done, $"Base64Url decode failed with status {status}");
+
+        var decodedText = Encoding.UTF8.GetString(buffer, 0, bytesDecoded);
+        Assert.Equal(value, decodedText);
     }
 
     /// <summary>The field name is namespaced so a metadata key named <c>text</c> is representable.</summary>
