@@ -6924,9 +6924,32 @@ negative-index test was the only thing catching an unsigned-index implementation
 **#318 was closed 2026-09-09**, after all seven implementations were verified present on `main` by
 content rather than by any PR's MERGED label.
 
-### Phase 6.2.31: What Redis Never Stored, It Cannot Return [status: pending — added 2026-09-09, #513]
+### Phase 6.2.31: What Redis Never Stored, It Cannot Return [status: active 2026-09-09 — #513, and the larger defect scoping it found]
 **Surface:** Storage
 **HelpWanted:** no
+**Design:** `docs/plans/2026-09-09-redis-chunk-metadata-design.md`
+**Plan:** `docs/plans/2026-09-09-redis-chunk-metadata-implementation.md`
+
+**SCOPING IT FOUND A WRONG-RESULTS DEFECT, NOT A MISSING FEATURE.** `SearchAsync` never reads
+`options.MetadataFilter` — the query is `*=>[KNN ...]` with no filter clause — and
+`VectorStoreBehavior` is terminal, so nothing re-checks downstream. **A filtered search against
+Redis silently returns unfiltered results.** Redis is the only one of the seven store packages that
+does not reference `MetadataFilter` anywhere, and no test asserts that any remote store honours it.
+The phase takes the whole contract rather than #513's half, on the operator's decision.
+
+**Two design decisions were reversed by their own evidence.** The corrupt-blob posture was first
+specified as PgVector's empty-dictionary fallback "for cross-store consistency"; the provenance says
+the opposite — Weaviate's throw is a 2026-07-25 review finding that deliberately replaced that
+default, and PgVector, Qdrant and Azure AI Search simply never got the same review. Copying the
+majority would have copied the shape a review already rejected, into the one store where "reads as
+no metadata" is indistinguishable from the defect being fixed. Filed as **#521**; Redis throws.
+
+**And the RediSearch defaults would have broken matching twice, silently.** A TAG field splits its
+value on `,`, so a metadata string containing a comma stores as two tags — no separator is safe when
+a value can contain any character, so the token's value half is Base64Url-encoded, 6.2.30's argument
+reused. TAG fields also fold case, while `MetadataValue.Equals` compares strings ordinally, so the
+fields are declared `caseSensitive: true`. Both were found by reading the API surface, not by
+running anything.
 
 **Goal:** `RedisVectorStore` persists chunk metadata, so search and the keyed lookup can return it
 on the one backend where today both succeed and return none.
