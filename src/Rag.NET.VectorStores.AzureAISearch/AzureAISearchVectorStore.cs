@@ -17,12 +17,20 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 {
     private const int SearchPageSize = 1000; // Azure AI Search maximum
     private const int DeleteBatchSize = 1000; // Azure AI Search maximum
+
+    /// <summary>
+    /// Name of the one semantic configuration this store ever builds. An implementation detail,
+    /// not a knob: the store defines the fields, so it names the configuration built from them.
+    /// </summary>
+    private const string SemanticConfigurationName = "ragnet-semantic-configuration";
+
     private readonly VectorStoreInitialisationGate _initGate = new();
     private readonly SearchIndexClient _indexClient;
     private readonly SearchClient _searchClient;
     private readonly string _indexName;
     private readonly int _vectorDimensions;
     private readonly int? _kNearestNeighborsCount;
+    private readonly bool _semanticRankingEnabled;
 
     public AzureAISearchVectorStore(
         Uri endpoint,
@@ -73,6 +81,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         _indexName = indexName;
         _vectorDimensions = vectorDimensions;
         _kNearestNeighborsCount = options?.KNearestNeighborsCount;
+        _semanticRankingEnabled = options?.EnableSemanticRanking ?? false;
     }
 
     /// <summary>
@@ -84,8 +93,9 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
     /// </summary>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        await _indexClient.CreateOrUpdateIndexAsync(BuildIndex(_indexName, _vectorDimensions), cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        await _indexClient.CreateOrUpdateIndexAsync(
+            BuildIndex(_indexName, _vectorDimensions, _semanticRankingEnabled),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -114,7 +124,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
     /// Sub-fields of a complex collection cannot be marked <c>sortable</c> (service constraint:
     /// they are multi-valued per document), so none are.
     /// </summary>
-    private static SearchIndex BuildIndex(string name, int vectorDimensions)
+    private static SearchIndex BuildIndex(string name, int vectorDimensions, bool semanticRankingEnabled)
     {
         var metadataEntries = new ComplexField("metadata_entries", collection: true);
         metadataEntries.Fields.Add(new SimpleField("key", SearchFieldDataType.String) { IsFilterable = true });
@@ -142,11 +152,28 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         vectorSearch.Algorithms.Add(new HnswAlgorithmConfiguration("default-algorithm"));
         vectorSearch.Profiles.Add(new VectorSearchProfile("default-profile", "default-algorithm"));
 
-        return new SearchIndex(name)
+        var index = new SearchIndex(name)
         {
             Fields = fields,
             VectorSearch = vectorSearch,
         };
+
+        // Added only when the ranker is on: a configuration nothing uses is clutter, and adding
+        // it unconditionally would rewrite every existing index on the next initialisation for no
+        // benefit (Azure has no stale-index hazard — CreateOrUpdateIndexAsync always reconciles).
+        if (semanticRankingEnabled)
+        {
+            var semanticSearch = new SemanticSearch();
+            semanticSearch.Configurations.Add(new SemanticConfiguration(
+                SemanticConfigurationName,
+                new SemanticPrioritizedFields
+                {
+                    ContentFields = { new SemanticField("text") },
+                }));
+            index.SemanticSearch = semanticSearch;
+        }
+
+        return index;
     }
 
     /// <summary>Uploads the chunks, and returns as soon as the service has accepted them.</summary>
@@ -431,8 +458,9 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 
     public async Task CreateCollectionAsync(string name, int vectorDimensions, CancellationToken cancellationToken = default)
     {
-        await _indexClient.CreateOrUpdateIndexAsync(BuildIndex(name, vectorDimensions), cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        await _indexClient.CreateOrUpdateIndexAsync(
+            BuildIndex(name, vectorDimensions, _semanticRankingEnabled),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DeleteCollectionAsync(string name, CancellationToken cancellationToken = default)
