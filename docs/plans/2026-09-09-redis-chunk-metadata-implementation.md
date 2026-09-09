@@ -580,9 +580,9 @@ git commit -m "feat(redis): encode filterable metadata as kind-prefixed Base64Ur
 - Consumes: `MetadataToken`, `MetadataFieldName` from Task 4.
 - Produces: constructor parameter `IReadOnlyList<string>? filterableMetadataKeys = null` on both public constructors and both `UseRedis` overloads; `private readonly IReadOnlyList<string> _filterableKeys`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
-Create `tests/Rag.NET.VectorStores.Redis.Tests/RedisMetadataFilterTests.cs`:
+Create `tests/Rag.NET.VectorStores.Redis.Tests/RedisMetadataFilterTests.cs`. **This task's two tests assert the storage side only** — that a declared key gets its own field and an undeclared one does not. The filter *behaviour* tests belong to Task 6, so that this task ends green rather than leaving a red suite for the next one to inherit:
 
 ```csharp
 using Rag.NET.Models;
@@ -643,6 +643,181 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
         };
     }
 
+    /// <summary>
+    /// A declared filterable key is written as its own <c>md_*</c> hash field, alongside the JSON
+    /// blob. This is what the index attribute matches; the blob is what the read paths decode.
+    /// </summary>
+    [Fact]
+    public async Task ADeclaredKeyIsWrittenAsItsOwnTagField()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync([Chunk("doc-t", "tagged", [1f, 0f, 0f, 0f], ("tenant", "acme"))], ct);
+
+        var stored = await _connection.GetDatabase().HashGetAsync("filter-idx:doc-t:0", "md_tenant");
+
+        Assert.Equal(
+            RedisVectorStore.MetadataToken(new MetadataValue("acme")),
+            stored.ToString());
+    }
+
+    /// <summary>An undeclared key is written to the blob only — it gets no field of its own.</summary>
+    [Fact]
+    public async Task AnUndeclaredKeyGetsNoFieldOfItsOwn()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync(
+            [Chunk("doc-o", "other", [1f, 0f, 0f, 0f], ("unlisted", "x"))], ct);
+
+        var stored = await _connection.GetDatabase().HashGetAsync("filter-idx:doc-o:0", "md_unlisted");
+
+        Assert.True(stored.IsNull);
+    }
+
+}
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `dotnet test tests/Rag.NET.VectorStores.Redis.Tests -v q --filter "FullyQualifiedName~RedisMetadataFilterTests"`
+Expected: compile error — the constructor has no `filterableMetadataKeys` parameter.
+
+- [ ] **Step 3: Thread the declared keys through the constructors**
+
+Both public constructors gain a trailing optional parameter and pass it down; the private constructor stores it:
+
+```csharp
+    public RedisVectorStore(
+        string configuration,
+        string indexName = "ragnet-idx",
+        int vectorDimensions = 1536,
+        IReadOnlyList<string>? filterableMetadataKeys = null)
+        : this(
+            ConnectionMultiplexer.Connect(configuration),
+            indexName,
+            vectorDimensions,
+            ownsConnection: true,
+            filterableMetadataKeys)
+    {
+    }
+```
+
+Mirror the same shape on the `IConnectionMultiplexer` overload with `ownsConnection: false`, and in the private constructor:
+
+```csharp
+        _filterableKeys = filterableMetadataKeys is null
+            ? []
+            : [.. filterableMetadataKeys];
+```
+
+with the field:
+
+```csharp
+    private readonly IReadOnlyList<string> _filterableKeys;
+```
+
+- [ ] **Step 4: Declare the TAG attributes in the schema**
+
+In `CreateCollectionAsync`, after `.AddTextField(TextField)` and before the vector field:
+
+```csharp
+        var schema = new Schema()
+            .AddTagField(DocumentIdField)
+            .AddNumericField(ChunkIndexField)
+            .AddTextField(TextField);
+
+        foreach (var key in _filterableKeys)
+        {
+            // caseSensitive: MetadataValue compares strings ordinally, and a TAG field folds case
+            // by default — without this, "ACME" would answer a filter for "acme".
+            _ = schema.AddTagField(MetadataFieldName(key), caseSensitive: true);
+        }
+
+        _ = schema.AddVectorField(
+            EmbeddingField,
+            Schema.VectorField.VectorAlgo.HNSW,
+            new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["TYPE"] = "FLOAT32",
+                ["DIM"] = vectorDimensions.ToString(CultureInfo.InvariantCulture),
+                ["DISTANCE_METRIC"] = "COSINE",
+            });
+```
+
+If `AddTagField`'s signature does not accept `caseSensitive` as a named argument in this position, check its overloads and pass it positionally — do **not** drop it. A case-folding TAG field is a silent wrong-answer, and `AFilterDoesNotMatchAValueDifferingOnlyInCase` exists to catch exactly that.
+
+- [ ] **Step 5: Write the per-key fields in `StoreAsync`**
+
+Replace the fixed-size `entries` array with a list that appends declared keys present on the chunk:
+
+```csharp
+            var entries = new List<HashEntry>(5 + _filterableKeys.Count)
+            {
+                new(DocumentIdField, chunk.Chunk.DocumentId.Value),
+                new(ChunkIndexField, chunk.Chunk.ChunkIndex),
+                new(TextField, chunk.Chunk.Text),
+                new(MetadataField, MetadataSerializer.SerializeMetadata(chunk.Chunk.Metadata)),
+                new(EmbeddingField, ToBytes(chunk.Embedding.Span)),
+            };
+
+            foreach (var key in _filterableKeys)
+            {
+                if (chunk.Chunk.Metadata.TryGetValue(key, out var value))
+                    entries.Add(new HashEntry(MetadataFieldName(key), MetadataToken(value)));
+            }
+
+            await database.HashSetAsync(
+                    KeyFor(chunk.Chunk.DocumentId.Value, chunk.Chunk.ChunkIndex),
+                    [.. entries])
+                .ConfigureAwait(false);
+```
+
+A key absent from a chunk's metadata writes no field, so a filter on it does not match that chunk — which is what "matches every key/value pair exactly" means.
+
+- [ ] **Step 6: Surface the parameter on both `UseRedis` overloads**
+
+In `RedisBuilderExtensions.cs`, add to both:
+
+```csharp
+    /// <param name="filterableMetadataKeys">
+    /// Metadata keys that may be used in <c>MetadataFilter</c>. They become case-sensitive TAG
+    /// attributes in the index, so they must be known when the index is created. **A filter naming
+    /// a key that is not declared here throws** rather than returning an unfiltered page — Redis is
+    /// the only backend in this library that requires the declaration, because RediSearch filters
+    /// only on attributes the schema names.
+    /// </param>
+```
+
+and pass it to the constructor. Keep both existing parameter orders intact so current callers compile unchanged.
+
+- [ ] **Step 7: Run — expect the filter tests to still fail, for the right reason**
+
+Run: `dotnet test tests/Rag.NET.VectorStores.Redis.Tests -v q`
+Expected: **all PASS**, including the two new tests in `RedisMetadataFilterTests`. **If any Task 2 or Task 3 test broke here, the `entries` rewrite dropped a field — fix that before continuing.**
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/Rag.NET.VectorStores.Redis/
+git commit -m "feat(redis): declare filterable metadata keys as case-sensitive tag fields (#513)"
+```
+
+---
+
+### Task 6: Build the filter clause, and throw on an undeclared key
+
+**Files:**
+- Modify: `src/Rag.NET.VectorStores.Redis/RedisVectorStore.cs` — `SearchAsync` query construction (line 235)
+- Test: `tests/Rag.NET.VectorStores.Redis.Tests/RedisMetadataFilterTests.cs` (append)
+
+**Interfaces:**
+- Consumes: `MetadataToken`, `MetadataFieldName`, `EscapeTag`, `_filterableKeys`.
+- Produces: `private string BuildFilterPrefix(IDictionary<string, MetadataValue>? filter)` returning `"*"` when there is no filter.
+
+- [ ] **Step 1: Add the filter behaviour tests**
+
+Append to `RedisMetadataFilterTests.cs` — these are the tests that exercise the filter clause this task builds:
+
+```csharp
     /// <summary>
     /// <b>This discriminates server-side filtering from client-side.</b> <c>TopK = 1</c> with the
     /// NEAREST chunk excluded by the filter: only a filter applied inside the query can return the
@@ -785,150 +960,9 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
             ct);
 
         Assert.Equal(2, results.Count);
-    }
-}
-```
+    }```
 
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `dotnet test tests/Rag.NET.VectorStores.Redis.Tests -v q --filter "FullyQualifiedName~RedisMetadataFilterTests"`
-Expected: compile error — the constructor has no `filterableMetadataKeys` parameter. That is the failure for this task; the query behaviour is Task 6's.
-
-- [ ] **Step 3: Thread the declared keys through the constructors**
-
-Both public constructors gain a trailing optional parameter and pass it down; the private constructor stores it:
-
-```csharp
-    public RedisVectorStore(
-        string configuration,
-        string indexName = "ragnet-idx",
-        int vectorDimensions = 1536,
-        IReadOnlyList<string>? filterableMetadataKeys = null)
-        : this(
-            ConnectionMultiplexer.Connect(configuration),
-            indexName,
-            vectorDimensions,
-            ownsConnection: true,
-            filterableMetadataKeys)
-    {
-    }
-```
-
-Mirror the same shape on the `IConnectionMultiplexer` overload with `ownsConnection: false`, and in the private constructor:
-
-```csharp
-        _filterableKeys = filterableMetadataKeys is null
-            ? []
-            : [.. filterableMetadataKeys];
-```
-
-with the field:
-
-```csharp
-    private readonly IReadOnlyList<string> _filterableKeys;
-```
-
-- [ ] **Step 4: Declare the TAG attributes in the schema**
-
-In `CreateCollectionAsync`, after `.AddTextField(TextField)` and before the vector field:
-
-```csharp
-        var schema = new Schema()
-            .AddTagField(DocumentIdField)
-            .AddNumericField(ChunkIndexField)
-            .AddTextField(TextField);
-
-        foreach (var key in _filterableKeys)
-        {
-            // caseSensitive: MetadataValue compares strings ordinally, and a TAG field folds case
-            // by default — without this, "ACME" would answer a filter for "acme".
-            _ = schema.AddTagField(MetadataFieldName(key), caseSensitive: true);
-        }
-
-        _ = schema.AddVectorField(
-            EmbeddingField,
-            Schema.VectorField.VectorAlgo.HNSW,
-            new Dictionary<string, object>(StringComparer.Ordinal)
-            {
-                ["TYPE"] = "FLOAT32",
-                ["DIM"] = vectorDimensions.ToString(CultureInfo.InvariantCulture),
-                ["DISTANCE_METRIC"] = "COSINE",
-            });
-```
-
-If `AddTagField`'s signature does not accept `caseSensitive` as a named argument in this position, check its overloads and pass it positionally — do **not** drop it. A case-folding TAG field is a silent wrong-answer, and `AFilterDoesNotMatchAValueDifferingOnlyInCase` exists to catch exactly that.
-
-- [ ] **Step 5: Write the per-key fields in `StoreAsync`**
-
-Replace the fixed-size `entries` array with a list that appends declared keys present on the chunk:
-
-```csharp
-            var entries = new List<HashEntry>(5 + _filterableKeys.Count)
-            {
-                new(DocumentIdField, chunk.Chunk.DocumentId.Value),
-                new(ChunkIndexField, chunk.Chunk.ChunkIndex),
-                new(TextField, chunk.Chunk.Text),
-                new(MetadataField, MetadataSerializer.SerializeMetadata(chunk.Chunk.Metadata)),
-                new(EmbeddingField, ToBytes(chunk.Embedding.Span)),
-            };
-
-            foreach (var key in _filterableKeys)
-            {
-                if (chunk.Chunk.Metadata.TryGetValue(key, out var value))
-                    entries.Add(new HashEntry(MetadataFieldName(key), MetadataToken(value)));
-            }
-
-            await database.HashSetAsync(
-                    KeyFor(chunk.Chunk.DocumentId.Value, chunk.Chunk.ChunkIndex),
-                    [.. entries])
-                .ConfigureAwait(false);
-```
-
-A key absent from a chunk's metadata writes no field, so a filter on it does not match that chunk — which is what "matches every key/value pair exactly" means.
-
-- [ ] **Step 6: Surface the parameter on both `UseRedis` overloads**
-
-In `RedisBuilderExtensions.cs`, add to both:
-
-```csharp
-    /// <param name="filterableMetadataKeys">
-    /// Metadata keys that may be used in <c>MetadataFilter</c>. They become case-sensitive TAG
-    /// attributes in the index, so they must be known when the index is created. **A filter naming
-    /// a key that is not declared here throws** rather than returning an unfiltered page — Redis is
-    /// the only backend in this library that requires the declaration, because RediSearch filters
-    /// only on attributes the schema names.
-    /// </param>
-```
-
-and pass it to the constructor. Keep both existing parameter orders intact so current callers compile unchanged.
-
-- [ ] **Step 7: Run — expect the filter tests to still fail, for the right reason**
-
-Run: `dotnet test tests/Rag.NET.VectorStores.Redis.Tests -v q`
-Expected: the project compiles; `RedisMetadataFilterTests` still FAIL because `SearchAsync` does not build a filter clause yet. Every other test PASSES. **If any Task 2 or Task 3 test broke here, the `entries` rewrite dropped a field — fix that before continuing.**
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add src/Rag.NET.VectorStores.Redis/
-git commit -m "feat(redis): declare filterable metadata keys as case-sensitive tag fields (#513)"
-```
-
----
-
-### Task 6: Build the filter clause, and throw on an undeclared key
-
-**Files:**
-- Modify: `src/Rag.NET.VectorStores.Redis/RedisVectorStore.cs` — `SearchAsync` query construction (line 235)
-- Test: `tests/Rag.NET.VectorStores.Redis.Tests/RedisMetadataFilterTests.cs` (append)
-
-**Interfaces:**
-- Consumes: `MetadataToken`, `MetadataFieldName`, `EscapeTag`, `_filterableKeys`.
-- Produces: `private string BuildFilterPrefix(IDictionary<string, MetadataValue>? filter)` returning `"*"` when there is no filter.
-
-- [ ] **Step 1: Add the undeclared-key test**
-
-Append to `RedisMetadataFilterTests.cs`:
+Then append the undeclared-key test:
 
 ```csharp
     /// <summary>
@@ -964,7 +998,7 @@ Append to `RedisMetadataFilterTests.cs`:
 - [ ] **Step 2: Run to verify the whole filter class fails**
 
 Run: `dotnet test tests/Rag.NET.VectorStores.Redis.Tests -v q --filter "FullyQualifiedName~RedisMetadataFilterTests"`
-Expected: `AFilterIsAppliedInsideTheQuery_NotAfterTheTopKCut` FAILS returning `doc-near` (the filter is ignored — this is the defect, observed); `AFilterOnAnUndeclaredKeyThrows` FAILS with no exception; `AnEmptyFilterReturnsTheWholePage` PASSES already.
+Expected: `AFilterIsAppliedInsideTheQuery_NotAfterTheTopKCut` FAILS returning `doc-near` — **the defect this phase fixes, observed rather than assumed**. `AStringFilterDoesNotMatchANumber`, `AValueContainingTagSyntaxAndACommaStillMatchesItself` and `AFilterDoesNotMatchAValueDifferingOnlyInCase` FAIL for the same reason (the filter is ignored, so every chunk comes back). `AFilterOnAnUndeclaredKeyThrows` FAILS with no exception. `AnEmptyFilterReturnsTheWholePage` and Task 5's two storage tests PASS already.
 
 - [ ] **Step 3: Implement the clause builder**
 
