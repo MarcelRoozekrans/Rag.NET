@@ -1,5 +1,7 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using Qdrant.Client;
+using Qdrant.Client.Grpc;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Xunit;
@@ -31,13 +33,16 @@ public class QdrantChunkLookupTests : IAsyncLifetime
         .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Actix runtime found"))
         .Build();
 
+    private const string CollectionName = "lookup-collection";
+
     private QdrantVectorStore _sut = null!;
+    private int _port;
 
     public async ValueTask InitializeAsync()
     {
         await _qdrant.StartAsync(TestContext.Current.CancellationToken);
-        var port = _qdrant.GetMappedPublicPort(6334);
-        _sut = new QdrantVectorStore("localhost", port, "lookup-collection", vectorDimensions: 3);
+        _port = _qdrant.GetMappedPublicPort(6334);
+        _sut = new QdrantVectorStore("localhost", _port, CollectionName, vectorDimensions: 3);
         await _sut.InitializeAsync(TestContext.Current.CancellationToken);
     }
 
@@ -173,5 +178,41 @@ public class QdrantChunkLookupTests : IAsyncLifetime
         var only = Assert.Single(found);
         Assert.True(only.Metadata.TryGetValue("source", out var source));
         Assert.Equal("unit-test", source.ToString());
+    }
+
+    /// <summary>
+    /// A <c>metadata</c> payload field that will not deserialize is backend corruption, and
+    /// <see cref="QdrantVectorStore"/> throws naming the document and chunk rather than silently
+    /// returning the chunk with empty metadata (#521). Written directly through a raw
+    /// <see cref="QdrantClient"/> upsert: nothing reachable through the public API
+    /// can produce malformed JSON in this field, and the point id carries no identity here — the
+    /// lookup matches on the <c>document_id</c>/<c>chunk_index</c> payload alone.
+    /// </summary>
+    [Fact]
+    public async Task ACorruptMetadataPayloadFieldThrowsNamingTheChunk()
+    {
+        using var rawClient = new QdrantClient("localhost", _port);
+        await rawClient.UpsertAsync(CollectionName,
+            [
+                new PointStruct
+                {
+                    Id = Guid.NewGuid(),
+                    Vectors = new ReadOnlyMemory<float>([1f, 0f, 0f]).ToArray(),
+                    Payload =
+                    {
+                        ["text"] = "will not survive the read",
+                        ["document_id"] = "doc-corrupt",
+                        ["chunk_index"] = 9,
+                        ["metadata"] = "{not json",
+                    },
+                },
+            ],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _sut.GetChunksAsync([new ChunkKey("doc-corrupt", 9)], TestContext.Current.CancellationToken));
+
+        Assert.Contains("doc-corrupt", error.Message, StringComparison.Ordinal);
+        Assert.Contains("9", error.Message, StringComparison.Ordinal);
     }
 }

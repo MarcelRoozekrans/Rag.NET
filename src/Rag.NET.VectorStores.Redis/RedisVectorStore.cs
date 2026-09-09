@@ -591,28 +591,24 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     /// Decodes the <c>metadata</c> hash field. A <b>missing</b> field is a hash written before this
     /// store persisted metadata and reads as empty; a field that is <b>present and corrupt</b>
     /// throws, because on this store a chunk that reads as having no metadata is indistinguishable
-    /// from the defect #513 fixed. Matches <c>WeaviateVectorStore</c>'s reviewed posture (#521).
+    /// from the defect #513 fixed. Matches <c>WeaviateVectorStore</c>'s reviewed posture (#521),
+    /// and since #521 routes through the same
+    /// <see cref="MetadataSerializer.DeserializeMetadataOrThrow"/> that posture lives in — which
+    /// already treats a <see langword="null"/> or empty value as "no metadata" rather than
+    /// corruption, so the explicit null/empty check this method used to make before deserializing
+    /// is redundant and has been dropped: an upgraded deployment still keeps serving hashes written
+    /// before this store stored metadata.
     /// </summary>
     /// <param name="raw">The raw field value, or a null <see cref="RedisValue"/> when absent.</param>
     /// <param name="documentId">Named in the exception, so a corrupt chunk is findable.</param>
     /// <param name="chunkIndex">Named in the exception.</param>
     /// <returns>The decoded metadata; empty when the field is absent.</returns>
     private static IDictionary<string, MetadataValue> DecodeMetadata(
-        RedisValue raw, string documentId, int chunkIndex)
-    {
-        if (raw.IsNullOrEmpty)
-            return new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
-
-        var result = MetadataSerializer.DeserializeMetadata(raw.ToString());
-        if (result.IsFailure)
-        {
-            throw new InvalidOperationException(
-                $"Redis hash '{documentId}:{chunkIndex.ToString(CultureInfo.InvariantCulture)}' " +
-                $"has a corrupt {MetadataField} field.");
-        }
-
-        return result.Value;
-    }
+        RedisValue raw, string documentId, int chunkIndex) =>
+        MetadataSerializer.DeserializeMetadataOrThrow(
+            raw.ToString(),
+            $"Redis hash '{documentId}:{chunkIndex.ToString(CultureInfo.InvariantCulture)}', " +
+            $"{MetadataField} field");
 
     /// <inheritdoc />
     public async Task DeleteByDocumentIdAsync(

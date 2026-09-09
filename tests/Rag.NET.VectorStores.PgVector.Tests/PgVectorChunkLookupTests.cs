@@ -173,4 +173,38 @@ public class PgVectorChunkLookupTests : IAsyncLifetime
         Assert.True(only.Metadata.TryGetValue("source", out var source));
         Assert.Equal("unit-test", source.ToString());
     }
+
+    /// <summary>
+    /// A <c>metadata</c> column that will not deserialize to a dictionary is backend corruption,
+    /// and <see cref="PgVectorStore"/> throws naming the document and chunk rather than silently
+    /// returning the chunk with empty metadata (#521). The <c>jsonb</c> column type rejects
+    /// non-JSON text outright, so the corruption here is syntactically valid JSON of the wrong
+    /// shape — a bare string rather than an object — which is exactly what
+    /// <c>MetadataSerializer</c> cannot deserialize into a
+    /// <c>Dictionary&lt;string, MetadataValue&gt;</c>.
+    /// </summary>
+    [Fact]
+    public async Task ACorruptMetadataColumnThrowsNamingTheChunk()
+    {
+        await StoreAsync(Chunk("doc-corrupt", 7, "will not survive the read"));
+
+        var connectionString = _postgres.GetConnectionString();
+        await using (var conn = new Npgsql.NpgsqlConnection(connectionString))
+        {
+            await conn.OpenAsync(TestContext.Current.CancellationToken);
+            await using var cmd = new Npgsql.NpgsqlCommand(
+                "UPDATE rag_chunks SET metadata = '\"not an object\"'::jsonb " +
+                "WHERE document_id = $1 AND chunk_index = $2", conn);
+            cmd.Parameters.AddWithValue("doc-corrupt");
+            cmd.Parameters.AddWithValue(7);
+            var updated = await cmd.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(1, updated);
+        }
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _sut.GetChunksAsync([new ChunkKey("doc-corrupt", 7)], TestContext.Current.CancellationToken));
+
+        Assert.Contains("doc-corrupt", error.Message, StringComparison.Ordinal);
+        Assert.Contains("7", error.Message, StringComparison.Ordinal);
+    }
 }

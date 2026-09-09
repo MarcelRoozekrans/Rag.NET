@@ -7053,6 +7053,90 @@ downstream; no pipeline stage filters anything. A reader who noticed Redis was m
 was told, in the same paragraph, that something else covered it. Corrected as part of this
 phase's documentation.
 
+### Phase 6.2.32: A Corrupt Blob Is Not an Empty One [status: complete 2026-09-09 — #521, and the reviewed decision nobody had tested]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-09
+
+**THE POSTURE THAT WON HAD NO TEST.** Weaviate has thrown on a corrupt metadata blob since
+2026-07-25, when a review deliberately replaced the tolerant default — and **nothing covered that
+path.** It was found by writing the six new tests and going to check the two that already existed;
+only Redis had one, from the phase before this. So the decision this phase propagates to six other
+sites was itself unpinned for six weeks, and any refactor could have reverted it silently. Closed
+with a seventh test rather than skipped.
+
+**One shared helper now owns the failure.** `MetadataSerializer.DeserializeMetadataOrThrow(json,
+context)` throws `InvalidOperationException` naming the row and preserving the `JsonException` as
+the inner. **Zero callers of the raw `DeserializeMetadata`/`DeserializeTags` remain outside the
+serializer**, which is the point: the tolerant shape is no longer the easy one to write, so a ninth
+site cannot be added the swallowing way by accident.
+
+**Eight mutations, eight red.** Each site's throw was reverted to the old fallback and its test
+confirmed to fail — the six required, plus Weaviate and Redis to prove the reroute had not
+loosened them. Six near-identical edits is where a copy-paste slip hides, and this is the check
+that would have caught one.
+
+**No upgrade hazard, and that is why it could be done bluntly.** `DeserializeMetadata(null)` and
+`("")` already return Success with an empty dictionary; only a `JsonException` yields Failure. A
+throw therefore cannot fire on an absent field — only on stored JSON that is genuinely malformed.
+Redis's inline null guard became redundant and was removed, which was confirmed rather than
+assumed: `RedisValue.Null.ToString()` returns `""`, and the pre-existing
+`AHashWithNoMetadataFieldReadsAsEmptyRatherThanThrowing` still passes.
+
+**Breaking**, deliberately and pre-1.0: five components stop answering a corrupt row with an empty
+dictionary and start failing. The widest is `SqliteDocumentStore.GetDocumentsAsync`, where one
+corrupt row now fails a whole document listing — the same shape Weaviate's reviewed throw already
+accepted on its search path, which is why it was not given an exception.
+
+**Nobody has observed a corrupt blob in the wild.** Posture and consistency, not an incident.
+
+
+**Goal:** the six sites that read a corrupt metadata blob and return an empty dictionary say so
+instead, matching the two that already do.
+
+**#521 says three stores; scoping it found six sites across five components.** The issue was filed
+from the vector-store angle during 6.2.31 and named PgVector, Qdrant and Azure AI Search. It missed
+`SqliteBm25Index` and `SqliteDocumentStore` — and the latter has **two** sites, one of them reading
+`DocumentMetadata.Tags` rather than chunk metadata, so the same swallow shape reaches a second data
+type.
+
+**The split is six-to-two, and the two are the only ones anybody ever reviewed.** Weaviate throws
+because of a 2026-07-25 review finding (`98b327fd`) that deliberately replaced the tolerant default,
+naming what the others still do: *"silently returning the chunk with empty metadata"*. Redis throws
+because 6.2.31 followed that precedent. The other six are the pre-review default from `179e4f8e`,
+a mechanical serializer migration in April that nobody has revisited.
+
+**The missing-versus-corrupt distinction is already safe, which is what makes this small.**
+`MetadataSerializer.DeserializeMetadata(null)` and `("")` both return **Success with an empty
+dictionary**; only a `JsonException` produces `Failure`. So replacing a fallback with a throw cannot
+fire on an absent field — only on genuinely malformed stored JSON. No upgrade hazard, no data
+migration.
+
+**The six sites do not all have the same blast radius**, which is the design's real question.
+Read rather than inferred from the call-site names:
+
+| site | method | what a throw costs |
+| --- | --- | --- |
+| `SqliteBm25Index` | `LoadIntoMemory` | the index fails to **load** — a startup failure, not a query one |
+| `SqliteDocumentStore` | `GetDocumentsAsync` (tags) | one corrupt row fails the whole document **listing** |
+| `SqliteDocumentStore` | `GetChunksAsync` | that one document's chunks fail |
+| PgVector | `ReadChunk` | one hit fails its search or keyed read |
+| Qdrant | `MapChunk` | same |
+| Azure AI Search | `ReadMetadata` | same, and only on the legacy field — `metadata_entries` is tried first |
+
+**An earlier draft of this block said `SqliteBm25Index` read inside a search loop and that one
+corrupt row would fail a whole query. That was inferred from the call site and is wrong** — it is a
+load path, which is the *easiest* place to fail loudly, not the hardest. Corrected before the
+design was written.
+
+The listing case is the widest, and Weaviate's reviewed decision already accepts that shape: its
+throw is on the search path, where one corrupt hit fails the search. The second question is whether
+the throwing helper belongs in `MetadataSerializer` so a seventh site cannot be written the
+swallowing way, and if so how the caller's identity reaches the message.
+
+**Nobody has observed a corrupt blob in the wild.** This is posture and consistency, not a live
+incident, and the phase should say so rather than inflate it.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
