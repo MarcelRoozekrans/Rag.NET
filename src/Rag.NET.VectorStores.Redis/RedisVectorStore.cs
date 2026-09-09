@@ -298,16 +298,28 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
                 new(EmbeddingField, ToBytes(chunk.Embedding.Span)),
             };
 
+            List<RedisValue>? stale = null;
             foreach (var key in _filterableKeys)
             {
                 if (chunk.Chunk.Metadata.TryGetValue(key, out var value))
+                {
                     entries.Add(new HashEntry(MetadataFieldName(key), MetadataToken(value)));
+                }
+                else
+                {
+                    stale ??= [];
+                    stale.Add(MetadataFieldName(key));
+                }
             }
 
-            await database.HashSetAsync(
-                    KeyFor(chunk.Chunk.DocumentId.Value, chunk.Chunk.ChunkIndex),
-                    [.. entries])
-                .ConfigureAwait(false);
+            var hashKey = KeyFor(chunk.Chunk.DocumentId.Value, chunk.Chunk.ChunkIndex);
+            await database.HashSetAsync(hashKey, [.. entries]).ConfigureAwait(false);
+
+            // HSET merges rather than replaces: a declared key this chunk does not carry must be
+            // deleted explicitly, or a value an earlier write left behind would still match a
+            // filter the metadata blob no longer does (#513's re-ingest defect, reintroduced here).
+            if (stale is not null)
+                _ = await database.HashDeleteAsync(hashKey, [.. stale]).ConfigureAwait(false);
         }
     }
 

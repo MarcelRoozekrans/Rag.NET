@@ -74,6 +74,41 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
             stored.ToString());
     }
 
+    /// <summary>
+    /// <b>Re-ingest must not leave a stale <c>md_*</c> field behind.</b> <c>HSET</c> merges rather
+    /// than replaces, so a declared key written on the first store and absent on the second must be
+    /// deleted explicitly — otherwise the index still matches the old value, and the metadata
+    /// returned for the chunk does not even contain the key the filter matched on.
+    /// <see cref="RedisVectorStoreTests.StoreAsync_ReStoringTheSameChunk_ReplacesRatherThanDuplicates"/>
+    /// establishes that re-ingest is a first-class path this store must get right.
+    /// </summary>
+    [Fact]
+    public async Task ReIngestingWithoutADeclaredKeyRemovesTheStaleTagField()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync([Chunk("doc-re", "first", [1f, 0f, 0f, 0f], ("tenant", "acme"))], ct);
+
+        await _store.StoreAsync([Chunk("doc-re", "second", [1f, 0f, 0f, 0f])], ct);
+
+        var results = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f },
+            new SearchOptions
+            {
+                TopK = 5,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                {
+                    ["tenant"] = "acme",
+                },
+            },
+            ct);
+
+        Assert.Empty(results);
+
+        var found = await _store.GetChunksAsync([new ChunkKey("doc-re", 0)], ct);
+        var only = Assert.Single(found);
+        Assert.False(only.Metadata.ContainsKey("tenant"));
+    }
+
     /// <summary>An undeclared key is written to the blob only — it gets no field of its own.</summary>
     [Fact]
     public async Task AnUndeclaredKeyGetsNoFieldOfItsOwn()
