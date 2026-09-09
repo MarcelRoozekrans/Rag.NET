@@ -20,7 +20,18 @@ namespace Rag.NET.VectorStores.Redis;
 /// operating Redis — the same argument that justifies PgVector: reuse the datastore you run.
 /// <para>
 /// Chunks are stored as hashes under <c>{prefix}{documentId}:{chunkIndex}</c> and queried with
-/// <c>*=&gt;[KNN k @embedding $vec AS vector_score]</c> over an HNSW index.
+/// <c>&lt;filter&gt;=&gt;[KNN k @embedding $vec AS vector_score]</c> over an HNSW index, where
+/// <c>&lt;filter&gt;</c> is <c>*</c> for an unfiltered search or a TAG pre-filter built from
+/// <c>MetadataFilter</c> by <see cref="BuildFilterPrefix"/>.
+/// </para>
+/// <para>
+/// <b>Filtering requires declaring the keys up front, unlike every other store here.</b>
+/// RediSearch matches only against attributes its schema names, so a metadata key must be passed
+/// as <c>filterableMetadataKeys</c> to a constructor before the index is created — the one
+/// configuration step this store alone requires. Every key is still stored and returned regardless
+/// of declaration; only filtering on it needs the declaration. See
+/// <see cref="VerifyFilterableKeysAreIndexedAsync"/> for what happens when a key is declared after
+/// the index already exists.
 /// </para>
 /// <para>
 /// <b>RediSearch returns a distance, and this store returns a similarity.</b> With
@@ -67,10 +78,10 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     /// <param name="vectorDimensions">The embedding width; must match the generator's.</param>
     /// <param name="filterableMetadataKeys">
     /// Metadata keys that may be used in <c>MetadataFilter</c>. They become case-sensitive TAG
-    /// attributes in the index, so they must be known when the index is created. **A filter naming
-    /// a key that is not declared here throws** rather than returning an unfiltered page — Redis is
-    /// the only backend in this library that requires the declaration, because RediSearch filters
-    /// only on attributes the schema names.
+    /// attributes in the index, so they must be known when the index is created.
+    /// <b>A filter naming a key that is not declared here throws</b> rather than returning an
+    /// unfiltered page — Redis is the only backend in this library that requires the declaration,
+    /// because RediSearch filters only on attributes the schema names.
     /// </param>
     public RedisVectorStore(
         string configuration,
@@ -92,10 +103,10 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     /// <param name="vectorDimensions">The embedding width; must match the generator's.</param>
     /// <param name="filterableMetadataKeys">
     /// Metadata keys that may be used in <c>MetadataFilter</c>. They become case-sensitive TAG
-    /// attributes in the index, so they must be known when the index is created. **A filter naming
-    /// a key that is not declared here throws** rather than returning an unfiltered page — Redis is
-    /// the only backend in this library that requires the declaration, because RediSearch filters
-    /// only on attributes the schema names.
+    /// attributes in the index, so they must be known when the index is created.
+    /// <b>A filter naming a key that is not declared here throws</b> rather than returning an
+    /// unfiltered page — Redis is the only backend in this library that requires the declaration,
+    /// because RediSearch filters only on attributes the schema names.
     /// </param>
     public RedisVectorStore(
         IConnectionMultiplexer redis,
@@ -218,6 +229,11 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
             return;
 
         var info = await Database.FT().InfoAsync(_indexName).ConfigureAwait(false);
+        // Flattening every value of every attribute map into one set and asking whether md_<key>
+        // is present is only safe because no RediSearch type or flag token (TAG, TEXT, SORTABLE,
+        // CASESENSITIVE, ...) starts with the "md_" prefix. If MetadataFieldPrefix ever changed to
+        // something a schema token could collide with, this check would need to look only at the
+        // attribute's name (typically its first value), not its whole value set.
         var declared = new HashSet<string>(StringComparer.Ordinal);
         foreach (var attribute in info.Attributes)
         {

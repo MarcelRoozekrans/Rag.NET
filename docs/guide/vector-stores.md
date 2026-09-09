@@ -17,7 +17,7 @@ The vector store is the persistence layer for embedded chunks. Rag.NET ships six
 | Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) | Yes (`IHybridSearchable`) | No — BM25 fallback | No — BM25 fallback | No — BM25 fallback ([why](#hybrid-search-is-declined-not-approximated)) |
 | Sparse search (SPLADE, `ISparseSearchable`) | Yes (`enableSparseVectors: true`) | Yes (`enableSparseVectors: true`) | No | No | No | Yes (`EnableSparseVectors = true`) | No |
 | Metadata filtering | Yes (JSONB `@>`) | Yes (payload match / numeric range) | Yes (typed `metadata_entries/any(...)`) | Yes (typed `where` on `meta_*` props) | Yes (`where` `$eq`/`$and`) | Yes (filter `$eq`/`$and`) | Yes, on [declared keys only](#metadata-persisted-and-filterable-on-declared-keys) |
-| Typed metadata round-trip | Yes (native JSONB types) | Yes (native payload types) | Yes (typed complex-collection slots) | Yes (typed auto-schema props) | Yes (native values; dates as sentinel) | Yes (native values; dates as sentinel) | Yes (native values; dates as sentinel) |
+| Typed metadata round-trip | Yes (native JSONB types) | Yes (native payload types) | Yes (typed complex-collection slots) | Yes (typed auto-schema props) | Yes (native values; dates as sentinel) | Yes (native values; dates as sentinel) | Yes (typed JSON blob in a `metadata` hash field) |
 | `ICollectionManageable` | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Similarity function | Cosine (via `<=>`); dot product when sparse (`<#>`) | Cosine | Cosine | Cosine | Cosine | Cosine (dotproduct when sparse) | Cosine (distance converted to similarity) |
 | Index algorithm | HNSW at ≤ 2000 dims, **exact scan above** (see [below](#dense-index-and-search-behaviour)) | HNSW | HNSW | HNSW | HNSW | Serverless (managed) | HNSW |
@@ -110,7 +110,7 @@ public interface IVectorStore
 
 ### Typed metadata
 
-Chunk metadata values are typed (`MetadataValue`: string, number, boolean, or date — see the [ingestion guide](./ingestion.md#typed-metadata-values)), and every store persists the type: a `page` written as the number `3` is stored as a number, read back as a number, and filtered as a number. `MetadataFilter` takes the same typed values, so a numeric filter is a numeric comparison in the store, not a string match:
+Chunk metadata values are typed (`MetadataValue`: string, number, boolean, or date — see the [ingestion guide](./ingestion.md#typed-metadata-values)), and every store persists the type: a `page` written as the number `3` is stored as a number, read back as a number, and filtered as a number — on Redis, "filtered" holds only for [declared filterable keys](#metadata-persisted-and-filterable-on-declared-keys); every key is still stored and returned regardless. `MetadataFilter` takes the same typed values, so a numeric filter is a numeric comparison in the store, not a string match:
 
 ```csharp
 var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
