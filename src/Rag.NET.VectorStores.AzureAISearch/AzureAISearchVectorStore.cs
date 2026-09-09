@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Azure;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
@@ -11,7 +13,7 @@ using RagSearchOptions = Rag.NET.Models.Options.SearchOptions;
 
 namespace Rag.NET.AzureAISearch;
 
-public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable, IDisposable
+public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable, IChunkLookup, IDisposable
 {
     private const int SearchPageSize = 1000; // Azure AI Search maximum
     private const int DeleteBatchSize = 1000; // Azure AI Search maximum
@@ -175,7 +177,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 
         var documents = chunks.Select(chunk => new SearchDocument(new Dictionary<string, object>(StringComparer.Ordinal)
         {
-            ["id"] = Guid.NewGuid().ToString("N"),
+            ["id"] = DocumentKey((string)chunk.Chunk.DocumentId, chunk.Chunk.ChunkIndex),
             ["document_id"] = chunk.Chunk.DocumentId,
             ["chunk_index"] = chunk.Chunk.ChunkIndex,
             ["text"] = chunk.Chunk.Text,
@@ -190,6 +192,118 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         var batch = IndexDocumentsBatch.Upload(documents);
         await _searchClient.IndexDocumentsAsync(batch, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The document key for a chunk: <c>(documentId, chunkIndex)</c> encoded so that equal chunks
+    /// produce equal keys and different chunks never collide.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This key used to be <c>Guid.NewGuid()</c>, which made every write an insert (#517).</b>
+    /// Azure AI Search's <c>Upload</c> action replaces the document with the given key, so a random
+    /// key meant re-ingesting a document added a second copy of every chunk rather than replacing
+    /// it — measured: storing one chunk twice left two searchable. Deriving the key makes
+    /// <c>Upload</c> the upsert every other backend in this repository already performs.
+    /// </para>
+    /// <para>
+    /// <b>Base64Url, not <c>documentId + ":" + chunkIndex</c>.</b> Azure AI Search accepts only
+    /// letters, digits, <c>_</c>, <c>-</c> and <c>=</c> in a key, so a document id containing a
+    /// slash, a colon, a space or any non-ASCII character cannot be used raw — the service rejects
+    /// the write. Base64Url's alphabet is exactly the permitted set, so encoding the whole composite
+    /// is uniformly safe rather than safe-for-the-ids-someone-happened-to-test. The identity is
+    /// still stored in the <c>document_id</c> and <c>chunk_index</c> fields and read back from
+    /// there, so nothing decodes this.
+    /// </para>
+    /// <para>
+    /// <b>The separator is inside the encoding, and the pairing is injective.</b> A chunk index has
+    /// no <c>\n</c> in its decimal form, so the last newline in the composite always separates the
+    /// two parts — meaning distinct <c>(documentId, chunkIndex)</c> pairs always produce distinct
+    /// bytes, even when a document id itself contains a newline. Getting this wrong would silently
+    /// merge two chunks into one document, which no test that stores one chunk can see.
+    /// </para>
+    /// </remarks>
+    /// <param name="documentId">The owning document.</param>
+    /// <param name="chunkIndex">Position within that document; may be negative.</param>
+    /// <returns>A key valid for Azure AI Search.</returns>
+    internal static string DocumentKey(string documentId, int chunkIndex)
+    {
+        var composite = documentId + "\n" + chunkIndex.ToString(CultureInfo.InvariantCulture);
+        return System.Buffers.Text.Base64Url.EncodeToString(Encoding.UTF8.GetBytes(composite));
+    }
+
+    /// <summary>
+    /// Returns the chunks for the given keys, fetched by document key. Missing keys are simply
+    /// absent (#318).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>No OData filter, which is what makes this testable at all.</b> Before #517 the document
+    /// key was random, so a keyed read here would have had to filter on <c>document_id</c> and
+    /// <c>chunk_index</c> — and <c>chunk_index</c> is declared without <c>IsFilterable</c>, so the
+    /// service would reject it. Deriving the key turns the lookup into a direct
+    /// <c>GetDocument</c>, which also sidesteps the local simulator's incomplete filter support.
+    /// </para>
+    /// <para>
+    /// <b>A missing key is a 404, and a 404 is not an error here.</b> A document deleted since
+    /// extraction leaves the graph naming chunks that no longer exist, and that is not a reason to
+    /// fail a query. Every other status still throws.
+    /// </para>
+    /// <para>
+    /// <b>The reads are issued together.</b> One request per key, awaited as a batch, rather than a
+    /// serial loop over the few dozen keys local search sends.
+    /// </para>
+    /// </remarks>
+    /// <param name="keys">Chunk identities to fetch.</param>
+    /// <param name="cancellationToken">Cancels the lookup.</param>
+    /// <returns>The chunks that exist, in unspecified order.</returns>
+    public async Task<IReadOnlyList<TextChunk>> GetChunksAsync(
+        IReadOnlyList<ChunkKey> keys,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        if (keys.Count == 0)
+            return [];
+
+        await EnsureInitialisedAsync(cancellationToken).ConfigureAwait(false);
+
+        var reads = new Task<SearchDocument?>[keys.Count];
+        for (var i = 0; i < keys.Count; i++)
+            reads[i] = GetDocumentOrNullAsync(DocumentKey(keys[i].DocumentId, keys[i].ChunkIndex), cancellationToken);
+
+        var documents = await Task.WhenAll(reads).ConfigureAwait(false);
+
+        var chunks = new List<TextChunk>(keys.Count);
+        foreach (var document in documents)
+        {
+            if (document is null)
+                continue;
+
+            chunks.Add(MapChunk(document));
+        }
+
+        return chunks;
+    }
+
+    /// <summary>Fetches one document, answering <see langword="null"/> when it does not exist.</summary>
+    /// <param name="key">The document key.</param>
+    /// <param name="cancellationToken">Cancels the read.</param>
+    /// <returns>The document, or <see langword="null"/> on 404.</returns>
+    private async Task<SearchDocument?> GetDocumentOrNullAsync(
+        string key, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await _searchClient
+                .GetDocumentAsync<SearchDocument>(key, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            return response.Value;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
     }
 
     public async Task<IReadOnlyList<SearchResult>> SearchAsync(
@@ -455,19 +569,28 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 
             results.Add(new SearchResult
             {
-                Chunk = new TextChunk
-                {
-                    DocumentId = new DocumentId(result.Document.GetString("document_id")),
-                    ChunkIndex = result.Document.GetInt32("chunk_index") ?? 0,
-                    Text = result.Document.GetString("text"),
-                    Metadata = ReadMetadata(result.Document),
-                },
+                Chunk = MapChunk(result.Document),
                 Score = score,
             });
         }
 
         return results;
     }
+
+    /// <summary>
+    /// Materialises a chunk from a stored document. Shared by search and by the keyed lookup so the
+    /// two cannot drift on what a stored chunk is — the identity is read from the
+    /// <c>document_id</c> and <c>chunk_index</c> fields, never decoded back out of the key.
+    /// </summary>
+    /// <param name="document">The stored document.</param>
+    /// <returns>The chunk it encodes.</returns>
+    private static TextChunk MapChunk(SearchDocument document) => new()
+    {
+        DocumentId = new DocumentId(document.GetString("document_id")),
+        ChunkIndex = document.GetInt32("chunk_index") ?? 0,
+        Text = document.GetString("text"),
+        Metadata = ReadMetadata(document),
+    };
 
     /// <summary>
     /// Metadata from the typed <c>metadata_entries</c> collection when the document has rows
