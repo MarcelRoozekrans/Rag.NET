@@ -72,9 +72,15 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.31 — What Redis Never Stored, It Cannot Return — **built and reviewed 2026-09-09,
-awaiting the operator's merge.** 28 commits on `feat/513-redis-chunk-metadata`, 47 tests where the
-package had 16. Closes #513 and files #521. **The phase's scope grew when scoping it found a
+**Phase:** 6.2.31 — What Redis Never Stored, It Cannot Return — **MERGED 2026-09-09** (#522,
+`6480fd07`), closing #513. Verified on `main` by content — `VerifyFilterableKeysAreIndexedAsync`,
+`BuildFilterPrefix`, `ValidateFilterableKeys`, `MetadataToken` and `filterableMetadataKeys` are all
+present — not by the MERGED label. 29 commits, 47 tests where the package had 16. **No phase is
+currently open.** #521 remains open by design.
+
+**Breaking, and it needs saying where an operator will see it:** an existing Redis index must be
+recreated and re-ingested. Initialisation throws naming the missing attribute rather than filtering
+silently against a stale schema, so the break announces itself; it does not corrupt quietly. **The phase's scope grew when scoping it found a
 wrong-results defect rather than the missing feature #513 describes**: `SearchAsync` never read
 `MetadataFilter`, nothing re-checks downstream, and the guide told readers the pipeline filtered
 instead — it does not, and never did.
@@ -400,7 +406,13 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**Phase 6.2.31 — #513, `RedisVectorStore` persists no chunk metadata.** Chosen by the operator on
+**~~Phase 6.2.31 — #513~~ MERGED 2026-09-09 in #522. Nothing below it has been started.** The
+ordering that follows is still the ordering, minus this entry. **#521 joined the list from this
+phase**: PgVector, Qdrant and Azure AI Search return an empty dictionary on a corrupt metadata blob
+while Weaviate throws — the three are a pre-review default, the one is a reviewed decision, and
+Redis now follows the reviewed one. Small, and it removes a silent path from three stores at once.
+
+**Previously (the choice, kept for the reasoning): #513** chosen by the operator on
 2026-09-09 over #184, #495 and #328. It is 6.2.26's own finding: the Redis keyed lookup was built
 and works, but the store writes only `document_id`, `chunk_index`, `text` and `embedding`, so
 **neither search nor lookup can return metadata on this backend and both succeed while returning
