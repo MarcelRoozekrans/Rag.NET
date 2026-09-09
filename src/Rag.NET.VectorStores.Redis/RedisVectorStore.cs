@@ -1,5 +1,7 @@
+using System.Buffers.Text;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Text;
 using NRedisStack.RedisStackCommands;
 using NRedisStack.Search;
 using NRedisStack.Search.Literals.Enums;
@@ -18,7 +20,18 @@ namespace Rag.NET.VectorStores.Redis;
 /// operating Redis — the same argument that justifies PgVector: reuse the datastore you run.
 /// <para>
 /// Chunks are stored as hashes under <c>{prefix}{documentId}:{chunkIndex}</c> and queried with
-/// <c>*=&gt;[KNN k @embedding $vec AS vector_score]</c> over an HNSW index.
+/// <c>&lt;filter&gt;=&gt;[KNN k @embedding $vec AS vector_score]</c> over an HNSW index, where
+/// <c>&lt;filter&gt;</c> is <c>*</c> for an unfiltered search or a TAG pre-filter built from
+/// <c>MetadataFilter</c> by <see cref="BuildFilterPrefix"/>.
+/// </para>
+/// <para>
+/// <b>Filtering requires declaring the keys up front, unlike every other store here.</b>
+/// RediSearch matches only against attributes its schema names, so a metadata key must be passed
+/// as <c>filterableMetadataKeys</c> to a constructor before the index is created — the one
+/// configuration step this store alone requires. Every key is still stored and returned regardless
+/// of declaration; only filtering on it needs the declaration. See
+/// <see cref="VerifyFilterableKeysAreIndexedAsync"/> for what happens when a key is declared after
+/// the index already exists.
 /// </para>
 /// <para>
 /// <b>RediSearch returns a distance, and this store returns a similarity.</b> With
@@ -48,6 +61,8 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     private const string TextField = "text";
     private const string DocumentIdField = "document_id";
     private const string ChunkIndexField = "chunk_index";
+    private const string MetadataField = "metadata";
+    private const string MetadataFieldPrefix = "md_";
 
     private readonly VectorStoreInitialisationGate _initGate = new();
     private readonly IConnectionMultiplexer _redis;
@@ -55,13 +70,30 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     private readonly string _indexName;
     private readonly string _keyPrefix;
     private readonly int _vectorDimensions;
+    private readonly IReadOnlyList<string> _filterableKeys;
 
     /// <summary>Creates a store against a Redis connection string.</summary>
     /// <param name="configuration">A StackExchange.Redis configuration string, e.g. <c>localhost:6379</c>.</param>
     /// <param name="indexName">The RediSearch index to create and query.</param>
     /// <param name="vectorDimensions">The embedding width; must match the generator's.</param>
-    public RedisVectorStore(string configuration, string indexName = "ragnet-idx", int vectorDimensions = 1536)
-        : this(ConnectionMultiplexer.Connect(configuration), indexName, vectorDimensions, ownsConnection: true)
+    /// <param name="filterableMetadataKeys">
+    /// Metadata keys that may be used in <c>MetadataFilter</c>. They become case-sensitive TAG
+    /// attributes in the index, so they must be known when the index is created.
+    /// <b>A filter naming a key that is not declared here throws</b> rather than returning an
+    /// unfiltered page — Redis is the only backend in this library that requires the declaration,
+    /// because RediSearch filters only on attributes the schema names.
+    /// </param>
+    public RedisVectorStore(
+        string configuration,
+        string indexName = "ragnet-idx",
+        int vectorDimensions = 1536,
+        IReadOnlyList<string>? filterableMetadataKeys = null)
+        : this(
+            ConnectionMultiplexer.Connect(configuration),
+            indexName,
+            vectorDimensions,
+            ownsConnection: true,
+            filterableMetadataKeys)
     {
     }
 
@@ -69,13 +101,28 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     /// <param name="redis">An existing multiplexer — the common case when Redis is already used for caching.</param>
     /// <param name="indexName">The RediSearch index to create and query.</param>
     /// <param name="vectorDimensions">The embedding width; must match the generator's.</param>
-    public RedisVectorStore(IConnectionMultiplexer redis, string indexName = "ragnet-idx", int vectorDimensions = 1536)
-        : this(redis, indexName, vectorDimensions, ownsConnection: false)
+    /// <param name="filterableMetadataKeys">
+    /// Metadata keys that may be used in <c>MetadataFilter</c>. They become case-sensitive TAG
+    /// attributes in the index, so they must be known when the index is created.
+    /// <b>A filter naming a key that is not declared here throws</b> rather than returning an
+    /// unfiltered page — Redis is the only backend in this library that requires the declaration,
+    /// because RediSearch filters only on attributes the schema names.
+    /// </param>
+    public RedisVectorStore(
+        IConnectionMultiplexer redis,
+        string indexName = "ragnet-idx",
+        int vectorDimensions = 1536,
+        IReadOnlyList<string>? filterableMetadataKeys = null)
+        : this(redis, indexName, vectorDimensions, ownsConnection: false, filterableMetadataKeys)
     {
     }
 
     private RedisVectorStore(
-        IConnectionMultiplexer redis, string indexName, int vectorDimensions, bool ownsConnection)
+        IConnectionMultiplexer redis,
+        string indexName,
+        int vectorDimensions,
+        bool ownsConnection,
+        IReadOnlyList<string>? filterableMetadataKeys)
     {
         ArgumentNullException.ThrowIfNull(redis);
         ArgumentException.ThrowIfNullOrWhiteSpace(indexName);
@@ -86,6 +133,66 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         _keyPrefix = indexName + ":";
         _vectorDimensions = vectorDimensions;
         _ownsConnection = ownsConnection;
+        _filterableKeys = filterableMetadataKeys is null
+            ? []
+            : ValidateFilterableKeys(filterableMetadataKeys);
+    }
+
+    /// <summary>
+    /// Rejects a declared filterable key that would break silently later instead of loudly now.
+    /// </summary>
+    /// <remarks>
+    /// <c>MetadataFieldName</c> is raw concatenation and the field name is spliced into every
+    /// filtered query <b>unescaped</b> (only the value is escaped). A key outside
+    /// <c>[A-Za-z0-9_]</c> — <c>tenant-id</c>, say — becomes the attribute <c>md_tenant-id</c>:
+    /// <c>FT.CREATE</c> accepts it and the <see cref="VerifyFilterableKeysAreIndexedAsync"/> guard
+    /// finds the name and passes, and only then does every filtered query break, because DIALECT 2
+    /// reads the hyphen inside <c>@md_tenant-id:{…}</c> as NOT. A duplicate would otherwise fail at
+    /// <c>FT.CREATE</c> on first use rather than at construction, and a null or blank key would
+    /// silently produce the field <c>md_</c>. Failing here, at construction, is the posture this
+    /// design takes everywhere else a bad configuration is detectable up front.
+    /// </remarks>
+    /// <param name="filterableMetadataKeys">The keys as supplied to the constructor.</param>
+    /// <returns>The validated keys, in order.</returns>
+    /// <exception cref="ArgumentException">A key is null/whitespace, invalid, or a duplicate.</exception>
+    private static string[] ValidateFilterableKeys(IReadOnlyList<string> filterableMetadataKeys)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var validated = new List<string>(filterableMetadataKeys.Count);
+        foreach (var key in filterableMetadataKeys)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new ArgumentException(
+                    "A filterable metadata key cannot be null or whitespace: it becomes the " +
+                    "RediSearch attribute name, and a blank one would produce the field 'md_'.",
+                    nameof(filterableMetadataKeys));
+            }
+
+            foreach (var character in key)
+            {
+                if (!char.IsAsciiLetterOrDigit(character) && character != '_')
+                {
+                    throw new ArgumentException(
+                        $"Filterable metadata key '{key}' contains '{character}', which is " +
+                        "outside [A-Za-z0-9_]. The key becomes the RediSearch attribute name " +
+                        $"unescaped inside every filtered query — DIALECT 2 would read a " +
+                        $"character like '-' as NOT rather than part of the field name.",
+                        nameof(filterableMetadataKeys));
+                }
+            }
+
+            if (!seen.Add(key))
+            {
+                throw new ArgumentException(
+                    $"Filterable metadata key '{key}' is declared more than once.",
+                    nameof(filterableMetadataKeys));
+            }
+
+            validated.Add(key);
+        }
+
+        return [.. validated];
     }
 
     private IDatabase Database => _redis.GetDatabase();
@@ -101,6 +208,49 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         {
             await CreateCollectionAsync(_indexName, _vectorDimensions, cancellationToken)
                 .ConfigureAwait(false);
+            return;
+        }
+
+        await VerifyFilterableKeysAreIndexedAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Throws when the live index does not declare every configured filterable key.
+    /// </summary>
+    /// <remarks>
+    /// An existing index is never altered or dropped here, so a key added to the configuration
+    /// after the index was built would otherwise be silently unfilterable. Failing at
+    /// initialisation turns a wrong query result into a startup error naming the key.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">A declared key is not an index attribute.</exception>
+    private async Task VerifyFilterableKeysAreIndexedAsync()
+    {
+        if (_filterableKeys.Count == 0)
+            return;
+
+        var info = await Database.FT().InfoAsync(_indexName).ConfigureAwait(false);
+        // Flattening every value of every attribute map into one set and asking whether md_<key>
+        // is present is only safe because no RediSearch type or flag token (TAG, TEXT, SORTABLE,
+        // CASESENSITIVE, ...) starts with the "md_" prefix. If MetadataFieldPrefix ever changed to
+        // something a schema token could collide with, this check would need to look only at the
+        // attribute's name (typically its first value), not its whole value set.
+        var declared = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var attribute in info.Attributes)
+        {
+            foreach (var value in attribute.Values)
+                _ = declared.Add(value.ToString());
+        }
+
+        foreach (var key in _filterableKeys)
+        {
+            var field = MetadataFieldName(key);
+            if (!declared.Contains(field))
+            {
+                throw new InvalidOperationException(
+                    $"Redis index '{_indexName}' does not declare the attribute '{field}', so " +
+                    $"filtering on metadata key '{key}' cannot work. The index predates this " +
+                    $"configuration; recreate it and re-ingest.");
+            }
         }
     }
 
@@ -115,16 +265,27 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         var schema = new Schema()
             .AddTagField(DocumentIdField)
             .AddNumericField(ChunkIndexField)
-            .AddTextField(TextField)
-            .AddVectorField(
-                EmbeddingField,
-                Schema.VectorField.VectorAlgo.HNSW,
-                new Dictionary<string, object>(StringComparer.Ordinal)
-                {
-                    ["TYPE"] = "FLOAT32",
-                    ["DIM"] = vectorDimensions.ToString(CultureInfo.InvariantCulture),
-                    ["DISTANCE_METRIC"] = "COSINE",
-                });
+            .AddTextField(TextField);
+
+        foreach (var key in _filterableKeys)
+        {
+            // caseSensitive: the value is Base64Url-encoded before it is stored as a tag, and
+            // Base64Url's alphabet uses both letter cases, so two different values can encode to
+            // tokens that are themselves case-variants of one another; a case-folding TAG field
+            // would match one against the other. See
+            // RedisMetadataFilterTests.ABase64UrlCaseVariantOfAStoredTokenDoesNotMatchIt.
+            _ = schema.AddTagField(MetadataFieldName(key), caseSensitive: true);
+        }
+
+        _ = schema.AddVectorField(
+            EmbeddingField,
+            Schema.VectorField.VectorAlgo.HNSW,
+            new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["TYPE"] = "FLOAT32",
+                ["DIM"] = vectorDimensions.ToString(CultureInfo.InvariantCulture),
+                ["DISTANCE_METRIC"] = "COSINE",
+            });
 
         _ = await Database.FT().CreateAsync(
             collectionName,
@@ -201,16 +362,37 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         for (var i = 0; i < chunks.Count; i++)
         {
             var chunk = chunks[i];
-            var entries = new HashEntry[]
+            var entries = new List<HashEntry>(5 + _filterableKeys.Count)
             {
                 new(DocumentIdField, chunk.Chunk.DocumentId.Value),
                 new(ChunkIndexField, chunk.Chunk.ChunkIndex),
                 new(TextField, chunk.Chunk.Text),
+                new(MetadataField, MetadataSerializer.SerializeMetadata(chunk.Chunk.Metadata)),
                 new(EmbeddingField, ToBytes(chunk.Embedding.Span)),
             };
 
-            await database.HashSetAsync(KeyFor(chunk.Chunk.DocumentId.Value, chunk.Chunk.ChunkIndex), entries)
-                .ConfigureAwait(false);
+            List<RedisValue>? stale = null;
+            foreach (var key in _filterableKeys)
+            {
+                if (chunk.Chunk.Metadata.TryGetValue(key, out var value))
+                {
+                    entries.Add(new HashEntry(MetadataFieldName(key), MetadataToken(value)));
+                }
+                else
+                {
+                    stale ??= [];
+                    stale.Add(MetadataFieldName(key));
+                }
+            }
+
+            var hashKey = KeyFor(chunk.Chunk.DocumentId.Value, chunk.Chunk.ChunkIndex);
+            await database.HashSetAsync(hashKey, [.. entries]).ConfigureAwait(false);
+
+            // HSET merges rather than replaces: a declared key this chunk does not carry must be
+            // deleted explicitly, or a value an earlier write left behind would still match a
+            // filter the metadata blob no longer does (#513's re-ingest defect, reintroduced here).
+            if (stale is not null)
+                _ = await database.HashDeleteAsync(hashKey, [.. stale]).ConfigureAwait(false);
         }
     }
 
@@ -232,10 +414,11 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         activity?.SetTag("vector.store", nameof(RedisVectorStore));
         activity?.SetTag("top.k", options.TopK);
 
-        var query = new Query($"*=>[KNN {options.TopK.ToString(CultureInfo.InvariantCulture)} @{EmbeddingField} $vec AS {ScoreField}]")
+        var filterPrefix = BuildFilterPrefix(options.MetadataFilter);
+        var query = new Query($"{filterPrefix}=>[KNN {options.TopK.ToString(CultureInfo.InvariantCulture)} @{EmbeddingField} $vec AS {ScoreField}]")
             .AddParam("vec", ToBytes(queryEmbedding.Span))
             .SetSortBy(ScoreField)
-            .ReturnFields(DocumentIdField, ChunkIndexField, TextField, ScoreField)
+            .ReturnFields(DocumentIdField, ChunkIndexField, TextField, MetadataField, ScoreField)
             .Dialect(2);
         query.Limit(0, options.TopK);
 
@@ -250,13 +433,17 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
                 continue;
             }
 
+            var documentId = document[DocumentIdField].ToString();
+            var chunkIndex = (int)document[ChunkIndexField];
+
             results.Add(new SearchResult
             {
                 Chunk = new TextChunk
                 {
                     Text = document[TextField].ToString(),
-                    DocumentId = new DocumentId(document[DocumentIdField].ToString()),
-                    ChunkIndex = (int)document[ChunkIndexField],
+                    DocumentId = new DocumentId(documentId),
+                    ChunkIndex = chunkIndex,
+                    Metadata = DecodeMetadata(document[MetadataField], documentId, chunkIndex),
                 },
                 Score = score,
             });
@@ -264,6 +451,51 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
 
         activity?.SetTag("result.count", results.Count);
         return results;
+    }
+
+    /// <summary>
+    /// The RediSearch pre-filter for a metadata filter, or <c>*</c> when there is none.
+    /// </summary>
+    /// <remarks>
+    /// Conditions are AND-ed by juxtaposition, matching <c>SearchOptions.MetadataFilter</c>'s
+    /// "matches every key/value pair". Each value is tokenised (kind + Base64Url) and then escaped
+    /// for TAG syntax — the token's own colon is syntax inside a query even though nothing else in
+    /// it is.
+    /// </remarks>
+    /// <param name="filter">The requested filter; null or empty means no filtering.</param>
+    /// <returns>The query prefix.</returns>
+    /// <exception cref="InvalidOperationException">A key was not declared filterable.</exception>
+    private string BuildFilterPrefix(IDictionary<string, MetadataValue>? filter)
+    {
+        if (filter is not { Count: > 0 })
+            return "*";
+
+        var clause = new StringBuilder("(");
+        var first = true;
+        foreach (var pair in filter)
+        {
+            if (!_filterableKeys.Contains(pair.Key, StringComparer.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Metadata key '{pair.Key}' is not filterable on this Redis index. RediSearch " +
+                    $"filters only on attributes the schema declares, so filterable keys are fixed " +
+                    $"when the index is created. Declared: " +
+                    $"[{string.Join(", ", _filterableKeys)}]. Add '{pair.Key}' to " +
+                    $"filterableMetadataKeys and recreate the index.");
+            }
+
+            if (!first)
+                _ = clause.Append(' ');
+
+            first = false;
+            _ = clause.Append('@')
+                .Append(MetadataFieldName(pair.Key))
+                .Append(":{")
+                .Append(EscapeTag(MetadataToken(pair.Value)))
+                .Append('}');
+        }
+
+        return clause.Append(')').ToString();
     }
 
     /// <summary>
@@ -286,13 +518,6 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     /// <para>
     /// <b>A missing key returns an empty hash rather than an error</b>, which is the contract: a
     /// document deleted since extraction leaves the graph naming chunks that no longer exist.
-    /// </para>
-    /// <para>
-    /// <b>These chunks carry no metadata, and neither do this store's search results.</b>
-    /// <see cref="StoreAsync"/> persists only <c>document_id</c>, <c>chunk_index</c>, <c>text</c>
-    /// and the embedding, so there is nothing to return — a pre-existing property of this backend
-    /// rather than something the keyed read drops. A caller sees the same shape from either path,
-    /// which is the important part; that Redis stores no metadata at all is tracked separately.
     /// </para>
     /// </remarks>
     /// <param name="keys">Chunk identities to fetch.</param>
@@ -330,12 +555,13 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
 
     /// <summary>Materialises a chunk from the hash <see cref="StoreAsync"/> wrote.</summary>
     /// <param name="hash">The hash entries for one key.</param>
-    /// <returns>The chunk it encodes, without metadata — this store persists none.</returns>
+    /// <returns>The chunk it encodes, including its metadata.</returns>
     private static TextChunk MapChunk(HashEntry[] hash)
     {
         string text = string.Empty;
         string documentId = string.Empty;
         var chunkIndex = 0;
+        RedisValue metadata = RedisValue.Null;
 
         // Plain iteration: HashEntry is not a readonly struct, so a ref-readonly loop copies it
         // on every member access anyway (EPS06).
@@ -348,6 +574,8 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
                 documentId = entry.Value.ToString();
             else if (string.Equals(name, ChunkIndexField, StringComparison.Ordinal))
                 chunkIndex = (int)entry.Value;
+            else if (string.Equals(name, MetadataField, StringComparison.Ordinal))
+                metadata = entry.Value;
         }
 
         return new TextChunk
@@ -355,7 +583,35 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
             Text = text,
             DocumentId = new DocumentId(documentId),
             ChunkIndex = chunkIndex,
+            Metadata = DecodeMetadata(metadata, documentId, chunkIndex),
         };
+    }
+
+    /// <summary>
+    /// Decodes the <c>metadata</c> hash field. A <b>missing</b> field is a hash written before this
+    /// store persisted metadata and reads as empty; a field that is <b>present and corrupt</b>
+    /// throws, because on this store a chunk that reads as having no metadata is indistinguishable
+    /// from the defect #513 fixed. Matches <c>WeaviateVectorStore</c>'s reviewed posture (#521).
+    /// </summary>
+    /// <param name="raw">The raw field value, or a null <see cref="RedisValue"/> when absent.</param>
+    /// <param name="documentId">Named in the exception, so a corrupt chunk is findable.</param>
+    /// <param name="chunkIndex">Named in the exception.</param>
+    /// <returns>The decoded metadata; empty when the field is absent.</returns>
+    private static IDictionary<string, MetadataValue> DecodeMetadata(
+        RedisValue raw, string documentId, int chunkIndex)
+    {
+        if (raw.IsNullOrEmpty)
+            return new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
+
+        var result = MetadataSerializer.DeserializeMetadata(raw.ToString());
+        if (result.IsFailure)
+        {
+            throw new InvalidOperationException(
+                $"Redis hash '{documentId}:{chunkIndex.ToString(CultureInfo.InvariantCulture)}' " +
+                $"has a corrupt {MetadataField} field.");
+        }
+
+        return result.Value;
     }
 
     /// <inheritdoc />
@@ -425,7 +681,7 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
     /// <returns>The escaped value.</returns>
     internal static string EscapeTag(string value)
     {
-        var escaped = new System.Text.StringBuilder(value.Length);
+        var escaped = new StringBuilder(value.Length);
         foreach (var character in value)
         {
             if (!char.IsLetterOrDigit(character) && character != '_')
@@ -437,6 +693,48 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         }
 
         return escaped.ToString();
+    }
+
+    /// <summary>The hash field and index attribute a filterable metadata key is stored under.</summary>
+    /// <param name="key">The metadata key.</param>
+    /// <returns>The namespaced field name, e.g. <c>md_tenant</c>.</returns>
+    internal static string MetadataFieldName(string key) => MetadataFieldPrefix + key;
+
+    /// <summary>
+    /// The TAG token one filterable metadata value is stored and queried as: its kind, a colon,
+    /// then the Base64Url of its canonical text.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The kind prefix is the typed half of the contract.</b> <c>SearchOptions.MetadataFilter</c>
+    /// matches typed — a filter of <c>3</c> must not match the string <c>"3"</c> — and without the
+    /// prefix both render as <c>3</c>.
+    /// </para>
+    /// <para>
+    /// <b>The value is encoded, not escaped, because a TAG field splits on a separator</b>
+    /// (<c>,</c> by default). No separator character is safe when a value can contain any
+    /// character, and Base64Url's alphabet contains none of them. Dropping the encoding is the
+    /// simplification that passes every test whose values are well-behaved words.
+    /// </para>
+    /// <para>
+    /// <b>The text comes from <see cref="MetadataValue.ToString"/></b>, which already emits
+    /// invariant numbers, <c>true</c>/<c>false</c>, and the shared date format — so the write path
+    /// and the filter path are one accessor and cannot drift.
+    /// </para>
+    /// </remarks>
+    /// <param name="value">The metadata value.</param>
+    /// <returns>The token.</returns>
+    internal static string MetadataToken(MetadataValue value)
+    {
+        var kind = value.Kind switch
+        {
+            MetadataValueKind.Number => 'n',
+            MetadataValueKind.Boolean => 'b',
+            MetadataValueKind.DateTimeOffset => 'd',
+            _ => 's',
+        };
+
+        return $"{kind}:{Base64Url.EncodeToString(Encoding.UTF8.GetBytes(value.ToString()))}";
     }
 
     public void Dispose()

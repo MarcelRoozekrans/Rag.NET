@@ -7,8 +7,9 @@ namespace Rag.NET;
 /// <summary>
 /// The shared chunk-metadata JSON round-trip used by every store that persists metadata as one
 /// document (Qdrant's <c>metadata</c> payload field, Weaviate's <c>metadata_json</c> property,
-/// PgVector's <c>jsonb</c> column, the SQLite stores, and Azure AI Search's legacy
-/// <c>metadata</c> field). Values keep their <see cref="MetadataValue.Kind"/> through the trip —
+/// PgVector's <c>jsonb</c> column, the SQLite stores, Redis's <c>metadata</c> hash field, and
+/// Azure AI Search's legacy <c>metadata</c> field). Values keep their
+/// <see cref="MetadataValue.Kind"/> through the trip —
 /// see <see cref="MetadataValueJsonConverter"/> for the format, including why metadata written
 /// before values carried types (JSON with string values only) reads back losslessly as
 /// <see cref="MetadataValueKind.String"/> values.

@@ -36,6 +36,45 @@ var redis = ConnectionMultiplexer.Connect("localhost:6379");
 rag.UseRedis(redis, "ragnet-idx", 1536);
 ```
 
+## Metadata filtering needs keys declared up front
+
+Every other vector store in this library accepts a `MetadataFilter` and just filters on
+whatever keys are in it. Redis cannot: RediSearch only filters on attributes its schema
+declares, and a hash field is not one unless the index was told about it at creation time.
+So `UseRedis` takes an extra, optional argument naming the metadata keys you intend to
+filter on:
+
+```csharp
+rag.UseRedis(
+    configuration:          "localhost:6379",
+    indexName:              "ragnet-idx",
+    vectorDimensions:       1536,
+    filterableMetadataKeys: ["tenant"]);
+```
+
+Each declared key becomes a **case-sensitive** `md_<key>` TAG attribute on the index (e.g.
+`tenant` → `md_tenant`). Case-sensitive because metadata values are Base64Url-encoded before
+they are stored as tags, and Base64Url's alphabet uses both letter cases — a case-folding TAG
+field would match two genuinely different values whose tokens happen to be case-variants of
+one another.
+
+Two consequences follow directly from keys being fixed at creation time:
+
+- **Filtering on an undeclared key throws** `InvalidOperationException` naming the key,
+  rather than silently returning an unfiltered page. `MetadataFilter = { ["tenant"] = "acme" }`
+  against a store constructed without `"tenant"` in `filterableMetadataKeys` fails loudly, at
+  query time.
+- **An index built before a key was declared fails `InitializeAsync`.** Adding a key to
+  `filterableMetadataKeys` does not retroactively add the TAG attribute to an existing index —
+  `InitializeAsync` checks every declared key against the live schema and throws
+  `InvalidOperationException` if one is missing. The index must be dropped and recreated (and
+  its documents re-ingested) before that key can be filtered on.
+
+This is Redis-only. Every other backend in this library either has a native document/map
+type it can filter against directly (PgVector, Weaviate, Chroma) or applies the filter as a
+metadata predicate outside a fixed schema (Qdrant, Pinecone, Azure AI Search); RediSearch is
+the one query engine here that refuses to match against an attribute its schema never named.
+
 ## Example
 
 Create the index once at startup. `InitializeAsync` is idempotent: an existing index is

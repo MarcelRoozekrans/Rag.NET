@@ -16,12 +16,6 @@ namespace Rag.NET.VectorStores.Redis.Tests;
 /// touches RediSearch. Nothing is parsed as a query, which is why a document id containing the
 /// characters RediSearch treats as syntax needs no escaping on this path.
 /// </para>
-/// <para>
-/// <b>These chunks carry no metadata, and that is this store rather than this lookup.</b>
-/// <c>StoreAsync</c> persists only <c>document_id</c>, <c>chunk_index</c>, <c>text</c> and the
-/// embedding, so search returns none either. The test below pins that the two paths agree rather
-/// than pretending the keyed read lost something.
-/// </para>
 /// </remarks>
 public sealed class RedisChunkLookupTests : IAsyncLifetime
 {
@@ -120,6 +114,33 @@ public sealed class RedisChunkLookupTests : IAsyncLifetime
         Assert.DoesNotContain(found, c => string.Equals(c.Text, "ordinary", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// <b>A negative index and its positive counterpart must not collide.</b> The negative-index
+    /// trap above uses only negative indices, so it cannot tell a real per-sign key apart from one
+    /// that discards the sign (e.g. via <c>Math.Abs</c> in <c>KeyFor</c>): with only -1, -2, and 0
+    /// in play, an absolute-value key never re-derives an index another stored chunk already used.
+    /// Storing both <c>1</c> and <c>-1</c> for the same document forces that collision to surface —
+    /// a sign-discarding key would overwrite one chunk with the other and then read the survivor
+    /// back for both.
+    /// </summary>
+    [Fact]
+    public async Task PositiveAndNegativeChunkIndicesOfTheSameMagnitudeAreDistinctKeys()
+    {
+        await StoreAsync(
+            Chunk("graph", 1, "positive one"),
+            Chunk("graph", -1, "negative one"));
+
+        var found = await _store.GetChunksAsync(
+            [new ChunkKey("graph", 1), new ChunkKey("graph", -1)],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, found.Count);
+        Assert.Contains(found, c =>
+            string.Equals(c.Text, "positive one", StringComparison.Ordinal) && c.ChunkIndex == 1);
+        Assert.Contains(found, c =>
+            string.Equals(c.Text, "negative one", StringComparison.Ordinal) && c.ChunkIndex == -1);
+    }
+
     /// <summary>A key with no stored chunk is absent, not an error.</summary>
     [Fact]
     public async Task AKeyWithNoStoredChunkIsAbsentRatherThanAnError()
@@ -163,16 +184,15 @@ public sealed class RedisChunkLookupTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The keyed read returns exactly what search returns — including no metadata, because this
-    /// store persists none.
+    /// The keyed read returns the metadata <c>StoreAsync</c> persisted (#513).
     /// </summary>
     /// <remarks>
-    /// Asserted rather than skipped so the limitation is visible where someone would look for it.
-    /// If <c>StoreAsync</c> ever starts persisting metadata, this test fails and points at the
-    /// lookup that should then return it.
+    /// This test previously asserted the opposite — that metadata was absent because the store
+    /// persisted none — and was written to fail on the day that changed rather than to be deleted
+    /// then. This is that day.
     /// </remarks>
     [Fact]
-    public async Task MetadataIsAbsentBecauseTheStorePersistsNone()
+    public async Task MetadataSurvivesTheRoundTrip()
     {
         await StoreAsync(new EmbeddedChunk
         {
@@ -184,6 +204,8 @@ public sealed class RedisChunkLookupTests : IAsyncLifetime
                 Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                 {
                     ["source"] = "unit-test",
+                    ["page"] = 3,
+                    ["draft"] = false,
                 },
             },
             Embedding = new ReadOnlyMemory<float>([1f, 0f, 0f, 0f]),
@@ -194,6 +216,63 @@ public sealed class RedisChunkLookupTests : IAsyncLifetime
 
         var only = Assert.Single(found);
         Assert.Equal("with metadata", only.Text);
+        Assert.Equal(3, only.Metadata.Count);
+        Assert.Equal((MetadataValue)"unit-test", only.Metadata["source"]);
+        Assert.Equal(MetadataValueKind.Number, only.Metadata["page"].Kind);
+        Assert.Equal(3d, only.Metadata["page"].NumberValue);
+        Assert.False(only.Metadata["draft"].BooleanValue);
+    }
+
+    /// <summary>
+    /// A hash written before this store persisted metadata has no <c>metadata</c> field at all.
+    /// That is not corruption: it reads as an empty dictionary, so an upgraded deployment keeps
+    /// serving its existing chunks rather than throwing on every one of them.
+    /// </summary>
+    [Fact]
+    public async Task AHashWithNoMetadataFieldReadsAsEmptyRatherThanThrowing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var database = _connection.GetDatabase();
+        await database.HashSetAsync(
+            "lookup-idx:doc-legacy:0",
+            [
+                new HashEntry("document_id", "doc-legacy"),
+                new HashEntry("chunk_index", 0),
+                new HashEntry("text", "written by an older version"),
+            ]);
+
+        var found = await _store.GetChunksAsync([new ChunkKey("doc-legacy", 0)], ct);
+
+        var only = Assert.Single(found);
+        Assert.Equal("written by an older version", only.Text);
         Assert.Empty(only.Metadata);
+    }
+
+    /// <summary>
+    /// A <c>metadata</c> field that is present but will not deserialize is backend corruption, and
+    /// this store throws naming the document and chunk — matching
+    /// <c>WeaviateVectorStore</c>'s reviewed posture rather than the three stores that still return
+    /// an empty dictionary (#521). On this store in particular, "reads as no metadata" is
+    /// indistinguishable from the defect #513 fixed.
+    /// </summary>
+    [Fact]
+    public async Task ACorruptMetadataFieldThrowsNamingTheChunk()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var database = _connection.GetDatabase();
+        await database.HashSetAsync(
+            "lookup-idx:doc-corrupt:2",
+            [
+                new HashEntry("document_id", "doc-corrupt"),
+                new HashEntry("chunk_index", 2),
+                new HashEntry("text", "corrupt metadata"),
+                new HashEntry("metadata", "{not json"),
+            ]);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _store.GetChunksAsync([new ChunkKey("doc-corrupt", 2)], ct));
+
+        Assert.Contains("doc-corrupt", error.Message, StringComparison.Ordinal);
+        Assert.Contains("2", error.Message, StringComparison.Ordinal);
     }
 }
