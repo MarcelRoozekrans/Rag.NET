@@ -6921,6 +6921,45 @@ row-zipping, payload filter, direct key read, GraphQL where, id fetch, an endpoi
 added, and a key scheme that had to be replaced. Not one was a translation of the last — and the
 negative-index test was the only thing catching an unsigned-index implementation on every one.
 
+**#318 was closed 2026-09-09**, after all seven implementations were verified present on `main` by
+content rather than by any PR's MERGED label.
+
+### Phase 6.2.31: What Redis Never Stored, It Cannot Return [status: pending — added 2026-09-09, #513]
+**Surface:** Storage
+**HelpWanted:** no
+
+**Goal:** `RedisVectorStore` persists chunk metadata, so search and the keyed lookup can return it
+on the one backend where today both succeed and return none.
+
+**This phase's defect was found by the phase that could not fix it.** 6.2.26 built the Redis keyed
+lookup and it works — a direct hash read, the fastest mechanism of the seven. Then the metadata test
+had nothing to assert. `StoreAsync` writes four fields — `document_id`, `chunk_index`, `text`,
+`embedding` — and no metadata at all, so **neither retrieval path on this store can return a
+metadata value, and neither of them fails.** They return chunks with an empty dictionary, which is
+indistinguishable from a document that genuinely carried no metadata.
+
+**6.2.26 asserted the limitation rather than skipping the test**, precisely so it would go red the
+day `StoreAsync` starts storing metadata. That day is this phase. **The existing test is expected to
+fail, and its failure is the entry point, not a regression** — if it stays green after the store is
+changed, the change did not reach the path the test reads.
+
+**Two questions the design has to answer before any code**, and neither is settled by the six
+backends that came before:
+
+1. **How metadata is encoded in a hash.** Redis hash values are flat strings. The other six stores
+   either have a native map type or a JSON payload column; this one does not, so the encoding is a
+   decision rather than a translation — and the field-name space is shared with `document_id`,
+   `chunk_index`, `text` and `embedding`, so a metadata key called `text` must not be able to
+   overwrite the chunk.
+2. **What the search path does with it.** The lookup reads whole hashes and can decode everything;
+   RediSearch returns selected fields, and the TAG escaping 6.2.26's direct read deliberately
+   sidesteps applies again the moment metadata becomes filterable. **Whether metadata is filterable
+   here is a scope decision, not an implied one** — #513 asks for it to be returned, not queried.
+
+**Verified against a real Redis, as all seven lookups were**, and mutation-tested: on six backends
+running the mutations has found something every time, including one *missing* guard that eight
+passing tests did not.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
