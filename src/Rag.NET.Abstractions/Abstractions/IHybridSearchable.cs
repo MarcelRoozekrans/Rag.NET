@@ -11,9 +11,10 @@ namespace Rag.NET.Abstractions;
 /// but only when the request configures nothing that native fusion cannot express. A sparse
 /// (SPLADE) arm that would run, a supplied <see cref="RetrievalOptions.EnsembleOptions"/>
 /// (native fusion cannot apply its weights), or a non-zero
-/// <see cref="RetrievalOptions.MinScore"/> (the native path would threshold the store's own
-/// fusion-score scale instead of the dense arm's similarity scale) each keep the client-side
-/// dense+BM25 Reciprocal Rank Fusion, as does a store that does not implement this interface.
+/// <see cref="RetrievalOptions.MinScore"/> (the native path does not apply it at all — see
+/// <see cref="HybridScoreScale"/> — so dispatching natively would silently discard the
+/// caller's threshold) each keep the client-side dense+BM25 Reciprocal Rank Fusion, as does a
+/// store that does not implement this interface.
 /// The probe is on the registered <see cref="IVectorStore"/> instance itself: a decorator that
 /// does not forward this interface hides the capability.
 /// </summary>

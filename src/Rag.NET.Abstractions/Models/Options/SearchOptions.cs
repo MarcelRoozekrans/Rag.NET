@@ -15,7 +15,10 @@ public sealed class SearchOptions
     /// <summary>
     /// Minimum similarity score a returned chunk must meet — a similarity score, not a
     /// percentage. Defaults to 0.0 (no filtering). Each store applies this as its own native
-    /// score threshold; there is no filtering layered on top by the pipeline.
+    /// score threshold; there is no filtering layered on top by the pipeline. The exception is
+    /// a native hybrid query: a store whose
+    /// <see cref="Rag.NET.Abstractions.IHybridSearchable.HybridScoreScale"/> is not a
+    /// similarity does not apply this at all on that path.
     /// </summary>
     public double MinScore { get; set; } = 0.0;
 
