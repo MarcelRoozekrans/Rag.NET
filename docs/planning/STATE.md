@@ -72,7 +72,28 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.31 — What Redis Never Stored, It Cannot Return — **MERGED 2026-09-09** (#522,
+**Phase:** 6.2.32 — A Corrupt Blob Is Not an Empty One — **MERGED 2026-09-09** (#527, `f9ad2f04`),
+closing #521. Verified on `main` by content: the shared `DeserializeMetadataOrThrow` is in 11 files
+and **zero callers of the raw `DeserializeMetadata`/`DeserializeTags` remain outside the
+serializer** — the invariant the phase created holds on `main`, not just on the branch.
+
+**THE POSTURE THAT WON HAD NO TEST, AND THAT IS THE FINDING.** Weaviate has thrown on a corrupt
+metadata blob since 2026-07-25 by deliberate review decision, and nothing covered that path for six
+weeks. It surfaced only because the phase went to check the two sites that already threw before
+propagating their posture to six others. **Any refactor could have reverted that decision silently
+and every suite would have stayed green** — the same shape as the defect being fixed, one level up.
+Closed with a seventh test.
+
+**The issue undercounted.** #521 named three vector stores; there were six sites across five
+components. It missed both SQLite ones, and `SqliteDocumentStore` has two — one reading tags rather
+than chunk metadata, so the swallow reached a second data type. **Read the call sites before
+trusting an issue's scope**, including issues this project filed itself.
+
+**Breaking, and free of upgrade hazard for a reason worth remembering:** null and empty already
+deserialise to Success-with-empty inside the serializer, so a throw can only fire on genuinely
+malformed stored JSON. The dangerous-sounding change was mechanical once that was established.
+
+**Previously:** 6.2.31 — What Redis Never Stored, It Cannot Return — **MERGED 2026-09-09** (#522,
 `6480fd07`), closing #513. Verified on `main` by content — `VerifyFilterableKeysAreIndexedAsync`,
 `BuildFilterPrefix`, `ValidateFilterableKeys`, `MetadataToken` and `filterableMetadataKeys` are all
 present — not by the MERGED label. 29 commits, 47 tests where the package had 16. **No phase is
@@ -406,9 +427,14 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**~~Phase 6.2.31 — #513~~ MERGED 2026-09-09 in #522. Nothing below it has been started.** The
-ordering that follows is still the ordering, minus this entry. **#521 joined the list from this
-phase**: PgVector, Qdrant and Azure AI Search return an empty dictionary on a corrupt metadata blob
+**~~Phase 6.2.31 — #513~~ and ~~6.2.32 — #521~~ both MERGED 2026-09-09, in #522 and #527.**
+Nothing below is started. **The queue is now #495, #328, #184, the security-position document, and
+PR #314**, in roughly that order of readiness — #495 is an investigation rather than defined work,
+#328 is blocked on a score-scale decision that is the operator's, #184 is breaking and wants a
+design pass before code, and #314 is a major dependency bump that deserves its own phase rather
+than a line inside someone else's.
+
+**Previously, when #521 was the head of the queue:** it joined the list from 6.2.31: PgVector, Qdrant and Azure AI Search return an empty dictionary on a corrupt metadata blob
 while Weaviate throws — the three are a pre-review default, the one is a reviewed decision, and
 Redis now follows the reviewed one. Small, and it removes a silent path from three stores at once.
 
