@@ -13,7 +13,7 @@ using RagSearchOptions = Rag.NET.Models.Options.SearchOptions;
 
 namespace Rag.NET.AzureAISearch;
 
-public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable, IChunkLookup, IDisposable
+public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable, IChunkLookup, IScoreScaleAware, IDisposable
 {
     private const int SearchPageSize = 1000; // Azure AI Search maximum
     private const int DeleteBatchSize = 1000; // Azure AI Search maximum
@@ -105,6 +105,15 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         _initGate.EnsureInitialisedAsync(InitializeAsync, cancellationToken);
 
     public void Dispose() => _initGate.Dispose();
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Fixed at construction, as the interface requires. With semantic ranking on, this store
+    /// returns Azure's <c>RerankerScore</c>, which is a relevance rank rather than a similarity;
+    /// with it off, the dense path's cosine similarity is exactly what the default assumes.
+    /// </remarks>
+    public ScoreScale ScoreScale =>
+        _semanticRankingEnabled ? ScoreScale.OpaqueRanking : ScoreScale.Similarity;
 
     /// <summary>
     /// The index schema. Metadata lives in two fields:

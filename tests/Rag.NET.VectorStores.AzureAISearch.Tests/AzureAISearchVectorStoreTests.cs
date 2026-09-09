@@ -437,6 +437,39 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         Assert.Equal(ScoreScale.OpaqueRanking, ((IHybridSearchable)_sut).HybridScoreScale);
     }
 
+    [Fact]
+    public void WithTheRankerOn_TheStoreDeclaresAnOrdinalScale()
+    {
+        var sut = new AzureAISearchVectorStore(
+            new Uri("https://dummy.search.windows.net"),
+            "dummy-index",
+            new AzureKeyCredential("dummy-key"),
+            vectorDimensions: 3,
+            clientOptions: null,
+            new AzureAISearchOptions { EnableSemanticRanking = true });
+
+        Assert.Equal(ScoreScale.OpaqueRanking, sut.ScoreScale);
+    }
+
+    /// <summary>
+    /// And with it off the store declares Similarity — not silence. Declaring the default
+    /// explicitly is behaviour-preserving, because every consumer branches on OpaqueRanking
+    /// specifically, and it means the scale is discoverable in both configurations.
+    /// </summary>
+    [Fact]
+    public void WithTheRankerOff_TheStoreDeclaresASimilarityScale()
+    {
+        var sut = new AzureAISearchVectorStore(
+            new Uri("https://dummy.search.windows.net"),
+            "dummy-index",
+            new AzureKeyCredential("dummy-key"),
+            vectorDimensions: 3,
+            clientOptions: null,
+            options: null);
+
+        Assert.Equal(ScoreScale.Similarity, sut.ScoreScale);
+    }
+
     private static readonly TimeSpan SettleTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
 
