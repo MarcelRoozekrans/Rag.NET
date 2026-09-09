@@ -960,7 +960,8 @@ Append to `RedisMetadataFilterTests.cs` — these are the tests that exercise th
             ct);
 
         Assert.Equal(2, results.Count);
-    }```
+    }
+```
 
 Then append the undeclared-key test:
 
