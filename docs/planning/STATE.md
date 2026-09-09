@@ -1,12 +1,48 @@
 # Session State
 
-**Last updated:** 2026-09-07 — **FIVE PHASES SHIPPED SINCE 6.2.1 CLOSED, AND THIS FILE RECORDED
-NONE OF THEM UNTIL NOW.** 6.2.13-6.2.17 are all on `main`: the MCP write surface (#198), the RAPTOR
-leaf purge (#338), the corpus-tree BM25 accumulation (#336), the GMM variance floor (#337, partly),
-and the BM25 doc-id allocator (#490, closing #487). **The tail of this file still said #336 and #338
-"remain open by decision" while both were closed.** That is the fourth time this document has gone
-stale at a merge — the exact failure its own Working State section was rewritten to prevent,
-reappearing in a section that rewrite does not cover.
+**Last updated:** 2026-09-09 — **THIRTEEN MORE PHASES SHIPPED AND THIS FILE RECORDED NONE OF THEM.**
+6.2.18–6.2.30 are all on `main`. That is the fifth time this document has gone stale at a merge, and
+the note below — written on the fourth — did not prevent the fifth. **The entry that follows was
+itself two days out of date while claiming to correct staleness.** The habit that fails is writing
+`STATE.md` at the *session* boundary; the merges happen inside sessions and nobody is editing this
+file at the moment a PR lands. `ROADMAP.md` and `MILESTONE.md` stayed current throughout — they are
+edited by `complete-phase`, which runs per phase, and this file is not.
+
+**#318 CLOSED 2026-09-09: seven remote stores, seven distinct mechanisms.** 6.2.24–6.2.30 gave
+PgVector (`unnest` zips the pairs), Qdrant (payload filter — its point ids are random GUIDs), Redis
+(direct hash read; the key *is* the identity), Weaviate (GraphQL `where`), Pinecone (`Fetch` on a
+derived id), Chroma (needed a `/get` endpoint added — `/query` cannot serve a keyed read at all) and
+Azure AI Search (`GetDocument`, after replacing a random GUID key). **Not one was a translation of
+the last**, which is why they were read individually rather than copied after the second diverged.
+
+**~~One test caught the same mutation on all seven backends and nothing else did.~~ Retracted
+2026-09-09, in the phase that tried to make it eight.** This entry claimed the negative-index test
+was the only thing catching an unsigned `chunk_index`, seven for seven. **6.2.31's mutation sweep
+applied that mutation to Redis's shared `KeyFor` helper and nothing caught it** — one helper serves
+both the write and the read, so the change is self-consistent, and the existing test's indices
+(`-1, -2, 0`) share no magnitude.
+
+**The streak is not disproved; it is unverifiable.** 6.2.26 recorded the same mutation on the same
+store as caught, and at that commit `KeyFor` was already shared and the test data already identical.
+So either that phase mutated the stored `chunk_index` field — a different site, genuinely caught —
+or it mutated the helper and recorded a result nobody ran. **Nothing in the record names the line**,
+so it cannot be told from here. The lesson is the actionable half: **a mutation's site decides how
+strong the test is**, and naming the mutation without naming the line makes a sweep unreproducible.
+Record the site from here on. `ROADMAP.md`'s 6.2.31 block carries the full reasoning.
+
+**Scoping the last backend found a worse defect than the missing feature (#517).**
+`AzureAISearchVectorStore` assigned `Guid.NewGuid()` as the document key, so `Upload` could never
+replace: re-ingesting duplicated every chunk, measured on the simulator, and **no test had ever
+stored anything twice** — a store-then-search test passes either way. The lookup was blocked by the
+same root cause. **Two symptoms, one cause, and the feature request is what exposed it.**
+
+**Previously, 2026-09-07 — the note that did not hold:** **FIVE PHASES SHIPPED SINCE 6.2.1 CLOSED,
+AND THIS FILE RECORDED NONE OF THEM UNTIL NOW.** 6.2.13-6.2.17 are all on `main`: the MCP write
+surface (#198), the RAPTOR leaf purge (#338), the corpus-tree BM25 accumulation (#336), the GMM
+variance floor (#337, partly), and the BM25 doc-id allocator (#490, closing #487). **The tail of
+this file still said #336 and #338 "remain open by decision" while both were closed.** That is the
+fourth time this document has gone stale at a merge — the exact failure its own Working State
+section was rewritten to prevent, reappearing in a section that rewrite does not cover.
 
 **One defect shape accounts for four of the five.** Code that succeeds while doing nothing: a
 swallowed exception, a duplicate id that returns, a rebuilder that never calls BM25, a `Use*` nobody
@@ -36,12 +72,73 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.17 — BM25 doc-id allocation — **COMPLETE 2026-09-07** (#491, `94a3d86d`). **No phase
-is currently open.** Five closed since 6.2.1: **6.2.13** MCP authenticated write surface (#198, new
-package `Rag.NET.Mcp.AspNetCore`, 72 -> 73), **6.2.14** RAPTOR leaf purge on delete (#338),
-**6.2.15** corpus-tree BM25 accumulation (#336), **6.2.16** the GMM variance floor (#337 — the
-absolute `1e-6` is fixed; the near-duplicate residue is still open), **6.2.17** BM25 doc-id
-allocation (#490, closing #487). The next phase is 6.3 Release v1.0, still blocked on 6.1.
+**Phase:** 6.2.32 — A Corrupt Blob Is Not an Empty One — **MERGED 2026-09-09** (#527, `f9ad2f04`),
+closing #521. Verified on `main` by content: the shared `DeserializeMetadataOrThrow` is in 11 files
+and **zero callers of the raw `DeserializeMetadata`/`DeserializeTags` remain outside the
+serializer** — the invariant the phase created holds on `main`, not just on the branch.
+
+**THE POSTURE THAT WON HAD NO TEST, AND THAT IS THE FINDING.** Weaviate has thrown on a corrupt
+metadata blob since 2026-07-25 by deliberate review decision, and nothing covered that path for six
+weeks. It surfaced only because the phase went to check the two sites that already threw before
+propagating their posture to six others. **Any refactor could have reverted that decision silently
+and every suite would have stayed green** — the same shape as the defect being fixed, one level up.
+Closed with a seventh test.
+
+**The issue undercounted.** #521 named three vector stores; there were six sites across five
+components. It missed both SQLite ones, and `SqliteDocumentStore` has two — one reading tags rather
+than chunk metadata, so the swallow reached a second data type. **Read the call sites before
+trusting an issue's scope**, including issues this project filed itself.
+
+**Breaking, and free of upgrade hazard for a reason worth remembering:** null and empty already
+deserialise to Success-with-empty inside the serializer, so a throw can only fire on genuinely
+malformed stored JSON. The dangerous-sounding change was mechanical once that was established.
+
+**Previously:** 6.2.31 — What Redis Never Stored, It Cannot Return — **MERGED 2026-09-09** (#522,
+`6480fd07`), closing #513. Verified on `main` by content — `VerifyFilterableKeysAreIndexedAsync`,
+`BuildFilterPrefix`, `ValidateFilterableKeys`, `MetadataToken` and `filterableMetadataKeys` are all
+present — not by the MERGED label. 29 commits, 47 tests where the package had 16. **No phase is
+currently open.** #521 remains open by design.
+
+**Breaking, and it needs saying where an operator will see it:** an existing Redis index must be
+recreated and re-ingested. Initialisation throws naming the missing attribute rather than filtering
+silently against a stale schema, so the break announces itself; it does not corrupt quietly. **The phase's scope grew when scoping it found a
+wrong-results defect rather than the missing feature #513 describes**: `SearchAsync` never read
+`MetadataFilter`, nothing re-checks downstream, and the guide told readers the pipeline filtered
+instead — it does not, and never did.
+
+**The whole-branch review found the defect no per-task review could see.** `HashSetAsync` is a
+merge, so re-ingesting a chunk that had dropped a declared metadata key left the old `md_*` field
+indexed: a filter matched a chunk whose metadata no longer contained the key. Two tasks were each
+right in isolation — one made the blob unconditional, the other made the per-key fields conditional
+— and the seam between them was the defect. **Reproduced red before it was fixed.**
+
+**Previously:** 6.2.30 — The Azure AI Search Key Carries Identity — **COMPLETE 2026-09-08** (#518,
+`526380cf`, closing #517 and completing #318). **The next planned phase in `ROADMAP.md` is one
+nothing local can start**: 6.3 Release v1.0, blocked on 6.1, blocked on accounts. Every phase since
+6.2.17 has been added ad hoc from the backlog for that reason.
+
+**Thirteen closed since 6.2.17**, none of them recorded here until 2026-09-09: **6.2.18** deep
+research honours `TopK` (#475, #494 — fused by RRF rather than the issue's own suggested truncation,
+which would have made retrieval worse; +0.04171 on SciFact, the largest gain any technique has had),
+**6.2.19** the lonely-component rule (#337's residue — both the issue's predicted mechanism and its
+characterisation were wrong, and measuring said so), **6.2.20** the Airtable benchmark discrepancy
+(#207 — a recording error, not a regression: one commit published two harness modes and the mode
+alone is worth 6.9x), **6.2.21** a failing vision model says so (#497, filing #504), **6.2.22** why
+the empty-component rule stays (#498 — kept for cost, and **deliberately left untested** because
+deleting it is invisible through every public surface), **6.2.23** `RagError.ModelCallFailed` (#504,
+breaking), and **6.2.24–6.2.30** the seven keyed chunk lookups (#318, #517).
+
+**Two of those thirteen reversed their own issue's claim, and one reversed its own fix.** 6.2.23
+wrapped the two propagating model callers, measured, and **reverted the wrap**: their `IChatClient`
+is often a cache opened refuse-on-miss that throws *instead of* calling the model, so the wrap
+relabelled a deliberate refusal as a model failure. **The sweep caught it, not review.**
+
+**Previously:** 6.2.17 — BM25 doc-id allocation — **COMPLETE 2026-09-07** (#491, `94a3d86d`). Five
+closed since 6.2.1: **6.2.13** MCP authenticated write surface (#198, new package
+`Rag.NET.Mcp.AspNetCore`, 72 -> 73), **6.2.14** RAPTOR leaf purge on delete (#338), **6.2.15**
+corpus-tree BM25 accumulation (#336), **6.2.16** the GMM variance floor (#337 — the absolute `1e-6`
+is fixed; the near-duplicate residue closed later, in 6.2.19), **6.2.17** BM25 doc-id allocation
+(#490, closing #487).
 
 **Previously:** 6.2.1 — Retrieval & Answer Sweep — **COMPLETE 2026-09-06.** Every exit-condition clause
 met; the allowlist clause was amended the same day from "the guards' allowlist is empty" to "carries
@@ -330,12 +427,50 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
+**~~Phase 6.2.31 — #513~~ and ~~6.2.32 — #521~~ both MERGED 2026-09-09, in #522 and #527.**
+Nothing below is started. **The queue is now #495, #328, #184, the security-position document, and
+PR #314**, in roughly that order of readiness — #495 is an investigation rather than defined work,
+#328 is blocked on a score-scale decision that is the operator's, #184 is breaking and wants a
+design pass before code, and #314 is a major dependency bump that deserves its own phase rather
+than a line inside someone else's.
+
+**Previously, when #521 was the head of the queue:** it joined the list from 6.2.31: PgVector, Qdrant and Azure AI Search return an empty dictionary on a corrupt metadata blob
+while Weaviate throws — the three are a pre-review default, the one is a reviewed decision, and
+Redis now follows the reviewed one. Small, and it removes a silent path from three stores at once.
+
+**Previously (the choice, kept for the reasoning): #513** chosen by the operator on
+2026-09-09 over #184, #495 and #328. It is 6.2.26's own finding: the Redis keyed lookup was built
+and works, but the store writes only `document_id`, `chunk_index`, `text` and `embedding`, so
+**neither search nor lookup can return metadata on this backend and both succeed while returning
+none.** 6.2.26 asserted the limitation rather than skipping past it, so the test fails the day
+`StoreAsync` starts storing it — which is the day this phase arrives. Same storage surface as the
+seven phases before it, and real Redis runs locally.
+
+**What else is open, after it:**
+
+1. **#495** — the deep-research cell replays its cache in a fresh worktree and misses in the primary
+   checkout, on identical content. Unexplained, and it undermines confidence in every cached
+   benchmark figure until it is.
+2. **#328** — Azure AI Search's semantic ranker, split out of 6.2.5 pending a score-scale decision
+   nobody has taken. 6.2.30 has just reopened that file.
+3. **#184** — breaking, and pre-1.0 is the moment for it. Larger: a design decision before any code.
+4. **The security-position document** (below, still true).
+5. **#299, #298, #175, #153** — all carry recorded answers or deferrals rather than open work.
+6. **PR #314** — the xunit-dotnet v4 major bump, still open as a renovate PR, still deserving to be
+   its own piece of work rather than a line inside someone else's.
+
+---
+
+**Superseded 2026-09-09, kept for the reasoning. Items 1 and 2 below are both closed** — #337's
+residue in 6.2.19 and #475 in 6.2.18 — and the list did not say so for two days.
+
 **6.2.1 closed on 2026-09-06 and five phases have shipped since. The text below is kept for its
 reasoning, not as a next step.** What is actually open, in the order worth taking it:
 
-1. **#337's residue.** The floor is fixed and mutation-checked; what remains is the near-duplicate
-   characterisation the issue also describes. Smallest well-understood item.
-2. **#475** — filed while fixing #338, not yet scoped.
+1. ~~**#337's residue.**~~ **Closed 2026-09-07 in 6.2.19.** The floor is fixed and mutation-checked;
+   what remains is the near-duplicate characterisation the issue also describes. Smallest
+   well-understood item.
+2. ~~**#475**~~ — **closed 2026-09-07 in 6.2.18 (#494).** Filed while fixing #338, not yet scoped.
 3. **The security-position document.** #198 shipped the authenticated MCP transport, but nothing
    states the project's posture in prose. **Related, and it corrects an alarm rather than raising
    one:** the five Dependabot alerts on `main` were triaged 2026-09-07 and **none reach the shipped
@@ -351,9 +486,13 @@ reasoning, not as a next step.** What is actually open, in the order worth takin
 **6.1 remains the only thing between the project and the v1.0 tag**, blocked on accounts rather than
 effort. Nothing above changes that.
 
-**Twenty-one merged local branches are left behind** as of 2026-09-07 on a synced `main`. They are
-noise in every subsequent `git branch`; deleting them is safe once each is verified on `main` by
-content — not by a MERGED label, for the reason this file repeats elsewhere.
+**Twenty-five local branches besides `main` are left behind** as of 2026-09-09 — twenty-one on
+2026-09-07, and the keyed-lookup run added the rest. They are noise in every subsequent
+`git branch`; deleting them is safe once each is verified on `main` by content — not by a MERGED
+label, for the reason this file repeats elsewhere. **`feat/318-azureaisearch-chunklookup` is the
+clearest case**: its single commit `e868f898` was squash-merged as `526380cf` (#518), so it is
+one commit "ahead" of `main` while containing nothing `main` lacks. The count is not being reduced
+because nobody has asked for a sweep, not because any of them are in doubt.
 
 ---
 

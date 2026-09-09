@@ -332,24 +332,20 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IChunkLook
     private protected static TextChunk MapChunk(
         Google.Protobuf.Collections.MapField<string, Value> payload)
     {
-        Dictionary<string, MetadataValue> metadata;
-        if (payload.TryGetValue("metadata", out var metaValue))
-        {
-            var metadataResult = MetadataSerializer.DeserializeMetadata(metaValue.StringValue);
-            metadata = metadataResult.IsSuccess
-                ? metadataResult.Value
-                : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
-        }
-        else
-        {
-            metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
-        }
+        var documentId = payload["document_id"].StringValue;
+        var chunkIndex = (int)payload["chunk_index"].IntegerValue;
+
+        var metadata = payload.TryGetValue("metadata", out var metaValue)
+            ? MetadataSerializer.DeserializeMetadataOrThrow(
+                metaValue.StringValue,
+                $"Qdrant point (document '{documentId}', chunk {chunkIndex}), metadata payload field")
+            : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
 
         return new TextChunk
         {
             Text = payload["text"].StringValue,
-            DocumentId = new DocumentId(payload["document_id"].StringValue),
-            ChunkIndex = (int)payload["chunk_index"].IntegerValue,
+            DocumentId = new DocumentId(documentId),
+            ChunkIndex = chunkIndex,
             Metadata = metadata,
         };
     }

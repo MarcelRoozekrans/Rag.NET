@@ -6921,6 +6921,222 @@ row-zipping, payload filter, direct key read, GraphQL where, id fetch, an endpoi
 added, and a key scheme that had to be replaced. Not one was a translation of the last — and the
 negative-index test was the only thing catching an unsigned-index implementation on every one.
 
+**#318 was closed 2026-09-09**, after all seven implementations were verified present on `main` by
+content rather than by any PR's MERGED label.
+
+### Phase 6.2.31: What Redis Never Stored, It Cannot Return [status: complete 2026-09-09 — #513, and the larger defect scoping it found]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-09
+**Design:** `docs/plans/2026-09-09-redis-chunk-metadata-design.md`
+**Plan:** `docs/plans/2026-09-09-redis-chunk-metadata-implementation.md`
+
+**SCOPING IT FOUND A WRONG-RESULTS DEFECT, NOT A MISSING FEATURE.** `SearchAsync` never reads
+`options.MetadataFilter` — the query is `*=>[KNN ...]` with no filter clause — and
+`VectorStoreBehavior` is terminal, so nothing re-checks downstream. **A filtered search against
+Redis silently returns unfiltered results.** Redis is the only one of the seven store packages that
+does not reference `MetadataFilter` anywhere, and no test asserts that any remote store honours it.
+The phase takes the whole contract rather than #513's half, on the operator's decision.
+
+**Two design decisions were reversed by their own evidence.** The corrupt-blob posture was first
+specified as PgVector's empty-dictionary fallback "for cross-store consistency"; the provenance says
+the opposite — Weaviate's throw is a 2026-07-25 review finding that deliberately replaced that
+default, and PgVector, Qdrant and Azure AI Search simply never got the same review. Copying the
+majority would have copied the shape a review already rejected, into the one store where "reads as
+no metadata" is indistinguishable from the defect being fixed. Filed as **#521**; Redis throws.
+
+**And the RediSearch defaults would have broken matching twice, silently.** A TAG field splits its
+value on `,`, so a metadata string containing a comma stores as two tags — no separator is safe when
+a value can contain any character, so the token's value half is Base64Url-encoded, 6.2.30's argument
+reused. TAG fields also fold case, while `MetadataValue.Equals` compares strings ordinally, so the
+fields are declared `caseSensitive: true`. Both were found by reading the API surface, not by
+running anything.
+
+**Goal:** `RedisVectorStore` persists chunk metadata, so search and the keyed lookup can return it
+on the one backend where today both succeed and return none.
+
+**This phase's defect was found by the phase that could not fix it.** 6.2.26 built the Redis keyed
+lookup and it works — a direct hash read, the fastest mechanism of the seven. Then the metadata test
+had nothing to assert. `StoreAsync` writes four fields — `document_id`, `chunk_index`, `text`,
+`embedding` — and no metadata at all, so **neither retrieval path on this store can return a
+metadata value, and neither of them fails.** They return chunks with an empty dictionary, which is
+indistinguishable from a document that genuinely carried no metadata.
+
+**6.2.26 asserted the limitation rather than skipping the test**, precisely so it would go red the
+day `StoreAsync` starts storing metadata. That day is this phase. **The existing test is expected to
+fail, and its failure is the entry point, not a regression** — if it stays green after the store is
+changed, the change did not reach the path the test reads.
+
+**Two questions the design has to answer before any code**, and neither is settled by the six
+backends that came before:
+
+1. **How metadata is encoded in a hash.** Redis hash values are flat strings. The other six stores
+   either have a native map type or a JSON payload column; this one does not, so the encoding is a
+   decision rather than a translation — and the field-name space is shared with `document_id`,
+   `chunk_index`, `text` and `embedding`, so a metadata key called `text` must not be able to
+   overwrite the chunk.
+2. **What the search path does with it.** The lookup reads whole hashes and can decode everything;
+   RediSearch returns selected fields, and the TAG escaping 6.2.26's direct read deliberately
+   sidesteps applies again the moment metadata becomes filterable. **Whether metadata is filterable
+   here is a scope decision, not an implied one** — #513 asks for it to be returned, not queried.
+
+**Verified against a real Redis, as all seven lookups were**, and mutation-tested: on six backends
+running the mutations has found something every time, including one *missing* guard that eight
+passing tests did not.
+
+**Twelve mutations, ten caught on the first run:**
+
+| # | mutation | caught by |
+| --- | --- | --- |
+| 1 | delete the kind prefix from `MetadataToken` | `AStringTokenCarriesItsKindAndDecodesBackToItsValue`, `ANumberAndAStringOfTheSameTextProduceDifferentTokens`, `AStringFilterDoesNotMatchANumber` |
+| 2 | replace the Base64Url encoding with `value.ToString()` | `AValueContainingACommaEncodesWithoutOne`, `AStringTokenCarriesItsKindAndDecodesBackToItsValue`, `AValueContainingTagSyntaxAndACommaStillMatchesItself` |
+| 3 | drop `caseSensitive: true` from `AddTagField` | **nothing** — survived, see below |
+| 4 | drop `EscapeTag` from `BuildFilterPrefix` | five tests — an unescaped colon in the token corrupts the whole query, not just the value carrying the syntax |
+| 5 | return `"*"` unconditionally from `BuildFilterPrefix` | seven tests |
+| 6 | treat an empty filter as a filter (drop `Count: > 0`) | `AnEmptyFilterReturnsTheWholePage` |
+| 7 | skip the undeclared-key throw and ignore the key | both undeclared-key tests |
+| 8 | delete `VerifyFilterableKeysAreIndexedAsync`'s call site | `AnIndexMissingADeclaredKeyFailsInitialisation` |
+| 9 | drop `MetadataField` from `ReturnFields` | `SearchAsync_ReturnsTheStoredMetadata` |
+| 10 | return empty instead of throwing on a corrupt blob | `ACorruptMetadataFieldThrowsNamingTheChunk` |
+| 11 | throw instead of returning empty for a missing metadata field | `AHashWithNoMetadataFieldReadsAsEmptyRatherThanThrowing` |
+| 12 | make `chunk_index` unsigned (`Math.Abs`) in `KeyFor` | **nothing** — survived, see below |
+
+Ten of twelve had a real catcher on the first try, several with more bonus catchers than
+predicted. Two survived a clean run and were closed with one new test each, verified to fail
+against the mutation and pass against real code.
+
+**The case-sensitivity mutation falsified this phase's own design rationale for the flag.**
+Dropping `caseSensitive: true` from the TAG schema left the entire suite green, including the
+test written specifically to catch it (`AFilterDoesNotMatchAValueDifferingOnlyInCase`: stores
+`tenant = "ACME"`, filters `"acme"`, expects no match). The reason: metadata values are
+Base64Url-encoded before they reach the tag, and `"ACME"`/`"acme"` differ by the ASCII case bit
+in every byte — a difference that does not land on Base64's six-bit group boundaries, so the two
+tokens differ throughout rather than by case. RediSearch's case-fold default had nothing to fold;
+the existing test could not observe the schema attribute through that indirection at all. The
+flag is still load-bearing, for a reason the original source comment did not state and now does:
+two *different* values can encode to tokens that are themselves case-variants of one another —
+three NUL bytes (`{0x00,0x00,0x00}`) encode to `AAAA`, and `{0x68,0x00,0x00}` encodes to `aAAA`.
+Confirmed as a real index-level effect via `FT.INFO` (`CASESENSITIVE` present with the flag,
+absent without it — not a stale-fixture artefact, since each test method builds its own
+container and index). Closed with a test that stores the NUL-byte value and filters for its
+case-variant token, failing without the flag and passing with it. The flag is now pinned twice:
+structurally (`FT.INFO` asserts `CASESENSITIVE` is declared) and behaviourally (the two tokens
+are proven not to collide).
+
+**The unsigned-index streak — six for six on the backends before this one — does not settle what
+it looks like it settles.** On Redis, applying `Math.Abs` inside `KeyFor` caught nothing:
+`StoreAsync` and `GetChunksAsync` both go through that one shared helper, so the mutation is
+self-consistent between write and read, and the existing test's indices (`-1, -2, 0`) never share
+a magnitude with another index in the same test — the mutation only breaks a pair whose absolute
+values coincide, and this test never produced one. **The same conditions held at 6.2.26**, the
+phase that built this store's keyed lookup: `git show 72f96677` shows `KeyFor` already the single
+helper called by both `StoreAsync` and the newly added `GetChunksAsync`, and
+`NegativeChunkIndicesAreKeysLikeAnyOther` storing the identical `-1, -2, 0`. Yet 6.2.26's own
+record reports the abs mutation caught, "only" by that negative-index test. **Exactly one of two
+things is true, and the record does not say which**: 6.2.26 mutated the stored `chunk_index`
+field — a different site, caught immediately, correctly recorded — or it mutated the shared
+helper and the "caught" claim was never actually run against the code this phase ran it against.
+Nothing in 6.2.26's write-up names the line it changed, so there is no way to tell from here which
+happened. **What follows either way**: a mutation's site decides how strong the test is, and
+naming the mutation without naming the line makes a sweep unreproducible — "six for six" and
+"seven for seven" describe a streak nobody can check. The actionable lesson is to record the site,
+not just the mutation, from here on. Closed on Redis with a test storing chunk index `1` and `-1`
+for the same document, which do collide under `Math.Abs`.
+
+**The documentation itself claimed a fallback that never existed, which is plausibly why the
+missing filter survived this long.** `docs/guide/vector-stores.md` told readers that Redis lacked
+`MetadataFilter` translation but that "filtering happens in the pipeline instead." It does not:
+`MetadataFilterMatcher.Matches` is called from exactly two places in `src/` —
+`InMemoryVectorStore` and `InMemoryBm25Index` — and both are stores, not pipeline stages.
+`VectorStoreBehavior` and `EnsembleBehavior` only copy the filter into `SearchOptions` and pass it
+downstream; no pipeline stage filters anything. A reader who noticed Redis was missing the feature
+was told, in the same paragraph, that something else covered it. Corrected as part of this
+phase's documentation.
+
+### Phase 6.2.32: A Corrupt Blob Is Not an Empty One [status: complete 2026-09-09 — #521, and the reviewed decision nobody had tested]
+**Surface:** Storage
+**HelpWanted:** no
+**Completed:** 2026-09-09
+
+**THE POSTURE THAT WON HAD NO TEST.** Weaviate has thrown on a corrupt metadata blob since
+2026-07-25, when a review deliberately replaced the tolerant default — and **nothing covered that
+path.** It was found by writing the six new tests and going to check the two that already existed;
+only Redis had one, from the phase before this. So the decision this phase propagates to six other
+sites was itself unpinned for six weeks, and any refactor could have reverted it silently. Closed
+with a seventh test rather than skipped.
+
+**One shared helper now owns the failure.** `MetadataSerializer.DeserializeMetadataOrThrow(json,
+context)` throws `InvalidOperationException` naming the row and preserving the `JsonException` as
+the inner. **Zero callers of the raw `DeserializeMetadata`/`DeserializeTags` remain outside the
+serializer**, which is the point: the tolerant shape is no longer the easy one to write, so a ninth
+site cannot be added the swallowing way by accident.
+
+**Eight mutations, eight red.** Each site's throw was reverted to the old fallback and its test
+confirmed to fail — the six required, plus Weaviate and Redis to prove the reroute had not
+loosened them. Six near-identical edits is where a copy-paste slip hides, and this is the check
+that would have caught one.
+
+**No upgrade hazard, and that is why it could be done bluntly.** `DeserializeMetadata(null)` and
+`("")` already return Success with an empty dictionary; only a `JsonException` yields Failure. A
+throw therefore cannot fire on an absent field — only on stored JSON that is genuinely malformed.
+Redis's inline null guard became redundant and was removed, which was confirmed rather than
+assumed: `RedisValue.Null.ToString()` returns `""`, and the pre-existing
+`AHashWithNoMetadataFieldReadsAsEmptyRatherThanThrowing` still passes.
+
+**Breaking**, deliberately and pre-1.0: five components stop answering a corrupt row with an empty
+dictionary and start failing. The widest is `SqliteDocumentStore.GetDocumentsAsync`, where one
+corrupt row now fails a whole document listing — the same shape Weaviate's reviewed throw already
+accepted on its search path, which is why it was not given an exception.
+
+**Nobody has observed a corrupt blob in the wild.** Posture and consistency, not an incident.
+
+
+**Goal:** the six sites that read a corrupt metadata blob and return an empty dictionary say so
+instead, matching the two that already do.
+
+**#521 says three stores; scoping it found six sites across five components.** The issue was filed
+from the vector-store angle during 6.2.31 and named PgVector, Qdrant and Azure AI Search. It missed
+`SqliteBm25Index` and `SqliteDocumentStore` — and the latter has **two** sites, one of them reading
+`DocumentMetadata.Tags` rather than chunk metadata, so the same swallow shape reaches a second data
+type.
+
+**The split is six-to-two, and the two are the only ones anybody ever reviewed.** Weaviate throws
+because of a 2026-07-25 review finding (`98b327fd`) that deliberately replaced the tolerant default,
+naming what the others still do: *"silently returning the chunk with empty metadata"*. Redis throws
+because 6.2.31 followed that precedent. The other six are the pre-review default from `179e4f8e`,
+a mechanical serializer migration in April that nobody has revisited.
+
+**The missing-versus-corrupt distinction is already safe, which is what makes this small.**
+`MetadataSerializer.DeserializeMetadata(null)` and `("")` both return **Success with an empty
+dictionary**; only a `JsonException` produces `Failure`. So replacing a fallback with a throw cannot
+fire on an absent field — only on genuinely malformed stored JSON. No upgrade hazard, no data
+migration.
+
+**The six sites do not all have the same blast radius**, which is the design's real question.
+Read rather than inferred from the call-site names:
+
+| site | method | what a throw costs |
+| --- | --- | --- |
+| `SqliteBm25Index` | `LoadIntoMemory` | the index fails to **load** — a startup failure, not a query one |
+| `SqliteDocumentStore` | `GetDocumentsAsync` (tags) | one corrupt row fails the whole document **listing** |
+| `SqliteDocumentStore` | `GetChunksAsync` | that one document's chunks fail |
+| PgVector | `ReadChunk` | one hit fails its search or keyed read |
+| Qdrant | `MapChunk` | same |
+| Azure AI Search | `ReadMetadata` | same, and only on the legacy field — `metadata_entries` is tried first |
+
+**An earlier draft of this block said `SqliteBm25Index` read inside a search loop and that one
+corrupt row would fail a whole query. That was inferred from the call site and is wrong** — it is a
+load path, which is the *easiest* place to fail loudly, not the hardest. Corrected before the
+design was written.
+
+The listing case is the widest, and Weaviate's reviewed decision already accepts that shape: its
+throw is on the search path, where one corrupt hit fails the search. The second question is whether
+the throwing helper belongs in `MetadataSerializer` so a seventh site cannot be written the
+swallowing way, and if so how the caller's identity reaches the message.
+
+**Nobody has observed a corrupt blob in the wild.** This is posture and consistency, not a live
+incident, and the phase should say so rather than inflate it.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.

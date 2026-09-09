@@ -937,15 +937,16 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IChunk
 
     private static TextChunk ReadChunk(Npgsql.NpgsqlDataReader reader)
     {
-        var metadataResult = MetadataSerializer.DeserializeMetadata(reader.GetString(3));
-        var metadata = metadataResult.IsSuccess
-            ? metadataResult.Value
-            : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
+        var documentId = reader.GetString(0);
+        var chunkIndex = reader.GetInt32(1);
+        var metadata = MetadataSerializer.DeserializeMetadataOrThrow(
+            reader.GetString(3),
+            $"PgVector chunk (document '{documentId}', chunk {chunkIndex}), metadata column");
 
         return new TextChunk
         {
-            DocumentId = new DocumentId(reader.GetString(0)),
-            ChunkIndex = reader.GetInt32(1),
+            DocumentId = new DocumentId(documentId),
+            ChunkIndex = chunkIndex,
             Text = reader.GetString(2),
             Metadata = metadata,
         };

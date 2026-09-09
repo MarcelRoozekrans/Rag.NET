@@ -1,3 +1,4 @@
+using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.VectorStores.Redis;
@@ -150,6 +151,76 @@ public sealed class RedisVectorStoreTests : IAsyncLifetime
         await _store.InitializeAsync(ct);
 
         Assert.True(await _store.CollectionExistsAsync("test-idx", ct));
+    }
+
+    /// <summary>
+    /// Search returns the same metadata the keyed lookup does. The two paths read different shapes
+    /// — a projected document against a whole hash — so they can diverge, which is why 6.2.25
+    /// pulled Qdrant's mapping into one place and why this is asserted rather than assumed.
+    /// </summary>
+    [Fact]
+    public async Task SearchAsync_ReturnsTheStoredMetadata()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync(
+            [
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk
+                    {
+                        DocumentId = new DocumentId("doc-a"),
+                        ChunkIndex = 0,
+                        Text = "alpha",
+                        Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                        {
+                            ["tenant"] = "acme",
+                            ["page"] = 7,
+                        },
+                    },
+                    Embedding = new ReadOnlyMemory<float>([1f, 0f, 0f, 0f]),
+                },
+            ],
+            ct);
+
+        var results = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f }, new SearchOptions { TopK = 1 }, ct);
+
+        var only = Assert.Single(results);
+        Assert.Equal((MetadataValue)"acme", only.Chunk.Metadata["tenant"]);
+        Assert.Equal(7d, only.Chunk.Metadata["page"].NumberValue);
+    }
+
+    /// <summary>
+    /// The search path's sibling to <c>RedisChunkLookupTests.AHashWithNoMetadataFieldReadsAs...</c>:
+    /// a hash written before this store persisted metadata has no <c>metadata</c> field, and that
+    /// must read as empty here too.
+    /// </summary>
+    /// <remarks>
+    /// The keyed lookup reads a <c>HashEntry[]</c> and finds the field simply absent. Search reads
+    /// through NRedisStack's <see cref="NRedisStack.Search.Document"/> indexer instead, which
+    /// returns <c>default(RedisValue)</c> for a field the document does not carry — a different
+    /// mechanism reaching the same <c>DecodeMetadata</c> call, and nothing else pinned it before.
+    /// </remarks>
+    [Fact]
+    public async Task SearchAsync_ALegacyHashWithNoMetadataFieldReadsAsEmptyMetadata()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var database = _connection.GetDatabase();
+        await database.HashSetAsync(
+            "test-idx:doc-legacy:0",
+            [
+                new HashEntry("document_id", "doc-legacy"),
+                new HashEntry("chunk_index", 0),
+                new HashEntry("text", "written by an older version"),
+                new HashEntry("embedding", RedisVectorStore.ToBytes(new float[] { 1f, 0f, 0f, 0f })),
+            ]);
+
+        var results = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f }, new SearchOptions { TopK = 1 }, ct);
+
+        var only = Assert.Single(results);
+        Assert.Equal("doc-legacy", only.Chunk.DocumentId.Value);
+        Assert.Empty(only.Chunk.Metadata);
     }
 
     [Fact]

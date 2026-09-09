@@ -279,4 +279,38 @@ public class SqliteBm25IndexTests : IAsyncDisposable
             if (File.Exists(path)) File.Delete(path);
         }
     }
+
+    /// <summary>
+    /// A <c>metadata_json</c> column that will not deserialize is backend corruption, and
+    /// <see cref="SqliteBm25Index"/> throws naming the document and chunk rather than silently
+    /// loading the row with empty metadata (#521). The corruption is written directly through a
+    /// raw connection: nothing reachable through the public API can produce malformed JSON in
+    /// this column.
+    /// </summary>
+    [Fact]
+    public async Task ACorruptMetadataJsonColumnThrowsNamingTheDocument()
+    {
+        var sut = CreateSut();
+        sut.Add(MakeChunk("doc-corrupt", 3, "will not survive reload"));
+        await sut.DisposeAsync();
+        _sut = null;
+        SqliteConnection.ClearAllPools();
+
+        using (var conn = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE bm25_docs SET metadata_json = '{not json' WHERE document_id = 'doc-corrupt'";
+            var updated = cmd.ExecuteNonQuery();
+            Assert.Equal(1, updated);
+        }
+        SqliteConnection.ClearAllPools();
+
+        _sut = new SqliteBm25Index(_dbPath, "test-coll");
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _sut.InitializeAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("doc-corrupt", error.Message, StringComparison.Ordinal);
+        Assert.Contains("3", error.Message, StringComparison.Ordinal);
+    }
 }

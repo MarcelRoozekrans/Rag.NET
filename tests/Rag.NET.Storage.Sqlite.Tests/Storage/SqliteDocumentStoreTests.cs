@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Rag.NET.Models;
 using Rag.NET.Storage;
 using Xunit;
@@ -174,5 +175,64 @@ public sealed class SqliteDocumentStoreTests : IAsyncDisposable
 
         await Assert.ThrowsAsync<ObjectDisposedException>(
             () => sut.GetDocumentsAsync(TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// A <c>tags_json</c> column that will not deserialize is backend corruption, and
+    /// <see cref="SqliteDocumentStore"/> throws naming the document rather than silently listing
+    /// it with empty tags (#521) — the same posture <c>metadata_json</c> gets, applied to the
+    /// second data type that goes through <c>MetadataSerializer</c>. Written directly through a
+    /// raw connection: nothing reachable through the public API can produce malformed JSON here.
+    /// </summary>
+    [Fact]
+    public async Task ACorruptTagsJsonColumnThrowsNamingTheDocument()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = CreateSut();
+        sut.Add(MakeMetadata("doc-corrupt-tags"), [MakeChunk("doc-corrupt-tags", 0, "hello")]);
+
+        using (var conn = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE rag_documents SET tags_json = '{not json' WHERE doc_id = 'doc-corrupt-tags'";
+            Assert.Equal(1, cmd.ExecuteNonQuery());
+        }
+        SqliteConnection.ClearAllPools();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.GetDocumentsAsync(ct));
+
+        Assert.Contains("doc-corrupt-tags", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A <c>metadata_json</c> column that will not deserialize is backend corruption, and
+    /// <see cref="SqliteDocumentStore"/> throws naming the document and chunk rather than
+    /// silently returning the chunk with empty metadata (#521).
+    /// </summary>
+    [Fact]
+    public async Task ACorruptMetadataJsonColumnThrowsNamingTheChunk()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = CreateSut();
+        sut.Add(MakeMetadata("doc-corrupt-chunk"), [MakeChunk("doc-corrupt-chunk", 5, "hello")]);
+
+        using (var conn = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "UPDATE rag_chunks SET metadata_json = '{not json' " +
+                "WHERE doc_id = 'doc-corrupt-chunk' AND chunk_index = 5";
+            Assert.Equal(1, cmd.ExecuteNonQuery());
+        }
+        SqliteConnection.ClearAllPools();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.GetChunksAsync("doc-corrupt-chunk", ct));
+
+        Assert.Contains("doc-corrupt-chunk", error.Message, StringComparison.Ordinal);
+        Assert.Contains("5", error.Message, StringComparison.Ordinal);
     }
 }

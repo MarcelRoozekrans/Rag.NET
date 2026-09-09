@@ -62,6 +62,9 @@ public sealed record TextChunk
     /// filters on that type — <c>Metadata["page"] = 3</c> is a number a store can compare
     /// numerically, not the string <c>"3"</c>. Writing plain strings/numbers/bools/dates works
     /// unchanged via <see cref="MetadataValue"/>'s implicit conversions.
+    /// Redis is the one exception to "filters": it only filters on metadata keys declared as
+    /// filterable when the store is constructed (RediSearch matches only against attributes its
+    /// schema names), and it persists and returns every key regardless of that declaration.
     /// </remarks>
     public IDictionary<string, MetadataValue> Metadata { get; init; } = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
 }

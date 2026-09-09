@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Xunit;
@@ -228,5 +229,39 @@ public class WeaviateChunkLookupTests
 
         var only = Assert.Single(found);
         Assert.Equal<MetadataValue>("unit-test", only.Metadata["source"]);
+    }
+
+    /// <summary>
+    /// A <c>metadata_json</c> property that will not deserialize is backend corruption, and this
+    /// store throws naming the deterministic object id, the document and the chunk — the reviewed
+    /// posture from <c>98b327fd</c> (#521), rerouted since through the shared
+    /// <c>MetadataSerializer.DeserializeMetadataOrThrow</c> so this is the one implementation, not
+    /// a copy every other store's swallow could drift against. Written directly through a raw
+    /// PATCH to Weaviate's REST API: nothing reachable through the public
+    /// <see cref="WeaviateVectorStore.StoreAsync"/> can produce malformed JSON in this property.
+    /// </summary>
+    [Fact]
+    public async Task ACorruptMetadataJsonPropertyThrowsNamingTheObject()
+    {
+        var className = UniqueClassName();
+        using var store = CreateStore(className);
+        var ct = TestContext.Current.CancellationToken;
+
+        await store.StoreAsync([Chunk("doc-corrupt", 6, "will not survive the read")], ct);
+
+        using var http = new HttpClient { BaseAddress = _fixture.Endpoint };
+        var objectId = WeaviateVectorStore.DeterministicObjectId("doc-corrupt", 6);
+        var response = await http.PatchAsync(
+            $"/v1/objects/{className}/{objectId}",
+            JsonContent.Create(new { properties = new { metadata_json = "{not json" } }),
+            ct);
+        response.EnsureSuccessStatusCode();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.GetChunksAsync([new ChunkKey("doc-corrupt", 6)], ct));
+
+        Assert.Contains(objectId.ToString(), error.Message, StringComparison.Ordinal);
+        Assert.Contains("doc-corrupt", error.Message, StringComparison.Ordinal);
+        Assert.Contains("6", error.Message, StringComparison.Ordinal);
     }
 }
