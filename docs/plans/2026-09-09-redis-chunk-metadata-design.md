@@ -187,11 +187,26 @@ Dropping that encoding is the simplification a later reader reaches for, and it 
 whose metadata values are well-behaved words — which is exactly what 6.2.30 recorded about raw
 concatenation on the Azure key.
 
-**TAG fields are case-insensitive by default.** `MetadataValue.Equals` compares strings with
-`StringComparison.Ordinal`, so a store folding `ACME` into `acme` would answer a filter with chunks
-the contract says do not match. **The `md_*` fields are declared `caseSensitive: true`.** Base64Url
-does not rescue this on its own: its alphabet uses both cases, so case folding could match two
-tokens that decode to different values.
+**TAG fields are case-insensitive by default, and the `md_*` fields are declared
+`caseSensitive: true`.** The conclusion is right; **the reason first written here was wrong, and the
+mutation sweep proved it.**
+
+This section originally argued that without the flag a store would fold `ACME` into `acme` and
+answer a filter with chunks the contract says do not match. **That pair cannot collide.** The value
+is Base64Url-encoded before it becomes a tag, and `"ACME"` and `"acme"` differ by the ASCII case bit
+in every byte, which does not land on Base64's six-bit group boundaries — the two tokens differ
+throughout, not by case. The sweep found this by measurement: deleting `caseSensitive: true`
+left the case test green.
+
+**The flag is load-bearing for a subtler reason.** A Base64 character's case tracks whether its
+six-bit value falls in 0–25 or 26–51, so two *different* byte sequences can encode to tokens
+differing only in one character's case — `{0x00,0x00,0x00}` gives `AAAA`, `{0x68,0x00,0x00}` gives
+`aAAA`. Under a case-folding field a filter for one matches a chunk holding the other. Rare and
+contrived, and still a wrong answer.
+
+So the guard is kept, its stated reason is replaced, and it is pinned twice: structurally, by
+reading `FT.INFO` for the declared flag, and behaviourally, by storing one of a case-colliding
+encoding pair and filtering for the other.
 
 The query becomes:
 
