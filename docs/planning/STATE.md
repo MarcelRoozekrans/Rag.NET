@@ -15,8 +15,20 @@ derived id), Chroma (needed a `/get` endpoint added — `/query` cannot serve a 
 Azure AI Search (`GetDocument`, after replacing a random GUID key). **Not one was a translation of
 the last**, which is why they were read individually rather than copied after the second diverged.
 
-**One test caught the same mutation on all seven backends and nothing else did.** Making
-`chunk_index` unsigned passes every test written except the negative-index one. Seven for seven.
+**~~One test caught the same mutation on all seven backends and nothing else did.~~ Retracted
+2026-09-09, in the phase that tried to make it eight.** This entry claimed the negative-index test
+was the only thing catching an unsigned `chunk_index`, seven for seven. **6.2.31's mutation sweep
+applied that mutation to Redis's shared `KeyFor` helper and nothing caught it** — one helper serves
+both the write and the read, so the change is self-consistent, and the existing test's indices
+(`-1, -2, 0`) share no magnitude.
+
+**The streak is not disproved; it is unverifiable.** 6.2.26 recorded the same mutation on the same
+store as caught, and at that commit `KeyFor` was already shared and the test data already identical.
+So either that phase mutated the stored `chunk_index` field — a different site, genuinely caught —
+or it mutated the helper and recorded a result nobody ran. **Nothing in the record names the line**,
+so it cannot be told from here. The lesson is the actionable half: **a mutation's site decides how
+strong the test is**, and naming the mutation without naming the line makes a sweep unreproducible.
+Record the site from here on. `ROADMAP.md`'s 6.2.31 block carries the full reasoning.
 
 **Scoping the last backend found a worse defect than the missing feature (#517).**
 `AzureAISearchVectorStore` assigned `Guid.NewGuid()` as the document key, so `Upload` could never
@@ -60,11 +72,23 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.30 — The Azure AI Search Key Carries Identity — **COMPLETE 2026-09-08** (#518,
-`526380cf`, closing #517 and completing #318). **No phase is currently open**, and **the next
-planned phase in `ROADMAP.md` is one nothing local can start**: 6.3 Release v1.0, blocked on 6.1,
-blocked on accounts. Every phase since 6.2.17 has been added ad hoc from the backlog for that
-reason.
+**Phase:** 6.2.31 — What Redis Never Stored, It Cannot Return — **built and reviewed 2026-09-09,
+awaiting the operator's merge.** 28 commits on `feat/513-redis-chunk-metadata`, 47 tests where the
+package had 16. Closes #513 and files #521. **The phase's scope grew when scoping it found a
+wrong-results defect rather than the missing feature #513 describes**: `SearchAsync` never read
+`MetadataFilter`, nothing re-checks downstream, and the guide told readers the pipeline filtered
+instead — it does not, and never did.
+
+**The whole-branch review found the defect no per-task review could see.** `HashSetAsync` is a
+merge, so re-ingesting a chunk that had dropped a declared metadata key left the old `md_*` field
+indexed: a filter matched a chunk whose metadata no longer contained the key. Two tasks were each
+right in isolation — one made the blob unconditional, the other made the per-key fields conditional
+— and the seam between them was the defect. **Reproduced red before it was fixed.**
+
+**Previously:** 6.2.30 — The Azure AI Search Key Carries Identity — **COMPLETE 2026-09-08** (#518,
+`526380cf`, closing #517 and completing #318). **The next planned phase in `ROADMAP.md` is one
+nothing local can start**: 6.3 Release v1.0, blocked on 6.1, blocked on accounts. Every phase since
+6.2.17 has been added ad hoc from the backlog for that reason.
 
 **Thirteen closed since 6.2.17**, none of them recorded here until 2026-09-09: **6.2.18** deep
 research honours `TopK` (#475, #494 — fused by RRF rather than the issue's own suggested truncation,

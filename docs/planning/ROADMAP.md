@@ -6924,9 +6924,10 @@ negative-index test was the only thing catching an unsigned-index implementation
 **#318 was closed 2026-09-09**, after all seven implementations were verified present on `main` by
 content rather than by any PR's MERGED label.
 
-### Phase 6.2.31: What Redis Never Stored, It Cannot Return [status: active 2026-09-09 — #513, and the larger defect scoping it found]
+### Phase 6.2.31: What Redis Never Stored, It Cannot Return [status: complete 2026-09-09 — #513, and the larger defect scoping it found]
 **Surface:** Storage
 **HelpWanted:** no
+**Completed:** 2026-09-09
 **Design:** `docs/plans/2026-09-09-redis-chunk-metadata-design.md`
 **Plan:** `docs/plans/2026-09-09-redis-chunk-metadata-implementation.md`
 
