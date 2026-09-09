@@ -10,8 +10,10 @@ Everything else there stands.
 
 @StefH asked (#328) for Azure AI Search's semantic ranker: a `SemanticSearch` configuration on the
 index and `QueryType.Semantic` on the query, so the service reranks results with its own model. The
-issue also asks for `KNearestNeighborsCount` to be settable, which is independent and was half-fixed
-in 6.2.5 (#374 stopped it being set *below* Azure's default; it is still not caller-controlled).
+issue also asks for `KNearestNeighborsCount` to be settable. **That half is already shipped** —
+6.2.5's #374 added `AzureAISearchOptions.KNearestNeighborsCount`, reachable through
+`UseAzureAISearch(..., configure)` and validated eagerly. An earlier draft of this design said it
+"becomes settable"; that was wrong, and reading the code rather than the issue is what caught it.
 
 6.2.5 split the ranker off "pending the score-scale decision". 6.2.33 took that decision:
 `IHybridSearchable.HybridScoreScale` now declares a fused path's scale, and the rule is that an
@@ -95,10 +97,28 @@ ranking, if the region does not support it, or if the configuration name does no
 of those is a silent downgrade to ordinary scoring** — the caller gets plausible results, ranked the
 old way, believing they were reranked. The guard converts all of them into one loud failure.
 
-### 2.6 `KNearestNeighborsCount`
+### 2.6 `k` and the ranker interact, and the option's own remarks already say how
 
-Becomes a constructor parameter with the current behaviour as its default. Independent of the
-ranker, verifiable locally, and the half of #328 that needs no account.
+`KNearestNeighborsCount` is already settable, so nothing is added there. What is added is a **guard
+on the combination**, because the two settings interact in a documented way that fails quietly.
+
+That option's remarks already quote Microsoft: *"Whenever you use semantic ranking with vectors, set
+`k` to 50. Semantic ranker uses up to 50 matches as input. Specifying less than 50 deprives the
+semantic ranking models of necessary inputs."* They end by noting semantic ranking is not
+implemented here yet and that the advice is for anyone configuring the index themselves. **This
+phase is when that stops being hypothetical.**
+
+So **enabling the ranker with `KNearestNeighborsCount` set below 50 is rejected at registration**,
+in `ValidateConfigured`, beside the existing `k < 1` check. Leaving it `null` stays valid and
+remains the right default — omitting the parameter is what makes Azure apply its own 50.
+
+**Rejected rather than warned, unlike §2.4's `MinScore` decision**, and the difference is the point:
+`MinScore` arrives on shared per-request options that a caller may have set for an entirely
+different path, so throwing would punish an innocent configuration. `k` and the ranker are both
+deliberate, set on the same options object, at registration, by the same person. Nobody combines
+them by accident — and the damage is invisible: worse ranking, no error.
+
+The option's remarks are updated to say the guard exists rather than that the feature does not.
 
 ## 3. What is deliberately not in scope
 
@@ -120,7 +140,8 @@ Locally, against the simulator and without any account:
 | the index has none when disabled | same, asserting absence |
 | the store declares `OpaqueRanking` when enabled | property assertion |
 | the store declares `Similarity` when disabled | property assertion — pins the behaviour-preserving default |
-| `KNearestNeighborsCount` is settable and reaches the query | store, search, assert against a value distinguishable from the default |
+| enabling the ranker with `k` below 50 is rejected at registration | `UseAzureAISearch` with both set, assert the throw names both |
+| enabling the ranker with `k` null or at least 50 is accepted | the same, asserting no throw |
 | the dense path is unchanged when the ranker is off | the existing suite, which must stay green |
 
 **Mutation-checked**, including the two that matter most: delete the guard (the enabled-path test
@@ -147,5 +168,8 @@ defaults off, the index gains nothing, the query is unchanged, and the declared 
 **Opting in is a deliberate trade**: better ranking from the service, in exchange for a score that
 can only be ordered and not thresholded — declared, not hidden.
 
-**The public API grows**: two constructor parameters and one interface implementation on
+**The public API grows**: one option, one constructor parameter and one interface implementation on
 `AzureAISearchVectorStore`. Pre-1.0, and cheaper now than after.
+
+**One configuration becomes invalid**: the ranker enabled together with an explicit `k` below 50.
+Nobody can be in that state today, because the ranker does not exist yet.
