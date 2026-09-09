@@ -25,7 +25,9 @@ namespace Rag.NET.Weaviate;
 /// identical — and maps <c>Score = 1 - distance / 2</c> (identical vector ⇒ 1, equal to
 /// Weaviate's <c>certainty</c>); hybrid search reads <c>_additional.score</c>, Weaviate's
 /// relative-score-fusion value in [0, 1] returned as a JSON <em>string</em>.
-/// <c>MinScore</c> is applied to the mapped score, <c>TopK</c> becomes <c>limit</c>.
+/// <c>TopK</c> becomes <c>limit</c> on both paths. <c>MinScore</c> is applied only to the dense
+/// path's mapped similarity; the hybrid path's fused score is ordinal
+/// (<see cref="IHybridSearchable.HybridScoreScale"/>) and is never thresholded by it.
 /// </para>
 /// </summary>
 public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable, IChunkLookup, IDisposable
@@ -118,6 +120,22 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         return results;
     }
 
+    /// <summary>
+    /// Runs Weaviate's own hybrid query: a BM25 keyword ranking over <paramref name="textQuery"/>
+    /// fused with a vector ranking over <paramref name="queryEmbedding"/>, ranked server-side.
+    /// </summary>
+    /// <remarks>
+    /// <b><see cref="SearchOptions.MinScore"/> is not applied on this path.</b> Weaviate's
+    /// <c>_additional.score</c> here is the result of its own fusion of the keyword and vector
+    /// rankings (<see cref="IHybridSearchable.HybridScoreScale"/> is
+    /// <see cref="ScoreScale.OpaqueRanking"/> for exactly this reason) — its magnitude carries no
+    /// similarity meaning, so thresholding it like a cosine score would drop or keep results
+    /// arbitrarily. <see cref="SearchAsync"/> above still applies <c>MinScore</c>, because there
+    /// the score is a converted cosine distance. The retrieval pipeline already avoids this trap
+    /// for pipeline callers — it refuses the native hybrid dispatch whenever a <c>MinScore</c> is
+    /// set — so the caller who can still see this is one reaching <see cref="HybridSearchAsync"/>
+    /// directly.
+    /// </remarks>
     public async Task<IReadOnlyList<SearchResult>> HybridSearchAsync(
         string textQuery,
         ReadOnlyMemory<float> queryEmbedding,
@@ -139,7 +157,12 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
             options,
             additionalField: "score");
         var hits = await ExecuteGetQueryAsync(query, cancellationToken).ConfigureAwait(false);
-        var results = MapResults(hits, ScoreFromHybridScore, options.MinScore);
+
+        // MinScore is deliberately not forwarded: this score is Weaviate's own hybrid fusion of a
+        // keyword ranking and a vector ranking (IHybridSearchable.HybridScoreScale), so it is
+        // ordinal and a similarity-shaped threshold would filter it arbitrarily. SearchAsync above
+        // still applies it, where the score is a converted cosine distance.
+        var results = MapResults(hits, ScoreFromHybridScore, minScore: 0.0);
         activity?.SetTag("vectorstore.result.count", results.Count);
         return results;
     }

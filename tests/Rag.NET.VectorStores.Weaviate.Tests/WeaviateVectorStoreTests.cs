@@ -390,6 +390,57 @@ public class WeaviateVectorStoreTests
         Assert.Contains(className, exception.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The hybrid path's scores come from Weaviate's own fusion of BM25 and vector results, so they
+    /// are ordinal rather than similarities and must not be thresholded. The store declares that
+    /// through the capability system rather than leaving every caller to re-derive it — the
+    /// retrieval pipeline already refuses the native path when a MinScore is set, and a direct
+    /// caller of HybridSearchAsync deserves the same fact.
+    /// </summary>
+    [Fact]
+    public void HybridScoreScale_IsOpaqueRanking()
+    {
+        using var store = CreateStore(UniqueClassName());
+
+        // Accessed through the interface: a default interface member is not on the class's surface.
+        Assert.Equal(ScoreScale.OpaqueRanking, ((IHybridSearchable)store).HybridScoreScale);
+    }
+
+    /// <summary>
+    /// MinScore does not apply to a fused score. Weaviate's hybrid path fuses a keyword ranking
+    /// with a vector ranking and returns <c>_additional.score</c>, a value whose magnitude is not
+    /// comparable to a cosine threshold, so applying one would filter it arbitrarily. A direct
+    /// caller of <c>HybridSearchAsync</c> is the case that matters: the retrieval pipeline already
+    /// refuses the native hybrid path whenever a MinScore is set.
+    /// </summary>
+    /// <remarks>
+    /// Reuses <see cref="HybridSearch_FusesKeywordAndVectorArms"/>'s three-chunk shape rather than
+    /// a single dual-matching chunk: a chunk that tops both arms gets a relative-score-fusion value
+    /// of 1.0 regardless of filtering, which would make the assertion pass whether or not MinScore
+    /// was applied. Splitting the vector match (alpha) from the keyword match (zebra) keeps each
+    /// chunk's fused score below the 0.9 threshold, so the page is genuinely empty before the fix.
+    /// </remarks>
+    [Fact]
+    public async Task HybridSearchAsync_DoesNotFilterByMinScore()
+    {
+        using var store = CreateStore(UniqueClassName());
+        await store.StoreAsync(
+            [
+                Chunk("doc-minscore", 0, "alpha document", [1.0f, 0.0f, 0.0f]),
+                Chunk("doc-minscore", 1, "middle document", [0.0f, 1.0f, 0.0f]),
+                Chunk("doc-minscore", 2, "zebra document", [0.0f, 0.0f, 1.0f]),
+            ],
+            TestContext.Current.CancellationToken);
+
+        var results = await store.HybridSearchAsync(
+            "zebra",
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions { TopK = 10, MinScore = 0.9 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, results.Count);
+    }
+
     private WeaviateVectorStore CreateStore(string className, string? tenant = null) =>
         new(new WeaviateOptions
         {
