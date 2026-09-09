@@ -337,6 +337,21 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         return results;
     }
 
+    /// <summary>
+    /// Runs Azure AI Search's own hybrid query: BM25 over <paramref name="textQuery"/> fused with
+    /// vector search over <paramref name="queryEmbedding"/>, ranked service-side.
+    /// </summary>
+    /// <remarks>
+    /// <b><see cref="RagSearchOptions.MinScore"/> is not applied on this path.</b> The fused score
+    /// Azure returns here is a rank produced by combining the BM25 and vector rankings server-side
+    /// (<see cref="IHybridSearchable.HybridScoreScale"/> is <see cref="ScoreScale.OpaqueRanking"/>
+    /// for exactly this reason) — its magnitude carries no similarity meaning, so thresholding it
+    /// like a cosine score would drop or keep results arbitrarily. <see cref="SearchAsync"/> above
+    /// still applies <c>MinScore</c>, because there the score is a genuine cosine similarity. The
+    /// retrieval pipeline already avoids this trap for pipeline callers — it refuses the native
+    /// hybrid dispatch whenever a <c>MinScore</c> is set — so the caller who can still see this is
+    /// one reaching <see cref="HybridSearchAsync"/> directly.
+    /// </remarks>
     public async Task<IReadOnlyList<SearchResult>> HybridSearchAsync(
         string textQuery,
         ReadOnlyMemory<float> queryEmbedding,
@@ -366,7 +381,11 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 
         searchOptions.Filter = BuildMetadataFilter(options.MetadataFilter);
 
-        var results = await ExecuteSearchAsync(textQuery, searchOptions, options.MinScore, cancellationToken)
+        // MinScore is deliberately not forwarded: Azure fuses BM25 and vector rankings
+        // service-side and the resulting score is ordinal (IHybridSearchable.HybridScoreScale),
+        // so a similarity-shaped threshold would filter it arbitrarily. The dense path above
+        // still applies it, because there the score is a real cosine similarity.
+        var results = await ExecuteSearchAsync(textQuery, searchOptions, minScore: 0.0, cancellationToken)
             .ConfigureAwait(false);
         activity?.SetTag("vectorstore.result.count", results.Count);
         return results;

@@ -124,6 +124,7 @@ classDiagram
         +DeleteByDocumentIdAsync(documentId)
     }
     class IHybridSearchable {
+        +HybridScoreScale
         +HybridSearchAsync(textQuery, queryEmbedding, options)
     }
     class ICollectionManageable {
@@ -174,6 +175,8 @@ If your backend natively supports combined BM25+vector search, implement this in
 ```csharp
 public interface IHybridSearchable
 {
+    ScoreScale HybridScoreScale => ScoreScale.OpaqueRanking;
+
     Task<IReadOnlyList<SearchResult>> HybridSearchAsync(
         string textQuery,
         ReadOnlyMemory<float> queryEmbedding,
@@ -183,6 +186,8 @@ public interface IHybridSearchable
 ```
 
 The pipeline prefers `HybridSearchAsync` over the in-memory BM25 fallback when both interfaces are implemented **and** the call configures nothing native fusion cannot express: no sparse (SPLADE) arm would run, no `EnsembleOptions` is supplied, and `MinScore` is `0.0`. Otherwise client-side RRF fusion runs so the configured weights and threshold semantics apply — see [Retrieval — How the hybrid path is selected](retrieval.md#how-the-hybrid-path-is-selected).
+
+Your `HybridSearchAsync` must **not** apply `MinScore`, unlike `SearchAsync` above: the default `HybridScoreScale` of `ScoreScale.OpaqueRanking` declares that the fused score it returns has no similarity meaning, so a similarity-shaped threshold would filter it arbitrarily — and the pipeline already keeps `MinScore` requests off this path for exactly that reason. Override `HybridScoreScale` only if your backend's hybrid query genuinely returns a comparable similarity, and say why in the override.
 
 If you also implement `IBm25Index` (the in-memory-BM25-fallback side of that client-side path, not this interface), its `Search` method takes a `metadataFilter` you must apply — see [Retrieval — `MetadataFilter` and the BM25 arm](retrieval.md#metadatafilter-and-the-bm25-arm).
 

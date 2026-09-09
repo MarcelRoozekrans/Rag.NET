@@ -66,13 +66,13 @@ public sealed class EnsembleBehavior : IRetrievalBehavior
     /// <summary>
     /// Whether the store's native hybrid query can serve this request without silently doing
     /// less than the caller configured. Native fusion happens inside the backend, so it cannot
-    /// apply <see cref="EnsembleOptions"/> weights, cannot run a sparse (SPLADE) arm, and
-    /// applies <see cref="RetrievalOptions.MinScore"/> to its own fusion-score scale rather
-    /// than to the dense arm's similarity scale. Each of those therefore keeps the client-side
-    /// path: an <see cref="RetrievalOptions.EnsembleOptions"/> instance (even default-valued —
-    /// supplying one at all expresses weighting intent), a non-zero
-    /// <see cref="RetrievalOptions.MinScore"/>, or a sparse arm that would run
-    /// (<see cref="SparseArmWouldRun"/>).
+    /// apply <see cref="EnsembleOptions"/> weights, cannot run a sparse (SPLADE) arm, and does
+    /// not apply <see cref="RetrievalOptions.MinScore"/> at all — a native implementer's fused
+    /// score is on its own scale, not the dense arm's similarity scale. Each of those therefore
+    /// keeps the client-side path: an <see cref="RetrievalOptions.EnsembleOptions"/> instance
+    /// (even default-valued — supplying one at all expresses weighting intent), a non-zero
+    /// <see cref="RetrievalOptions.MinScore"/> (dispatching natively would silently discard
+    /// it), or a sparse arm that would run (<see cref="SparseArmWouldRun"/>).
     /// </summary>
     private bool CanDispatchNatively(RetrievalOptions opts) =>
         opts.EnsembleOptions is null

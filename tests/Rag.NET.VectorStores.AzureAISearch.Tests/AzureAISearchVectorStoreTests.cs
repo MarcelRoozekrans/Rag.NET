@@ -104,6 +104,55 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// The dense path's score is a genuine cosine similarity (unlike the hybrid path's ordinal
+    /// fused score — <see cref="HybridScoreScale_IsOpaqueRanking"/>), so <c>MinScore</c> must
+    /// threshold it. Pinned against the Azure AI Search simulator: cosine similarity 1.0 maps to
+    /// score 1.0, 0.8 to ~0.8333, and 0.0 (orthogonal) to 0.5 — a 0.9 threshold keeps only the
+    /// identical vector and excludes both the close and orthogonal ones.
+    /// </summary>
+    [Fact]
+    public async Task Search_MinScore_FiltersByCosineSimilarity()
+    {
+        var docId = $"ais-{Guid.CreateVersion7():N}";
+        var chunks = new List<EmbeddedChunk>
+        {
+            new()
+            {
+                Chunk = new TextChunk { Text = "identical", DocumentId = new DocumentId(docId), ChunkIndex = 0 },
+                Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+            },
+            new()
+            {
+                Chunk = new TextChunk { Text = "close", DocumentId = new DocumentId(docId), ChunkIndex = 1 },
+                Embedding = new float[] { 0.8f, 0.6f, 0.0f },
+            },
+            new()
+            {
+                Chunk = new TextChunk { Text = "orthogonal", DocumentId = new DocumentId(docId), ChunkIndex = 2 },
+                Embedding = new float[] { 0.0f, 1.0f, 0.0f },
+            },
+        };
+
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId, 3, TestContext.Current.CancellationToken);
+
+            var results = await _sut.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 10, MinScore = 0.9 },
+                TestContext.Current.CancellationToken);
+
+            var result = Assert.Single(results);
+            Assert.Equal("identical", result.Chunk.Text);
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
+        }
+    }
+
     [Fact]
     public async Task HybridSearch_FusesKeywordAndVectorArms()
     {
@@ -147,6 +196,50 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
             Assert.Equal(2, results.Count);
             Assert.Contains(results, r => string.Equals(r.Chunk.Text, "alpha document", StringComparison.Ordinal));
             Assert.Contains(results, r => string.Equals(r.Chunk.Text, "zebra document", StringComparison.Ordinal));
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
+        }
+    }
+
+    /// <summary>
+    /// MinScore does not apply to a fused score. Azure fuses BM25 and vector rankings
+    /// service-side and returns a rank-shaped score whose magnitude is not comparable to a
+    /// cosine threshold, so applying one would filter it arbitrarily. A direct caller of
+    /// <c>HybridSearchAsync</c> is the case that matters: the retrieval pipeline already refuses
+    /// the native hybrid path whenever a MinScore is set (<c>EnsembleBehavior.CanDispatchNatively</c>).
+    /// </summary>
+    [Fact]
+    public async Task HybridSearchAsync_DoesNotFilterByMinScore()
+    {
+        var docId = $"ais-{Guid.CreateVersion7():N}";
+        var chunks = new List<EmbeddedChunk>
+        {
+            new()
+            {
+                Chunk = new TextChunk { Text = "alpha document", DocumentId = new DocumentId(docId), ChunkIndex = 0 },
+                Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+            },
+            new()
+            {
+                Chunk = new TextChunk { Text = "zebra document", DocumentId = new DocumentId(docId), ChunkIndex = 1 },
+                Embedding = new float[] { 0.0f, 0.0f, 1.0f },
+            },
+        };
+
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId, 2, TestContext.Current.CancellationToken);
+
+            var results = await _sut.HybridSearchAsync(
+                "alpha",
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 10, MinScore = 0.9 },
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(2, results.Count);
         }
         finally
         {
@@ -328,6 +421,20 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     public void EscapeODataString_ValueWithMultipleSingleQuotes_DoublesAllOfThem()
     {
         Assert.Equal("it''s a ''test''", AzureAISearchVectorStore.EscapeODataString("it's a 'test'"));
+    }
+
+    /// <summary>
+    /// The hybrid path's scores come from Azure's own fusion of BM25 and vector results, so they
+    /// are ordinal rather than similarities and must not be thresholded. The store declares that
+    /// through the capability system rather than leaving every caller to re-derive it — the
+    /// retrieval pipeline already refuses the native path when a MinScore is set, and a direct
+    /// caller of HybridSearchAsync deserves the same fact.
+    /// </summary>
+    [Fact]
+    public void HybridScoreScale_IsOpaqueRanking()
+    {
+        // Accessed through the interface: a default interface member is not on the class's surface.
+        Assert.Equal(ScoreScale.OpaqueRanking, ((IHybridSearchable)_sut).HybridScoreScale);
     }
 
     private static readonly TimeSpan SettleTimeout = TimeSpan.FromSeconds(30);
