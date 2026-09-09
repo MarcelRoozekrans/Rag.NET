@@ -25,8 +25,8 @@ public sealed class AzureAISearchOptions
     /// <b>Set this to 50 if you turn on semantic ranking.</b> The same Microsoft page is explicit:
     /// "Whenever you use semantic ranking with vectors, set <c>k</c> to 50. Semantic ranker uses up
     /// to 50 matches as input. Specifying less than 50 deprives the semantic ranking models of
-    /// necessary inputs." Semantic ranking is not implemented here yet — #328 stays open for it —
-    /// so this note is for anyone configuring the index themselves in the meantime.
+    /// necessary inputs." Setting this below 50 while <see cref="EnableSemanticRanking"/> is on is
+    /// therefore refused at registration, not merely discouraged — see that option's remarks.
     /// </para>
     /// <para>
     /// Note the asymmetry with <c>TopK</c>: Microsoft documents <c>k</c> as governing "results for
@@ -36,4 +36,30 @@ public sealed class AzureAISearchOptions
     /// </para>
     /// </remarks>
     public int? KNearestNeighborsCount { get; set; }
+
+    /// <summary>
+    /// Whether the dense search path asks Azure's semantic ranker to rerank results. Off by
+    /// default; opting in changes what <see cref="Rag.NET.Models.SearchResult.Score"/> means.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The score becomes ordinal.</b> With the ranker on, the store returns Azure's
+    /// <c>RerankerScore</c> — a 0–4 relevance score — unrescaled, and declares
+    /// <see cref="Rag.NET.Abstractions.ScoreScale.OpaqueRanking"/>. It is not converted into a
+    /// similarity, because an invented similarity is worse than an honest ordinal, and
+    /// <c>MinScore</c> is therefore not applied on that path.
+    /// </para>
+    /// <para>
+    /// <b>Per instance, not per request.</b> It reshapes the score of the ordinary search path,
+    /// and <see cref="Rag.NET.Abstractions.IScoreScaleAware"/> requires that scale to be constant
+    /// for the instance's lifetime — callers probe it once and may cache the answer.
+    /// </para>
+    /// <para>
+    /// <b>Requires a service that actually ranks.</b> Semantic ranking needs Basic tier or higher
+    /// in a supporting region. A service that cannot rank answers the request successfully and
+    /// returns ordinary scores, so the store throws rather than publish a number it cannot
+    /// describe.
+    /// </para>
+    /// </remarks>
+    public bool EnableSemanticRanking { get; set; }
 }

@@ -87,4 +87,60 @@ public class AzureAISearchBuilderExtensionsTests
 
         Assert.Equal(50, query.KNearestNeighborsCount);
     }
+
+    /// <summary>
+    /// Microsoft's own guidance, already quoted in AzureAISearchOptions' remarks: "Whenever you use
+    /// semantic ranking with vectors, set k to 50. Semantic ranker uses up to 50 matches as input.
+    /// Specifying less than 50 deprives the semantic ranking models of necessary inputs." The
+    /// damage is invisible — worse ranking, no error — so the combination is refused at
+    /// registration, where both settings are made deliberately by the same person.
+    /// </summary>
+    [Fact]
+    public void EnablingTheRankerWithKBelowFiftyIsRejected()
+    {
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new ServiceCollection().AddRagNet(rag => rag.UseAzureAISearch(
+                new Uri("https://test.search.windows.net"),
+                "test-index",
+                new AzureKeyCredential("dummy-key"),
+                configure: o =>
+                {
+                    o.EnableSemanticRanking = true;
+                    o.KNearestNeighborsCount = 10;
+                })));
+
+        Assert.Contains("50", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>Null is the right default: omitting k is what makes Azure apply its own 50.</summary>
+    [Fact]
+    public void EnablingTheRankerWithNoExplicitKIsAccepted()
+    {
+        var provider = new ServiceCollection().AddRagNet(rag => rag.UseAzureAISearch(
+                new Uri("https://test.search.windows.net"),
+                "test-index",
+                new AzureKeyCredential("dummy-key"),
+                configure: o => o.EnableSemanticRanking = true))
+            .BuildServiceProvider();
+
+        Assert.IsType<AzureAISearchVectorStore>(provider.GetRequiredService<IVectorStore>());
+    }
+
+    /// <summary>Fifty exactly is the documented minimum, not a value to reject.</summary>
+    [Fact]
+    public void EnablingTheRankerWithKAtFiftyIsAccepted()
+    {
+        var provider = new ServiceCollection().AddRagNet(rag => rag.UseAzureAISearch(
+                new Uri("https://test.search.windows.net"),
+                "test-index",
+                new AzureKeyCredential("dummy-key"),
+                configure: o =>
+                {
+                    o.EnableSemanticRanking = true;
+                    o.KNearestNeighborsCount = 50;
+                }))
+            .BuildServiceProvider();
+
+        Assert.IsType<AzureAISearchVectorStore>(provider.GetRequiredService<IVectorStore>());
+    }
 }
