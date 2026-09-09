@@ -7137,6 +7137,46 @@ swallowing way, and if so how the caller's identity reaches the message.
 **Nobody has observed a corrupt blob in the wild.** This is posture and consistency, not a live
 incident, and the phase should say so rather than inflate it.
 
+### Phase 6.2.33: A Fused Score Is Not a Similarity [status: pending — added 2026-09-09, #530 then #328]
+**Surface:** Storage
+**HelpWanted:** no
+
+**Goal:** the two stores that return backend-fused hybrid scores stop reporting them as
+similarities, and stop thresholding on them — after which #328's semantic ranker lands as the third
+case of the same rule rather than a decision invented for it.
+
+**#328 WAS BLOCKED ON A DECISION THAT TURNED OUT TO BE A SHIPPED DEFECT.** 6.2.5 split the semantic
+ranker off "pending the score-scale decision" and nobody took it. Scoping it found that the decision
+is not hypothetical: `AzureAISearchVectorStore` and `WeaviateVectorStore` already return fused
+scores and already apply a similarity-shaped `MinScore` to them.
+
+**The library defines the rule, uses it, and these two do not participate.**
+`ScoreScale.OpaqueRanking` says in its own remarks that RRF and unbounded backend hybrid scores are
+on that scale and that **fixed thresholds must not be applied**. `FederatedVectorStore` declares it;
+`PersistentConversationMemory` probes for it and skips its threshold. **No vector store in the
+repository implements `IScoreScaleAware` at all.**
+
+**And the opposite call was already made deliberately, one store over.** `RedisVectorStore` declines
+`IHybridSearchable` because a store advertising it "would be fusing a score it cannot describe" —
+#86 asked for that judgement. Azure and Weaviate shipped the feature without it.
+
+**The design question is real and not obvious.** `IScoreScaleAware` requires the scale to be
+**constant for the instance's lifetime** — callers probe once and may cache. But both stores serve a
+dense path returning genuine cosine similarity *and* a hybrid path returning a fused score, from one
+instance. What a single instance should declare is the thing to settle before any code.
+
+**#328's ranker then follows the same rule**, opt-in, with a guard that fails loudly rather than
+silently: **the local simulator accepts `queryType=semantic` and a semantic index configuration,
+returns HTTP 200, and returns no `rerankerScore` at all** — measured 2026-09-09. A test written the
+obvious way against it would pass whether or not semantic ranking happened, which is the exact
+defect class this milestone exists to remove.
+
+**Verifiability splits the phase.** #530's half is fully verifiable locally — a declaration and a
+threshold are testable without an Azure account. #328's half needs a real resource (Basic tier or
+higher, billable, region-limited), so it carries the account constraint 6.1 has.
+
+**No consumer has reported either.** Found by reading, in the class of #56.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
