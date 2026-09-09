@@ -108,13 +108,13 @@ public sealed class SqliteDocumentStore : IRagDataManager
             var results = new List<DocumentSummary>();
             while (reader.Read())
             {
-                var tagsResult = MetadataSerializer.DeserializeTags(reader.GetString(3));
-                var tags = tagsResult.IsSuccess
-                           ? tagsResult.Value
-                           : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
+                var documentId = reader.GetString(0);
+                var tags = MetadataSerializer.DeserializeMetadataOrThrow(
+                    reader.GetString(3),
+                    $"SQLite document '{documentId}', tags_json column");
                 results.Add(new DocumentSummary
                 {
-                    DocumentId  = new DocumentId(reader.GetString(0)),
+                    DocumentId  = new DocumentId(documentId),
                     FileName    = reader.GetString(1),
                     ContentType = reader.IsDBNull(2) ? null : reader.GetString(2),
                     Tags        = tags,
@@ -146,14 +146,14 @@ public sealed class SqliteDocumentStore : IRagDataManager
             var results = new List<TextChunk>();
             while (reader.Read())
             {
-                var metadataResult = MetadataSerializer.DeserializeMetadata(reader.GetString(4));
-                var metadata = metadataResult.IsSuccess
-                               ? metadataResult.Value
-                               : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
+                var chunkIndex = reader.GetInt32(0);
+                var metadata = MetadataSerializer.DeserializeMetadataOrThrow(
+                    reader.GetString(4),
+                    $"SQLite chunk (document '{documentId}', chunk {chunkIndex}), metadata_json column");
                 results.Add(new TextChunk
                 {
                     DocumentId    = new DocumentId(documentId),
-                    ChunkIndex    = reader.GetInt32(0),
+                    ChunkIndex    = chunkIndex,
                     StartPosition = reader.GetInt32(1),
                     EndPosition   = reader.GetInt32(2),
                     Text          = reader.GetString(3),

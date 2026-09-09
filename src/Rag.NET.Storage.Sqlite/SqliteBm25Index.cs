@@ -206,15 +206,16 @@ public sealed class SqliteBm25Index : IBm25Index
         while (reader.Read())
         {
             var docId = reader.GetInt32(0);
-            var metadataResult = MetadataSerializer.DeserializeMetadata(reader.GetString(6));
-            var metadata = metadataResult.IsSuccess
-                           ? metadataResult.Value
-                           : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
+            var documentId = reader.GetString(1);
+            var chunkIndex = reader.GetInt32(2);
+            var metadata = MetadataSerializer.DeserializeMetadataOrThrow(
+                reader.GetString(6),
+                $"SQLite BM25 index row (document '{documentId}', chunk {chunkIndex}), metadata_json column");
 
             var chunk = new TextChunk
             {
-                DocumentId = new DocumentId(reader.GetString(1)),
-                ChunkIndex = reader.GetInt32(2),
+                DocumentId = new DocumentId(documentId),
+                ChunkIndex = chunkIndex,
                 StartPosition = reader.GetInt32(3),
                 EndPosition = reader.GetInt32(4),
                 Text = reader.GetString(5),

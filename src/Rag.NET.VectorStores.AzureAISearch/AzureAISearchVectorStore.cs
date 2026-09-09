@@ -603,10 +603,11 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         if (TryReadMetadataEntries(document) is { } typed)
             return typed;
 
-        var metadataResult = MetadataSerializer.DeserializeMetadata(document.GetString("metadata"));
-        return metadataResult.IsSuccess
-            ? metadataResult.Value
-            : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
+        var documentId = document.GetString("document_id");
+        var chunkIndex = document.GetInt32("chunk_index") ?? 0;
+        return MetadataSerializer.DeserializeMetadataOrThrow(
+            document.GetString("metadata"),
+            $"Azure AI Search document (document '{documentId}', chunk {chunkIndex}), legacy metadata field");
     }
 
     private static Dictionary<string, MetadataValue>? TryReadMetadataEntries(SearchDocument document)

@@ -421,34 +421,16 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
                     Text = hit.GetProperty("text").GetString() ?? string.Empty,
                     DocumentId = new DocumentId(documentId),
                     ChunkIndex = chunkIndex,
-                    Metadata = DeserializeMetadataOrThrow(hit, documentId, chunkIndex),
+                    Metadata = MetadataSerializer.DeserializeMetadataOrThrow(
+                        hit.GetProperty("metadata_json").GetString(),
+                        $"Weaviate object {DeterministicObjectId(documentId, chunkIndex)} " +
+                        $"(document '{documentId}', chunk {chunkIndex}), metadata_json property"),
                 },
                 Score = score,
             });
         }
 
         return results;
-    }
-
-    /// <summary>
-    /// Corrupt <c>metadata_json</c> is backend corruption — the store posture is to throw
-    /// naming the object, never to silently return the chunk with its metadata dropped.
-    /// </summary>
-    private static Dictionary<string, MetadataValue> DeserializeMetadataOrThrow(
-        JsonElement hit,
-        string documentId,
-        int chunkIndex)
-    {
-        var metadataResult = MetadataSerializer.DeserializeMetadata(
-            hit.GetProperty("metadata_json").GetString());
-        if (metadataResult.IsFailure)
-        {
-            throw new InvalidOperationException(
-                $"Weaviate object {DeterministicObjectId(documentId, chunkIndex)} " +
-                $"(document '{documentId}', chunk {chunkIndex}) has a corrupt metadata_json property.");
-        }
-
-        return metadataResult.Value;
     }
 
     /// <summary>Cosine distance (0 identical … 2 opposite) → similarity in [0, 1].</summary>
@@ -525,7 +507,10 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
                 Text = hit.GetProperty("text").GetString() ?? string.Empty,
                 DocumentId = new DocumentId(documentId),
                 ChunkIndex = chunkIndex,
-                Metadata = DeserializeMetadataOrThrow(hit, documentId, chunkIndex),
+                Metadata = MetadataSerializer.DeserializeMetadataOrThrow(
+                    hit.GetProperty("metadata_json").GetString(),
+                    $"Weaviate object {DeterministicObjectId(documentId, chunkIndex)} " +
+                    $"(document '{documentId}', chunk {chunkIndex}), metadata_json property"),
             });
         }
 
