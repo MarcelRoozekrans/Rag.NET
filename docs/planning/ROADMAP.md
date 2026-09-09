@@ -7137,11 +7137,38 @@ swallowing way, and if so how the caller's identity reaches the message.
 **Nobody has observed a corrupt blob in the wild.** This is posture and consistency, not a live
 incident, and the phase should say so rather than inflate it.
 
-### Phase 6.2.33: A Fused Score Is Not a Similarity [status: pending — added 2026-09-09, #530 then #328]
+### Phase 6.2.33: A Fused Score Is Not a Similarity [status: complete 2026-09-09 — #530; #328 split out to 6.2.34]
 **Surface:** Storage
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-09-hybrid-score-scale-design.md`
 **Plan:** `docs/plans/2026-09-09-hybrid-score-scale-implementation.md`
+**Completed:** 2026-09-09
+
+**MERGED in #531 (`5d62f58b`)**, verified on `main` by content: the interface member, both stores'
+`minScore: 0.0`, the new dense guard test, and `CanDispatchNatively`'s predicate unchanged.
+
+**SCOPED TO #530; #328 IS NOW 6.2.34** — split on verifiability rather than size. This half is
+provable against the local containers; the semantic ranker is not provable locally at all, and
+shipping them together would have let the unverifiable half ride the verifiable half's green run.
+
+**THE SWEEP'S SURVIVOR WAS A CONTROL MUTATION ON A PATH THIS PHASE DOES NOT TOUCH.** Hardcoding
+`minScore: 0.0` in Azure's **dense** `SearchAsync` left the whole Azure suite green — its dense
+`MinScore` was protected by no test at all. Weaviate's equivalent was caught by a pre-existing test,
+so the gap was Azure's alone; `Search_MinScore_FiltersByCosineSimilarity` closes it, with numbers
+from Azure's documented `1/(2−cos)` formula rather than a simulator artefact. **Second phase running
+where the sweep found an unprotected capability rather than a bug.**
+
+**A test that could not fail was caught during implementation.** Weaviate's first hybrid test passed
+*before* the fix: a candidate topping both fusion arms scores 1.0 under relative-score fusion, and
+no threshold ≤ 1.0 can filter it. Diagnosed rather than tuned away, and the reasoning is pinned in
+the test's own remarks so a later simplification cannot reintroduce it.
+
+**The whole-branch review found no code defect and a cluster of documentation this branch had
+falsified** — including `IHybridSearchable`'s **own summary**, still explaining the guard as "the
+native path *would* threshold" thirty lines above new remarks saying implementations must not. Also
+`SearchOptions.MinScore`'s doc, `CanDispatchNatively`'s rationale, and the `extending.md` snippet
+shown to custom-store authors. In a phase about documentation asserting what the code does not do,
+shipping that would have been the same defect one level up.
 
 **Goal:** the two stores that return backend-fused hybrid scores stop reporting them as
 similarities, and stop thresholding on them — after which #328's semantic ranker lands as the third
@@ -7230,6 +7257,35 @@ as a third case of the same rule, per the Goal above, but it needs a real, billa
 the local simulator accepts a `semantic` index configuration and a `queryType=semantic` query and
 returns HTTP 200 with no `rerankerScore` at all, so a test written the obvious way would pass whether
 or not ranking actually happened. That half carries 6.1's account constraint and stays pending.
+
+### Phase 6.2.34: The Semantic Ranker, and the Simulator That Lies About It [status: pending — added 2026-09-09, #328]
+**Surface:** Storage
+**HelpWanted:** no
+
+**Goal:** Azure AI Search's semantic ranker, opt-in, declaring its scale — the third case of the
+rule 6.2.33 established rather than a decision invented for it.
+
+**THE SIMULATOR ACCEPTS SEMANTIC SEARCH AND SILENTLY DOES NOT DO IT.** Measured 2026-09-09 against
+`ghcr.io/ellerbach/azure-ai-search-simulator`: it accepts a `semantic` index configuration (HTTP
+201, echoed back), accepts `"queryType": "semantic"` with a `semanticConfiguration`, returns HTTP
+200 with results — and returns **no `rerankerScore` at all**. **A test written the obvious way would
+pass whether or not semantic ranking happened.** So the feature ships with a guard that throws when
+semantic ranking is requested and no reranker score comes back, turning a silent no-op into an error.
+
+**The opt-in is per instance, forced rather than chosen.** Semantic ranking reshapes the score of
+the ordinary `SearchAsync` path, whose scale is `IScoreScaleAware.ScoreScale` — which the interface
+requires to be constant for the instance's lifetime. With it enabled the store implements
+`IScoreScaleAware` and returns `OpaqueRanking`; with it disabled the store does not implement the
+interface and the path keeps its genuine cosine similarity.
+
+**The reranker score is returned as it comes**, not rescaled from 0–4 into a fabricated similarity —
+an invented similarity is what #56 was about.
+
+**`KNearestNeighborsCount` becomes settable** — #328's other half, independent of the ranker and
+verifiable locally unlike the rest.
+
+**Verification is account-blocked**: Basic tier or higher, billable, region-limited. Ships with
+`<VerifiedByReason>` naming the gap, in the same position as 6.1's cassettes.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
