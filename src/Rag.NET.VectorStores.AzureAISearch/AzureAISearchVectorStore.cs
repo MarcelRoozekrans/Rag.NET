@@ -607,7 +607,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         var chunkIndex = document.GetInt32("chunk_index") ?? 0;
         return MetadataSerializer.DeserializeMetadataOrThrow(
             document.GetString("metadata"),
-            $"Azure AI Search document (document '{documentId}', chunk {chunkIndex}), legacy metadata field");
+            $"Azure AI Search index entry (document '{documentId}', chunk {chunkIndex}), legacy metadata field");
     }
 
     private static Dictionary<string, MetadataValue>? TryReadMetadataEntries(SearchDocument document)
