@@ -1,3 +1,4 @@
+using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.VectorStores.Redis;
@@ -150,6 +151,43 @@ public sealed class RedisVectorStoreTests : IAsyncLifetime
         await _store.InitializeAsync(ct);
 
         Assert.True(await _store.CollectionExistsAsync("test-idx", ct));
+    }
+
+    /// <summary>
+    /// Search returns the same metadata the keyed lookup does. The two paths read different shapes
+    /// — a projected document against a whole hash — so they can diverge, which is why 6.2.25
+    /// pulled Qdrant's mapping into one place and why this is asserted rather than assumed.
+    /// </summary>
+    [Fact]
+    public async Task SearchAsync_ReturnsTheStoredMetadata()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync(
+            [
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk
+                    {
+                        DocumentId = new DocumentId("doc-a"),
+                        ChunkIndex = 0,
+                        Text = "alpha",
+                        Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                        {
+                            ["tenant"] = "acme",
+                            ["page"] = 7,
+                        },
+                    },
+                    Embedding = new ReadOnlyMemory<float>([1f, 0f, 0f, 0f]),
+                },
+            ],
+            ct);
+
+        var results = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f }, new SearchOptions { TopK = 1 }, ct);
+
+        var only = Assert.Single(results);
+        Assert.Equal((MetadataValue)"acme", only.Chunk.Metadata["tenant"]);
+        Assert.Equal(7d, only.Chunk.Metadata["page"].NumberValue);
     }
 
     [Fact]

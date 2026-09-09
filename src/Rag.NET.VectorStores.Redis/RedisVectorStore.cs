@@ -237,7 +237,7 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         var query = new Query($"*=>[KNN {options.TopK.ToString(CultureInfo.InvariantCulture)} @{EmbeddingField} $vec AS {ScoreField}]")
             .AddParam("vec", ToBytes(queryEmbedding.Span))
             .SetSortBy(ScoreField)
-            .ReturnFields(DocumentIdField, ChunkIndexField, TextField, ScoreField)
+            .ReturnFields(DocumentIdField, ChunkIndexField, TextField, MetadataField, ScoreField)
             .Dialect(2);
         query.Limit(0, options.TopK);
 
@@ -252,13 +252,17 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
                 continue;
             }
 
+            var documentId = document[DocumentIdField].ToString();
+            var chunkIndex = (int)document[ChunkIndexField];
+
             results.Add(new SearchResult
             {
                 Chunk = new TextChunk
                 {
                     Text = document[TextField].ToString(),
-                    DocumentId = new DocumentId(document[DocumentIdField].ToString()),
-                    ChunkIndex = (int)document[ChunkIndexField],
+                    DocumentId = new DocumentId(documentId),
+                    ChunkIndex = chunkIndex,
+                    Metadata = DecodeMetadata(document[MetadataField], documentId, chunkIndex),
                 },
                 Score = score,
             });
