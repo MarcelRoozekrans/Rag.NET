@@ -20,9 +20,27 @@ the library already assumes."*
 | `AzureAISearchVectorStore` | service-side fusion of BM25 and HNSW (`:369`) | no | **yes** (`:564-565`) |
 | `WeaviateVectorStore` | `_additional.score`, Weaviate's own fusion (`:142`) | no | **yes** (`:412`) |
 
-So a caller setting `MinScore = 0.5` — an ordinary cosine threshold — has it applied to a score
-whose magnitude means something else entirely. It presents as "native hybrid search returns nothing
-useful", with nothing logged and nothing thrown.
+**The pipeline already guards this, and the guard is real.** `EnsembleBehavior.CanDispatchNatively`
+is `opts.EnsembleOptions is null && opts.MinScore is 0.0 && !SparseArmWouldRun(opts)`, so a non-zero
+`MinScore` never reaches native hybrid — the request falls back to client-side RRF. `IHybridSearchable`'s
+own summary names this reason explicitly. **Checked before writing this design**, because a
+neighbouring claim in `docs/guide/vector-stores.md` that "filtering happens in the pipeline" turned
+out to be false in 6.2.31 and cost a phase.
+
+**So the impact is narrower than it first looked, and this document originally overstated it.** A
+pipeline user setting `MinScore = 0.5` does not get it applied to an RRF score; they silently get
+the client-side path, which is deliberate. What remains:
+
+- **`HybridSearchAsync` is public API on a public store class**, and the interface exists to be
+  called. A direct caller's `SearchOptions.MinScore` **is** applied to a fused score by both stores,
+  with nothing to warn them.
+- **Neither store declares its scale**, so the capability probe `PersistentConversationMemory` uses
+  finds nothing. The pipeline compensates by refusing the native path; the stores stay silent about
+  what their own scores mean.
+
+**The argument for the fix is stronger for this, not weaker: the pipeline already encodes the rule
+that a fused score cannot be thresholded. The stores should say so themselves rather than have every
+caller re-derive it.**
 
 **The pattern was available and followed next door.** `FederatedVectorStore` (`:33`, `:85`) declares
 `OpaqueRanking` because it fuses with RRF itself, and `PersistentConversationMemory` (`:66`) probes
@@ -171,10 +189,11 @@ named test goes red. A declaration whose removal changes nothing is not protecte
 
 ## 7. Consequences
 
-**Behavioural change, and it is a fix rather than a break in effect**: hybrid searches that
-previously returned few or no results under a similarity-shaped `MinScore` will start returning the
-page the backend actually ranked. A caller who had tuned a threshold against the old behaviour will
-see more results, not fewer — the direction that fails safe.
+**Behavioural change for direct callers only, and it fails safe**: a consumer calling
+`HybridSearchAsync` itself with a non-zero `MinScore` previously had it applied to a fused score and
+will now get the page the backend actually ranked — more results, not fewer. **Pipeline users see no
+change at all**, because `CanDispatchNatively` already keeps them off the native path whenever
+`MinScore` is set.
 
 **A public interface gains a member.** Defaulted, so no implementer breaks. Taken now because after
 v1.0 it cannot be.
