@@ -323,4 +323,30 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
         Assert.Contains("undeclared", error.Message, StringComparison.Ordinal);
         Assert.Contains("tenant", error.Message, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// <b>An index created before a key was declared filterable must fail loudly at startup.</b>
+    /// <c>InitializeAsync</c> leaves an existing index alone — dropping it would discard every
+    /// stored vector — so on an upgraded deployment the <c>md_*</c> attributes are simply absent,
+    /// and every filtered query would fail at the server or, worse, be answered wrongly. Without
+    /// this check the guarantee holds only on a fresh index, which is not where the defect lives.
+    /// </summary>
+    [Fact]
+    public async Task AnIndexMissingADeclaredKeyFailsInitialisation()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // An index created with NO filterable keys, standing in for one written by an older version.
+        using var older = new RedisVectorStore(_connection, "legacy-idx", Dimensions);
+        await older.InitializeAsync(ct);
+
+        using var upgraded = new RedisVectorStore(
+            _connection, "legacy-idx", Dimensions, filterableMetadataKeys: ["tenant"]);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => upgraded.InitializeAsync(ct));
+
+        Assert.Contains("tenant", error.Message, StringComparison.Ordinal);
+        Assert.Contains("legacy-idx", error.Message, StringComparison.Ordinal);
+    }
 }

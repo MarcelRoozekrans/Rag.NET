@@ -140,6 +140,44 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         {
             await CreateCollectionAsync(_indexName, _vectorDimensions, cancellationToken)
                 .ConfigureAwait(false);
+            return;
+        }
+
+        await VerifyFilterableKeysAreIndexedAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Throws when the live index does not declare every configured filterable key.
+    /// </summary>
+    /// <remarks>
+    /// An existing index is never altered or dropped here, so a key added to the configuration
+    /// after the index was built would otherwise be silently unfilterable. Failing at
+    /// initialisation turns a wrong query result into a startup error naming the key.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">A declared key is not an index attribute.</exception>
+    private async Task VerifyFilterableKeysAreIndexedAsync()
+    {
+        if (_filterableKeys.Count == 0)
+            return;
+
+        var info = await Database.FT().InfoAsync(_indexName).ConfigureAwait(false);
+        var declared = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var attribute in info.Attributes)
+        {
+            foreach (var value in attribute.Values)
+                _ = declared.Add(value.ToString());
+        }
+
+        foreach (var key in _filterableKeys)
+        {
+            var field = MetadataFieldName(key);
+            if (!declared.Contains(field))
+            {
+                throw new InvalidOperationException(
+                    $"Redis index '{_indexName}' does not declare the attribute '{field}', so " +
+                    $"filtering on metadata key '{key}' cannot work. The index predates this " +
+                    $"configuration; recreate it and re-ingest.");
+            }
         }
     }
 
