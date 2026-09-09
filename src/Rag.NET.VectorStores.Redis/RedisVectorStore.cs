@@ -288,7 +288,8 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
         activity?.SetTag("vector.store", nameof(RedisVectorStore));
         activity?.SetTag("top.k", options.TopK);
 
-        var query = new Query($"*=>[KNN {options.TopK.ToString(CultureInfo.InvariantCulture)} @{EmbeddingField} $vec AS {ScoreField}]")
+        var filterPrefix = BuildFilterPrefix(options.MetadataFilter);
+        var query = new Query($"{filterPrefix}=>[KNN {options.TopK.ToString(CultureInfo.InvariantCulture)} @{EmbeddingField} $vec AS {ScoreField}]")
             .AddParam("vec", ToBytes(queryEmbedding.Span))
             .SetSortBy(ScoreField)
             .ReturnFields(DocumentIdField, ChunkIndexField, TextField, MetadataField, ScoreField)
@@ -324,6 +325,51 @@ public sealed class RedisVectorStore : IVectorStore, ICollectionManageable, IChu
 
         activity?.SetTag("result.count", results.Count);
         return results;
+    }
+
+    /// <summary>
+    /// The RediSearch pre-filter for a metadata filter, or <c>*</c> when there is none.
+    /// </summary>
+    /// <remarks>
+    /// Conditions are AND-ed by juxtaposition, matching <c>SearchOptions.MetadataFilter</c>'s
+    /// "matches every key/value pair". Each value is tokenised (kind + Base64Url) and then escaped
+    /// for TAG syntax — the token's own colon is syntax inside a query even though nothing else in
+    /// it is.
+    /// </remarks>
+    /// <param name="filter">The requested filter; null or empty means no filtering.</param>
+    /// <returns>The query prefix.</returns>
+    /// <exception cref="InvalidOperationException">A key was not declared filterable.</exception>
+    private string BuildFilterPrefix(IDictionary<string, MetadataValue>? filter)
+    {
+        if (filter is not { Count: > 0 })
+            return "*";
+
+        var clause = new StringBuilder("(");
+        var first = true;
+        foreach (var pair in filter)
+        {
+            if (!_filterableKeys.Contains(pair.Key, StringComparer.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Metadata key '{pair.Key}' is not filterable on this Redis index. RediSearch " +
+                    $"filters only on attributes the schema declares, so filterable keys are fixed " +
+                    $"when the index is created. Declared: " +
+                    $"[{string.Join(", ", _filterableKeys)}]. Add '{pair.Key}' to " +
+                    $"filterableMetadataKeys and recreate the index.");
+            }
+
+            if (!first)
+                _ = clause.Append(' ');
+
+            first = false;
+            _ = clause.Append('@')
+                .Append(MetadataFieldName(pair.Key))
+                .Append(":{")
+                .Append(EscapeTag(MetadataToken(pair.Value)))
+                .Append('}');
+        }
+
+        return clause.Append(')').ToString();
     }
 
     /// <summary>

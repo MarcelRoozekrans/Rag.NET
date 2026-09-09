@@ -86,4 +86,176 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
         Assert.True(stored.IsNull);
     }
 
+    /// <summary>
+    /// <b>This discriminates server-side filtering from client-side.</b> <c>TopK = 1</c> with the
+    /// NEAREST chunk excluded by the filter: only a filter applied inside the query can return the
+    /// farther chunk. A store that filtered after fetching would return nothing, and one that
+    /// ignored the filter — the defect this fixes — would return the near chunk.
+    /// </summary>
+    [Fact]
+    public async Task AFilterIsAppliedInsideTheQuery_NotAfterTheTopKCut()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync(
+            [
+                Chunk("doc-near", "near", [1f, 0f, 0f, 0f], ("tenant", "other")),
+                Chunk("doc-far", "far", [0f, 1f, 0f, 0f], ("tenant", "acme")),
+            ],
+            ct);
+
+        var results = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f },
+            new SearchOptions
+            {
+                TopK = 1,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                {
+                    ["tenant"] = "acme",
+                },
+            },
+            ct);
+
+        var only = Assert.Single(results);
+        Assert.Equal("doc-far", only.Chunk.DocumentId.Value);
+    }
+
+    /// <summary>A filter of the string "3" must not match metadata written as the number 3.</summary>
+    [Fact]
+    public async Task AStringFilterDoesNotMatchANumber()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync([Chunk("doc-n", "numeric", [1f, 0f, 0f, 0f], ("page", 3))], ct);
+
+        var asString = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f },
+            new SearchOptions
+            {
+                TopK = 5,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                {
+                    ["page"] = "3",
+                },
+            },
+            ct);
+
+        Assert.Empty(asString);
+
+        var asNumber = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f },
+            new SearchOptions
+            {
+                TopK = 5,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                {
+                    ["page"] = 3,
+                },
+            },
+            ct);
+
+        Assert.Single(asNumber);
+    }
+
+    /// <summary>
+    /// A value carrying the characters RediSearch treats as syntax, and the comma a TAG field
+    /// splits on. Without escaping the query is malformed or injected; without Base64Url the value
+    /// stores as two tags.
+    /// </summary>
+    [Fact]
+    public async Task AValueContainingTagSyntaxAndACommaStillMatchesItself()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync(
+            [Chunk("doc-x", "awkward", [1f, 0f, 0f, 0f], ("tenant", "acme, inc - eu:west"))],
+            ct);
+
+        var results = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f },
+            new SearchOptions
+            {
+                TopK = 5,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                {
+                    ["tenant"] = "acme, inc - eu:west",
+                },
+            },
+            ct);
+
+        var only = Assert.Single(results);
+        Assert.Equal("doc-x", only.Chunk.DocumentId.Value);
+    }
+
+    /// <summary>Case is significant: TAG fields fold case unless declared not to.</summary>
+    [Fact]
+    public async Task AFilterDoesNotMatchAValueDifferingOnlyInCase()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync([Chunk("doc-c", "cased", [1f, 0f, 0f, 0f], ("tenant", "ACME"))], ct);
+
+        var results = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f },
+            new SearchOptions
+            {
+                TopK = 5,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                {
+                    ["tenant"] = "acme",
+                },
+            },
+            ct);
+
+        Assert.Empty(results);
+    }
+
+    /// <summary>An empty filter dictionary is not a filter, and must not narrow the page.</summary>
+    [Fact]
+    public async Task AnEmptyFilterReturnsTheWholePage()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync(
+            [
+                Chunk("doc-1", "one", [1f, 0f, 0f, 0f], ("tenant", "acme")),
+                Chunk("doc-2", "two", [0f, 1f, 0f, 0f], ("tenant", "other")),
+            ],
+            ct);
+
+        var results = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f },
+            new SearchOptions
+            {
+                TopK = 5,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
+            },
+            ct);
+
+        Assert.Equal(2, results.Count);
+    }
+
+    /// <summary>
+    /// <b>An undeclared key throws rather than returning an unfiltered page.</b> Returning
+    /// everything is what this store did before #513 and is the worst available answer: the caller
+    /// asked to narrow and got the opposite, silently. The message names the key and the declared
+    /// set so the fix is obvious from the exception alone.
+    /// </summary>
+    [Fact]
+    public async Task AFilterOnAnUndeclaredKeyThrows()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync([Chunk("doc-u", "undeclared", [1f, 0f, 0f, 0f], ("tenant", "acme"))], ct);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _store.SearchAsync(
+                new[] { 1f, 0f, 0f, 0f },
+                new SearchOptions
+                {
+                    TopK = 5,
+                    MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                    {
+                        ["undeclared"] = "x",
+                    },
+                },
+                ct));
+
+        Assert.Contains("undeclared", error.Message, StringComparison.Ordinal);
+        Assert.Contains("tenant", error.Message, StringComparison.Ordinal);
+    }
 }
