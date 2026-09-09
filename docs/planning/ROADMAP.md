@@ -7053,9 +7053,43 @@ downstream; no pipeline stage filters anything. A reader who noticed Redis was m
 was told, in the same paragraph, that something else covered it. Corrected as part of this
 phase's documentation.
 
-### Phase 6.2.32: A Corrupt Blob Is Not an Empty One [status: pending — added 2026-09-09, #521]
+### Phase 6.2.32: A Corrupt Blob Is Not an Empty One [status: complete 2026-09-09 — #521, and the reviewed decision nobody had tested]
 **Surface:** Storage
 **HelpWanted:** no
+**Completed:** 2026-09-09
+
+**THE POSTURE THAT WON HAD NO TEST.** Weaviate has thrown on a corrupt metadata blob since
+2026-07-25, when a review deliberately replaced the tolerant default — and **nothing covered that
+path.** It was found by writing the six new tests and going to check the two that already existed;
+only Redis had one, from the phase before this. So the decision this phase propagates to six other
+sites was itself unpinned for six weeks, and any refactor could have reverted it silently. Closed
+with a seventh test rather than skipped.
+
+**One shared helper now owns the failure.** `MetadataSerializer.DeserializeMetadataOrThrow(json,
+context)` throws `InvalidOperationException` naming the row and preserving the `JsonException` as
+the inner. **Zero callers of the raw `DeserializeMetadata`/`DeserializeTags` remain outside the
+serializer**, which is the point: the tolerant shape is no longer the easy one to write, so a ninth
+site cannot be added the swallowing way by accident.
+
+**Eight mutations, eight red.** Each site's throw was reverted to the old fallback and its test
+confirmed to fail — the six required, plus Weaviate and Redis to prove the reroute had not
+loosened them. Six near-identical edits is where a copy-paste slip hides, and this is the check
+that would have caught one.
+
+**No upgrade hazard, and that is why it could be done bluntly.** `DeserializeMetadata(null)` and
+`("")` already return Success with an empty dictionary; only a `JsonException` yields Failure. A
+throw therefore cannot fire on an absent field — only on stored JSON that is genuinely malformed.
+Redis's inline null guard became redundant and was removed, which was confirmed rather than
+assumed: `RedisValue.Null.ToString()` returns `""`, and the pre-existing
+`AHashWithNoMetadataFieldReadsAsEmptyRatherThanThrowing` still passes.
+
+**Breaking**, deliberately and pre-1.0: five components stop answering a corrupt row with an empty
+dictionary and start failing. The widest is `SqliteDocumentStore.GetDocumentsAsync`, where one
+corrupt row now fails a whole document listing — the same shape Weaviate's reviewed throw already
+accepted on its search path, which is why it was not given an exception.
+
+**Nobody has observed a corrupt blob in the wild.** Posture and consistency, not an incident.
+
 
 **Goal:** the six sites that read a corrupt metadata blob and return an empty dictionary say so
 instead, matching the two that already do.
