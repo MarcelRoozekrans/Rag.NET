@@ -165,7 +165,10 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
     {
         var ct = TestContext.Current.CancellationToken;
         await _store.StoreAsync(
-            [Chunk("doc-x", "awkward", [1f, 0f, 0f, 0f], ("tenant", "acme, inc - eu:west"))],
+            [
+                Chunk("doc-x", "awkward", [1f, 0f, 0f, 0f], ("tenant", "acme, inc - eu:west")),
+                Chunk("doc-other", "other", [0f, 1f, 0f, 0f], ("tenant", "other")),
+            ],
             ct);
 
         var results = await _store.SearchAsync(
@@ -250,6 +253,68 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
                     TopK = 5,
                     MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                     {
+                        ["undeclared"] = "x",
+                    },
+                },
+                ct));
+
+        Assert.Contains("undeclared", error.Message, StringComparison.Ordinal);
+        Assert.Contains("tenant", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Two keys in one filter are AND-ed, not OR-ed: only the chunk matching both comes back, not
+    /// every chunk matching either. This is the only test that exercises the join between multiple
+    /// clauses in <c>BuildFilterPrefix</c> against a real server.
+    /// </summary>
+    [Fact]
+    public async Task AFilterOnTwoKeysMatchesOnlyChunksSatisfyingBoth()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync(
+            [
+                Chunk("doc-both", "both", [1f, 0f, 0f, 0f], ("tenant", "acme"), ("page", 3)),
+                Chunk("doc-tenant-only", "tenant-only", [0f, 1f, 0f, 0f], ("tenant", "acme"), ("page", 4)),
+                Chunk("doc-page-only", "page-only", [0f, 0f, 1f, 0f], ("tenant", "other"), ("page", 3)),
+            ],
+            ct);
+
+        var results = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f },
+            new SearchOptions
+            {
+                TopK = 5,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                {
+                    ["tenant"] = "acme",
+                    ["page"] = 3,
+                },
+            },
+            ct);
+
+        var only = Assert.Single(results);
+        Assert.Equal("doc-both", only.Chunk.DocumentId.Value);
+    }
+
+    /// <summary>
+    /// The undeclared-key check must fire regardless of where the bad key falls in iteration
+    /// order — a declared key first must not let an undeclared key that follows slip through.
+    /// </summary>
+    [Fact]
+    public async Task AFilterOnADeclaredAndAnUndeclaredKeyThrowsNamingTheUndeclaredOne()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync([Chunk("doc-u2", "undeclared-second", [1f, 0f, 0f, 0f], ("tenant", "acme"))], ct);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _store.SearchAsync(
+                new[] { 1f, 0f, 0f, 0f },
+                new SearchOptions
+                {
+                    TopK = 5,
+                    MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                    {
+                        ["tenant"] = "acme",
                         ["undeclared"] = "x",
                     },
                 },
