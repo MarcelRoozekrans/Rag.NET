@@ -6821,6 +6821,7 @@ Azure AI Search may not be locally exercisable at all, since its simulator imple
 filters.
 
 ### Phase 6.2.29: Keyed Chunk Lookup on Chroma [status: complete 2026-09-08 — #318, sixth of seven]
+### Phase 6.2.30: The Azure AI Search Key Carries Identity [status: complete 2026-09-08 — #318's last backend, and #517]
 **Surface:** Storage
 **HelpWanted:** no
 **Completed:** 2026-09-08
@@ -6861,6 +6862,64 @@ unsigned-index implementation on **all six**.
 
 **Only Azure AI Search remains.** Its simulator implements no OData filters, so whether it can be
 verified locally at all needs establishing before an implementation is written, rather than after.
+**Goal:** the seventh backend. Scoping it first — as promised, because its simulator implements
+OData filters incompletely — found a worse defect than the missing lookup.
+
+**THE KEY WAS RANDOM, SO WRITES COULD NEVER REPLACE (#517).**
+
+```csharp
+["id"] = Guid.NewGuid().ToString("N"),
+...
+IndexDocumentsBatch.Upload(documents)
+```
+
+Azure's `Upload` replaces the document with the given key. With a fresh GUID every time, it could
+only insert. **Measured on the simulator: storing one chunk twice left two searchable.** Every other
+store in this repository upserts on `(document_id, chunk_index)`; this one accumulated. Nothing
+warned, and no test stored anything twice — a store-then-search test passes either way.
+
+**IT IS ALSO WHY THE LOOKUP WAS BLOCKED.** With no identity in the key, a keyed read has to filter
+on `document_id` **and** `chunk_index` — and `chunk_index` is declared
+`new SimpleField("chunk_index", SearchFieldDataType.Int32)` with no `IsFilterable`, so the service
+would reject that filter. One root cause, two symptoms.
+
+**Deriving the key fixes both**, and turns the lookup into a direct `GetDocument` that needs no
+filter at all — which is exactly what makes it verifiable locally.
+
+**The encoding is the part that had to be right.** Azure AI Search permits only letters, digits,
+`_`, `-` and `=` in a document key, so `documentId + ":" + chunkIndex` fails outright on an id
+containing a slash, a colon, a space or non-ASCII text. Base64Url's alphabet is precisely the
+permitted set, so encoding the whole composite is uniformly safe rather than safe for whichever ids
+someone happened to test. The pairing is injective because a chunk index has no newline in its
+decimal form, so the last newline always separates the parts — getting that wrong would silently
+merge two chunks into one document.
+
+**Five mutations, each caught:**
+
+| mutation | caught by |
+| --- | --- |
+| random key again (#517) | six tests, including the upsert one |
+| **raw concatenation, no encoding** | the awkward-id theory and the charset test |
+| index dropped from the key | four tests |
+| index made unsigned | `DistinctPairsProduceDistinctKeys` |
+| 404 no longer treated as absent | the absence test |
+
+The second is the one worth having: it is the simplification a later reader reaches for, and it
+passes every test that uses a well-behaved document id.
+
+**BREAKING.** Documents written with GUID keys are not addressable under the new scheme, so an
+existing index needs recreating and re-ingesting. Taken deliberately, on the operator's decision,
+because pre-1.0 is when that is cheap.
+
+**A claim corrected along the way.** "The simulator implements no OData filter expressions" comes
+from a real skip reason in this repository, but the delete path uses a filter and is not skipped. On
+inspection neither test proves filtering works — a delete that ignored its filter would empty the
+index and still pass — so the claim is unverified in both directions rather than established.
+
+**With Chroma (in flight separately), this completes #318: seven backends, seven mechanisms.** SQL
+row-zipping, payload filter, direct key read, GraphQL where, id fetch, an endpoint that had to be
+added, and a key scheme that had to be replaced. Not one was a translation of the last — and the
+negative-index test was the only thing catching an unsigned-index implementation on every one.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
