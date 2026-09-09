@@ -104,6 +104,55 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// The dense path's score is a genuine cosine similarity (unlike the hybrid path's ordinal
+    /// fused score — <see cref="HybridScoreScale_IsOpaqueRanking"/>), so <c>MinScore</c> must
+    /// threshold it. Pinned against the Azure AI Search simulator: cosine similarity 1.0 maps to
+    /// score 1.0, 0.8 to ~0.8333, and 0.0 (orthogonal) to 0.5 — a 0.9 threshold keeps only the
+    /// identical vector and excludes both the close and orthogonal ones.
+    /// </summary>
+    [Fact]
+    public async Task Search_MinScore_FiltersByCosineSimilarity()
+    {
+        var docId = $"ais-{Guid.CreateVersion7():N}";
+        var chunks = new List<EmbeddedChunk>
+        {
+            new()
+            {
+                Chunk = new TextChunk { Text = "identical", DocumentId = new DocumentId(docId), ChunkIndex = 0 },
+                Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+            },
+            new()
+            {
+                Chunk = new TextChunk { Text = "close", DocumentId = new DocumentId(docId), ChunkIndex = 1 },
+                Embedding = new float[] { 0.8f, 0.6f, 0.0f },
+            },
+            new()
+            {
+                Chunk = new TextChunk { Text = "orthogonal", DocumentId = new DocumentId(docId), ChunkIndex = 2 },
+                Embedding = new float[] { 0.0f, 1.0f, 0.0f },
+            },
+        };
+
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId, 3, TestContext.Current.CancellationToken);
+
+            var results = await _sut.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 10, MinScore = 0.9 },
+                TestContext.Current.CancellationToken);
+
+            var result = Assert.Single(results);
+            Assert.Equal("identical", result.Chunk.Text);
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
+        }
+    }
+
     [Fact]
     public async Task HybridSearch_FusesKeywordAndVectorArms()
     {
