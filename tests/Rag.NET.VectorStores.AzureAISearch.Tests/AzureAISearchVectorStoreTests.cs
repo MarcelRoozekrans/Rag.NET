@@ -330,6 +330,20 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         Assert.Equal("it''s a ''test''", AzureAISearchVectorStore.EscapeODataString("it's a 'test'"));
     }
 
+    /// <summary>
+    /// The hybrid path's scores come from Azure's own fusion of BM25 and vector results, so they
+    /// are ordinal rather than similarities and must not be thresholded. The store declares that
+    /// through the capability system rather than leaving every caller to re-derive it — the
+    /// retrieval pipeline already refuses the native path when a MinScore is set, and a direct
+    /// caller of HybridSearchAsync deserves the same fact.
+    /// </summary>
+    [Fact]
+    public void HybridScoreScale_IsOpaqueRanking()
+    {
+        // Accessed through the interface: a default interface member is not on the class's surface.
+        Assert.Equal(ScoreScale.OpaqueRanking, ((IHybridSearchable)_sut).HybridScoreScale);
+    }
+
     private static readonly TimeSpan SettleTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
 

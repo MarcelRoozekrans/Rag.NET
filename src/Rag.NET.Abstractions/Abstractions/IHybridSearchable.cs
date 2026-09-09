@@ -20,6 +20,31 @@ namespace Rag.NET.Abstractions;
 public interface IHybridSearchable
 {
     /// <summary>
+    /// The scale of the scores <see cref="HybridSearchAsync"/> returns. Defaults to
+    /// <see cref="ScoreScale.OpaqueRanking"/>, which is what a native hybrid produces: the backend
+    /// fuses a keyword ranking with a vector ranking, and a fused rank carries no similarity
+    /// meaning — only order.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Separate from <see cref="IScoreScaleAware.ScoreScale"/> because one store instance serves
+    /// both paths.</b> The same store answers <see cref="IVectorStore.SearchAsync"/> with a genuine
+    /// cosine similarity and this method with a fused score. That interface requires its value to be
+    /// constant for the instance's lifetime, so a single property cannot describe both honestly.
+    /// </para>
+    /// <para>
+    /// <b>Defaulted rather than required</b> because it is correct for every implementer that
+    /// exists — a store whose hybrid query genuinely returns similarities overrides it and says why.
+    /// </para>
+    /// <para>
+    /// <b>This is a declaration, not a filter.</b> Implementations must not apply
+    /// <see cref="Rag.NET.Models.Options.SearchOptions.MinScore"/> to a score on this scale; a
+    /// threshold shaped for similarities filters a fused rank arbitrarily.
+    /// </para>
+    /// </remarks>
+    ScoreScale HybridScoreScale => ScoreScale.OpaqueRanking;
+
+    /// <summary>
     /// Searches using both <paramref name="textQuery"/> (keyword/BM25) and
     /// <paramref name="queryEmbedding"/> (dense), fusing the two result sets internally — unlike
     /// <see cref="IVectorStore.SearchAsync"/>, which is dense-only. Scores are on the backend's

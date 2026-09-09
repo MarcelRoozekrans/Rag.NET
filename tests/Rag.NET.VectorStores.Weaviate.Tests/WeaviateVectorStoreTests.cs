@@ -390,6 +390,22 @@ public class WeaviateVectorStoreTests
         Assert.Contains(className, exception.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The hybrid path's scores come from Weaviate's own fusion of BM25 and vector results, so they
+    /// are ordinal rather than similarities and must not be thresholded. The store declares that
+    /// through the capability system rather than leaving every caller to re-derive it — the
+    /// retrieval pipeline already refuses the native path when a MinScore is set, and a direct
+    /// caller of HybridSearchAsync deserves the same fact.
+    /// </summary>
+    [Fact]
+    public void HybridScoreScale_IsOpaqueRanking()
+    {
+        using var store = CreateStore(UniqueClassName());
+
+        // Accessed through the interface: a default interface member is not on the class's surface.
+        Assert.Equal(ScoreScale.OpaqueRanking, ((IHybridSearchable)store).HybridScoreScale);
+    }
+
     private WeaviateVectorStore CreateStore(string className, string? tenant = null) =>
         new(new WeaviateOptions
         {
