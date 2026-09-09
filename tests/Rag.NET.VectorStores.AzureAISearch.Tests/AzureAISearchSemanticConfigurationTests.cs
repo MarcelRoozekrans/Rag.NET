@@ -70,7 +70,9 @@ public class AzureAISearchSemanticConfigurationTests : IAsyncLifetime
         var index = await indexClient.GetIndexAsync(indexName, TestContext.Current.CancellationToken);
 
         Assert.NotNull(index.Value.SemanticSearch);
-        Assert.NotEmpty(index.Value.SemanticSearch!.Configurations);
+        var configuration = Assert.Single(index.Value.SemanticSearch!.Configurations);
+        var contentField = Assert.Single(configuration.PrioritizedFields.ContentFields);
+        Assert.Equal("text", contentField.FieldName);
     }
 
     /// <summary>
@@ -94,6 +96,9 @@ public class AzureAISearchSemanticConfigurationTests : IAsyncLifetime
         var indexClient = new SearchIndexClient(_endpoint, _credential, _clientOptions);
         var index = await indexClient.GetIndexAsync(indexName, TestContext.Current.CancellationToken);
 
-        Assert.True(index.Value.SemanticSearch is null || index.Value.SemanticSearch.Configurations.Count == 0);
+        // Present-but-empty is not the same as absent: a future edit that unconditionally sets
+        // index.SemanticSearch = new SemanticSearch() would rewrite every existing index on the
+        // next initialisation, and this must fail if that happens.
+        Assert.Null(index.Value.SemanticSearch);
     }
 }
