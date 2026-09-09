@@ -8,8 +8,9 @@ namespace Rag.NET.VectorStores.Redis.Tests;
 
 /// <summary>
 /// The TAG token a filterable metadata value is stored and queried as. No container: this is pure
-/// encoding. The RediSearch behaviour it protects against — separator splitting and case folding —
-/// is exercised against a real server by the metadata filter tests.
+/// encoding. The RediSearch behaviour the encoding protects against — separator splitting — is
+/// exercised against a real server by the metadata filter tests; case folding is a schema flag
+/// (<c>CASESENSITIVE</c>), not something this encoding controls, and is pinned there too.
 /// </summary>
 public sealed class RedisMetadataTokenTests
 {
@@ -37,16 +38,6 @@ public sealed class RedisMetadataTokenTests
         var token = RedisVectorStore.MetadataToken((MetadataValue)"acme, inc");
 
         Assert.DoesNotContain(',', token);
-    }
-
-    /// <summary>Two values differing only in case must not collide.</summary>
-    [Fact]
-    public void CaseIsSignificant()
-    {
-        Assert.NotEqual(
-            RedisVectorStore.MetadataToken((MetadataValue)"ACME"),
-            RedisVectorStore.MetadataToken((MetadataValue)"acme"),
-            StringComparer.Ordinal);
     }
 
     /// <summary>

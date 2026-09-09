@@ -190,6 +190,39 @@ public sealed class RedisVectorStoreTests : IAsyncLifetime
         Assert.Equal(7d, only.Chunk.Metadata["page"].NumberValue);
     }
 
+    /// <summary>
+    /// The search path's sibling to <c>RedisChunkLookupTests.AHashWithNoMetadataFieldReadsAs...</c>:
+    /// a hash written before this store persisted metadata has no <c>metadata</c> field, and that
+    /// must read as empty here too.
+    /// </summary>
+    /// <remarks>
+    /// The keyed lookup reads a <c>HashEntry[]</c> and finds the field simply absent. Search reads
+    /// through NRedisStack's <see cref="NRedisStack.Search.Document"/> indexer instead, which
+    /// returns <c>default(RedisValue)</c> for a field the document does not carry — a different
+    /// mechanism reaching the same <c>DecodeMetadata</c> call, and nothing else pinned it before.
+    /// </remarks>
+    [Fact]
+    public async Task SearchAsync_ALegacyHashWithNoMetadataFieldReadsAsEmptyMetadata()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var database = _connection.GetDatabase();
+        await database.HashSetAsync(
+            "test-idx:doc-legacy:0",
+            [
+                new HashEntry("document_id", "doc-legacy"),
+                new HashEntry("chunk_index", 0),
+                new HashEntry("text", "written by an older version"),
+                new HashEntry("embedding", RedisVectorStore.ToBytes(new float[] { 1f, 0f, 0f, 0f })),
+            ]);
+
+        var results = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f }, new SearchOptions { TopK = 1 }, ct);
+
+        var only = Assert.Single(results);
+        Assert.Equal("doc-legacy", only.Chunk.DocumentId.Value);
+        Assert.Empty(only.Chunk.Metadata);
+    }
+
     [Fact]
     public async Task CollectionExistsAsync_IsFalseForAnIndexThatWasNeverCreated()
     {

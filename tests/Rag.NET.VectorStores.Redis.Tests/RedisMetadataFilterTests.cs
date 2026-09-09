@@ -290,7 +290,7 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
         await _store.StoreAsync(
             [Chunk("doc-nul", "nul-tenant", [1f, 0f, 0f, 0f], ("tenant", threeNulBytes))], ct);
 
-        var results = await _store.SearchAsync(
+        var mismatched = await _store.SearchAsync(
             new[] { 1f, 0f, 0f, 0f },
             new SearchOptions
             {
@@ -302,7 +302,23 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
             },
             ct);
 
-        Assert.Empty(results);
+        Assert.Empty(mismatched);
+
+        // Positive control: the empty result above only proves something if the chunk was in fact
+        // stored and indexed — a filter for its actual value must find it.
+        var matched = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f },
+            new SearchOptions
+            {
+                TopK = 5,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                {
+                    ["tenant"] = threeNulBytes,
+                },
+            },
+            ct);
+
+        Assert.Single(matched);
     }
 
     /// <summary>Case is significant: TAG fields fold case unless declared not to.</summary>
@@ -312,7 +328,7 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
         var ct = TestContext.Current.CancellationToken;
         await _store.StoreAsync([Chunk("doc-c", "cased", [1f, 0f, 0f, 0f], ("tenant", "ACME"))], ct);
 
-        var results = await _store.SearchAsync(
+        var mismatched = await _store.SearchAsync(
             new[] { 1f, 0f, 0f, 0f },
             new SearchOptions
             {
@@ -324,7 +340,23 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
             },
             ct);
 
-        Assert.Empty(results);
+        Assert.Empty(mismatched);
+
+        // Positive control: the chunk was in fact stored and indexed — a filter for its actual
+        // case must find it.
+        var matched = await _store.SearchAsync(
+            new[] { 1f, 0f, 0f, 0f },
+            new SearchOptions
+            {
+                TopK = 5,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                {
+                    ["tenant"] = "ACME",
+                },
+            },
+            ct);
+
+        Assert.Single(matched);
     }
 
     /// <summary>An empty filter dictionary is not a filter, and must not narrow the page.</summary>
