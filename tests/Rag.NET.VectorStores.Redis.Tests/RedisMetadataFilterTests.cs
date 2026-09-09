@@ -234,7 +234,7 @@ public sealed class RedisMetadataFilterTests : IAsyncLifetime
     /// before it is stored as a tag, and Base64Url's alphabet uses both letter cases, so two
     /// <em>different</em> values can encode to tokens that are themselves case-variants of one
     /// another — three NUL bytes encode to <c>AAAA</c>, and the UTF-8 bytes of <c>"h\0\0"</c>
-    /// encode to <c>aAAA</c>, differing only in the second character's case. Under a
+    /// encode to <c>aAAA</c>, differing only in the first character's case. Under a
     /// case-folding TAG field, a filter for one would wrongly match a chunk holding the other.
     /// </summary>
     [Fact]

@@ -16,8 +16,8 @@ The vector store is the persistence layer for embedded chunks. Rag.NET ships six
 | Dense (semantic) search | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) | Yes (`IHybridSearchable`) | No — BM25 fallback | No — BM25 fallback | No — BM25 fallback ([why](#hybrid-search-is-declined-not-approximated)) |
 | Sparse search (SPLADE, `ISparseSearchable`) | Yes (`enableSparseVectors: true`) | Yes (`enableSparseVectors: true`) | No | No | No | Yes (`EnableSparseVectors = true`) | No |
-| Metadata filtering | Yes (JSONB `@>`) | Yes (payload match / numeric range) | Yes (typed `metadata_entries/any(...)`) | Yes (typed `where` on `meta_*` props) | Yes (`where` `$eq`/`$and`) | Yes (filter `$eq`/`$and`) | Not yet |
-| Typed metadata round-trip | Yes (native JSONB types) | Yes (native payload types) | Yes (typed complex-collection slots) | Yes (typed auto-schema props) | Yes (native values; dates as sentinel) | Yes (native values; dates as sentinel) | Not yet |
+| Metadata filtering | Yes (JSONB `@>`) | Yes (payload match / numeric range) | Yes (typed `metadata_entries/any(...)`) | Yes (typed `where` on `meta_*` props) | Yes (`where` `$eq`/`$and`) | Yes (filter `$eq`/`$and`) | Yes, on [declared keys only](#metadata-persisted-and-filterable-on-declared-keys) |
+| Typed metadata round-trip | Yes (native JSONB types) | Yes (native payload types) | Yes (typed complex-collection slots) | Yes (typed auto-schema props) | Yes (native values; dates as sentinel) | Yes (native values; dates as sentinel) | Yes (native values; dates as sentinel) |
 | `ICollectionManageable` | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Similarity function | Cosine (via `<=>`); dot product when sparse (`<#>`) | Cosine | Cosine | Cosine | Cosine | Cosine (dotproduct when sparse) | Cosine (distance converted to similarity) |
 | Index algorithm | HNSW at ≤ 2000 dims, **exact scan above** (see [below](#dense-index-and-search-behaviour)) | HNSW | HNSW | HNSW | HNSW | Serverless (managed) | HNSW |
@@ -816,9 +816,22 @@ This is why `RedisVectorStore` does **not** implement `IScoreScaleAware`: its sc
 
 RediSearch can run a text query alongside the vector one, but its text scoring is TF-IDF-shaped rather than the BM25 the hybrid arm fuses. A store advertising `IHybridSearchable` here would be fusing a score it cannot describe, so this one does not — and the pipeline falls back to its own BM25 arm, which is honest about what it is.
 
-### Not yet
+### Metadata: persisted, and filterable on declared keys
 
-Metadata filtering and typed metadata round-trip are not implemented. `document_id` is indexed as a TAG (which is how `DeleteByDocumentIdAsync` finds a document's chunks without scanning keys the store did not write) and `chunk_index` as NUMERIC, but arbitrary `MetadataFilter` predicates are not translated to RediSearch query syntax. Filtering happens in the pipeline instead.
+Chunk metadata is persisted as a `metadata` hash field (a JSON blob) and comes back from both the keyed lookup and search. `document_id` is also indexed as its own TAG (which is how `DeleteByDocumentIdAsync` finds a document's chunks without scanning keys the store did not write) and `chunk_index` as NUMERIC.
+
+Filtering on arbitrary metadata keys, however, needs those keys declared when the store is constructed:
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseRedis(
+        configuration:          "localhost:6379",
+        indexName:              "ragnet-idx",
+        vectorDimensions:       1536,
+        filterableMetadataKeys: ["tenant"]));
+```
+
+Each declared key becomes a case-sensitive `md_<key>` TAG attribute, and `SearchAsync` applies `MetadataFilter` server-side, inside the KNN query — not as a post-filter on the top-K page. This is Redis's one real limitation here, and it is a hard one: RediSearch matches only against attributes its schema names, so **a filter naming a key that was not declared throws** `InvalidOperationException` rather than silently returning an unfiltered page, and **an index built before a key was declared fails `InitializeAsync`** — it must be recreated and re-ingested once the key is added. See the [package README](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/src/Rag.NET.VectorStores.Redis/README.md#metadata-filtering-needs-keys-declared-up-front) for the full explanation of why Redis alone needs this.
 
 ## Multi-index federation
 

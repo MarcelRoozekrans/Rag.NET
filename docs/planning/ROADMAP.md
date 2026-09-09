@@ -6983,6 +6983,71 @@ backends that came before:
 running the mutations has found something every time, including one *missing* guard that eight
 passing tests did not.
 
+**Twelve mutations, ten caught on the first run:**
+
+| # | mutation | caught by |
+| --- | --- | --- |
+| 1 | delete the kind prefix from `MetadataToken` | `AStringTokenCarriesItsKindAndDecodesBackToItsValue`, `ANumberAndAStringOfTheSameTextProduceDifferentTokens`, `AStringFilterDoesNotMatchANumber` |
+| 2 | replace the Base64Url encoding with `value.ToString()` | `AValueContainingACommaEncodesWithoutOne`, `AStringTokenCarriesItsKindAndDecodesBackToItsValue`, `AValueContainingTagSyntaxAndACommaStillMatchesItself` |
+| 3 | drop `caseSensitive: true` from `AddTagField` | **nothing** — survived, see below |
+| 4 | drop `EscapeTag` from `BuildFilterPrefix` | five tests — an unescaped colon in the token corrupts the whole query, not just the value carrying the syntax |
+| 5 | return `"*"` unconditionally from `BuildFilterPrefix` | seven tests |
+| 6 | treat an empty filter as a filter (drop `Count: > 0`) | `AnEmptyFilterReturnsTheWholePage` |
+| 7 | skip the undeclared-key throw and ignore the key | both undeclared-key tests |
+| 8 | delete `VerifyFilterableKeysAreIndexedAsync`'s call site | `AnIndexMissingADeclaredKeyFailsInitialisation` |
+| 9 | drop `MetadataField` from `ReturnFields` | `SearchAsync_ReturnsTheStoredMetadata` |
+| 10 | return empty instead of throwing on a corrupt blob | `ACorruptMetadataFieldThrowsNamingTheChunk` |
+| 11 | throw instead of returning empty for a missing metadata field | `AHashWithNoMetadataFieldReadsAsEmptyRatherThanThrowing` |
+| 12 | make `chunk_index` unsigned (`Math.Abs`) in `KeyFor` | **nothing** — survived, see below |
+
+Ten of twelve had a real catcher on the first try, several with more bonus catchers than
+predicted. Two survived a clean run and were closed with one new test each, verified to fail
+against the mutation and pass against real code.
+
+**The case-sensitivity mutation falsified this phase's own design rationale for the flag.**
+Dropping `caseSensitive: true` from the TAG schema left the entire suite green, including the
+test written specifically to catch it (`AFilterDoesNotMatchAValueDifferingOnlyInCase`: stores
+`tenant = "ACME"`, filters `"acme"`, expects no match). The reason: metadata values are
+Base64Url-encoded before they reach the tag, and `"ACME"`/`"acme"` differ by the ASCII case bit
+in every byte — a difference that does not land on Base64's six-bit group boundaries, so the two
+tokens differ throughout rather than by case. RediSearch's case-fold default had nothing to fold;
+the existing test could not observe the schema attribute through that indirection at all. The
+flag is still load-bearing, for a reason the original source comment did not state and now does:
+two *different* values can encode to tokens that are themselves case-variants of one another —
+three NUL bytes (`{0x00,0x00,0x00}`) encode to `AAAA`, and `{0x68,0x00,0x00}` encodes to `aAAA`.
+Confirmed as a real index-level effect via `FT.INFO` (`CASESENSITIVE` present with the flag,
+absent without it — not a stale-fixture artefact, since each test method builds its own
+container and index). Closed with a test that stores the NUL-byte value and filters for its
+case-variant token, failing without the flag and passing with it. The flag is now pinned twice:
+structurally (`FT.INFO` asserts `CASESENSITIVE` is declared) and behaviourally (the two tokens
+are proven not to collide).
+
+**The unsigned-index streak — six for six on the backends before this one — breaks here, and not
+by error.** 6.2.24 through 6.2.30 each record that a test storing negative chunk indices was the
+only thing catching an unsigned `chunk_index`. On Redis it caught nothing: both `StoreAsync` and
+`GetChunksAsync` go through the one shared `KeyFor`, so applying `Math.Abs` there is
+self-consistent between write and read, and the existing test's indices (`-1, -2, 0`) never share
+a magnitude with another index in the same test — the mutation only breaks a pair whose absolute
+values coincide, and this test never produced one. **This is a difference of mutation site, not a
+gap in the six prior write-ups**: there, the mutation was applied to a stored `chunk_index` field,
+where a written value and a later-read value are compared directly and a sign change is visible
+immediately; here it was applied to a helper shared by both the write and the read path, where the
+corruption is symmetric and invisible unless the test data collides on magnitude. Which site each
+of the six prior phases mutated is not recorded, so this is not a claim that they tested less
+rigorously — only that the shared-helper site is the harder one to catch, and this is the first
+phase to have used it. Closed with a test storing chunk index `1` and `-1` for the same document,
+which do collide under `Math.Abs`.
+
+**The documentation itself claimed a fallback that never existed, which is plausibly why the
+missing filter survived this long.** `docs/guide/vector-stores.md` told readers that Redis lacked
+`MetadataFilter` translation but that "filtering happens in the pipeline instead." It does not:
+`MetadataFilterMatcher.Matches` is called from exactly two places in `src/` —
+`InMemoryVectorStore` and `InMemoryBm25Index` — and both are stores, not pipeline stages.
+`VectorStoreBehavior` and `EnsembleBehavior` only copy the filter into `SearchOptions` and pass it
+downstream; no pipeline stage filters anything. A reader who noticed Redis was missing the feature
+was told, in the same paragraph, that something else covered it. Corrected as part of this
+phase's documentation.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.

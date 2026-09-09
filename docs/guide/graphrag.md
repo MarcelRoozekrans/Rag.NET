@@ -406,8 +406,8 @@ implementation this follows, and for the deviations it cannot avoid.
 The Sources section needs a vector store implementing `IChunkLookup` — the source chunks are chosen
 by graph provenance, not by score, so there is no query that returns them. **Every store
 now implements it** (#318), so the Sources section is populated on any supported backend.
-Note that Redis stores no chunk metadata at all, so its chunks arrive
-with none — the same as its search results. Without it, local
+Redis persists chunk metadata like the other six backends, so its Sources chunks now arrive
+with it populated — the same as its search results. Without it, local
 search logs a warning and Sources comes back empty, spending half the budget on nothing.
 
 ### Global Search
