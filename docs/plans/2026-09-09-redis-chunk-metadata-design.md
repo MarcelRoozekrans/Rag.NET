@@ -133,10 +133,14 @@ the stored token carries its kind:
 
 | kind | token |
 | --- | --- |
-| `String` | `s:acme` |
-| `Number` | `n:3` |
-| `Boolean` | `b:true` |
-| `DateTimeOffset` | `d:2026-01-01T00:00:00Z` (UTC ISO-8601, as the serializer writes it) |
+| `String` | `s:` + Base64Url(`acme`) |
+| `Number` | `n:` + Base64Url(`3`) |
+| `Boolean` | `b:` + Base64Url(`true`) |
+| `DateTimeOffset` | `d:` + Base64Url(`2026-01-01T00:00:00Z`) |
+
+The textual form of every value comes from `MetadataValue.ToString()`, which already emits
+`InvariantCulture` for numbers, `true`/`false` for booleans and `MetadataDateFormat.Format` for
+dates — so the write path and the filter path cannot drift, because they are one accessor.
 
 The kind prefix is what makes `Metadata["page"] = 3` fail to match a filter of `"3"`, which
 `SearchOptions` requires in as many words. It also removes the case where one key arrives as a
@@ -149,10 +153,30 @@ produce two tokens for one value. The two paths must call one shared helper rath
 independently; two formatters that agree today are the mutation this design expects to survive
 review and fail in production.
 
+**Two RediSearch TAG defaults would break this silently, and both are amended in 2026-09-09.**
+
+**A TAG field splits its value on a separator, `,` by default.** A metadata string containing a
+comma would therefore store as two tags and match neither the whole value nor, reliably, anything
+else. No separator character is safe, because a string value can contain any character. **So the
+value part of the token is Base64Url-encoded** — `System.Buffers.Text.Base64Url.EncodeToString`,
+the same API 6.2.30 used on the Azure key, and for the same reason: its alphabet is a subset of
+what the field accepts, so it is uniformly safe rather than safe for whichever values someone
+happened to test. The token is `kind` + `:` + `Base64Url(value.ToString())`.
+
+Dropping that encoding is the simplification a later reader reaches for, and it passes every test
+whose metadata values are well-behaved words — which is exactly what 6.2.30 recorded about raw
+concatenation on the Azure key.
+
+**TAG fields are case-insensitive by default.** `MetadataValue.Equals` compares strings with
+`StringComparison.Ordinal`, so a store folding `ACME` into `acme` would answer a filter with chunks
+the contract says do not match. **The `md_*` fields are declared `caseSensitive: true`.** Base64Url
+does not rescue this on its own: its alphabet uses both cases, so case folding could match two
+tokens that decode to different values.
+
 The query becomes:
 
 ```text
-(@md_tenant:{s:acme} @md_page:{n:3})=>[KNN 5 @embedding $vec AS vector_score]
+(@md_tenant:{s\:YWNtZQ} @md_page:{n\:Mw})=>[KNN 5 @embedding $vec AS vector_score]
 ```
 
 with **TAG escaping applied to the value** — the escaping the keyed lookup deliberately sidesteps by
