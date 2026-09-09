@@ -154,6 +154,50 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// MinScore does not apply to a fused score. Azure fuses BM25 and vector rankings
+    /// service-side and returns a rank-shaped score whose magnitude is not comparable to a
+    /// cosine threshold, so applying one would filter it arbitrarily. A direct caller of
+    /// <c>HybridSearchAsync</c> is the case that matters: the retrieval pipeline already refuses
+    /// the native hybrid path whenever a MinScore is set (<c>EnsembleBehavior.CanDispatchNatively</c>).
+    /// </summary>
+    [Fact]
+    public async Task HybridSearchAsync_DoesNotFilterByMinScore()
+    {
+        var docId = $"ais-{Guid.CreateVersion7():N}";
+        var chunks = new List<EmbeddedChunk>
+        {
+            new()
+            {
+                Chunk = new TextChunk { Text = "alpha document", DocumentId = new DocumentId(docId), ChunkIndex = 0 },
+                Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+            },
+            new()
+            {
+                Chunk = new TextChunk { Text = "zebra document", DocumentId = new DocumentId(docId), ChunkIndex = 1 },
+                Embedding = new float[] { 0.0f, 0.0f, 1.0f },
+            },
+        };
+
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+            await WaitForVisibleChunksAsync(docId, 2, TestContext.Current.CancellationToken);
+
+            var results = await _sut.HybridSearchAsync(
+                "alpha",
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 10, MinScore = 0.9 },
+                TestContext.Current.CancellationToken);
+
+            Assert.NotEmpty(results);
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
+        }
+    }
+
     [Fact]
     public async Task DeleteByDocumentId_RemovesAllChunksForDocument()
     {
