@@ -1,5 +1,7 @@
 using Azure;
 using Azure.Core.Pipeline;
+using Azure.Search.Documents.Models;
+using AzureSearchClient = Azure.Search.Documents.SearchClient;
 using AzureSearchClientOptions = Azure.Search.Documents.SearchClientOptions;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
@@ -40,6 +42,9 @@ public class AzureAISearchChunkLookupTests : IAsyncLifetime
 
     private AzureAISearchVectorStore _sut = null!;
     private readonly string _indexName = $"ragnet-look-{Guid.CreateVersion7():N}"[..24];
+    private Uri _endpoint = null!;
+    private AzureKeyCredential _credential = null!;
+    private AzureSearchClientOptions _clientOptions = null!;
 
     public async ValueTask InitializeAsync()
     {
@@ -53,12 +58,16 @@ public class AzureAISearchChunkLookupTests : IAsyncLifetime
 #pragma warning restore MA0039
         };
 
+        _endpoint = new Uri($"https://localhost:{httpsPort}");
+        _credential = new AzureKeyCredential("admin-key-12345");
+        _clientOptions = new AzureSearchClientOptions { Transport = new HttpClientTransport(httpHandler) };
+
         _sut = new AzureAISearchVectorStore(
-            new Uri($"https://localhost:{httpsPort}"),
+            _endpoint,
             _indexName,
-            new AzureKeyCredential("admin-key-12345"),
+            _credential,
             vectorDimensions: 3,
-            clientOptions: new AzureSearchClientOptions { Transport = new HttpClientTransport(httpHandler) });
+            clientOptions: _clientOptions);
 
         await _sut.InitializeAsync(TestContext.Current.CancellationToken);
     }
@@ -276,5 +285,44 @@ public class AzureAISearchChunkLookupTests : IAsyncLifetime
 
         var only = Assert.Single(found);
         Assert.Equal<MetadataValue>("unit-test", only.Metadata["source"]);
+    }
+
+    /// <summary>
+    /// A legacy <c>metadata</c> field that will not deserialize is backend corruption, and
+    /// <see cref="AzureAISearchVectorStore"/> throws naming the document and chunk rather than
+    /// silently returning the chunk with empty metadata (#521). Only the legacy fallback is in
+    /// scope here — a document with no <c>metadata_entries</c> rows at all takes exactly the path
+    /// every chunk ingested before the complex collection existed takes, which is where the
+    /// corrupt blob must be found. Written directly through a raw
+    /// <see cref="AzureSearchClient"/> upload: <see cref="AzureAISearchVectorStore.StoreAsync"/> always populates
+    /// <c>metadata_entries</c> alongside the blob, so nothing reachable through the public API can
+    /// produce a document that omits it.
+    /// </summary>
+    [Fact]
+    public async Task ACorruptLegacyMetadataFieldThrowsNamingTheChunk()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var docId = $"corrupt-{Guid.CreateVersion7():N}";
+        const int chunkIndex = 4;
+
+        var rawClient = new AzureSearchClient(_endpoint, _indexName, _credential, _clientOptions);
+        var document = new SearchDocument(new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["id"] = AzureAISearchVectorStore.DocumentKey(docId, chunkIndex),
+            ["document_id"] = docId,
+            ["chunk_index"] = chunkIndex,
+            ["text"] = "will not survive the read",
+            ["metadata"] = "{not json",
+            ["embedding"] = new float[] { 1.0f, 0.0f, 0.0f },
+        });
+        await rawClient.IndexDocumentsAsync(
+            IndexDocumentsBatch.Upload([document]), cancellationToken: ct);
+        await Task.Delay(TimeSpan.FromSeconds(2), ct);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _sut.GetChunksAsync([new ChunkKey(docId, chunkIndex)], ct));
+
+        Assert.Contains(docId, error.Message, StringComparison.Ordinal);
+        Assert.Contains(chunkIndex.ToString(System.Globalization.CultureInfo.InvariantCulture), error.Message, StringComparison.Ordinal);
     }
 }
