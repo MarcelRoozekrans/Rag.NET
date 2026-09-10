@@ -145,14 +145,33 @@ public class AzureAISearchSemanticConfigurationTests : IAsyncLifetime
                 },
             ],
             TestContext.Current.CancellationToken);
-        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            sut.SearchAsync(
-                new float[] { 1.0f, 0.0f, 0.0f },
-                new SearchOptions { TopK = 1 },
-                TestContext.Current.CancellationToken));
+        // Poll rather than sleep a fixed guess, and poll on the throw itself. The guard fires
+        // inside the result loop, so it only fires once the chunk is searchable: a fixed delay that
+        // expired early would return an empty page, throw nothing, and fail this test reporting the
+        // guard as broken when the real cause was indexing latency. See SearchIndexSettle.
+        InvalidOperationException? exception = null;
+        await SearchIndexSettle.WaitUntilAsync(
+            "the stored chunk is searchable and the missing reranker score is caught",
+            async () =>
+            {
+                try
+                {
+                    await sut.SearchAsync(
+                        new float[] { 1.0f, 0.0f, 0.0f },
+                        new SearchOptions { TopK = 1 },
+                        TestContext.Current.CancellationToken);
+                    return false;
+                }
+                catch (InvalidOperationException caught)
+                {
+                    exception = caught;
+                    return true;
+                }
+            },
+            TestContext.Current.CancellationToken);
 
+        Assert.NotNull(exception);
         Assert.Contains(indexName, exception.Message, StringComparison.Ordinal);
     }
 }

@@ -364,7 +364,7 @@ Every row below was run as a full suite (`dotnet test tests/Rag.NET.VectorStores
 
 | # | mutation | site | outcome |
 | --- | --- | --- | --- |
-| 1 | delete the guard's throw; return the ordinary score instead | `ExecuteSearchAsync`, the `expectRerankerScore` branch | **caught** — `RequestingTheRankerFromAServiceThatDoesNotRank_Throws` (1 failed / 44 passed) |
+| 1 | delete the guard's throw; return the ordinary score instead | `ExecuteSearchAsync`, the `expectRerankerScore` branch | **caught** — `RequestingTheRankerFromAServiceThatDoesNotRank_Throws` (1 failed / 44 passed). **Re-run 2026-09-10 after the pre-push review replaced that test's fixed delay with a poll**, because a refactor of the catching test invalidates the row that depends on it: still caught, now via the poll's 30 s expiry naming the condition (1 failed / 44 passed). |
 | 2 | drop the `k < 50` validation | `ValidateConfigured` | **SURVIVED as first written; gap closed.** The rejection test used `k=10` and the acceptance test `k=50`, so shifting the threshold from 50 to 11 passed every test while wrongly accepting 49 — the exact value the guidance is about, the ranker taking up to 50 matches as input. Closed with `EnablingTheRankerWithKJustBelowFiftyIsRejected`. **The gap was in the plan's own test code, not the implementation.** |
 | 3 | `ScoreScale` always returns `OpaqueRanking` | the `ScoreScale` property | **caught** — `WithTheRankerOff_TheStoreDeclaresASimilarityScale` (1 failed / 44 passed) |
 | 4 | `ScoreScale` always returns `Similarity` | the `ScoreScale` property | **caught** — `WithTheRankerOn_TheStoreDeclaresAnOrdinalScale` (1 failed / 44 passed) |
@@ -398,7 +398,11 @@ Include: that half of #328 was already shipped and the design said otherwise unt
 
 ### Task 7: Pre-push review and PR
 
-- [ ] **Step 1: Run the Azure suite and `tests/Rag.NET.Tests`** (the latter holds the consumers that probe `IScoreScaleAware`). **Do not background either run.**
-- [ ] **Step 2: Run `pre-push-review`.**
+- [x] **Step 1: Run the Azure suite and `tests/Rag.NET.Tests`** (the latter holds the consumers that probe `IScoreScaleAware`). **Do not background either run.**
+
+      **Run 2026-09-10 at `cf13c634`:** Azure suite **45 passed / 1 pre-existing skip / 0 failed** (baseline 36 + 9 added); `Rag.NET.Tests` **1487 passed / 0 skipped**. Also run, because this branch edits a `.csproj`: `Rag.NET.RepoConventions.Tests` **95 passed / 2 pre-existing skips** (the ledger guard over `VerifiedBy`), and `Rag.NET.PackageValidation.Tests` **23 passed / 0 failed** after repacking all 73 packages — `dotnet build` does not reach the packaging guards, and the stale `artifacts/packages` from an earlier branch failed the version guard until the repack.
+- [x] **Step 2: Run `pre-push-review`.**
+
+      **Verdict PASS** — `docs/pre-push-review-2026-09-10-0950.md`. 0 blockers, 2 warnings, 4 info. Both warnings were fixed before the PR rather than carried: **W1**, a fixed `Task.Delay(2s)` in the new test that reintroduced the pattern this very test project documents as removed — and which was load-bearing, so an early expiry would have failed the test *reporting the guard as broken*; **W2**, the ROADMAP block still asserting the store "does not implement the interface" when the ranker is off, which the implementation contradicts and the design's §1 had already corrected.
 - [ ] **Step 3: Open the PR.** Title: `feat(azureaisearch): add Azure AI Search semantic ranking (#328)`. Not breaking — everything is off by default and the disabled path is byte-identical. The body must be honest that one claim is unverified without a billable resource, and precise about which.
 - [ ] **Step 4: Stop.** The merge is the operator's.

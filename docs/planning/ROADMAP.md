@@ -7276,9 +7276,19 @@ semantic ranking is requested and no reranker score comes back, turning a silent
 
 **The opt-in is per instance, forced rather than chosen.** Semantic ranking reshapes the score of
 the ordinary `SearchAsync` path, whose scale is `IScoreScaleAware.ScoreScale` — which the interface
-requires to be constant for the instance's lifetime. With it enabled the store implements
+requires to be constant for the instance's lifetime. ~~With it enabled the store implements
 `IScoreScaleAware` and returns `OpaqueRanking`; with it disabled the store does not implement the
-interface and the path keeps its genuine cosine similarity.
+interface and the path keeps its genuine cosine similarity.~~ **Corrected 2026-09-10, at
+implementation: the second clause was not expressible.** A class implements an interface or it does
+not, at compile time; there is no conditional implementation. **The store implements
+`IScoreScaleAware` unconditionally** and returns a value fixed at construction — `OpaqueRanking`
+with the ranker on, `Similarity` with it off. **The off case is still behaviour-preserving, for a
+different reason than this paragraph assumed:** `Similarity` is documented in `ScoreScale`'s own
+remarks as the scale assumed of stores that do *not* implement the interface, and the sole consumer
+(`PersistentConversationMemory`) branches on `OpaqueRanking` specifically, so declaring `Similarity`
+and declining to declare at all are indistinguishable to every caller. The design's §1 recorded this
+correction when it was made; **this block did not, until the phase's own pre-push review caught the
+gap between them.**
 
 **The reranker score is returned as it comes**, not rescaled from 0–4 into a fabricated similarity —
 an invented similarity is what #56 was about.
