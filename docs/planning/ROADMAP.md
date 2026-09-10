@@ -7344,6 +7344,7 @@ failure it exists for.
 **Surface:** Infra
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-10-benchmark-filter-guard-design.md`
+**Plan:** `docs/plans/2026-09-10-benchmark-filter-guard-implementation.md`
 
 **Goal:** `dotnet test --filter` against the benchmark integration tests stops silently running
 everything, and starts refusing with the command that does work.
@@ -7390,6 +7391,16 @@ before implementation.
 
 **Fully verifiable locally — no account, no container.** The first phase since 6.2.30 for which
 nothing is account-blocked, in deliberate contrast to 6.2.34's documented `<VerifiedByReason>` gap.
+
+**The two open questions are settled, and the second changed the plan's shape.** The message
+*conditions* its wording — always naming the true trigger, naming
+`TestingPlatformDotnetTestSupport` only when it is actually set — proved in both directions. And the
+guard gets a **behavioural** test as well as a structural one, which forced a harness decision:
+`dotnet test --filter` takes **44.8 s**, `--no-build` takes 0.95 s but needs the benchmark project
+already built (a `RepoConventions` run has not built it), and **`dotnet msbuild -t:<target>` takes
+0.535 s and needs no build at all**. The last is the harness. **It cannot reach the `BeforeTargets`
+hook**, which is exactly why the structural test is not redundant: deleting the hook leaves every
+behavioural test green and the guard completely inert.
 
 **Not in scope:** removing `TestingPlatformDotnetTestSupport` (it fixes #275's deadlock, where the
 VSTest adapter hung 2 of 4 runs before entering test code), making `--filter` work under MTP
