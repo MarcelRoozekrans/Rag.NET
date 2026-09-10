@@ -974,6 +974,37 @@ public class EnsembleBehaviorTests
             Task.CompletedTask;
     }
 
+    /// <summary>
+    /// A decorator that <b>forwards</b> <see cref="IHybridSearchable"/>, as
+    /// <c>ResilientHybridVectorStore</c> does since #544. The counterpart to
+    /// <see cref="FakeDecoratorOverHybridStore"/>, which hides it — the pair reads as
+    /// before-and-after.
+    /// </summary>
+    private sealed class FakeForwardingDecoratorOverHybridStore : IVectorStore, IHybridSearchable, IVectorStoreDecorator
+    {
+        private readonly FakeRankingHybridStore _inner = new();
+
+        public Type InnerStoreType => typeof(FakeRankingHybridStore);
+
+        public string? NativeOnlyCapability => _inner.NativeOnlyCapability;
+
+        public Task<IReadOnlyList<SearchResult>> HybridSearchAsync(
+            string textQuery, ReadOnlyMemory<float> queryEmbedding, SearchOptions options,
+            CancellationToken cancellationToken = default) =>
+            _inner.HybridSearchAsync(textQuery, queryEmbedding, options, cancellationToken);
+
+        public Task<IReadOnlyList<SearchResult>> SearchAsync(
+            ReadOnlyMemory<float> queryEmbedding, SearchOptions options,
+            CancellationToken cancellationToken = default) =>
+            _inner.SearchAsync(queryEmbedding, options, cancellationToken);
+
+        public Task StoreAsync(IReadOnlyList<EmbeddedChunk> chunks, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
     private sealed class CapturingLogger : ILogger
     {
         public List<(LogLevel Level, string Message)> Entries { get; } = [];
@@ -1122,6 +1153,53 @@ public class EnsembleBehaviorTests
             e.Level == LogLevel.Warning
             && e.Message.Contains(nameof(FakeRankingHybridStore), StringComparison.Ordinal)
             && e.Message.Contains("#544", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// #544's fix, at the layer the issue is about: a decorator that forwards
+    /// <see cref="IHybridSearchable"/> reaches the native path, where one that hides it does not.
+    /// </summary>
+    [Fact]
+    public async Task HandleAsync_DecoratorForwardsHybridCapability_UsesTheNativePath()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = new EnsembleBehavior
+        {
+            Embedder = MakeEmbedder(),
+            VectorStore = new FakeForwardingDecoratorOverHybridStore(),
+            Bm25Index = Substitute.For<IBm25Index>(),
+        };
+
+        var output = await sut.HandleAsync(
+            MakeCtx(new RetrievalOptions { UseHybridSearch = true }), ct,
+            (_, _) => throw new InvalidOperationException("must not call next"));
+
+        var only = Assert.Single(output);
+        Assert.Equal(new DocumentId("native"), only.Chunk.DocumentId);
+    }
+
+    /// <summary>
+    /// And the refusal fires through a forwarding decorator too — the half-done case #544's fix
+    /// risks, where the capability is restored but the guard on it is not. A decorator that
+    /// forwarded only <c>HybridSearchAsync</c> would pass the test above and fail this one.
+    /// </summary>
+    [Fact]
+    public async Task HandleAsync_DecoratorForwardsHybridCapability_StillRefusesWhenNativeIsUnreachable()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = new EnsembleBehavior
+        {
+            Embedder = MakeEmbedder(),
+            VectorStore = new FakeForwardingDecoratorOverHybridStore(),
+            Bm25Index = Substitute.For<IBm25Index>(),
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.HandleAsync(
+                MakeCtx(new RetrievalOptions { UseHybridSearch = true, MinScore = 0.7 }), ct,
+                (_, _) => ValueTask.FromResult<IReadOnlyList<SearchResult>>([])).AsTask());
+
+        Assert.Contains("semantic ranking", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

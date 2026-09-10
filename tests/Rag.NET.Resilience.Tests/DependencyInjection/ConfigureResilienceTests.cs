@@ -194,6 +194,101 @@ public class ConfigureResilienceTests
         }
     }
 
+    /// <summary>
+    /// A hybrid-capable inner store. Declares a <b>non-default</b> value for every member of
+    /// <see cref="IHybridSearchable"/> so a decorator that silently answers with the interface
+    /// defaults is distinguishable from one that forwards — which is the whole risk in #544's fix.
+    /// A fake returning the defaults would let the forwarding assertions pass against a decorator
+    /// that forwards nothing.
+    /// </summary>
+    private sealed class HybridCountingVectorStore(int failures, Func<Exception> failure)
+        : CountingVectorStore(failures, failure), IHybridSearchable
+    {
+        public int HybridCalls { get; private set; }
+
+        public string? NativeOnlyCapability => "test capability";
+
+        public ScoreScale HybridScoreScale => ScoreScale.Similarity;
+
+        public Task<IReadOnlyList<SearchResult>> HybridSearchAsync(
+            string textQuery,
+            ReadOnlyMemory<float> queryEmbedding,
+            SearchOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            HybridCalls++;
+            return Task.FromResult<IReadOnlyList<SearchResult>>(
+            [
+                new SearchResult
+                {
+                    Chunk = new TextChunk
+                    {
+                        Text = textQuery,
+                        DocumentId = new DocumentId("hybrid"),
+                        ChunkIndex = 0,
+                    },
+                    Score = 1.0,
+                },
+            ]);
+        }
+    }
+
+    /// <summary>
+    /// A hybrid store whose native query fails transiently, for asserting the call is retried.
+    /// </summary>
+    private sealed class HybridFailingVectorStore : CountingVectorStore, IHybridSearchable
+    {
+        // Explicit constructor rather than a primary one, for the same reason
+        // SparseCountingVectorStore has one: capturing a primary-constructor parameter that is
+        // also passed to the base is CS9107.
+        private readonly int _failures;
+        private readonly Func<Exception> _failure;
+
+        public HybridFailingVectorStore(int failures, Func<Exception> failure)
+            : base(failures, failure)
+        {
+            _failures = failures;
+            _failure = failure;
+        }
+
+        public int HybridAttempts { get; private set; }
+
+        public Task<IReadOnlyList<SearchResult>> HybridSearchAsync(
+            string textQuery,
+            ReadOnlyMemory<float> queryEmbedding,
+            SearchOptions options,
+            CancellationToken cancellationToken = default)
+        {
+            HybridAttempts++;
+            return HybridAttempts <= _failures
+                ? throw _failure()
+                : Task.FromResult<IReadOnlyList<SearchResult>>([]);
+        }
+    }
+
+    /// <summary>
+    /// Both sparse and hybrid — the pair no decorator variant represents. Exists only to be
+    /// refused by <see cref="ResilientVectorStore.Create"/>; nothing calls its members.
+    /// </summary>
+    private sealed class SparseAndHybridCountingVectorStore(int failures, Func<Exception> failure)
+        : CountingVectorStore(failures, failure), ISparseSearchable, IHybridSearchable
+    {
+        public Task StoreSparseAsync(
+            IReadOnlyList<(EmbeddedChunk Chunk, SparseVector Sparse)> items,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<SearchResult>> SearchSparseAsync(
+            SparseVector query,
+            SearchOptions options,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<SearchResult>> HybridSearchAsync(
+            string textQuery,
+            ReadOnlyMemory<float> queryEmbedding,
+            SearchOptions options,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+    }
+
     /// <summary>Declares RRF-style opaque ranking scores, as <c>FederatedVectorStore</c> does.</summary>
     private sealed class OpaqueCountingVectorStore()
         : CountingVectorStore(0, static () => new InvalidOperationException()), IScoreScaleAware
@@ -706,6 +801,110 @@ public class ConfigureResilienceTests
         Assert.True(decorated.SupportsChunkLookup);
         var found = await decorated.GetChunksAsync([new ChunkKey("doc", 0)], ct);
         Assert.Equal("kept", Assert.Single(found).Text, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// The defect #544 names: <c>EnsembleBehavior</c> probes the resolved <see cref="IVectorStore"/>,
+    /// so a decorator that does not implement <see cref="IHybridSearchable"/> makes native hybrid
+    /// dispatch unreachable — silently, and since 6.2.36 taking semantic ranking with it.
+    /// </summary>
+    [Fact]
+    public void HybridDecoration_KeepsTheCapabilityProbeHonest()
+    {
+        var store = ResilientVectorStore.Create(
+            new HybridCountingVectorStore(0, Transient), ResiliencePipeline.Empty);
+
+        Assert.IsType<ResilientHybridVectorStore>(store);
+        Assert.IsAssignableFrom<IHybridSearchable>(store);
+    }
+
+    /// <summary>
+    /// And decoration must not manufacture the capability: a dense-only store stays dense-only.
+    /// The mirror of <see cref="Decoration_DoesNotClaimAChunkLookupTheInnerStoreLacks"/>, and the
+    /// reason this is a variant rather than an unconditional implementation.
+    /// </summary>
+    [Fact]
+    public void Decoration_DoesNotClaimANativeHybridTheInnerStoreLacks()
+    {
+        var store = ResilientVectorStore.Create(
+            new CountingVectorStore(0, Transient), ResiliencePipeline.Empty);
+
+        Assert.IsNotType<ResilientHybridVectorStore>(store);
+        Assert.IsNotAssignableFrom<IHybridSearchable>(store);
+    }
+
+    /// <summary>
+    /// <b>All three members, not just the method.</b> Two of the interface's three members are
+    /// defaulted, so a variant forwarding only <c>HybridSearchAsync</c> compiles, passes the probe
+    /// above, and dispatches natively — while answering for the backend on the other two.
+    /// <see cref="IHybridSearchable.NativeOnlyCapability"/> is the one that bites: left at its
+    /// <see langword="null"/> default, 6.2.36's refusal never fires under resilience, so the
+    /// capability is restored while the guard on it stays broken.
+    /// </summary>
+    [Fact]
+    public async Task HybridDecoration_ForwardsEveryMemberRatherThanAnsweringWithTheDefaults()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = new HybridCountingVectorStore(0, Transient);
+        var decorated = (IHybridSearchable)ResilientVectorStore.Create(inner, ResiliencePipeline.Empty);
+
+        Assert.Equal("test capability", decorated.NativeOnlyCapability, StringComparer.Ordinal);
+        Assert.Equal(ScoreScale.Similarity, decorated.HybridScoreScale);
+
+        var results = await decorated.HybridSearchAsync(
+            "query text", new float[] { 1f, 0f }, new SearchOptions { TopK = 1 }, ct);
+
+        Assert.Equal(1, inner.HybridCalls);
+        Assert.Equal("query text", Assert.Single(results).Chunk.Text, StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// The native hybrid call is retried, symmetric with <c>SearchAsync</c> and with the sparse
+    /// variant. <see cref="ResilientVectorStore"/>'s class doc said native hybrid was "not
+    /// retried"; that described a consequence of #544 rather than a decision.
+    /// </summary>
+    [Fact]
+    public async Task HybridSearch_TransientFailure_IsRetried()
+    {
+        var inner = new HybridFailingVectorStore(2, Transient);
+        var provider = new ServiceCollection()
+            .AddRagNet(rag =>
+            {
+                rag.Services.AddSingleton<IVectorStore>(inner);
+                rag.ConfigureResilience(ImmediateRetry);
+            })
+            .BuildServiceProvider();
+
+        var store = provider.GetRequiredService<IVectorStore>();
+        Assert.IsType<ResilientHybridVectorStore>(store);
+
+        var results = await ((IHybridSearchable)store).HybridSearchAsync(
+            "query text", new float[] { 1f }, new SearchOptions(), TestContext.Current.CancellationToken);
+
+        Assert.Empty(results);
+        Assert.Equal(3, inner.HybridAttempts);
+    }
+
+    /// <summary>
+    /// A store that is both sparse and hybrid fits neither variant, and picking one would hide the
+    /// other — which is #544 again, in whichever direction it was picked. So registration fails
+    /// loudly instead of a query quietly doing less than asked.
+    /// </summary>
+    /// <remarks>
+    /// No shipped store is both today: Azure AI Search and Weaviate are hybrid and not sparse, and
+    /// the sparse-capable stores implement no hybrid. This exists so that the day one is, it is a
+    /// registration failure rather than a silent capability drop.
+    /// </remarks>
+    [Fact]
+    public void Create_ForAStoreThatIsBothSparseAndHybrid_RefusesRatherThanPickingOne()
+    {
+        var ex = Assert.Throws<NotSupportedException>(() =>
+            ResilientVectorStore.Create(
+                new SparseAndHybridCountingVectorStore(0, Transient), ResiliencePipeline.Empty));
+
+        Assert.Contains(nameof(ISparseSearchable), ex.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(IHybridSearchable), ex.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(SparseAndHybridCountingVectorStore), ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -7603,6 +7603,7 @@ and returns no `rerankerScore`, so the throw is testable locally and the ranking
 **Surface:** Storage
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-10-resilient-hybrid-design.md`
+**Plan:** `docs/plans/2026-09-10-resilient-hybrid-implementation.md`
 
 **Goal:** `ResilientVectorStore` stops hiding `IHybridSearchable`, so registering resilience no
 longer silently disables native hybrid dispatch — and, since 6.2.36, semantic ranking with it.
@@ -7665,6 +7666,42 @@ reaching it: it is package-agnostic and catches any future decorator that hides 
 **Fully verifiable locally** — the first phase since 6.2.35 with nothing account-blocked. The
 decoration, the probe, the three delegations and the `Create` branch are all exercisable with
 in-process fakes.
+
+**BUILT 2026-09-10. Plan: `docs/plans/2026-09-10-resilient-hybrid-implementation.md`.**
+
+**The mutation sweep found the gap the phase was about, one level up, and the plan predicted it
+wrong.** Row 1 drops `NativeOnlyCapability` forwarding from the new decorator. The plan expected it
+caught by both the resilience unit test and the retrieval-level refusal test; it was caught only by
+the first, and **the second cannot catch it by construction** — that test's forwarding decorator is
+a fake which forwards the member itself and never touches `ResilientHybridVectorStore`. So the
+retrieval suite proved the *contract*, the resilience suite proved the *delegation*, and **nothing
+proved the real decorator satisfied the real contract**: two layers each correct in isolation that
+did not compose, which is exactly what #544 is. Closed with `ResilientHybridDispatchTests`, the only
+place both packages are referenced; row 1 re-run against it is caught at both layers. **Seven rows,
+all caught**, including row 7's control proving 6.2.36's warning did not become dead code.
+
+**`Create` became a switch on the capability *pair* rather than a chain of `is` checks**, because
+the chain is what produced #544 — it answered the first capability it recognised and never asked
+about the second. The tuple has no fifth case, so a future capability forces an edit rather than
+falling through to a branch that drops it.
+
+**One warning from pre-push review, recorded rather than fixed, and it is about this phase's own
+guard.** The `NotSupportedException` for the sparse-and-hybrid pair lives only in `Create`, and
+`ResilientHybridVectorStore`'s constructor is `public` — so direct construction bypasses it. That is
+**consistent with `ResilientSparseVectorStore`**, whose constructor has been public since it was
+written, despite `ResilientVectorStore`'s own doc claiming `Create` "is therefore the only public
+way to obtain this type". The base type's stated invariant was already untrue of its variants;
+closing it means changing an existing type's public surface, which is outside #544. Flagged for the
+operator as a small follow-up rather than matched silently.
+
+**A stale doc example the sweep of docs caught**: `retrieval.md` still named `ResilientVectorStore`
+as a decorator that hides `IHybridSearchable`, which this phase makes false. `FederatedVectorStore`
+remains a correct example and is now the only one.
+
+**Suites:** Resilience 105 → **112**, `Rag.NET.Tests` 1497 → **1499**, Memory **3**, RepoConventions
+**98** (2 pre-existing skips), PackageValidation **23**; whole solution builds clean, 0 warnings.
+`PersistentConversationMemoryScoreScaleTests` calls the rewritten `Create` at three sites and did not
+move. **Pre-push review PASS** — `docs/pre-push-review-2026-09-10-2159.md`.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
