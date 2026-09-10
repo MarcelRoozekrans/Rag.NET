@@ -78,9 +78,11 @@ That argument justified *unconditional over conditional*. It says nothing about 
 
 **Files:** none.
 
-- [ ] **Step 1: Start Docker** — the Azure suite provisions the simulator through Testcontainers and fails confusingly without it.
+- [x] **Step 1: Start Docker** — the Azure suite provisions the simulator through Testcontainers and fails confusingly without it.
 
-- [ ] **Step 2: Record the baseline for all four suites, before touching anything**
+      *Was not running at session start (the previous session's instance had stopped). Started Docker Desktop; daemon 29.5.2 up after ~30s.*
+
+- [x] **Step 2: Record the baseline for all four suites, before touching anything**
 
 ```bash
 dotnet test tests/Rag.NET.VectorStores.AzureAISearch.Tests -c Release
@@ -90,6 +92,19 @@ dotnet test tests/Rag.NET.Memory.Tests -c Release
 ```
 
 Write the four pass/skip/fail counts into this file, under this step, as measured numbers. Every later "expect N passed" is relative to them. **Do not background these runs.**
+
+**Measured 2026-09-10, on `feat/6236-ranker-hybrid-plan` at `2592a977`, before any source change:**
+
+| suite | passed | skipped | failed | total | duration |
+| --- | --- | --- | --- | --- | --- |
+| `Rag.NET.VectorStores.AzureAISearch.Tests` | 45 | 1 | 0 | 46 | 2m 05s |
+| `Rag.NET.Tests` | 1487 | 0 | 0 | 1487 | 8s |
+| `Rag.NET.Resilience.Tests` | 105 | 0 | 0 | 105 | 1s |
+| `Rag.NET.Memory.Tests` | 3 | 0 | 0 | 3 | 355ms |
+
+The one Azure skip is pre-existing: `AzureAISearchVectorStoreTests.Search_WithMetadataFilter_FiltersResults`.
+
+**Correction to Task 2 Step 5, found here:** `Rag.NET.Memory.Tests` holds only 3 tests and none of them probe `IScoreScaleAware`. The tests that actually cover the removal are `PersistentConversationMemoryScoreScaleTests` in **`tests/Rag.NET.Tests/Memory/`**, already inside the 1487. Task 2 Step 5 must therefore compare `Rag.NET.Tests` against 1487, not treat `Rag.NET.Memory.Tests` as the check — running the small suite alone would have proved nothing while appearing to.
 
 ---
 
@@ -105,7 +120,7 @@ Write the four pass/skip/fail counts into this file, under this step, as measure
 - Consumes: nothing from earlier tasks.
 - Produces: `AzureAISearchVectorStore.HybridSearchAsync` throws `InvalidOperationException` naming the index when ranking is enabled and no `RerankerScore` comes back. `SearchAsync` no longer throws for that reason under any option.
 
-- [ ] **Step 1: Rewrite the existing guard test to exercise the hybrid path**
+- [x] **Step 1: Rewrite the existing guard test to exercise the hybrid path**
 
 `RequestingTheRankerFromAServiceThatDoesNotRank_Throws` currently calls `SearchAsync`. It must call `HybridSearchAsync`, because that is where the ranker now lives. Keep the `SearchIndexSettle.WaitUntilAsync` polling exactly as it is — it exists because the guard fires inside the result loop, so it only fires once the chunk is searchable, and a fixed delay that expired early would return an empty page, throw nothing, and fail the test reporting the guard as broken when the real cause was indexing latency.
 
@@ -122,7 +137,7 @@ In `tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchSemanticConfigur
 
 and rename the test to `RequestingTheRankerFromAServiceThatDoesNotRank_ThrowsOnTheHybridPath`.
 
-- [ ] **Step 2: Add the test that pins the dense path's new silence**
+- [x] **Step 2: Add the test that pins the dense path's new silence**
 
 This is the test that would have caught 6.2.34's error had it existed, so it is the one that matters most. Add to the same file:
 
@@ -185,13 +200,13 @@ This is the test that would have caught 6.2.34's error had it existed, so it is 
 
 **Why `InRange(0, 1)` and not an equality:** the assertion has to distinguish a cosine similarity from a reranker score without knowing the exact value the simulator computes. Azure's reranker score is roughly 0–4 and a cosine similarity here is bounded by 1, so the range is the discriminator. Do not assert an exact score — it pins the simulator's scoring formula, not the behaviour.
 
-- [ ] **Step 3: Run both tests and watch them fail for the right reasons**
+- [x] **Step 3: Run both tests and watch them fail for the right reasons**
 
 Run: `dotnet test tests/Rag.NET.VectorStores.AzureAISearch.Tests -c Release --filter "FullyQualifiedName~AzureAISearchSemanticConfigurationTests"`
 
 Expected: `RequestingTheRankerFromAServiceThatDoesNotRank_ThrowsOnTheHybridPath` fails — the hybrid path passes `expectRerankerScore: false`, so nothing throws and `SearchIndexSettle` times out. `WithTheRankerEnabled_TheDensePathStillReturnsOrdinaryScores` fails with `InvalidOperationException` from the dense guard. **If either fails differently, stop** — the second failing with a timeout instead of the exception means the chunk never became searchable and you are testing indexing latency, not the ranker.
 
-- [ ] **Step 4: Move the ranking configuration off `SearchAsync`**
+- [x] **Step 4: Move the ranking configuration off `SearchAsync`**
 
 In `AzureAISearchVectorStore.SearchAsync`, delete this block entirely:
 
@@ -214,7 +229,7 @@ and change the call below it from `expectRerankerScore: _semanticRankingEnabled`
             .ConfigureAwait(false);
 ```
 
-- [ ] **Step 5: Move it onto `HybridSearchAsync`**
+- [x] **Step 5: Move it onto `HybridSearchAsync`**
 
 In `HybridSearchAsync`, the `searchOptions` initialiser sets `QueryType = SearchQueryType.Simple`. Leave that as the default and override it after the filter assignment, so the non-ranking path is untouched:
 
@@ -241,7 +256,7 @@ In `HybridSearchAsync`, the `searchOptions` initialiser sets `QueryType = Search
             .ConfigureAwait(false);
 ```
 
-- [ ] **Step 6: Correct `ExecuteSearchAsync`'s remarks, which now say the opposite of the truth**
+- [x] **Step 6: Correct `ExecuteSearchAsync`'s remarks, which now say the opposite of the truth**
 
 The first `<para>` currently reads "The field configures the dense path; the hybrid path always passes `false` regardless of it". Replace that whole `<para>` with:
 
@@ -257,7 +272,7 @@ The first `<para>` currently reads "The field configures the dense path; the hyb
     /// </para>
 ```
 
-- [ ] **Step 7: Update the `HybridSearchAsync` summary remarks**
+- [x] **Step 7: Update the `HybridSearchAsync` summary remarks**
 
 Its `<remarks>` currently says the fused score "is a rank produced by combining the BM25 and vector rankings server-side". Add one sentence after that first sentence:
 
@@ -267,17 +282,17 @@ Its `<remarks>` currently says the fused score "is a rank produced by combining 
     /// ordinal scale, thresholdable by neither.
 ```
 
-- [ ] **Step 8: Run the two tests again**
+- [x] **Step 8: Run the two tests again**
 
 Run: `dotnet test tests/Rag.NET.VectorStores.AzureAISearch.Tests -c Release --filter "FullyQualifiedName~AzureAISearchSemanticConfigurationTests"`
 Expected: PASS, all tests in the class.
 
-- [ ] **Step 9: Run the whole Azure suite** — the index-schema tests (`EnablingTheRanker_AddsASemanticConfigurationToTheIndex`, `WithoutTheRanker_TheIndexHasNoSemanticConfiguration`) must be untouched by this change, because `BuildIndex` was not modified. If either moves, something was changed that should not have been.
+- [x] **Step 9: Run the whole Azure suite** — the index-schema tests (`EnablingTheRanker_AddsASemanticConfigurationToTheIndex`, `WithoutTheRanker_TheIndexHasNoSemanticConfiguration`) must be untouched by this change, because `BuildIndex` was not modified. If either moves, something was changed that should not have been.
 
 Run: `dotnet test tests/Rag.NET.VectorStores.AzureAISearch.Tests -c Release`
 Expected: baseline count from Task 0, plus one (the new dense-path test).
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add src/Rag.NET.VectorStores.AzureAISearch/AzureAISearchVectorStore.cs tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchSemanticConfigurationTests.cs
@@ -291,7 +306,15 @@ git commit -m "fix(azure-search): move the semantic ranker to the path that carr
 **Files:**
 
 - Modify: `src/Rag.NET.VectorStores.AzureAISearch/AzureAISearchVectorStore.cs:16` (class declaration) and the `ScoreScale` property (~line 108-116)
-- Test: `tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchVectorStoreTests.cs`
+- ~~Test: `tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchVectorStoreTests.cs`~~
+- Test: **`tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchCapabilityDeclarationsTests.cs` (new)**
+- Modify: `tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchVectorStoreTests.cs` — delete two obsolete tests, see below
+
+**Two deviations from this task as written, both found during execution:**
+
+**(a) The tests went in a new container-free file.** `AzureAISearchVectorStoreTests` carries `IAsyncLifetime`, and `AzureAISearchCollection` records that "the simulator container is managed per-class via `IAsyncLifetime`" — which in xunit v3 means a container start per test method. Every assertion in this task and Task 3 is answered by the type or a constructor argument, so a container buys nothing and costs a start each. Measured: the new file's two tests run in **126ms**. Two pre-existing tests in the old class (`WithTheRankerOn/Off_TheStoreDeclares...`) already constructed the store against a dummy endpoint and paid that cost for nothing.
+
+**(b) Two existing tests had to be deleted, which this task did not anticipate.** `WithTheRankerOn_TheStoreDeclaresAnOrdinalScale` and `WithTheRankerOff_TheStoreDeclaresASimilarityScale` (6.2.34's) assert the removed property; they broke the build, not a test run. Deleted rather than adapted: the first asserts *the dense path declares `OpaqueRanking` when the ranker is on*, which is precisely the claim #539 is about. `TheStoreDoesNotDeclareAScoreScale_BecauseTheDefaultIsAlreadyRight` replaces both. `HybridScoreScale_IsOpaqueRanking` is untouched and still passes — the declaration that still carries information.
 
 **Interfaces:**
 
@@ -300,7 +323,7 @@ git commit -m "fix(azure-search): move the semantic ranker to the path that carr
 
 **Read §0.3 before starting.** If the assumptions gate overruled it and the interface stays, skip this task entirely and instead change the property body to the unconditional `public ScoreScale ScoreScale => ScoreScale.Similarity;` with a remark explaining why the value no longer depends on the option — then go to Task 3.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchVectorStoreTests.cs`:
 
@@ -328,12 +351,12 @@ Add to `tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchVectorStoreT
     }
 ```
 
-- [ ] **Step 2: Run them and watch the first fail**
+- [x] **Step 2: Run them and watch the first fail**
 
 Run: `dotnet test tests/Rag.NET.VectorStores.AzureAISearch.Tests -c Release --filter "FullyQualifiedName~TheStoreDoesNotDeclareAScoreScale"`
 Expected: FAIL — `Assert.False() Failure`. The second test passes already; it is a control that this task did not remove the wrong interface.
 
-- [ ] **Step 3: Remove the interface**
+- [x] **Step 3: Remove the interface**
 
 Line 16 becomes:
 
@@ -343,23 +366,26 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 
 Delete the `ScoreScale` property and its whole `<inheritdoc />`/`<remarks>` block (lines ~108–116).
 
-- [ ] **Step 4: Run the two tests**
+- [x] **Step 4: Run the two tests**
 
 Run: `dotnet test tests/Rag.NET.VectorStores.AzureAISearch.Tests -c Release --filter "FullyQualifiedName~TheStore"`
 Expected: PASS both.
 
-- [ ] **Step 5: Prove the removal changed no behaviour anywhere it is probed**
+- [x] **Step 5: Prove the removal changed no behaviour anywhere it is probed**
 
-Two consumers probe this interface. Run both suites and expect the Task 0 baseline, unchanged:
+Two consumers probe this interface. Run these suites and expect the Task 0 baseline, unchanged. **`Rag.NET.Tests` is the one that matters** — `PersistentConversationMemoryScoreScaleTests` lives in `tests/Rag.NET.Tests/Memory/`, not in the 3-test `Rag.NET.Memory.Tests`; running only the small suite would have proved nothing while appearing to (see Task 0 Step 2):
 
 ```bash
-dotnet test tests/Rag.NET.Memory.Tests -c Release
-dotnet test tests/Rag.NET.Resilience.Tests -c Release
+dotnet test tests/Rag.NET.Tests -c Release          # expect 1487
+dotnet test tests/Rag.NET.Resilience.Tests -c Release  # expect 105
+dotnet test tests/Rag.NET.Memory.Tests -c Release      # expect 3
 ```
+
+*Measured: 1487 / 105 / 3. All three exactly at baseline.*
 
 `PersistentConversationMemory` pattern-matches `{ ScoreScale: ScoreScale.OpaqueRanking }`, so a store declaring `Similarity` and a store not implementing the interface take the same branch. `ResilientVectorStore.ScoreScale` is `Inner is IScoreScaleAware aware ? aware.ScoreScale : ScoreScale.Similarity`, which returns `Similarity` either way. **If any test in either suite moves, the removal was not behaviour-preserving and the assumption in §0.3 was wrong — stop and report it rather than adjusting the test.**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/Rag.NET.VectorStores.AzureAISearch/AzureAISearchVectorStore.cs tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchVectorStoreTests.cs
