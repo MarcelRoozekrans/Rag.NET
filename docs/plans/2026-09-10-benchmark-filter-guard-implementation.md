@@ -34,7 +34,7 @@
 
 - Produces: MSBuild target `RefuseVSTestFilterUnderTestingPlatform`, error code `RAGNET0001`.
 
-- [ ] **Step 1: Write the failing behavioural tests**
+- [x] **Step 1: Write the failing behavioural tests**
 
 The harness is `dotnet msbuild` invoking the target **by name**. This was chosen over `dotnet test --filter` after measuring all three options:
 
@@ -53,9 +53,9 @@ Two tests, both against `tests/Rag.NET.Benchmarks.Quality.IntegrationTests/Rag.N
 
 Assert on the **error code**, not the message text — the message is prose and will be reworded; the code is the contract.
 
-- [ ] **Step 2: Run to verify they fail** — the target does not exist yet, so MSBuild reports the target as missing. Confirm the failure is "target not found" and not a harness bug: a test that fails for the wrong reason proves nothing in Step 5.
+- [x] **Step 2: Run to verify they fail** — the target does not exist yet, so MSBuild reports the target as missing. Confirm the failure is "target not found" and not a harness bug: a test that fails for the wrong reason proves nothing in Step 5.
 
-- [ ] **Step 3: Write the guard**
+- [x] **Step 3: Write the guard**
 
 ```xml
 <Project>
@@ -80,9 +80,9 @@ Three things about this that are load-bearing:
 - **The two-line `_RagNetFilterWhy` is the §5 decision.** The first line is always true; the second fires only when the property is genuinely why. Measured both ways: on the benchmark project the message reads `...runner for this project (it sets TestingPlatformDotnetTestSupport), and...`; on a non-MTP project invoked directly it reads `...runner for this project, and...`.
 - **A comment must say why the condition does not check `TestingPlatformDotnetTestSupport`.** Without it, the first reader will "tidy" the condition to match the message and silently un-arm the guard for future adopters.
 
-- [ ] **Step 4: Run to verify GREEN** — both Task 1 tests pass.
+- [x] **Step 4: Run to verify GREEN** — both Task 1 tests pass.
 
-- [ ] **Step 5: Run the three controls, and record the numbers**
+- [x] **Step 5: Run the three controls, and record the numbers**
 
 These are the design's §4 and they are the reason a repo-wide file is safe. **Run all three; do not infer any of them.**
 
@@ -94,7 +94,7 @@ These are the design's §4 and they are the reason a repo-wide file is safe. **R
 
 **C is the decisive one.** It proves the new repo-wide file leaves the other sixty-odd VSTest-adapter projects alone *and* that `--filter` still narrows there. A guard that fired on everything would pass A and B.
 
-- [ ] **Step 6: Commit** — `feat(build): refuse a VSTest filter that Microsoft.Testing.Platform will ignore (#529)`
+- [x] **Step 6: Commit** — `feat(build): refuse a VSTest filter that Microsoft.Testing.Platform will ignore (#529)`
 
 ---
 
@@ -104,7 +104,7 @@ These are the design's §4 and they are the reason a repo-wide file is safe. **R
 
 - Modify: `tests/Rag.NET.RepoConventions.Tests/BuildGuardTests.cs`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `TheGuardIsHookedToTheTestingPlatformRunner` — read `Directory.Build.targets` and assert the target carries `BeforeTargets="InvokeTestingPlatform"`.
 
@@ -112,9 +112,9 @@ These are the design's §4 and they are the reason a repo-wide file is safe. **R
 
 Assert on the attribute, not on file contents wholesale, so reformatting does not fail the test.
 
-- [ ] **Step 2: Run to verify it fails**, then make it pass, then run the whole `RepoConventions` suite — expect **98 passed, 2 pre-existing skips** (95 + 3 new).
+- [x] **Step 2: Run to verify it fails**, then make it pass, then run the whole `RepoConventions` suite — expect **98 passed, 2 pre-existing skips** (95 + 3 new).
 
-- [ ] **Step 3: Commit** — `test(build): pin the guard's hook, which the behavioural test cannot reach (#529)`
+- [x] **Step 3: Commit** — `test(build): pin the guard's hook, which the behavioural test cannot reach (#529)`
 
 ---
 
@@ -125,13 +125,13 @@ Assert on the attribute, not on file contents wholesale, so reformatting does no
 - Modify: `docs/reference/ci.md`
 - Modify: `tests/Rag.NET.Benchmarks.Quality.IntegrationTests/Rag.NET.Benchmarks.Quality.IntegrationTests.csproj`
 
-- [ ] **Step 1: `docs/reference/ci.md`** — a short section where someone reaching for a filter will look. It must carry: that `--filter` is refused on this project and why; the native-runner recipe with `-class`, `-method` and `-filter`; and that the native runner **prints the per-test skip reason that `dotnet test` suppresses**, which is a genuine reason to prefer it beyond filtering.
+- [x] **Step 1: `docs/reference/ci.md`** — a short section where someone reaching for a filter will look. It must carry: that `--filter` is refused on this project and why; the native-runner recipe with `-class`, `-method` and `-filter`; and that the native runner **prints the per-test skip reason that `dotnet test` suppresses**, which is a genuine reason to prefer it beyond filtering.
 
 **Do not use a fenced `csharp` block anywhere in this file.** `EveryDocsCodeExampleResolvesAgainstTheProducedPackages` compiles every fenced `csharp` block under `docs/` against the shipped packages, and it **scans the filesystem rather than git**. Shell recipes belong in `bash` or `text` fences.
 
-- [ ] **Step 2: The csproj comment** — the existing comment explains the #275 deadlock the property fixes and is **silent on what it costs**. Add the cost: `--filter` is not applied, and the guard in `Directory.Build.targets` now refuses it. Cross-reference #529.
+- [x] **Step 2: The csproj comment** — the existing comment explains the #275 deadlock the property fixes and is **silent on what it costs**. Add the cost: `--filter` is not applied, and the guard in `Directory.Build.targets` now refuses it. Cross-reference #529.
 
-- [ ] **Step 3: Commit** — `docs(ci): say what TestingPlatformDotnetTestSupport costs, not only what it buys (#529)`
+- [x] **Step 3: Commit** — `docs(ci): say what TestingPlatformDotnetTestSupport costs, not only what it buys (#529)`
 
 ---
 
@@ -139,7 +139,7 @@ Assert on the attribute, not on file contents wholesale, so reformatting does no
 
 **Files:** nothing permanently — apply, test, revert.
 
-- [ ] **Step 1: Run each mutation, record the site AND the named catcher**
+- [x] **Step 1: Run each mutation, record the site AND the named catcher**
 
 **Record the line mutated, not just the description.** 6.2.31's sweep was rendered unreproducible by naming a mutation without naming its site, and 6.2.34's sweep fixed that habit — keep it.
 
@@ -148,27 +148,29 @@ Assert on the attribute, not on file contents wholesale, so reformatting does no
 | 1 | delete the `Condition` so the guard always fires | the `Target` element | `WithNoFilter_TheGuardIsSilent` |
 | 2 | change `Error` to `Warning` | the task element | `PassingAVSTestFilterToATestingPlatformProject_IsRefused` (exit code) |
 | 3 | delete `BeforeTargets="InvokeTestingPlatform"` | the `Target` element | **`TheGuardIsHookedToTheTestingPlatformRunner` only** — Task 1's tests stay green, which is the whole argument for Task 2 |
-| 4 | change the condition to `'$(TestingPlatformDotnetTestSupport)' == 'true'` | the `Target` element | **may be uncaught — see below** |
+| 4 | change the condition to `'$(TestingPlatformDotnetTestSupport)' == 'true'` | the `Target` element | **CAUGHT by `WithNoFilter_TheGuardIsSilent` — this row's prediction below was wrong** |
 
-**Row 4 is the point of this sweep.** It is the "tidy" a future reader is most likely to make, because it makes the condition match the message. Today it is *behaviourally equivalent* — one project sets the property and it is the same project MTP runs — so **every test may stay green**. If it survives, that is not a missing test to write casually: the divergence only appears when a second project adopts MTP, which no test can simulate without inventing one. **Record the survivor and reason about it in the ROADMAP block rather than forcing a test that pins today's coincidence.** That is 6.2.34 row 7's lesson: a survivor that is unreachable is a finding, not a gap.
+**Row 4's prediction was wrong, and the error is worth naming.** It was called "behaviourally equivalent today". It is not equivalent in any respect: the condition asks *was a filter passed*, the property asks *does this project use MTP*. Swapping them does not narrow or widen the trigger — it makes the guard fire on **every unfiltered run**, which the negative control caught at once. The reasoning conflated a coincidence of *scope* (one project) with equivalence of *meaning*, and they are unrelated. The original note follows, left as written.
 
-- [ ] **Step 2: Verify the tree is clean** — `git status --short`, only files you meant to add.
+~~**Row 4 is the point of this sweep.**~~ It is the "tidy" a future reader is most likely to make, because it makes the condition match the message. Today it is *behaviourally equivalent* — one project sets the property and it is the same project MTP runs — so **every test may stay green**. If it survives, that is not a missing test to write casually: the divergence only appears when a second project adopts MTP, which no test can simulate without inventing one. **Record the survivor and reason about it in the ROADMAP block rather than forcing a test that pins today's coincidence.** That is 6.2.34 row 7's lesson: a survivor that is unreachable is a finding, not a gap.
+
+- [x] **Step 2: Verify the tree is clean** — `git status --short`, only files you meant to add.
 
 ---
 
 ### Task 5: Correct the issue, then let the merge close it
 
-- [ ] **Step 1: Post the measured numbers on #529** — 267 total, 149 passed, 118 skipped from a `--filter` naming one class, against the issue's "~70". Say the scope claim held and was checked. Do this **before** the PR merges, so the correction is on the issue rather than only in the roadmap.
+- [x] **Step 1: Post the measured numbers on #529** — 267 total, 149 passed, 118 skipped from a `--filter` naming one class, against the issue's "~70". Say the scope claim held and was checked. Do this **before** the PR merges, so the correction is on the issue rather than only in the roadmap.
 
-- [ ] **Step 2: Do not close it by hand** — the PR closes it.
+- [x] **Step 2: Do not close it by hand** — the PR closes it.
 
 ---
 
 ### Task 6: Roadmap, review and PR
 
-- [ ] **Step 1: `docs/planning/ROADMAP.md`**, the Phase 6.2.35 block — record what the phase found, in its neighbours' style, including the sweep's row-4 result whichever way it goes. **Do not change the `[status: ...]` marker or add `**Completed:**`** — `complete-phase` does that after the merge.
+- [x] **Step 1: `docs/planning/ROADMAP.md`**, the Phase 6.2.35 block — record what the phase found, in its neighbours' style, including the sweep's row-4 result whichever way it goes. **Do not change the `[status: ...]` marker or add `**Completed:**`** — `complete-phase` does that after the merge.
 
-- [ ] **Step 2: Run the suites.** `Rag.NET.RepoConventions.Tests` and `Rag.NET.PackageValidation.Tests`. **Repack before the latter** — `dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$(dotnet dotnet-gitversion /output json /showvariable SemVer)"`, from PowerShell, because Git Bash cannot find `.git` for GitVersion. The version guard embeds the branch name, so a branch switch alone invalidates the artefacts; this failed four separate times on 2026-09-10 for four different stale reasons, none of them defects. **Do not background either run.**
+- [x] **Step 2: Run the suites.** `Rag.NET.RepoConventions.Tests` and `Rag.NET.PackageValidation.Tests`. **Repack before the latter** — `dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$(dotnet dotnet-gitversion /output json /showvariable SemVer)"`, from PowerShell, because Git Bash cannot find `.git` for GitVersion. The version guard embeds the branch name, so a branch switch alone invalidates the artefacts; this failed four separate times on 2026-09-10 for four different stale reasons, none of them defects. **Do not background either run.**
 
 - [ ] **Step 3: Run `pre-push-review`.**
 

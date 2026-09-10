@@ -7406,6 +7406,52 @@ behavioural test green and the guard completely inert.
 VSTest adapter hung 2 of 4 runs before entering test code), making `--filter` work under MTP
 (upstream's), and CI — `ci.yml` and `nightly.yml` pass no filter, verified.
 
+**BUILT 2026-09-10. Four mutation rows, four caught, and the plan's reasoning about one of them was
+wrong.** Row 4 — change the condition from `VSTestTestCaseFilter` to `TestingPlatformDotnetTestSupport`,
+the "tidy" a future reader is most likely to make because it makes the condition match the message —
+was predicted to **survive**, on the grounds that the two are "behaviourally equivalent today" with
+one project setting one property. **They are not equivalent in any respect, and the prediction was
+simply a mistake in reasoning.** The condition asks *was a filter passed*; the property asks *does
+this project use MTP*. Swapping them does not narrow or widen the guard's trigger — it makes the
+guard fire on **every unfiltered run** of that project. Caught immediately by
+`WithNoFilter_TheGuardIsSilent`.
+
+**That negative test is the one carrying the phase.** It was written as the control that makes a
+repo-wide file safe, and it caught two of the four mutations — row 1 (delete the condition) and row
+4. A file imported by all ~140 projects fails catastrophically in exactly one direction, and that is
+the direction it guards.
+
+| # | mutation | site | caught by |
+|---|---|---|---|
+| 1 | delete the `Condition` so the guard always fires | the `Target` element | `WithNoFilter_TheGuardIsSilent` |
+| 2 | `Error` → `Warning` | the task element | `PassingAVSTestFilterToATestingPlatformProject_IsRefused` |
+| 3 | delete `BeforeTargets="InvokeTestingPlatform"` | the `Target` element | **`TheGuardIsHookedToTheTestingPlatformRunner` only** — both behavioural tests stayed green |
+| 4 | condition on `TestingPlatformDotnetTestSupport` instead | the `Target` element | `WithNoFilter_TheGuardIsSilent` — **predicted to survive; did not** |
+
+**Row 3 is the structural test's whole justification, and it held exactly as argued.** The
+behavioural harness invokes the target by name, which bypasses `BeforeTargets`, so deleting the hook
+leaves both behavioural tests green while the guard never runs at all. One test failed; it was the
+structural one.
+
+**The harness needed measuring, not estimating.** `dotnet test --filter` takes 44.8 s;
+`--no-build` takes 0.95 s but requires the benchmark project already built, which a `RepoConventions`
+run has not done; `dotnet msbuild -t:<target>` takes **0.535 s and needs no build**. The last is what
+the tests use.
+
+**Three controls, run rather than inferred:** (A) filtered MTP project → `RAGNET0001`, no tests run;
+(B) same project unfiltered → 267 run (149 passed, 118 skipped), guard silent; (C) filtered non-MTP
+project → Redis narrowed to **9 of 47**, guard silent. C is the one that proves a repo-wide file
+leaves the other sixty-odd projects alone.
+
+**Two things only running it would have found.** The analyzer rejects `==` on strings (MA0006), so
+the structural assertion uses `string.Equals` with an ordinal comparison. And **an XML comment cannot
+contain a double hyphen**, which is awkward in a file whose entire subject is a command-line flag
+spelled with one — the comment refers to the MSBuild property instead, and says why so the next
+editor does not re-break it.
+
+`RepoConventions` 98 passed / 2 pre-existing skips, up from 95. #529 corrected on the issue before
+the merge closes it.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
