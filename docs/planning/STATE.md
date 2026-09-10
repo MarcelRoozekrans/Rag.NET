@@ -1,7 +1,38 @@
 # Session State
 
-**Last updated:** 2026-09-10 — **three times in one day, all three at the merge, and this one
-closes the milestone's last local work.** 6.2.36 merged as #545 at 17:55 and this entry was written
+**Last updated:** 2026-09-10 — **four times in one day, all four at the merge, and this one
+corrects the entry before it.** 6.2.37 merged as #549 at 20:16 and this entry was written from the
+session that built it, on `chore/6237-merged` cut immediately after. The mechanism holds.
+
+**THE PREVIOUS ENTRY WAS WRONG, AND THE LIST THAT CONTRADICTS IT IS IN THIS FILE.** It said 6.2.36
+left "every locally-finishable item in this milestone done" and that "the next action belongs to the
+operator rather than to a session". Both were false when written. The section headed *"What is
+actually open, in the order worth taking it"* — further down this same document — names three items
+that are local, unblocked and unscheduled, and it was not read. **The failure was not the claim, it
+was the reading**: a 120 KB state file was opened at the top handoff and at the structured sections,
+and a list two-thirds of the way down was never reached. Recorded here rather than quietly fixed,
+because the same shape will recur on the next long file.
+
+**What that list actually names, re-verified 2026-09-10 after 6.2.37:**
+
+1. **The security-position document.** `docs/guide/security.md` documents security *features* — RBAC,
+   PII redaction, audit log. Nothing states the project's **posture**: threat model, what is in and
+   out of scope, the dependency position. **And there is no `SECURITY.md`**, so 71 published NuGet
+   packages have no vulnerability-disclosure path. Fully local. Scoped as 6.2.38.
+2. **#184** — the fluent bootstrapping entry point. Breaking, and pre-1.0 is the moment for it.
+   Appears in neither ROADMAP nor MILESTONE, which is a record-then-schedule violation of its own.
+3. **#314** — the xunit-dotnet v4 major bump. Three build legs plus `pack-validate` red since
+   2026-08-18, rebased and still red.
+
+**The five Dependabot alerts remain correctly triaged and mostly unfixable**, re-confirmed against
+the API 2026-09-10: `image-size` and `nltk` (both high) have no patch and live in the Docusaurus
+build and the Python comparison harness; `qs` (medium) is patched at 6.16.0 and enters via
+`webpack-dev-server`, reaching only `npm start`. **None is in a shipped NuGet package's closure.**
+The one fixable entry has been a one-line `overrides` fix since 2026-09-07 and is folded into 6.2.38
+rather than left as a fourth open item.
+
+**Previously, 2026-09-10 — three times in one day, all three at the merge, and that entry
+overstated what was left.** 6.2.36 merged as #545 at 17:55 and this entry was written
 from the same session that built it, on `chore/6236-merged` cut immediately after. The mechanism is
 unchanged and is still the only thing carrying it — the session that built the phase records the
 merge as its next action, so no window opens. **Three is a pattern where two was not**, and the
@@ -677,8 +708,10 @@ reasoning, not as a next step.** What is actually open, in the order worth takin
    what remains is the near-duplicate characterisation the issue also describes. Smallest
    well-understood item.
 2. ~~**#475**~~ — **closed 2026-09-07 in 6.2.18 (#494).** Filed while fixing #338, not yet scoped.
-3. **The security-position document.** #198 shipped the authenticated MCP transport, but nothing
-   states the project's posture in prose. **Related, and it corrects an alarm rather than raising
+3. **The security-position document.** **Scoped as Phase 6.2.38 on 2026-09-10** — this entry sat
+   here unscheduled from 2026-09-07 until then, which is the record-then-schedule rule failing
+   quietly: it was recorded, and then nobody put it in a phase. #198 shipped the authenticated MCP
+   transport, but nothing states the project's posture in prose. **Related, and it corrects an alarm rather than raising
    one:** the five Dependabot alerts on `main` were triaged 2026-09-07 and **none reach the shipped
    NuGet packages.** `image-size` and `nltk` (both high) have **no patch** and live in the Docusaurus
    build and the Python comparison harness; `qs` (medium, patched at 6.16.0) enters via
