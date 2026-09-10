@@ -7340,11 +7340,12 @@ real under-provisioned service takes**, so the guard is tested against a faithfu
 failure it exists for.
 
 
-### Phase 6.2.35: A Filter That Filters Nothing [status: pending — added 2026-09-10, #529]
+### Phase 6.2.35: A Filter That Filters Nothing [status: complete 2026-09-10 in #540 — #529, and the sweep row whose prediction the phase itself got wrong]
 **Surface:** Infra
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-10-benchmark-filter-guard-design.md`
 **Plan:** `docs/plans/2026-09-10-benchmark-filter-guard-implementation.md`
+**Completed:** 2026-09-10
 
 **Goal:** `dotnet test --filter` against the benchmark integration tests stops silently running
 everything, and starts refusing with the command that does work.
