@@ -149,15 +149,35 @@ must go red) and flip the declared scale (the property tests must go red).
 
 ## 5. What cannot be verified without a resource, stated precisely
 
-**One claim: that Azure's ranker populates `RerankerScore` and reorders results.** That is Azure's
-behaviour, not this library's wiring, and every part of the wiring is testable without it.
+**This section originally understated the gap, and the mutation sweep is what corrected it.**
+Mutating `ExecuteSearchAsync` to apply `MinScore` on the ranked path — inserted immediately after
+the guard's throw — survived the sweep, and not because a test is missing. The line is
+**unreachable in any local test**: the guard fires whenever `RerankerScore` is null, the simulator
+never returns one, so the code that runs *after* the guard's throw, on the branch the guard
+protects, can never execute against it.
 
-`<VerifiedByReason>` should say exactly that rather than implying the feature is untested. Basic tier
-or higher, billable, region-limited.
+**That makes the unverifiable surface broader than "one claim".** It is not only "Azure's ranker
+populates `RerankerScore` and reorders results" — it is **everything downstream of the guard**:
+which value gets assigned to `Score` when a `RerankerScore` is actually present, and that
+`MinScore` is correctly skipped on that path, are equally unreachable locally, for the same
+reason. The guard that makes the feature safe to ship — throw rather than silently hand back a
+downgraded result — is exactly what stands between every local test and the code beyond it.
 
-**The honest position: if the service silently does not rank, this code throws rather than
-publishing a number it cannot describe.** That is a weaker promise than "the ranker works", and it
-is the one that can be kept from here.
+**What is tested locally is real, and this correction does not diminish it.** The option, the `k`
+guard and its boundary at 50, the semantic configuration appearing on the index when enabled and
+absent when it is not, both declared score scales, and — the most important seam — that the guard
+itself throws when the service accepts the request and returns no reranker score: all of that is
+genuine local coverage, mutation-checked, against a simulator whose defect (HTTP 200, ordinary
+results, no `rerankerScore`) is exactly the shape a real under-provisioned service takes.
+
+`<VerifiedByReason>` should say that the guard's throw path is verified locally, and that
+everything past it — the score it would assign, and whether Azure's ranker genuinely reorders
+results — is not, and needs a resource: Basic tier or higher, billable, region-limited.
+
+**The honest position, unchanged, and it is the part that is fully kept:** if the service silently
+does not rank, this code throws rather than publishing a number it cannot describe. The narrower
+promise — that when the service *does* rank, the number it publishes is the right one — is what
+this section was too optimistic about, and it is not kept without a resource.
 
 ## 6. Consequences
 
