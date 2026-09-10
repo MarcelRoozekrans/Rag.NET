@@ -7465,6 +7465,64 @@ held both the weaker pattern and the better one, and this branch had reached for
 four mutation rows were re-run afterwards, because rewriting a catching test invalidates the rows
 that depend on it; all four still caught, same catchers.
 
+### Phase 6.2.36: The Ranker Belongs Where the Text Is [status: pending — added 2026-09-10, #539]
+**Surface:** Storage
+**HelpWanted:** no
+**Design:** `docs/plans/2026-09-10-semantic-ranker-hybrid-design.md`
+
+**Goal:** the semantic ranker moves to the one path that carries a text query, and a request for
+ranking that cannot be honoured throws instead of returning unranked results.
+
+**6.2.34 PUT THE FEATURE ON THE ONE PATH THAT CANNOT CARRY IT, AND IT SURVIVED THREE HOURS.** #536
+merged at 10:02; @StefH filed #539 at 11:30 against a real Azure resource. Semantic ranking needs
+query text — Microsoft: *"A query with `search=*` or an empty search string … won't work because
+there's nothing to measure semantic relevance against"* — and `IVectorStore.SearchAsync` takes
+`ReadOnlyMemory<float>` and a `SearchOptions` carrying `TopK`, `MinScore` and `MetadataFilter`.
+**No text, by interface contract.** Not a wiring bug: the dense path cannot rank on any tier in any
+region.
+
+**The guard is why this is an issue and not a silent corruption.** Without 6.2.34's throw the
+reporter would have received **ordinary cosine similarities relabelled as reranker scores**,
+declared `OpaqueRanking`, with `MinScore` skipped — wrong numbers presented confidently on a path
+advertised as reranked. **The guard caught a defect its own author did not**, which is the strongest
+evidence this milestone has produced for its own rule, and it indicted the phase that wrote it.
+**The `<VerifiedByReason>` was right too**: it named everything past the guard as unverifiable
+without a billable resource, and a billable resource found it immediately.
+
+**The excluded path was the right one all along.** 6.2.34 skipped hybrid because ranking an
+already-fused score "raises a separate question this store does not yet answer". True — but the
+dense path does not answer an easier question, it answers none. And the move is *smaller* than it
+sounds: `HybridSearchAsync` already takes `textQuery`, `HybridScoreScale` is **already**
+`OpaqueRanking` (6.2.33), and `MinScore` is already forced to `0.0` there, so replacing a fused
+score with a reranker score needs **no scale change at all**.
+
+**Decided 2026-09-10: `EnsembleBehavior` throws when ranking is on and the query cannot reach the
+native path.** Moving to hybrid does not hand the ranker to the caller — it puts it behind a
+dispatch requiring `EnsembleOptions is null`, `MinScore is 0.0` and no SPLADE arm. Violate one and
+the query is fused client-side: **correct results, no ranking, no error** — the same "succeeds while
+doing nothing" family, one layer above the guard that removes it. The probe must be a general
+`IHybridSearchable` capability rather than an Azure flag, defaulted so existing implementers stay
+correct, with 6.2.33's `HybridScoreScale` as the precedent.
+
+**A FIFTH CONDITION NOBODY HAS WRITTEN DOWN, AND IT PREDATES THE RANKER.** `ResilientVectorStore`
+does not implement `IHybridSearchable`, and `EnsembleBehavior` probes the **decorated**
+`IVectorStore`. So **enabling resilience silently disables native hybrid dispatch entirely**, today,
+for every store that supports it. The repository solved this exact problem once for the sibling
+capability — there is a `ResilientSparseVectorStore`, and the class doc says it exists "so an
+`is ISparseSearchable` probe on the resolved `IVectorStore` stays honest after decoration". The
+reasoning was applied to sparse and not to hybrid. **To be filed separately and not fixed here**,
+but §3's throw will surface it painfully: resilience plus ranking throws on every query.
+
+**`vector-stores.md` is wrong in the same way the code was** and must be rewritten rather than
+amended — it documents the dense path throughout.
+
+**Not a revert.** The `k >= 50` guard, the scale declarations, the semantic index configuration and
+the guard itself are all correct and independently useful. Only the path was wrong.
+
+**The lesson is not "the account gap did this".** A local test could not have caught this. A careful
+reading of `SearchAsync`'s signature against one sentence of Microsoft's documentation could, and
+needed no Azure resource at all.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
