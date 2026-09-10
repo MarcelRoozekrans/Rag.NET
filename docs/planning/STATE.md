@@ -1,6 +1,12 @@
 # Session State
 
-**Last updated:** 2026-09-10 — **written within the hour of the merge it records, which is the one
+**Last updated:** 2026-09-10 — **twice in one day, both at the merge.** 6.2.35 merged as #540 at
+13:04 and this entry was written from the same session, as was 6.2.34's before it. **Two is not a
+habit**, and the mechanism is still the only thing carrying it: the session that built the phase
+records the merge as its next action, so no window opens. The first such entry, written this morning,
+follows below unchanged.
+
+**Previously, 2026-09-10 — written within the hour of the merge it records, which is the one
 thing every entry below says never happens.** 6.2.34 merged as #536 at 10:02; this entry was written
 from the same session, on the `chore/state-6234-merged` branch cut immediately after. **The streak
 is broken by mechanism, not by resolve:** the session that built the phase recorded the merge as its
@@ -80,7 +86,54 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.34 — The Semantic Ranker, and the Simulator That Lies About It — **MERGED 2026-09-10**
+**Phase:** 6.2.35 — A Filter That Filters Nothing — **MERGED 2026-09-10** (#540, `08f39f9f`),
+closing #529. Verified on `main` by content — `Directory.Build.targets` exists,
+`RefuseVSTestFilterUnderTestingPlatform`, `RAGNET0001` and
+`TheGuardIsHookedToTheTestingPlatformRunner` are all present — not by the PR's MERGED label.
+**No phase is currently open**, and **what remains of the milestone is blocked on accounts, not
+effort**: 6.1's cassettes and the 6.3 tag that waits on them.
+
+**A TOOL THAT LIED, FIXED WITH THE SAME POSTURE AS THE LIBRARY DEFECTS.** `--filter` on the
+benchmark project set a VSTest property Microsoft.Testing.Platform does not read: MTP warned and ran
+**267** tests instead of the one class asked for, 149 of them for real. The platform already
+detected the condition and already declined to act on it — **the whole defect was that its response
+was a warning where the consequence is a wrong answer.** The phase changed a severity, not a
+detection.
+
+**The issue's arithmetic was wrong by nearly 4x and its scope claim was right.** It said "~70". Both
+halves were checked rather than assumed, because 6.2.32 found #521 naming three vector stores when
+there were six sites.
+
+**The phase's own sweep prediction was wrong, and naming the error is the point.** Row 4 swaps the
+condition for the property — the tidy a future reader is most likely to make, because it makes the
+condition match the message. It was predicted to survive as *"behaviourally equivalent today"*. It is
+not equivalent in any respect: **the condition asks whether a filter was passed; the property asks
+whether the project uses MTP.** Swapping them makes the guard fire on every unfiltered run. **The
+reasoning conflated a coincidence of scope — one project sets the property — with equivalence of
+meaning.** Those are unrelated, and the mistake is the kind that survives review because both
+statements are true.
+
+**Row 3 is the one that justified writing a second kind of test, and it held exactly as argued in
+advance.** Deleting `BeforeTargets` left both behavioural tests green while the guard never ran,
+because invoking a target by name bypasses the hook. **A harness that cannot reach a thing cannot
+guard it** — worth remembering the next time a structural assertion looks redundant beside a
+behavioural one.
+
+**The review found a hang-shaped risk inside the guard for a property that exists because of a
+hang.** The helper read one redirected stream to the end and then the other, and waited unbounded.
+Unlikely with one MSBuild target — but `TestingPlatformDotnetTestSupport` is in this repository
+**because of #275, a deadlock in test infrastructure that hung 2 of 4 runs before entering test
+code**, so probability was not the argument. **The repository already held both the weaker pattern
+and the better one** (`ProducedPackageTests` reads sequentially; `CliProcessTests.RunAsync` reads
+async with a bounded wait) **and the branch had reached for the weaker.** When two patterns exist,
+check which one you copied.
+
+**Two things only running it would have found.** The analyzer rejects `==` on strings. And **an XML
+comment cannot contain a double hyphen**, which is genuinely awkward in a file whose entire subject
+is a command-line flag spelled with one — the comment names the MSBuild property instead and says
+why, so the next editor does not re-break it.
+
+**Previously:** 6.2.34 — The Semantic Ranker, and the Simulator That Lies About It — **MERGED 2026-09-10**
 (#536, `f5870bdf`), closing #328. Verified on `main` by content — `EnableSemanticRanking`,
 `SemanticConfigurationName`, `SearchIndexSettle` and `EnablingTheRankerWithKJustBelowFiftyIsRejected`
 are all present — not by the PR's MERGED label. **No phase is currently open.** The next planned
