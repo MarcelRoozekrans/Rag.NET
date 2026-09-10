@@ -1,3 +1,4 @@
+using Azure;
 using Rag.NET.Abstractions;
 using Xunit;
 
@@ -32,5 +33,35 @@ public class AzureAISearchCapabilityDeclarationsTests
     public void TheStoreStillDeclaresItsHybridScoreAsOrdinal()
     {
         Assert.True(typeof(IHybridSearchable).IsAssignableFrom(typeof(AzureAISearchVectorStore)));
+    }
+
+    /// <summary>
+    /// The probe <c>EnsembleBehavior</c> reads to decide whether client-side fusion is an honest
+    /// substitute for this store's native hybrid query. With the ranker on it is not: the
+    /// fused-client-side result is correct but unranked, and returning it silently is the defect
+    /// #539 is about, one layer up.
+    /// </summary>
+    /// <remarks>
+    /// No network call happens here — the store initialises the index on the first operation that
+    /// needs it, and reading a property is not one.
+    /// </remarks>
+    [Theory]
+    [InlineData(true, "semantic ranking")]
+    [InlineData(false, null)]
+    public void TheStoreDeclaresWhatClientSideFusionWouldLose(bool rankingEnabled, string? expected)
+    {
+        using var sut = new AzureAISearchVectorStore(
+            new Uri("https://dummy.search.windows.net"),
+            "dummy-index",
+            new AzureKeyCredential("dummy-key"),
+            vectorDimensions: 3,
+            clientOptions: null,
+            new AzureAISearchOptions
+            {
+                EnableSemanticRanking = rankingEnabled,
+                KNearestNeighborsCount = rankingEnabled ? 50 : null,
+            });
+
+        Assert.Equal(expected, ((IHybridSearchable)sut).NativeOnlyCapability);
     }
 }

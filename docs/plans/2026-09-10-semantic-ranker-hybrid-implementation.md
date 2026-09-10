@@ -402,14 +402,14 @@ The `!` marks the API-visible removal. Note it for the PR body so the `breaking-
 
 - Modify: `src/Rag.NET.Abstractions/Abstractions/IHybridSearchable.cs`
 - Modify: `src/Rag.NET.VectorStores.AzureAISearch/AzureAISearchVectorStore.cs`
-- Test: `tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchVectorStoreTests.cs`
+- Test: `tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchCapabilityDeclarationsTests.cs` — the container-free file created in Task 2, for the same reason
 
 **Interfaces:**
 
 - Consumes: Task 1's placement of the ranker on `HybridSearchAsync`.
 - Produces: `string? IHybridSearchable.NativeOnlyCapability { get; }`, defaulting to `null`. `AzureAISearchVectorStore` overrides it to `"semantic ranking"` when `_semanticRankingEnabled`, `null` otherwise. Task 4 consumes it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchVectorStoreTests.cs`. Construct the store directly — no simulator needed, the property is decided at construction:
 
@@ -442,12 +442,12 @@ Add to `tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchVectorStoreT
 
 **No network call happens here** — `EnsureInitialisedAsync` runs on the first operation that needs the index, and reading a property is not one. If this test tries to reach the endpoint, something initialises eagerly and that is a separate finding worth reporting.
 
-- [ ] **Step 2: Run it and watch it fail to compile**
+- [x] **Step 2: Run it and watch it fail to compile**
 
 Run: `dotnet test tests/Rag.NET.VectorStores.AzureAISearch.Tests -c Release --filter "FullyQualifiedName~TheStoreDeclaresWhatClientSideFusionWouldLose"`
 Expected: build error `CS1061` — `IHybridSearchable` does not contain a definition for `NativeOnlyCapability`.
 
-- [ ] **Step 3: Add the defaulted member to `IHybridSearchable`**
+- [x] **Step 3: Add the defaulted member to `IHybridSearchable`**
 
 Insert above `HybridScoreScale` in `src/Rag.NET.Abstractions/Abstractions/IHybridSearchable.cs`:
 
@@ -484,7 +484,7 @@ Insert above `HybridScoreScale` in `src/Rag.NET.Abstractions/Abstractions/IHybri
     string? NativeOnlyCapability => null;
 ```
 
-- [ ] **Step 4: Override it on the Azure store**
+- [x] **Step 4: Override it on the Azure store**
 
 Add next to the other `IHybridSearchable` members in `AzureAISearchVectorStore`:
 
@@ -498,17 +498,17 @@ Add next to the other `IHybridSearchable` members in `AzureAISearchVectorStore`:
     public string? NativeOnlyCapability => _semanticRankingEnabled ? "semantic ranking" : null;
 ```
 
-- [ ] **Step 5: Run the test**
+- [x] **Step 5: Run the test**
 
 Run: `dotnet test tests/Rag.NET.VectorStores.AzureAISearch.Tests -c Release --filter "FullyQualifiedName~TheStoreDeclaresWhatClientSideFusionWouldLose"`
 Expected: PASS, both `InlineData` rows.
 
-- [ ] **Step 6: Confirm Weaviate took the default without being touched**
+- [x] **Step 6: Confirm Weaviate took the default without being touched**
 
 Run: `dotnet build src/Rag.NET.VectorStores.Weaviate -c Release`
 Expected: builds clean, no new warnings. `WeaviateVectorStore` implements `IHybridSearchable` and must not need an edit — that is the whole point of defaulting the member.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/Rag.NET.Abstractions/Abstractions/IHybridSearchable.cs src/Rag.NET.VectorStores.AzureAISearch/AzureAISearchVectorStore.cs tests/Rag.NET.VectorStores.AzureAISearch.Tests/AzureAISearchVectorStoreTests.cs

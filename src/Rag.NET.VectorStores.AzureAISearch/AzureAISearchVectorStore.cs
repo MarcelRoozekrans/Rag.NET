@@ -365,6 +365,14 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         return results;
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Fixed at construction by <see cref="AzureAISearchOptions.EnableSemanticRanking"/>. Client-
+    /// side fusion would return correct, unranked results with no error — which is what #539's
+    /// reporter would have received had 6.2.34's guard not existed.
+    /// </remarks>
+    public string? NativeOnlyCapability => _semanticRankingEnabled ? "semantic ranking" : null;
+
     /// <summary>
     /// Runs Azure AI Search's own hybrid query: BM25 over <paramref name="textQuery"/> fused with
     /// vector search over <paramref name="queryEmbedding"/>, ranked service-side.
