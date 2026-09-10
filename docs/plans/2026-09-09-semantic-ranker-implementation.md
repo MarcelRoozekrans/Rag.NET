@@ -34,7 +34,7 @@
 **Interfaces:**
 - Produces: `bool EnableSemanticRanking { get; set; }` on `AzureAISearchOptions`, consumed by Tasks 2–4.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 These need no simulator — they exercise `UseAzureAISearch`'s eager validation. **`AzureAISearchBuilderExtensionsTests.cs` already exists and is the file to add them to**; it builds a provider through `AddRagNet(rag => rag.UseAzureAISearch(...))` with a dummy endpoint and key, which is exactly the surface these tests need.
 
@@ -100,12 +100,12 @@ Three cases:
 
 **Check the `configure:` argument name against `UseAzureAISearch`'s signature before writing** — the parameter is the fifth, after `vectorDimensions`, so it must be passed by name as shown or the call binds to the wrong overload position.
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `dotnet test tests/Rag.NET.VectorStores.AzureAISearch.Tests -c Release --filter "FullyQualifiedName~Ranker"`
 Expected: compile error — `EnableSemanticRanking` does not exist.
 
-- [ ] **Step 3: Add the option**
+- [x] **Step 3: Add the option**
 
 In `AzureAISearchOptions.cs`:
 
@@ -139,7 +139,7 @@ In `AzureAISearchOptions.cs`:
 
 Update `KNearestNeighborsCount`'s remarks: the paragraph currently ending "Semantic ranking is not implemented here yet — #328 stays open for it — so this note is for anyone configuring the index themselves in the meantime" is now false. Replace with the guard: setting `k` below 50 alongside `EnableSemanticRanking` is refused at registration.
 
-- [ ] **Step 4: Add the validation**
+- [x] **Step 4: Add the validation**
 
 In `ValidateConfigured`, beside the existing `k < 1` check:
 
@@ -156,12 +156,12 @@ In `ValidateConfigured`, beside the existing `k < 1` check:
         }
 ```
 
-- [ ] **Step 5: Run to verify GREEN, then the whole suite**
+- [x] **Step 5: Run to verify GREEN, then the whole suite**
 
 Run the filtered tests, then `dotnet test tests/Rag.NET.VectorStores.AzureAISearch.Tests -c Release`.
 Expected: 36 + 3 new passing, 1 pre-existing skip. **No behaviour changed yet** — nothing reads the flag.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/Rag.NET.VectorStores.AzureAISearch tests/Rag.NET.VectorStores.AzureAISearch.Tests
@@ -182,7 +182,7 @@ git commit -m "feat(azureaisearch): add the semantic ranking option and guard it
 
 **`BuildIndex` is `private static`** (line 117). It needs the flag, so either make it an instance method or add a parameter. **Prefer the parameter** — it keeps the method a pure function of its inputs, which is what makes it readable, and `CreateCollectionAsync` also calls it.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Two, both against the simulator, reading the index definition back through `SearchIndexClient.GetIndexAsync`:
 
@@ -204,21 +204,21 @@ Two, both against the simulator, reading the index definition back through `Sear
 
 Read the existing fixture in `AzureAISearchChunkLookupTests` for how the simulator is started and how a store is constructed against it, and match it. **The simulator accepts a semantic configuration and echoes it back — verified 2026-09-09** — so reading the index definition is a real assertion here even though the simulator will not *use* the configuration.
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Expected: the enabled case fails because no store constructor accepts the flag yet — a compile error.
 
-- [ ] **Step 3: Thread the flag and build the configuration**
+- [x] **Step 3: Thread the flag and build the configuration**
 
 Add `private readonly bool _semanticRankingEnabled;` and set it from `options?.EnableSemanticRanking ?? false` in the private constructor. Pass it to `BuildIndex` at both call sites.
 
 In `BuildIndex`, when the flag is set, add a `SemanticSearch` with one `SemanticConfiguration` whose `PrioritizedFields` name the `text` field as a content field. Name the configuration with a `private const string` — it is an implementation detail, not a knob.
 
-- [ ] **Step 4: Run the whole suite**
+- [x] **Step 4: Run the whole suite**
 
 Expected: all pass. **Existing tests construct the store without the flag, so their indexes must be unchanged** — if any existing test fails, the flag is leaking into the disabled path.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git commit -m "feat(azureaisearch): put a semantic configuration on the index when the ranker is on (#328)"
@@ -240,7 +240,7 @@ git commit -m "feat(azureaisearch): put a semantic configuration on the index wh
 
 **`ExecuteSearchAsync` is shared with `HybridSearchAsync`.** Add a parameter — `bool expectRerankerScore` — passed `_semanticRankingEnabled` from `SearchAsync` and **`false` from `HybridSearchAsync`**. Do not read the field inside the shared method; the hybrid path must be unaffected whatever the instance is configured to do.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```csharp
     /// <summary>
@@ -262,11 +262,11 @@ git commit -m "feat(azureaisearch): put a semantic configuration on the index wh
 
 Store a chunk, search, assert an `InvalidOperationException` whose message names the index.
 
-- [ ] **Step 2: Run to verify it fails**
+- [x] **Step 2: Run to verify it fails**
 
 Expected: **no exception** — the search returns results scored the ordinary way. That failure *is* the defect the guard prevents, observed.
 
-- [ ] **Step 3: Ask for ranking**
+- [x] **Step 3: Ask for ranking**
 
 In `SearchAsync`, when `_semanticRankingEnabled`, set on the `SearchOptions`:
 
@@ -278,7 +278,7 @@ In `SearchAsync`, when `_semanticRankingEnabled`, set on the `SearchOptions`:
             };
 ```
 
-- [ ] **Step 4: Read the reranker score, and guard**
+- [x] **Step 4: Read the reranker score, and guard**
 
 In `ExecuteSearchAsync`, when `expectRerankerScore`:
 
@@ -290,11 +290,11 @@ When `expectRerankerScore` is false, the existing behaviour is unchanged in ever
 
 Document the guard on the method, in the file's style: what it catches, and that a service which cannot rank answers successfully rather than failing.
 
-- [ ] **Step 5: Run the whole suite**
+- [x] **Step 5: Run the whole suite**
 
 Expected: all pass. Every existing test runs with the ranker off and must be untouched.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -m "feat(azureaisearch): request semantic ranking, and throw when the service does not rank (#328)"
@@ -312,7 +312,7 @@ git commit -m "feat(azureaisearch): request semantic ranking, and throw when the
 
 Declaring `Similarity` when off is **behaviour-preserving**: `PersistentConversationMemory` tests `is not IScoreScaleAware { ScoreScale: OpaqueRanking }` (`:66`), so it takes the same branch either way.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
     [Fact]
@@ -329,9 +329,9 @@ Declaring `Similarity` when off is **behaviour-preserving**: `PersistentConversa
 
 Unlike `HybridScoreScale`, this is a normal interface implementation, so it is reachable on a concrete reference — no cast needed.
 
-- [ ] **Step 2: Run to verify they fail** — compile error, the store does not implement the interface.
+- [x] **Step 2: Run to verify they fail** — compile error, the store does not implement the interface.
 
-- [ ] **Step 3: Implement it**
+- [x] **Step 3: Implement it**
 
 Add `IScoreScaleAware` to the class declaration and:
 
@@ -346,7 +346,7 @@ Add `IScoreScaleAware` to the class declaration and:
         _semanticRankingEnabled ? ScoreScale.OpaqueRanking : ScoreScale.Similarity;
 ```
 
-- [ ] **Step 4: Run the whole suite, then commit**
+- [x] **Step 4: Run the whole suite, then commit**
 
 ```bash
 git commit -m "feat(azureaisearch): declare the score scale the ranker changes (#328)"
@@ -358,39 +358,41 @@ git commit -m "feat(azureaisearch): declare the score scale the ranker changes (
 
 **Files:** nothing permanently — apply, test, `git checkout -- src/`.
 
-- [ ] **Step 1: Run each mutation, record the named catcher**
+- [x] **Step 1: Run each mutation, record the named catcher**
 
-| # | mutation | expected catcher |
-| --- | --- | --- |
-| 1 | delete the guard's throw; return the ordinary score instead | `RequestingTheRankerFromAServiceThatDoesNotRank_Throws` |
-| 2 | drop the `k < 50` validation | `EnablingTheRankerWithKBelowFiftyIsRejected` |
-| 3 | make `ScoreScale` always return `OpaqueRanking` | `WithTheRankerOff_TheStoreDeclaresASimilarityScale` |
-| 4 | make `ScoreScale` always return `Similarity` | `WithTheRankerOn_TheStoreDeclaresAnOrdinalScale` |
-| 5 | add the semantic configuration unconditionally | `WithoutTheRanker_TheIndexHasNoSemanticConfiguration` |
-| 6 | pass `expectRerankerScore: true` from `HybridSearchAsync` | **nothing may catch this** — see below |
-| 7 | apply `minScore` on the ranked path | may be uncaught; see below |
+Every row below was run as a full suite (`dotnet test tests/Rag.NET.VectorStores.AzureAISearch.Tests -c Release`), not a filtered subset, and the **site** column names the line mutated — 6.2.31's lesson: a mutation's site decides how strong the test is, and naming the mutation without naming the line makes the sweep unreproducible.
 
-**Rows 6 and 7 are the point of this sweep.** Row 6 mutates the boundary between the two paths — if nothing catches it, the hybrid path's independence from the ranker is unprotected. Row 7 checks whether "MinScore is not applied when ranking" is actually pinned.
+| # | mutation | site | outcome |
+| --- | --- | --- | --- |
+| 1 | delete the guard's throw; return the ordinary score instead | `ExecuteSearchAsync`, the `expectRerankerScore` branch | **caught** — `RequestingTheRankerFromAServiceThatDoesNotRank_Throws` (1 failed / 44 passed) |
+| 2 | drop the `k < 50` validation | `ValidateConfigured` | **SURVIVED as first written; gap closed.** The rejection test used `k=10` and the acceptance test `k=50`, so shifting the threshold from 50 to 11 passed every test while wrongly accepting 49 — the exact value the guidance is about, the ranker taking up to 50 matches as input. Closed with `EnablingTheRankerWithKJustBelowFiftyIsRejected`. **The gap was in the plan's own test code, not the implementation.** |
+| 3 | `ScoreScale` always returns `OpaqueRanking` | the `ScoreScale` property | **caught** — `WithTheRankerOff_TheStoreDeclaresASimilarityScale` (1 failed / 44 passed) |
+| 4 | `ScoreScale` always returns `Similarity` | the `ScoreScale` property | **caught** — `WithTheRankerOn_TheStoreDeclaresAnOrdinalScale` (1 failed / 44 passed) |
+| 5 | add the semantic configuration unconditionally | `BuildIndex`, `if (semanticRankingEnabled)` → `if (true)` | **caught** — `WithoutTheRanker_TheIndexHasNoSemanticConfiguration` (1 failed / 44 passed) |
+| 6 | pass `expectRerankerScore: true` from `HybridSearchAsync` | the hybrid call to `ExecuteSearchAsync` | **caught — and this row's prediction was wrong.** Two tests failed, `HybridSearch_FusesKeywordAndVectorArms` and `HybridSearchAsync_DoesNotFilterByMinScore` (2 failed / 43 passed). The seam is protected, by tests that pre-date this phase. |
+| 7 | apply `minScore` on the ranked path | `ExecuteSearchAsync`, inserted after the guard's throw | **SURVIVED, and no test can close it.** The line is **unreachable locally**, not untested: the guard fires whenever `RerankerScore` is null and the simulator never returns one, so nothing downstream of the throw executes. See the design's §5, corrected from this result. |
 
-**A survivor is a missing test, not an acceptable gap.** Write it, prove it fails against the mutation, revert the mutation, keep the test.
+**Rows 6 and 7 were the point of this sweep, and each inverted its own prediction.** Row 6 was expected to expose an unprotected boundary and instead proved it protected. Row 7 was expected to be "may be uncaught, so write a test" and instead proved that **no local test can exist** — which is a broader unverifiable surface than §5 originally claimed, and the correction is recorded there rather than waved away here.
+
+**A survivor is a missing test, not an acceptable gap** — except where the survivor is unreachable, which row 7 is. Row 2's survivor was a missing test and was written.
 
 **Never record a mutation as caught without naming the test that failed.**
 
-- [ ] **Step 2: Verify the tree is clean** — `git status --short`, only tests you added.
+- [x] **Step 2: Verify the tree is clean** — `git status --short`, only tests you added.
 
 ---
 
 ### Task 6: Documentation
 
-- [ ] **Step 1: `docs/guide/vector-stores.md`** — the Azure section gains the ranker: how to enable it, that the score becomes ordinal and `MinScore` stops applying, that `k` must be null or at least 50, and that a service which cannot rank causes a throw rather than a silent downgrade. Cross-link the score-scale section.
+- [x] **Step 1: `docs/guide/vector-stores.md`** — the Azure section gains the ranker: how to enable it, that the score becomes ordinal and `MinScore` stops applying, that `k` must be null or at least 50, and that a service which cannot rank causes a throw rather than a silent downgrade. Cross-link the score-scale section.
 
-- [ ] **Step 2: `docs/planning/ROADMAP.md`**, the Phase 6.2.34 block — record what the phase found, in its neighbours' style. **Do not change the `[status: ...]` marker or add `**Completed:**`.**
+- [x] **Step 2: `docs/planning/ROADMAP.md`**, the Phase 6.2.34 block — record what the phase found, in its neighbours' style. **Do not change the `[status: ...]` marker or add `**Completed:**`.**
 
 Include: that half of #328 was already shipped and the design said otherwise until the code was read; that the simulator's defect became the guard's test fixture; and the sweep's results.
 
-- [ ] **Step 3: `<VerifiedByReason>`** — if the project's ledger requires it for this package, state the one claim that needs a resource: that Azure's ranker populates `RerankerScore` and reorders. Everything else is verified locally. **Check whether this package already carries a `VerifiedBy` value and do not downgrade it.**
+- [x] **Step 3: `<VerifiedByReason>`** — if the project's ledger requires it for this package, state the one claim that needs a resource: that Azure's ranker populates `RerankerScore` and reorders. Everything else is verified locally. **Check whether this package already carries a `VerifiedBy` value and do not downgrade it.**
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ---
 
