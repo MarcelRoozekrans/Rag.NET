@@ -7340,6 +7340,61 @@ real under-provisioned service takes**, so the guard is tested against a faithfu
 failure it exists for.
 
 
+### Phase 6.2.35: A Filter That Filters Nothing [status: pending — added 2026-09-10, #529]
+**Surface:** Infra
+**HelpWanted:** no
+**Design:** `docs/plans/2026-09-10-benchmark-filter-guard-design.md`
+
+**Goal:** `dotnet test --filter` against the benchmark integration tests stops silently running
+everything, and starts refusing with the command that does work.
+
+**THE ISSUE UNDERCOUNTS BY NEARLY FOUR TIMES.** #529 says one cell means "all ~70". **Measured
+2026-09-10: 267** — 149 passed, 118 skipped, from a `--filter` naming a single class. And **149 of
+them execute for real with no environment variables set**, so the unprovisioned run is not a no-op
+either. The issue's *scope* claim does hold — exactly one project sets
+`TestingPlatformDotnetTestSupport` — and it was checked rather than assumed, because 6.2.32 found
+#521 naming three vector stores when there were six sites across five components.
+
+**The platform already detects this and already declines to act.** `_ValidateVSTestProperties` tests
+`VSTestTestCaseFilter` and raises `MTP0001` — a **warning** — then `InvokeTestingPlatform` runs
+everything. **This phase detects nothing new; it changes a severity that is wrong at exactly one
+place.**
+
+**It is the milestone's own defect shape, one layer up.** A filter that filters nothing succeeds,
+prints green, and answers a question nobody asked — the "code that succeeds while doing nothing"
+family that accounted for four of five phases around 6.2.13–6.2.17. **And it has already produced a
+wrong finding**: during #495 the instrumentation captured self-query prompts while the reader
+believed they were deep-research ones, an apparent difference between two checkouts that was
+entirely test execution order. The measurement was not wrong; **the attribution was.**
+
+**The guard is repo-wide and self-arming, decided against the issue's own proposal.** #529 suggests a
+target in that project; it goes in a new root `Directory.Build.targets` hooked to
+`BeforeTargets="InvokeTestingPlatform"`, which exists only when Microsoft.Testing.Platform is the
+runner. Same reasoning as 6.2.32's move of the throwing deserialiser into `MetadataSerializer` —
+the point is not to fix one site but to make the trap unreachable for a project that adopts MTP
+later, **including by a route other than that property**. Severity is `Error`: MTP0001 is already a
+warning and is already being scrolled past, and a second warning beside an ignored warning is not a
+fix.
+
+**Prototyped and proved before the design was written, three controls.** (A) filtered MTP project →
+`error RAGNET0001`, no tests run. (B) same project unfiltered → 267 run normally, guard silent.
+(C) filtered non-MTP project → 6 of 97 run, filter genuinely narrows, guard does not fire. **C is
+the one that matters** — it proves a new repo-wide file leaves the other sixty-odd projects alone.
+The escape hatch was verified too: the native xunit v3 runner with `-class` ran **1** test where
+`--filter` ran 267, and prints the skip reason `dotnet test` suppresses.
+
+**One wording question is open and named rather than papered over.** The message asserts the project
+"sets `TestingPlatformDotnetTestSupport`", but the *condition* deliberately does not check that
+property. Today they coincide; the moment they diverge the error explains the wrong cause. Settle
+before implementation.
+
+**Fully verifiable locally — no account, no container.** The first phase since 6.2.30 for which
+nothing is account-blocked, in deliberate contrast to 6.2.34's documented `<VerifiedByReason>` gap.
+
+**Not in scope:** removing `TestingPlatformDotnetTestSupport` (it fixes #275's deadlock, where the
+VSTest adapter hung 2 of 4 runs before entering test code), making `--filter` work under MTP
+(upstream's), and CI — `ci.yml` and `nightly.yml` pass no filter, verified.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
