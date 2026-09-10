@@ -38,21 +38,34 @@ public sealed class AzureAISearchOptions
     public int? KNearestNeighborsCount { get; set; }
 
     /// <summary>
-    /// Whether the dense search path asks Azure's semantic ranker to rerank results. Off by
-    /// default; opting in changes what <see cref="Rag.NET.Models.SearchResult.Score"/> means.
+    /// Whether the native hybrid search path asks Azure's semantic ranker to rerank results. Off
+    /// by default; opting in changes what <see cref="Rag.NET.Models.SearchResult.Score"/> means on
+    /// that path.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The score becomes ordinal.</b> With the ranker on, the store returns Azure's
-    /// <c>RerankerScore</c> — a 0–4 relevance score — unrescaled, and declares
-    /// <see cref="Rag.NET.Abstractions.ScoreScale.OpaqueRanking"/>. It is not converted into a
-    /// similarity, because an invented similarity is worse than an honest ordinal, and
-    /// <c>MinScore</c> is therefore not applied on that path.
+    /// <b>The hybrid path, not the dense one, and not by preference.</b> Semantic ranking needs a
+    /// text query to measure relevance against, and <c>IVectorStore.SearchAsync</c> takes an
+    /// embedding and a <c>SearchOptions</c> of <c>TopK</c>/<c>MinScore</c>/<c>MetadataFilter</c> —
+    /// no text, by interface contract — so it cannot rank on any tier in any region (#539).
+    /// <c>IHybridSearchable.HybridSearchAsync</c> already carries a <c>textQuery</c>. Enabling this
+    /// leaves <c>SearchAsync</c> returning its genuine cosine similarity, untouched.
     /// </para>
     /// <para>
-    /// <b>Per instance, not per request.</b> It reshapes the score of the ordinary search path,
-    /// and <see cref="Rag.NET.Abstractions.IScoreScaleAware"/> requires that scale to be constant
-    /// for the instance's lifetime — callers probe it once and may cache the answer.
+    /// <b>The score becomes ordinal.</b> With the ranker on, the hybrid path returns Azure's
+    /// <c>RerankerScore</c> — a 0–4 relevance score — unrescaled. No new scale declaration is
+    /// needed: <c>IHybridSearchable.HybridScoreScale</c> is already
+    /// <see cref="Rag.NET.Abstractions.ScoreScale.OpaqueRanking"/>, because a fused rank and a
+    /// reranker score are ordinal for the same reason. It is not converted into a similarity —
+    /// an invented similarity is worse than an honest ordinal — and <c>MinScore</c> is not applied
+    /// on that path either way.
+    /// </para>
+    /// <para>
+    /// <b>Per instance, not per request.</b> It reshapes the score of the native hybrid path, whose
+    /// declared scale must be constant for the instance's lifetime — callers probe it once and may
+    /// cache the answer. It also makes the store declare
+    /// <c>IHybridSearchable.NativeOnlyCapability</c>, so a query that cannot reach the native path
+    /// is refused rather than fused client-side and returned unranked.
     /// </para>
     /// <para>
     /// <b>Requires a service that actually ranks.</b> Semantic ranking needs Basic tier or higher

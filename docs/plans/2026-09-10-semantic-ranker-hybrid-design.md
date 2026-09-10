@@ -124,11 +124,32 @@ There is a `ResilientSparseVectorStore`. There is no resilient hybrid variant. T
 applied to sparse and not to hybrid.
 
 **Two consequences for this phase.** First, it should be **filed separately** — it is not the
-ranker's defect and fixing it here would smuggle an unrelated change into a fix for #539. Second,
+ranker's defect and fixing it here would smuggle an unrelated change into a fix for #539. ~~Second,
 **§3's throw will surface it immediately and painfully**: resilience plus semantic ranking will throw
-on every query, and the user cannot resolve it except by disabling resilience. The plan must decide
+on every query, and the user cannot resolve it except by disabling resilience.~~ The plan must decide
 whether 6.2.36 ships before or after that separate fix, or whether the throw's message names
 resilience specifically as a known cause.
+
+> **CORRECTED 2026-09-10, while writing the implementation plan. The struck sentence is backwards,
+> and it is wrong by the mechanism this very section describes.** §3's throw is conditioned on
+> `VectorStore is IHybridSearchable` — and a decorator that hides that interface is exactly what the
+> paragraphs above establish `ResilientVectorStore` to be. So the probe does not match, the throw
+> **never fires**, and resilience plus semantic ranking yields correct results, unranked, with no
+> error: the silent failure this phase exists to remove, not the loud one predicted here. The
+> section reasoned two steps and stopped one short of applying its own finding to its own remedy.
+>
+> Left struck rather than deleted, because the shape of the error is worth keeping: it is the same
+> shape as 6.2.34's — reasoning correctly about a mechanism and then not checking whether the
+> mechanism applies to the path actually taken.
+>
+> **What was built instead**: `EnsembleBehavior` logs a `native_hybrid_hidden_by_decorator` warning
+> naming the inner store, because it cannot throw here — `IVectorStoreDecorator` deliberately
+> exposes only `InnerStoreType`, "so no caller can reach around whatever behaviour the decorator
+> adds", and only the instance would know whether ranking is on. Throwing would also break existing
+> callers who pair resilience with a hybrid-capable store and no ranker, who get correct client-side
+> results and have nothing to fix. The gap itself is filed as **#544**, and §3's throw message names
+> resilience and that issue as a separate known cause — the third of the three options this
+> paragraph offered, with the first two ruled out by the correction above.
 
 ## 5. Scope
 

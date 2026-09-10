@@ -21,6 +21,49 @@ namespace Rag.NET.Abstractions;
 public interface IHybridSearchable
 {
     /// <summary>
+    /// What this store's native hybrid query does that client-side fusion cannot reproduce, or
+    /// <see langword="null"/> when client-side fusion is an honest substitute. Phrased as a short
+    /// noun phrase, because it is quoted into the error a caller sees — <c>"semantic ranking"</c>,
+    /// not <c>"this store supports semantic ranking"</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The retrieval pipeline refuses rather than degrades when this is non-null.</b> Native
+    /// dispatch is conditional — an <see cref="RetrievalOptions.EnsembleOptions"/>, a non-zero
+    /// <see cref="RetrievalOptions.MinScore"/>, a sparse arm that would run, or
+    /// <see cref="RetrievalOptions.UseHybridSearch"/> left unset each keep the client-side path.
+    /// For every store that exists today that is a fair trade: client-side Reciprocal Rank Fusion
+    /// computes the same kind of answer the backend would. For a store that declares something
+    /// here, it is not — the caller asked for a capability and would receive correct results with
+    /// that capability silently absent, which is the failure mode this library treats as an error
+    /// rather than a downgrade (#539).
+    /// </para>
+    /// <para>
+    /// <b>Defaulted to <see langword="null"/> rather than required</b>, for the same reason
+    /// <see cref="HybridScoreScale"/> is defaulted: it is correct for every implementer that
+    /// exists, and a new member on this interface must not break the ones that do.
+    /// </para>
+    /// <para>
+    /// <b>A general capability, not a per-backend flag.</b> The pipeline must not know what Azure's
+    /// semantic ranker is; it must know only that this store would lose something. Anything that
+    /// would make the retrieval behaviour name a specific backend belongs behind this member
+    /// instead.
+    /// </para>
+    /// <para>
+    /// <b>The probe is on the registered <see cref="IVectorStore"/> instance</b>, so a decorator
+    /// that does not forward <see cref="IHybridSearchable"/> hides this declaration along with the
+    /// capability itself — see issue #544.
+    /// </para>
+    /// <para>
+    /// <b>Blank counts as <see langword="null"/>.</b> The pipeline treats an empty or whitespace
+    /// value as no declaration, because the value exists to be quoted into an error and a blank one
+    /// produces a refusal that names nothing. Return <see langword="null"/> to declare nothing;
+    /// return a noun phrase to declare something.
+    /// </para>
+    /// </remarks>
+    string? NativeOnlyCapability => null;
+
+    /// <summary>
     /// The scale of the scores <see cref="HybridSearchAsync"/> returns. Defaults to
     /// <see cref="ScoreScale.OpaqueRanking"/>, which is what a native hybrid produces: the backend
     /// fuses a keyword ranking with a vector ranking, and a fused rank carries no similarity

@@ -7469,6 +7469,7 @@ that depend on it; all four still caught, same catchers.
 **Surface:** Storage
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-10-semantic-ranker-hybrid-design.md`
+**Plan:** `docs/plans/2026-09-10-semantic-ranker-hybrid-implementation.md`
 
 **Goal:** the semantic ranker moves to the one path that carries a text query, and a request for
 ranking that cannot be honoured throws instead of returning unranked results.
@@ -7510,8 +7511,15 @@ does not implement `IHybridSearchable`, and `EnsembleBehavior` probes the **deco
 for every store that supports it. The repository solved this exact problem once for the sibling
 capability — there is a `ResilientSparseVectorStore`, and the class doc says it exists "so an
 `is ISparseSearchable` probe on the resolved `IVectorStore` stays honest after decoration". The
-reasoning was applied to sparse and not to hybrid. **To be filed separately and not fixed here**,
-but §3's throw will surface it painfully: resilience plus ranking throws on every query.
+reasoning was applied to sparse and not to hybrid. **Filed 2026-09-10 as #544 and not fixed here.**
+~~But §3's throw will surface it painfully: resilience plus ranking throws on every query.~~
+**That prediction is backwards, and the implementation plan's §0.1 corrects it.** The throw is
+conditioned on `VectorStore is IHybridSearchable`, which is exactly what a decorator hiding the
+interface makes false — so under resilience the throw *never fires* and the caller gets correct,
+unranked, silent results. The section predicted the opposite of the defect it had just described,
+using the mechanism it had just described. The plan answers it with a warning rather than a throw,
+because `IVectorStoreDecorator` deliberately exposes only `InnerStoreType` and the behaviour cannot
+ask a decorated instance whether ranking is on.
 
 **`vector-stores.md` is wrong in the same way the code was** and must be rewritten rather than
 amended — it documents the dense path throughout.
@@ -7522,6 +7530,74 @@ the guard itself are all correct and independently useful. Only the path was wro
 **The lesson is not "the account gap did this".** A local test could not have caught this. A careful
 reading of `SearchAsync`'s signature against one sentence of Microsoft's documentation could, and
 needed no Azure resource at all.
+
+**BUILT 2026-09-10. Plan: `docs/plans/2026-09-10-semantic-ranker-hybrid-implementation.md`.**
+
+**The plan-writing pass found two design errors before a line was written, and one of them is the
+section quoted above.** §4 predicted that the throw would "surface it immediately and painfully:
+resilience plus ranking throws on every query". It does the opposite. The throw is conditioned on
+`VectorStore is IHybridSearchable`, and a decorator hiding that interface is precisely what §4 had
+just finished describing — so under resilience the throw never fires and the caller gets correct,
+unranked, silent results. **The section predicted the opposite of the defect it had just described,
+using the mechanism it had just described.** The answer is a warning rather than a throw:
+`IVectorStoreDecorator` deliberately exposes only `InnerStoreType` — "so no caller can reach around
+whatever behaviour the decorator adds" — so the behaviour cannot ask a decorated instance whether
+ranking is on, but it can read the inner `Type`, which is what that interface exists for. Throwing
+would also break existing resilience+hybrid users who have no defect to fix.
+
+**The second error was a silent path nobody had named: `UseHybridSearch = false`.** A caller who
+enables the ranker at registration and never sets `UseHybridSearch` per query gets dense search
+forever. Under 6.2.34 they got a throw; after the move they would have got silence — **a regression
+in observability introduced by the fix**. It is now the first of four named blocking conditions, and
+the refusal moved above the early return to reach it.
+
+**#544 filed for the resilience gap**, per the design's "file it, do not fix it here", and the throw
+message names resilience and the issue as a known separate cause.
+
+**`IScoreScaleAware` removed from the store** (the question §2 deferred). With the ranker off the
+dense path, the property returns `Similarity` unconditionally — which `ScoreScale`'s own remarks
+define as the meaning of *not implementing the interface*. The docs defended implementing it
+unconditionally on the grounds that "a conditional implementation is not expressible"; that argued
+unconditional-over-conditional and says nothing about implementation-over-absence, and its premise —
+that the value depends on a constructor option — is exactly what this phase deletes. Two 6.2.34
+tests had to be deleted with it, one of which asserted *the dense path declares `OpaqueRanking` when
+the ranker is on*: the precise claim #539 is about, pinned as a test.
+
+**The capability probe is `IHybridSearchable.NativeOnlyCapability`, a defaulted `string?`** — one
+member carrying both the predicate and the explanation, quoted into the refusal. Weaviate needed no
+edit, which is what defaulting is for.
+
+**Two things only running it found.** `MA0051` rejected `HandleAsync` at 63 lines against a 60-line
+cap, so both guards were extracted into named methods. And **six pre-existing tests failed on the
+first build of the refusal**, because *NSubstitute returns `string.Empty` for an unconfigured
+`string` property, not `null`* — so the pattern `{ NativeOnlyCapability: { } }` matched `""` and
+produced a refusal reading "is configured for , which only its native hybrid query performs". The
+fix was not to configure six substitutes: blank now counts as no declaration, because the value's
+whole job is to be quoted into that message. The six tests then passed untouched, which is the
+correct outcome — they assert behaviour that must not change.
+
+**The mutation sweep ran nine rows and produced one survivor that became a test.** Row 2 had to be
+split while running it, and the halves differ: reintroducing 6.2.34's defect *in full* is caught,
+but setting `QueryType = Semantic` on the dense path **without** also expecting a reranker score
+**passed every test in the repository** — the score returned is an ordinary similarity, so the
+range assertion is satisfied and the guard never fires because nothing asked it to. It is a
+plausible half-move back, it sends Azure a semantic query with no search text, and **it is this
+phase's own defect shape**, so it got a test rather than a note: the dense request is now asserted
+*on the wire*, through a `DelegatingHandler`, never to mention semantic ranking at all. That is the
+opposite call from 6.2.34 row 7 and 6.2.35 row 4, where survivors were recorded rather than tested —
+the difference is that those were unreachable or pinned a coincidence, and this one is neither.
+**Rows 4 and 5 share a single catcher**, which is a coverage-shape finding rather than a pass: two
+structurally different mutations are both held by one theory row. **Row 8 was caught only by a
+structural assertion while all 1496 pipeline tests stayed unmoved** — predicted, and the point: it
+is positive evidence the `IScoreScaleAware` removal was behaviour-preserving, since no behavioural
+test can distinguish a removal from its reversal when there is no behavioural difference.
+
+**Suites:** AzureAISearch 45 → **49** (six added, two deleted), `Rag.NET.Tests` 1487 → **1496**,
+Resilience **105**, Memory **3**, Weaviate **30**, RepoConventions **98** (2 pre-existing skips),
+PackageValidation **23**. Whole solution builds clean, 0 warnings, 158 projects — so the interface
+removal breaks no consumer in the repository. **Still account-blocked past the guard**, unchanged
+from 6.2.34 and stated rather than glossed: the simulator accepts `queryType=semantic`, returns 200
+and returns no `rerankerScore`, so the throw is testable locally and the ranking itself is not.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to

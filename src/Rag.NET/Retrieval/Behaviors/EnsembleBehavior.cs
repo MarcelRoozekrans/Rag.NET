@@ -37,8 +37,12 @@ public sealed class EnsembleBehavior : IRetrievalBehavior
     {
         var opts = ctx.Options;
 
+        RefuseIfNativeOnlyCapabilityIsUnreachable(opts);
+
         if (!opts.UseHybridSearch)
             return await next(ctx, ct).ConfigureAwait(false);
+
+        WarnIfADecoratorHidesNativeHybrid(ctx);
 
         var searchOptions = new SearchOptions
         {
@@ -64,20 +68,123 @@ public sealed class EnsembleBehavior : IRetrievalBehavior
     }
 
     /// <summary>
-    /// Whether the store's native hybrid query can serve this request without silently doing
-    /// less than the caller configured. Native fusion happens inside the backend, so it cannot
-    /// apply <see cref="EnsembleOptions"/> weights, cannot run a sparse (SPLADE) arm, and does
-    /// not apply <see cref="RetrievalOptions.MinScore"/> at all — a native implementer's fused
-    /// score is on its own scale, not the dense arm's similarity scale. Each of those therefore
-    /// keeps the client-side path: an <see cref="RetrievalOptions.EnsembleOptions"/> instance
-    /// (even default-valued — supplying one at all expresses weighting intent), a non-zero
-    /// <see cref="RetrievalOptions.MinScore"/> (dispatching natively would silently discard
-    /// it), or a sparse arm that would run (<see cref="SparseArmWouldRun"/>).
+    /// Refuses a request that asks for something only the store's native hybrid query can do, when
+    /// this query cannot reach that path. Correct-but-silently-degraded is the failure mode this
+    /// library treats as an error (#539).
     /// </summary>
-    private bool CanDispatchNatively(RetrievalOptions opts) =>
-        opts.EnsembleOptions is null
-        && opts.MinScore is 0.0
-        && !SparseArmWouldRun(opts);
+    /// <remarks>
+    /// <para>
+    /// <b>Called before the <see cref="RetrievalOptions.UseHybridSearch"/> early return</b>, not
+    /// after: a caller who enabled a native-only capability at registration and left
+    /// <see cref="RetrievalOptions.UseHybridSearch"/> unset would otherwise get dense search
+    /// forever, silently without that capability — the same defect one layer up.
+    /// </para>
+    /// <para>
+    /// <b>Blank is treated as absent</b>, not as an unnamed capability. The declared value's whole
+    /// job is to be quoted into the message, and an empty one renders "is configured for , which
+    /// only its native hybrid query performs" — a refusal naming nothing the caller can act on. A
+    /// store declaring blank has declared nothing usable, so it takes the ordinary path.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// The store declares an <see cref="IHybridSearchable.NativeOnlyCapability"/> and
+    /// <see cref="NativeDispatchBlocker"/> names a setting keeping this query off the native path.
+    /// </exception>
+    private void RefuseIfNativeOnlyCapabilityIsUnreachable(RetrievalOptions opts)
+    {
+        if (VectorStore is not IHybridSearchable { NativeOnlyCapability: var declared }
+            || string.IsNullOrWhiteSpace(declared)
+            || NativeDispatchBlocker(opts) is not { } blocker)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"{VectorStore.GetType().Name} is configured for {declared}, which only its " +
+            $"native hybrid query performs, but this request cannot use that path because " +
+            $"{blocker} keeps it on client-side fusion. Client-side fusion would return " +
+            $"correct results with {declared} silently absent, so the request is refused " +
+            $"rather than downgraded. Either adjust {blocker}, or turn off {declared} on the " +
+            "store. Note: registering Rag.NET.Resilience also prevents native hybrid dispatch " +
+            "for a different reason and is not detected here — see issue #544.");
+    }
+
+    /// <summary>
+    /// Warns when the registered store is a decorator that does not forward
+    /// <see cref="IHybridSearchable"/>, so native hybrid dispatch is unreachable however the query
+    /// is configured (#544).
+    /// </summary>
+    /// <remarks>
+    /// A decorator hides <see cref="IHybridSearchable.NativeOnlyCapability"/> along with the
+    /// capability itself, so <see cref="RefuseIfNativeOnlyCapabilityIsUnreachable"/> cannot fire
+    /// for it: <see cref="IVectorStoreDecorator"/> deliberately exposes only the inner
+    /// <see cref="Type"/> — "so no caller can reach around whatever behaviour the decorator adds" —
+    /// and only the instance would know whether the capability is on. Warns rather than throws: a
+    /// caller pairing resilience with a hybrid-capable store that declares no native-only
+    /// capability gets correct client-side results and has nothing to fix.
+    /// </remarks>
+    private void WarnIfADecoratorHidesNativeHybrid(RetrievalContext ctx)
+    {
+        if (VectorStore is not IHybridSearchable
+            && VectorStore is IVectorStoreDecorator decorator
+            && typeof(IHybridSearchable).IsAssignableFrom(decorator.InnerStoreType)
+            && Interlocked.Exchange(ref _decoratorWarningIssued, 1) == 0)
+        {
+            RagPipelineLog.NativeHybridHiddenByDecorator(
+                ctx.Logger, VectorStore.GetType().Name, decorator.InnerStoreType.Name);
+        }
+    }
+
+    /// <summary>
+    /// Guards <see cref="WarnIfADecoratorHidesNativeHybrid"/> to one warning for the lifetime of
+    /// this behaviour, which is registered singleton.
+    /// </summary>
+    /// <remarks>
+    /// The condition is a permanent property of the registered store, not of the query, so every
+    /// warning after the first carries no information — and this fires on the retrieval path, where
+    /// one line per query would bury the log it is trying to draw attention to. Same shape as
+    /// persistent conversation memory, which logs one warning per memory instance for its own
+    /// permanent score-scale mismatch. <see cref="Interlocked"/> rather than a plain assignment
+    /// because a singleton behaviour serves concurrent retrievals.
+    /// </remarks>
+    private int _decoratorWarningIssued;
+
+    /// <summary>
+    /// The name of the first request setting that keeps this query on the client-side path, or
+    /// <see langword="null"/> when the store's native hybrid query can serve it. Native fusion
+    /// happens inside the backend, so it cannot apply <see cref="EnsembleOptions"/> weights,
+    /// cannot run a sparse (SPLADE) arm, and does not apply <see cref="RetrievalOptions.MinScore"/>
+    /// at all — a native implementer's fused score is on its own scale, not the dense arm's
+    /// similarity scale. Each of those therefore keeps the client-side path: an
+    /// <see cref="RetrievalOptions.EnsembleOptions"/> instance (even default-valued — supplying one
+    /// at all expresses weighting intent), a non-zero <see cref="RetrievalOptions.MinScore"/>
+    /// (dispatching natively would silently discard it), or a sparse arm that would run
+    /// (<see cref="SparseArmWouldRun"/>). <see cref="RetrievalOptions.UseHybridSearch"/> left unset
+    /// belongs in the same list and was never named there, because until
+    /// <see cref="IHybridSearchable.NativeOnlyCapability"/> existed it had no consequence worth
+    /// naming — the query simply never reached this behaviour's hybrid branch.
+    /// </summary>
+    /// <remarks>
+    /// Returns the option's name rather than a <see langword="bool"/> because a store declaring
+    /// <see cref="IHybridSearchable.NativeOnlyCapability"/> turns this from a routing decision into
+    /// an error, and an error that says "cannot dispatch natively" without saying which of four
+    /// settings caused it is not actionable. The order is not arbitrary:
+    /// <see cref="RetrievalOptions.UseHybridSearch"/> is tested first because it is the condition a
+    /// caller is most likely to have simply forgotten, and reporting a <c>MinScore</c> problem to
+    /// someone who never turned hybrid search on would send them to the wrong place.
+    /// </remarks>
+    private string? NativeDispatchBlocker(RetrievalOptions opts) =>
+        !opts.UseHybridSearch ? nameof(RetrievalOptions.UseHybridSearch)
+        : opts.EnsembleOptions is not null ? nameof(RetrievalOptions.EnsembleOptions)
+        : opts.MinScore is not 0.0 ? nameof(RetrievalOptions.MinScore)
+        : SparseArmWouldRun(opts) ? nameof(RetrievalOptions.UseSparseSearch)
+        : null;
+
+    /// <summary>
+    /// Whether the store's native hybrid query can serve this request without silently doing less
+    /// than the caller configured — the negation of <see cref="NativeDispatchBlocker"/>.
+    /// </summary>
+    private bool CanDispatchNatively(RetrievalOptions opts) => NativeDispatchBlocker(opts) is null;
 
     /// <summary>
     /// Whether the sparse (SPLADE) arm participates: not disabled per call

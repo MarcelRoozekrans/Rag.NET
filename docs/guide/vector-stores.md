@@ -518,30 +518,57 @@ services.AddRagNet(rag => rag
         configure:        o => o.EnableSemanticRanking = true));
 ```
 
-Enabling it changes the dense `SearchAsync` path only — `HybridSearchAsync` is untouched, because
-stacking Azure's reranker on top of its own hybrid fusion is a separate question about what score
-comes back from ranking an already-fused result, and this store does not answer it. With it on:
+**Enabling it changes the native hybrid path only.** `SearchAsync` is untouched and keeps its
+genuine cosine similarity — not as a design preference, but because semantic ranking needs query
+text and `IVectorStore.SearchAsync` has none to give: it takes a `ReadOnlyMemory<float>` and a
+`SearchOptions` of `TopK`, `MinScore` and `MetadataFilter`. Microsoft is explicit that the ranker
+has nothing to work with in that case — *"A query with `search=*` or an empty search string … won't
+work because there's nothing to measure semantic relevance against"* — so the dense path cannot rank
+on any tier in any region ([#539](https://github.com/MarcelRoozekrans/Rag.NET/issues/539)).
+`HybridSearchAsync` already carries a `textQuery`, which is why it is the path that ranks.
+
+With it on:
 
 - The index gains one `SemanticSearch` configuration (named internally, not a caller-visible
   knob) prioritising the `text` field as content, built by `InitializeAsync`/`CreateOrUpdateIndexAsync`
   the same way every other field is — no separate migration step.
-- The query sets `QueryType = SearchQueryType.Semantic` and points it at that configuration.
-- `SearchResult.Score` becomes Azure's `RerankerScore`, returned **unrescaled** — a roughly 0–4
-  ordinal relevance score, not a cosine similarity. The store declares
-  `ScoreScale.OpaqueRanking` for this while enabled (`ScoreScale.Similarity` while it is off) — see
-  [Score scale](#score-scale-iscorescaleaware). **`SearchOptions.MinScore` is therefore not applied**
-  on this path, for the same reason it is not applied to Azure's or Weaviate's native hybrid fusion
-  score: thresholding an ordinal rank as if it were a similarity would keep or drop results
-  arbitrarily.
+- The **hybrid** query sets `QueryType = SearchQueryType.Semantic` and points it at that
+  configuration, so Azure reranks its own fused BM25+vector result.
+- `SearchResult.Score` becomes Azure's `RerankerScore` on that path, returned **unrescaled** — a
+  roughly 0–4 ordinal relevance score, not a cosine similarity. No new scale declaration was needed:
+  `IHybridSearchable.HybridScoreScale` is already `ScoreScale.OpaqueRanking`, because a fused rank
+  and a reranker score are ordinal for the same reason — see
+  [Native hybrid scores are ordinal, not similarities](#native-hybrid-scores-are-ordinal-not-similarities).
+  **`SearchOptions.MinScore` is therefore not applied** on the hybrid path, ranked or not:
+  thresholding an ordinal rank as if it were a similarity would keep or drop results arbitrarily.
 - `KNearestNeighborsCount` must be `null` (Azure's own default of 50) or at least 50 — see
   [Vector recall](#vector-recall-knearestneighborscount) above. Enabling the ranker with a smaller
-  `k` is rejected at registration rather than left to degrade the ranking silently.
+  `k` is rejected at registration rather than left to degrade the ranking silently. The guard still
+  applies: the hybrid query's vector arm has the same recall problem.
 - **A service that cannot rank throws, rather than degrading silently.** Azure answers HTTP 200
   with ordinary results and no `RerankerScore` whenever the tier is below Basic, the region does not
   support semantic ranking, or the configuration name does not match — there is no error to catch,
-  only a missing field on results that otherwise look normal. `SearchAsync` treats that absence as
-  the error it is: `InvalidOperationException`, naming the index, rather than handing back
-  plausible-looking results the caller would believe were reranked.
+  only a missing field on results that otherwise look normal. `HybridSearchAsync` treats that
+  absence as the error it is: `InvalidOperationException`, naming the index, rather than handing
+  back plausible-looking results the caller would believe were reranked. **This guard is what caught
+  the path mistake above**: it fired against a real Azure resource within hours of the feature
+  shipping, on a path that could never have ranked.
+- **A query that cannot reach the native path is refused, not quietly downgraded.** The pipeline
+  dispatches natively only when `UseHybridSearch` is set, no `EnsembleOptions` is supplied,
+  `MinScore` is `0.0`, and no sparse (SPLADE) arm would run — see
+  [How the hybrid path is selected](retrieval.md#how-the-hybrid-path-is-selected). Violate one and
+  the query would be fused client-side, returning correct results with the ranking silently absent.
+  Because the store declares `IHybridSearchable.NativeOnlyCapability`, `EnsembleBehavior` throws
+  instead, naming which of those four settings blocked it.
+
+> **Registering `Rag.NET.Resilience` disables native hybrid dispatch entirely**, and therefore
+> semantic ranking with it. `ResilientVectorStore` does not forward `IHybridSearchable`, and the
+> pipeline probes the registered (decorated) store, so every hybrid query falls back to client-side
+> fusion — correct results, no ranking. The refusal above cannot fire for this case, because the
+> decorator hides the declaration along with the capability; the pipeline logs a
+> `native_hybrid_hidden_by_decorator` warning naming the inner store instead. Tracked as
+> [#544](https://github.com/MarcelRoozekrans/Rag.NET/issues/544); until it is fixed, do not combine
+> resilience with semantic ranking.
 
 ### Native hybrid search
 
@@ -920,25 +947,27 @@ At least two stores are required (validated at registration). Store factories re
 
 | Scale | Meaning | Declared by |
 |-------|---------|-------------|
-| `ScoreScale.Similarity` | Comparable, roughly `[0, 1]`, safe to threshold against a fixed cut-off | The assumed default — stores that do **not** implement the interface — and `AzureAISearchVectorStore` explicitly, when [semantic ranking](#semantic-ranking) is off |
-| `ScoreScale.OpaqueRanking` | Ordinal only; magnitude is not comparable and must not be thresholded | `FederatedVectorStore` (RRF sums); `AzureAISearchVectorStore`, when [semantic ranking](#semantic-ranking) is on |
+| `ScoreScale.Similarity` | Comparable, roughly `[0, 1]`, safe to threshold against a fixed cut-off | The assumed default — every store that does **not** implement the interface, `AzureAISearchVectorStore` included |
+| `ScoreScale.OpaqueRanking` | Ordinal only; magnitude is not comparable and must not be thresholded | `FederatedVectorStore` (RRF sums) |
 
-The declaration describes `IVectorStore.SearchAsync` — the interface `IScoreScaleAware` sits on — not any capability method the store also happens to offer. Consumers probe with `store is IScoreScaleAware { ScoreScale: ScoreScale.OpaqueRanking }`. Every other store in the library, and `AzureAISearchVectorStore` with semantic ranking off, is unchanged and continues to be treated as similarity-scaled, so `SearchOptions.MinScore` on the retrieval path behaves exactly as before; the probe currently affects persistent conversation memory only. `IHybridSearchable` carries the sibling declaration for the hybrid path: `HybridScoreScale` defaults to the same `ScoreScale.OpaqueRanking`, and Azure AI Search and Weaviate both take that default for `HybridSearchAsync` — see [Native hybrid scores are ordinal, not similarities](#native-hybrid-scores-are-ordinal-not-similarities).
+The declaration describes `IVectorStore.SearchAsync` — the interface `IScoreScaleAware` sits on — not any capability method the store also happens to offer. Consumers probe with `store is IScoreScaleAware { ScoreScale: ScoreScale.OpaqueRanking }`. Every other store in the library, `AzureAISearchVectorStore` included, is treated as similarity-scaled, so `SearchOptions.MinScore` on the retrieval path behaves exactly as before; the probe currently affects persistent conversation memory only. `IHybridSearchable` carries the sibling declaration for the hybrid path: `HybridScoreScale` defaults to the same `ScoreScale.OpaqueRanking`, and Azure AI Search and Weaviate both take that default for `HybridSearchAsync` — see [Native hybrid scores are ordinal, not similarities](#native-hybrid-scores-are-ordinal-not-similarities).
 
-**Azure AI Search implements `IScoreScaleAware` unconditionally**, with a value fixed at
-construction — `ScoreScale.Similarity` with semantic ranking off, `ScoreScale.OpaqueRanking` with
-it on (see [Semantic ranking](#semantic-ranking)) — rather than implementing the interface only
-when the ranker is enabled: a class implements an interface or it does not, at compile time, so a
-conditional implementation is not expressible. Fixing the value at construction is also what keeps
-the off case behaviour-preserving: `PersistentConversationMemory` probes for
-`OpaqueRanking` specifically, so a store declaring `Similarity` and a store not implementing the
-interface at all take the same branch — nothing changes for a caller who never enables the ranker.
-With the ranker off, `SearchAsync` issues a pure vector query, whose `@search.score` is a bounded
-monotone function of the similarity metric and is thresholdable, which is why `Similarity` is the
-correct declaration for that case rather than merely the default one. Its **hybrid** scores
-(`HybridSearchAsync`) are a different matter regardless of the ranker setting — RRF values around
-`1/60` per fused query — and are covered by `IHybridSearchable.HybridScoreScale` instead, not
-`IScoreScaleAware`, which describes the dense path only; the pipeline's hybrid dispatch never
+**Azure AI Search does not implement `IScoreScaleAware`**, and that is the correct declaration
+rather than an omission. Since [#539](https://github.com/MarcelRoozekrans/Rag.NET/issues/539) moved
+semantic ranking to `HybridSearchAsync`, its `SearchAsync` returns a genuine cosine similarity under
+every option — so the value it would declare is `ScoreScale.Similarity`, which is exactly what this
+interface's absence already means. The store implemented it while the ranker sat on the dense path
+and the value depended on a constructor argument; with that gone, implementing it would leave a
+member indistinguishable from not implementing it. The hybrid declaration is the one that still
+carries information, and it stays: `IHybridSearchable.HybridScoreScale` is `ScoreScale.OpaqueRanking`,
+covering the fused score and the reranker score alike.
+
+`SearchAsync` issues a pure vector query under every option, whose `@search.score` is a bounded
+monotone function of the similarity metric and is thresholdable, which is why `Similarity` — reached
+through the interface's absence — is the correct answer for it. Its **hybrid** scores
+(`HybridSearchAsync`) are a different matter — RRF values around `1/60` per fused query, or Azure's
+0–4 `RerankerScore` when [semantic ranking](#semantic-ranking) is on — and are covered by
+`IHybridSearchable.HybridScoreScale` instead, which is `OpaqueRanking` for both; the pipeline's hybrid dispatch never
 applies a non-zero `MinScore` to them (a configured `MinScore` keeps the client-side path) and
 neither does the store itself when called directly — see [Native hybrid scores are ordinal, not
 similarities](#native-hybrid-scores-are-ordinal-not-similarities).

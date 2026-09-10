@@ -113,4 +113,7 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(EventId = 1730415878, EventName = "ensemble_native_hybrid", Level = LogLevel.Debug, Message = "EnsembleBehavior: native hybrid search dispatched to {StoreName}")]
     internal static partial void EnsembleNativeHybrid(ILogger logger, string storeName);
+
+    [LoggerMessage(EventId = 1729411340, EventName = "native_hybrid_hidden_by_decorator", Level = LogLevel.Warning, Message = "EnsembleBehavior: native hybrid search is unavailable because the registered store is wrapped by {Decorator}, which does not forward IHybridSearchable; {InnerStore} supports it. Falling back to client-side fusion. See issue #544")]
+    internal static partial void NativeHybridHiddenByDecorator(ILogger logger, string decorator, string innerStore);
 }
