@@ -30,7 +30,20 @@
          project, so this changes how one project runs and leaves the other sixty-odd on the adapter
          they work fine under. Microsoft.NET.Test.Sdk stays referenced because both workflows SELECT
          projects by grepping for it, and removing it would quietly drop this project from CI
-         entirely. -->
+         entirely.
+
+         WHAT IT COSTS, which this comment omitted until #529. A filter passed to `dotnet test`
+         arrives as the MSBuild property VSTestTestCaseFilter, and Microsoft.Testing.Platform does
+         not apply it: it raises the warning MTP0001 and then runs EVERY test in this assembly.
+         Measured 2026-09-10, a filter naming one class ran 267 tests, 149 of them for real. This is
+         the one project in the repository where narrowing matters most, because it holds the BEIR
+         corpora, the ONNX replay and the graph and RAPTOR runs, and it was the one project where
+         narrowing silently did nothing.
+
+         Since #529 the root Directory.Build.targets refuses that filter with error RAGNET0001 and
+         names the native xunit v3 runner, which honours -class, -method and -filter. See
+         docs/reference/ci.md. The guard is hooked to MTP's runner rather than to this property, so
+         it arms itself for any project that adopts MTP later. -->
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 

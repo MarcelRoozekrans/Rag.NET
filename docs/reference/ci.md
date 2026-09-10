@@ -1008,3 +1008,32 @@ The explicit `dotnet build` before any `--no-build` run is load-bearing rather t
 
 Warnings are errors across the whole solution (`Directory.Build.props`), so CI needs no extra
 strictness flag — a warning fails the build wherever it is built.
+
+### Narrowing a run: `--filter`, and the one project that refuses it
+
+`--filter` works normally everywhere except **`tests/Rag.NET.Benchmarks.Quality.IntegrationTests`**,
+where it is **refused with `error RAGNET0001`** rather than silently ignored.
+
+That project sets `TestingPlatformDotnetTestSupport`, so Microsoft.Testing.Platform is its runner.
+`--filter` sets the MSBuild property `VSTestTestCaseFilter`, which MTP does not apply: it raises the
+warning `MTP0001` and then **runs every test in the assembly**. Measured 2026-09-10 — a filter naming
+one class ran **267** tests, 149 of them for real. The failure mode is not an error but a long green
+run whose results are attributed to the wrong test; during #495 it produced exactly that, sampling
+self-query prompts while they were read as deep-research ones.
+
+The guard lives in the repository root `Directory.Build.targets` and arms itself for any project MTP
+runs, so nothing has to be remembered when a second one adopts it.
+
+**Use the native xunit v3 runner instead**, which honours `-class`, `-method` and `-filter` (query
+syntax):
+
+```bash
+dotnet build tests/Rag.NET.Benchmarks.Quality.IntegrationTests -c Release
+
+./tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirDeepResearchTests
+```
+
+**It is worth preferring for a second reason:** it prints per-test output and the **skip reason** for
+skipped tests, which `dotnet test` suppresses. On this project, where almost everything is gated
+behind `RAGNET_*` environment variables, the skip reason is usually the thing you actually needed to
+read — it names the variable to set.
