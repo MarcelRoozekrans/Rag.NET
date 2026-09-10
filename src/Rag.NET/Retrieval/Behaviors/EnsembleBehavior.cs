@@ -127,12 +127,27 @@ public sealed class EnsembleBehavior : IRetrievalBehavior
     {
         if (VectorStore is not IHybridSearchable
             && VectorStore is IVectorStoreDecorator decorator
-            && typeof(IHybridSearchable).IsAssignableFrom(decorator.InnerStoreType))
+            && typeof(IHybridSearchable).IsAssignableFrom(decorator.InnerStoreType)
+            && Interlocked.Exchange(ref _decoratorWarningIssued, 1) == 0)
         {
             RagPipelineLog.NativeHybridHiddenByDecorator(
                 ctx.Logger, VectorStore.GetType().Name, decorator.InnerStoreType.Name);
         }
     }
+
+    /// <summary>
+    /// Guards <see cref="WarnIfADecoratorHidesNativeHybrid"/> to one warning for the lifetime of
+    /// this behaviour, which is registered singleton.
+    /// </summary>
+    /// <remarks>
+    /// The condition is a permanent property of the registered store, not of the query, so every
+    /// warning after the first carries no information — and this fires on the retrieval path, where
+    /// one line per query would bury the log it is trying to draw attention to. Same shape as
+    /// persistent conversation memory, which logs one warning per memory instance for its own
+    /// permanent score-scale mismatch. <see cref="Interlocked"/> rather than a plain assignment
+    /// because a singleton behaviour serves concurrent retrievals.
+    /// </remarks>
+    private int _decoratorWarningIssued;
 
     /// <summary>
     /// The name of the first request setting that keeps this query on the client-side path, or

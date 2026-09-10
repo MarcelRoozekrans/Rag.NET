@@ -1125,6 +1125,33 @@ public class EnsembleBehaviorTests
     }
 
     /// <summary>
+    /// Once per behaviour instance, not once per query. The condition is a permanent property of
+    /// the registered store, so every warning after the first carries no information — and
+    /// <see cref="EnsembleBehavior"/> is a singleton on the retrieval path, where one line per
+    /// query would bury the log it exists to draw attention to.
+    /// </summary>
+    [Fact]
+    public async Task HandleAsync_DecoratorHidesHybridCapability_WarnsOncePerInstanceNotPerQuery()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var logger = new CapturingLogger();
+        var sut = new EnsembleBehavior
+        {
+            Embedder = MakeEmbedder(),
+            VectorStore = new FakeDecoratorOverHybridStore(),
+            Bm25Index = Substitute.For<IBm25Index>(),
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true }) with { Logger = logger };
+
+        for (var i = 0; i < 3; i++)
+        {
+            await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException("must not call next"));
+        }
+
+        Assert.Single(logger.Entries, e => e.Message.Contains("#544", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// And an ordinary undecorated store warns about nothing — the diagnostic must not fire for
     /// every store in the library that simply has no native hybrid.
     /// </summary>
