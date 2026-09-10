@@ -1,0 +1,50 @@
+<Project>
+
+  <!--
+    Refuses a VSTest filter on a project Microsoft.Testing.Platform runs, because the filter is
+    silently ignored there and EVERY test in the assembly runs instead (#529, phase 6.2.35).
+
+    Note for editors: XML comments cannot contain a double hyphen, so the option this guard is about
+    is written as VSTestTestCaseFilter (the MSBuild property) throughout rather than as the command
+    line flag that sets it.
+
+    Passing a filter to `dotnet test` sets the MSBuild property VSTestTestCaseFilter. Under MTP the
+    runner is InvokeTestingPlatform, which does not read it: MTP's own _ValidateVSTestProperties
+    detects the property and raises MTP0001, a WARNING, and the run proceeds over the whole
+    assembly. Measured 2026-09-10 on Rag.NET.Benchmarks.Quality.IntegrationTests: a filter naming
+    one class ran 267 tests, 149 of them for real. It has already produced a wrong finding, during
+    #495, where self-query prompts were read as deep-research ones. The measurement was right and
+    the attribution was not.
+
+    Error rather than Warning on purpose: MTP0001 is ALREADY a warning and is already being scrolled
+    past, which is how this survived long enough to corrupt that finding. A second warning beside an
+    ignored warning is not a fix. Nothing legitimate is lost, because a filter here can never be
+    honoured, so refusing it takes nothing away.
+
+    DO NOT "tidy" the Condition to check TestingPlatformDotnetTestSupport, even though the message
+    names that property. The hook is BeforeTargets="InvokeTestingPlatform", a target that exists
+    only when MTP is the runner, so this guard ARMS ITSELF for any project that adopts MTP later,
+    including by a route other than that property. Today one project sets it and it is the same
+    project MTP runs, so the two look interchangeable. They are not, and the condition is the one
+    that stays correct. The message handles the difference by conditioning its own wording below.
+
+    CI is unaffected: ci.yml and nightly.yml select by project and pass no filter.
+  -->
+  <Target Name="RefuseVSTestFilterUnderTestingPlatform"
+          BeforeTargets="InvokeTestingPlatform"
+          Condition="'$(VSTestTestCaseFilter)' != ''">
+
+    <PropertyGroup>
+      <!-- Always true. The second line fires only when that property is genuinely the reason. -->
+      <_RagNetFilterWhy>Microsoft.Testing.Platform is the test runner for this project</_RagNetFilterWhy>
+      <_RagNetFilterWhy Condition="'$(TestingPlatformDotnetTestSupport)' == 'true'">$(_RagNetFilterWhy) (it sets TestingPlatformDotnetTestSupport)</_RagNetFilterWhy>
+    </PropertyGroup>
+
+    <!-- $(TargetDir)$(AssemblyName).exe resolves to an absolute path, so the reader gets a
+         copy-pasteable command rather than a pattern to reconstruct. -->
+    <Error Code="RAGNET0001"
+           Text="'--filter' is silently ignored here: $(_RagNetFilterWhy), and it does not apply the VSTest filter property, so EVERY test in the assembly runs instead of the ones you asked for. Use the native xunit v3 runner, which honours -class, -method and -filter: $(TargetDir)$(AssemblyName).exe -class &lt;fully.qualified.ClassName&gt;" />
+
+  </Target>
+
+</Project>
