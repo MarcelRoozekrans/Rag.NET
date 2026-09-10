@@ -7465,7 +7465,7 @@ held both the weaker pattern and the better one, and this branch had reached for
 four mutation rows were re-run afterwards, because rewriting a catching test invalidates the rows
 that depend on it; all four still caught, same catchers.
 
-### Phase 6.2.36: The Ranker Belongs Where the Text Is [status: pending — added 2026-09-10, #539]
+### Phase 6.2.36: The Ranker Belongs Where the Text Is [status: complete 2026-09-10 in #545 — #539, and the design section that predicted the opposite of its own finding]
 **Surface:** Storage
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-10-semantic-ranker-hybrid-design.md`
