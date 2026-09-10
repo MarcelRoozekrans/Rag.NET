@@ -7469,6 +7469,7 @@ that depend on it; all four still caught, same catchers.
 **Surface:** Storage
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-10-semantic-ranker-hybrid-design.md`
+**Plan:** `docs/plans/2026-09-10-semantic-ranker-hybrid-implementation.md`
 
 **Goal:** the semantic ranker moves to the one path that carries a text query, and a request for
 ranking that cannot be honoured throws instead of returning unranked results.
@@ -7510,8 +7511,15 @@ does not implement `IHybridSearchable`, and `EnsembleBehavior` probes the **deco
 for every store that supports it. The repository solved this exact problem once for the sibling
 capability — there is a `ResilientSparseVectorStore`, and the class doc says it exists "so an
 `is ISparseSearchable` probe on the resolved `IVectorStore` stays honest after decoration". The
-reasoning was applied to sparse and not to hybrid. **To be filed separately and not fixed here**,
-but §3's throw will surface it painfully: resilience plus ranking throws on every query.
+reasoning was applied to sparse and not to hybrid. **Filed 2026-09-10 as #544 and not fixed here.**
+~~But §3's throw will surface it painfully: resilience plus ranking throws on every query.~~
+**That prediction is backwards, and the implementation plan's §0.1 corrects it.** The throw is
+conditioned on `VectorStore is IHybridSearchable`, which is exactly what a decorator hiding the
+interface makes false — so under resilience the throw *never fires* and the caller gets correct,
+unranked, silent results. The section predicted the opposite of the defect it had just described,
+using the mechanism it had just described. The plan answers it with a warning rather than a throw,
+because `IVectorStoreDecorator` deliberately exposes only `InnerStoreType` and the behaviour cannot
+ask a decorated instance whether ranking is on.
 
 **`vector-stores.md` is wrong in the same way the code was** and must be rewritten rather than
 amended — it documents the dense path throughout.
