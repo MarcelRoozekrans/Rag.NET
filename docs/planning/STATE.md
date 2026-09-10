@@ -72,7 +72,25 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.32 — A Corrupt Blob Is Not an Empty One — **MERGED 2026-09-09** (#527, `f9ad2f04`),
+**Phase:** 6.2.33 — A Fused Score Is Not a Similarity — **MERGED 2026-09-09** (#531, `5d62f58b`),
+closing #530. Verified on `main` by content: the new `HybridScoreScale` member, both stores'
+`minScore: 0.0` on their hybrid paths, the new dense guard test, and `CanDispatchNatively`'s
+predicate unchanged. **#328 split out to 6.2.34** — on verifiability, not size.
+
+**THE SEVERITY WAS WRONG WHEN FILED AND THE RECORD SAYS SO.** #530 was filed claiming a live
+wrong-results defect: two stores apply a similarity-shaped `MinScore` to backend-fused hybrid
+scores. **`EnsembleBehavior.CanDispatchNatively` already requires `MinScore is 0.0`**, so the
+pipeline never hands them a threshold — it takes the client-side path instead. Checked only because
+this same guide once claimed "filtering happens in the pipeline" about metadata and was false. **The
+lesson is the checking, not the guard**: the correction landed in the issue, the design and the
+roadmap before any code was written.
+
+**Two findings the phase produced that nobody asked for.** The mutation sweep's survivor was a
+**control** mutation on a path the phase does not touch — Azure's *dense* `MinScore` had no test at
+all, while Weaviate's was already covered. And the whole-branch review found **`IHybridSearchable`'s
+own summary contradicting the member it had just gained**, thirty lines apart in one file.
+
+**Previously:** 6.2.32 — A Corrupt Blob Is Not an Empty One — **MERGED 2026-09-09** (#527, `f9ad2f04`),
 closing #521. Verified on `main` by content: the shared `DeserializeMetadataOrThrow` is in 11 files
 and **zero callers of the raw `DeserializeMetadata`/`DeserializeTags` remain outside the
 serializer** — the invariant the phase created holds on `main`, not just on the branch.
@@ -427,9 +445,13 @@ the extraction cache was replayed refuse-on-miss.
 
 ## Recommended Next Step
 
-**~~Phase 6.2.31 — #513~~ and ~~6.2.32 — #521~~ both MERGED 2026-09-09, in #522 and #527.**
-Nothing below is started. **The queue is now #495, #328, #184, the security-position document, and
-PR #314**, in roughly that order of readiness — #495 is an investigation rather than defined work,
+**~~6.2.31 (#513)~~, ~~6.2.32 (#521)~~ and ~~6.2.33 (#530)~~ all MERGED 2026-09-09** — in #522,
+#527 and #531. **~~#495~~ closed the same day as not reproducible** after investigation; what it
+actually produced is **#529**, the one project where `dotnet test --filter` is silently ignored.
+
+**The queue is now: 6.2.34 (#328, account-blocked), #529, #184, the security-position document, and
+PR #314.** 6.2.34 is written up and ready but cannot be verified without an Azure resource; #529 is
+small and fully local; #184 is breaking and wants a design pass. Previously ordered — #495 is an investigation rather than defined work,
 #328 is blocked on a score-scale decision that is the operator's, #184 is breaking and wants a
 design pass before code, and #314 is a major dependency bump that deserves its own phase rather
 than a line inside someone else's.
