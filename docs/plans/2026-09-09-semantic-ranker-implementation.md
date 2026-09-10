@@ -404,5 +404,7 @@ Include: that half of #328 was already shipped and the design said otherwise unt
 - [x] **Step 2: Run `pre-push-review`.**
 
       **Verdict PASS** — `docs/pre-push-review-2026-09-10-0950.md`. 0 blockers, 2 warnings, 4 info. Both warnings were fixed before the PR rather than carried: **W1**, a fixed `Task.Delay(2s)` in the new test that reintroduced the pattern this very test project documents as removed — and which was load-bearing, so an early expiry would have failed the test *reporting the guard as broken*; **W2**, the ROADMAP block still asserting the store "does not implement the interface" when the ranker is off, which the implementation contradicts and the design's §1 had already corrected.
-- [ ] **Step 3: Open the PR.** Title: `feat(azureaisearch): add Azure AI Search semantic ranking (#328)`. Not breaking — everything is off by default and the disabled path is byte-identical. The body must be honest that one claim is unverified without a billable resource, and precise about which.
-- [ ] **Step 4: Stop.** The merge is the operator's.
+- [x] **Step 3: Open the PR.** — **#536**, 2026-09-10: https://github.com/MarcelRoozekrans/Rag.NET/pull/536
+
+       Title: `feat(azureaisearch): add Azure AI Search semantic ranking (#328)`. Not breaking — everything is off by default and the disabled path is byte-identical. The body must be honest that one claim is unverified without a billable resource, and precise about which.
+- [x] **Step 4: Stop.** The merge is the operator's.
