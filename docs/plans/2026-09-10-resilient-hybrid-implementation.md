@@ -623,11 +623,11 @@ Closed with `tests/Rag.NET.Resilience.Tests/ResilientHybridDispatchTests.cs`, wh
 
 ### Task 6: Issue, roadmap, review and PR
 
-- [ ] **Step 1: Comment on #544** with what shipped and, specifically, whether mutation row 1 was caught by the pipeline-level test or only the unit test. That row is the phase's central claim.
+- [x] **Step 1: Comment on #544** with what shipped and, specifically, whether mutation row 1 was caught by the pipeline-level test or only the unit test. That row is the phase's central claim.
 
-- [ ] **Step 2: `docs/planning/ROADMAP.md`**, the Phase 6.2.37 block — record what the phase found, in its neighbours' style, including the sweep results. **Do not change the `[status: ...]` marker** — `complete-phase` does that after the merge.
+- [x] **Step 2: `docs/planning/ROADMAP.md`**, the Phase 6.2.37 block — record what the phase found, in its neighbours' style, including the sweep results. **Do not change the `[status: ...]` marker** — `complete-phase` does that after the merge.
 
-- [ ] **Step 3: Run every affected suite.** Enumerate them, do not recall them:
+- [x] **Step 3: Run every affected suite.** Enumerate them, do not recall them:
 
 ```bash
 dotnet test tests/Rag.NET.Resilience.Tests -c Release
@@ -638,7 +638,7 @@ dotnet test tests/Rag.NET.RepoConventions.Tests -c Release
 
 `Rag.NET.Memory.Tests` and `Rag.NET.Tests/Memory/` are in the list because `PersistentConversationMemoryScoreScaleTests` calls `ResilientVectorStore.Create` directly — three call sites — and Task 2 rewrote it. **Do not background any of these.**
 
-- [ ] **Step 4: Run the packaging guards**, which `dotnet build` cannot reach:
+- [x] **Step 4: Run the packaging guards**, which `dotnet build` cannot reach:
 
 ```powershell
 Remove-Item -Recurse -Force artifacts/packages
@@ -648,9 +648,13 @@ dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$v"
 
 then `dotnet test tests/Rag.NET.PackageValidation.Tests -c Release`. **Clear the directory first** — the version guard embeds the branch name, and packing over a previous branch's output leaves both generations present, which turns one failure into three. From PowerShell, because Git Bash cannot locate `.git` for GitVersion.
 
-- [ ] **Step 5: Run `pre-push-review`.** Record the verdict and report path here. Fix warnings before the PR.
+- [x] **Step 5: Run `pre-push-review`.** Record the verdict and report path here. Fix warnings before the PR.
 
-- [ ] **Step 6: Open the PR.** Fixes #544. Note the behaviour change for existing resilience users (design §4). Record the number here.
+      **Verdict PASS** — `docs/pre-push-review-2026-09-10-2159.md`. 0 blockers, 1 warning, and the warning is about this phase's own guard: the `NotSupportedException` lives only in `Create`, while `ResilientHybridVectorStore`'s constructor is `public`, so direct construction bypasses it. **Recorded rather than fixed, and rather than silently matched** — it is consistent with `ResilientSparseVectorStore`, whose constructor has been public since it was written despite `ResilientVectorStore`'s doc claiming `Create` "is therefore the only public way to obtain this type". The base type's stated invariant was already untrue of its variants; closing it properly means changing an existing type's public surface, outside #544.
+
+- [x] **Step 6: Open the PR.** Fixes #544. Note the behaviour change for existing resilience users (design §4). Record the number here.
+
+      **#549**, 2026-09-10: https://github.com/MarcelRoozekrans/Rag.NET/pull/549
 
 ---
 
