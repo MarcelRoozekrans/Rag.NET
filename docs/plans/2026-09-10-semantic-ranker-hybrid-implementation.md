@@ -865,7 +865,7 @@ git commit -m "docs(vector-stores): the ranker documentation followed the code o
 
 **Files:** nothing permanently — apply, test, revert.
 
-- [ ] **Step 1: Run each mutation, record the line mutated AND the named catcher**
+- [x] **Step 1: Run each mutation, record the line mutated AND the named catcher**
 
 **Record the site, not just the description.** 6.2.31's sweep was made unreproducible by naming a mutation without naming where it was applied; 6.2.34 and 6.2.35 fixed that habit — keep it.
 
@@ -880,9 +880,36 @@ git commit -m "docs(vector-stores): the ranker documentation followed the code o
 | 7 | invert the decorator warning's probe to `VectorStore is IHybridSearchable` | `EnsembleBehavior.HandleAsync` | Task 4 Step 7's warning tests |
 | 8 | re-add `IScoreScaleAware` to the class declaration with `=> ScoreScale.Similarity` | `AzureAISearchVectorStore:16` | `TheStoreDoesNotDeclareAScoreScale_BecauseTheDefaultIsAlreadyRight`. **Expect this to be caught only by a test asserting the interface's absence, which is a weak assertion by construction** — it pins a structural fact with no behavioural consequence. If it survives, that is the honest result: the removal is behaviour-neutral and no behavioural test can catch its reversal. Record it as a survivor with that reasoning rather than inventing a test that pretends otherwise. That is 6.2.34 row 7's lesson — a survivor that is unreachable is a finding, not a gap. |
 
-- [ ] **Step 2: Re-run every row whose catching test you changed** — rewriting a catching test invalidates its row (6.2.35's lesson).
 
-- [ ] **Step 3: Verify the tree is clean** — `git status --short`, only files you meant to change.
+**Results, measured 2026-09-10. Nine rows run (row 2 split into two forms), eight caught, one survivor that produced a new test.**
+
+| # | mutation | site | outcome |
+| --- | --- | --- | --- |
+| 1 | `expectRerankerScore: _semanticRankingEnabled` → `false` | `HybridSearchAsync`'s `ExecuteSearchAsync` call | **caught** — `RequestingTheRankerFromAServiceThatDoesNotRank_ThrowsOnTheHybridPath` |
+| 2a | restore **both** the `if (_semanticRankingEnabled)` block *and* `expectRerankerScore: _semanticRankingEnabled` in `SearchAsync` — 6.2.34's defect, exactly | `SearchAsync` | **caught** — `WithTheRankerEnabled_TheDensePathStillReturnsOrdinaryScores` |
+| 2b | restore **only** the `if (_semanticRankingEnabled)` block, leaving `expectRerankerScore: false` | `SearchAsync` | **SURVIVED.** See below |
+| 3 | `NativeOnlyCapability` → `"semantic ranking"` unconditionally | `AzureAISearchVectorStore` | **caught** — `TheStoreDeclaresWhatClientSideFusionWouldLose(false, null)` |
+| 4 | drop `!opts.UseHybridSearch` from `NativeDispatchBlocker` | `EnsembleBehavior` | **caught** — `..._Throws(blocker: "UseHybridSearch")`, and *only* that row |
+| 5 | move `RefuseIfNativeOnlyCapabilityIsUnreachable` below the `UseHybridSearch` early return | `EnsembleBehavior.HandleAsync` | **caught** — the same single row as #4 |
+| 6 | delete the `RefuseIfNativeOnlyCapabilityIsUnreachable` call | `EnsembleBehavior.HandleAsync` | **caught** — all three rows of the theory |
+| 7 | invert the decorator probe to `VectorStore is IHybridSearchable` | `WarnIfADecoratorHidesNativeHybrid` | **caught** — `HandleAsync_DecoratorHidesHybridCapability_WarnsNamingTheInnerStore` |
+| 8 | re-add `IScoreScaleAware` with `=> ScoreScale.Similarity` | `AzureAISearchVectorStore:16` | **caught** — `TheStoreDoesNotDeclareAScoreScale_BecauseTheDefaultIsAlreadyRight`, and by nothing else: `Rag.NET.Tests` stayed at **1496**, unmoved |
+
+**Row 2b is the sweep's finding, and it was not predicted.** The plan split row 2 only while running it, and the halves behave differently. Setting `QueryType = Semantic` on the dense path *without* also expecting a reranker score passes **every test in the repository**: the score returned is `result.Score`, an ordinary similarity in `[0, 1]`, so `WithTheRankerEnabled_TheDensePathStillReturnsOrdinaryScores` is satisfied and the guard never fires because nothing asked it to.
+
+It is a plausible edit — a future reader "restoring the semantic configuration to the dense path" while leaving the guard alone — and it sends Azure a semantic query with no search text, which Microsoft says has "nothing to measure semantic relevance against": a malformed request against a billable feature. **It is also this phase's own defect shape**, which makes an uncaught mutation of it the least acceptable one to leave open.
+
+So it got a test rather than a note: `TheDenseQueryNeverAsksForSemanticRanking_EvenWithTheRankerEnabled` asserts **on the wire**, through a `DelegatingHandler` capturing the outgoing request body, that the dense query never mentions semantic ranking at all. Re-running 2b against it: **caught.** This is the opposite call from 6.2.34 row 7 and 6.2.35 row 4, where survivors were recorded rather than tested — the difference is that those were *unreachable* or pinned a coincidence, and this one is reachable, meaningful, and directly on the phase's subject.
+
+**Rows 4 and 5 share a single catcher**, as the task anticipated. That is a coverage-shape finding rather than a pass: two structurally different mutations — deleting a condition, and moving the call site past the return that condition exists to precede — are both held by `..._Throws(blocker: "UseHybridSearch")` alone. If that one theory row is ever deleted or weakened, both mutations go uncaught together.
+
+**Row 8 behaved exactly as predicted, and the prediction is the point.** It is caught only by a structural `IsAssignableFrom` assertion, and the entire 1496-test pipeline suite does not move. That is not a gap to close: it is positive evidence that removing `IScoreScaleAware` was behaviour-preserving, which was §0.3's whole argument. No behavioural test can distinguish the removal from its reversal, because there is no behavioural difference.
+
+**Rows 1 and 2a were run against the final form of their catching tests** (both were rewritten in Task 1 *before* the sweep). The wire-level test added afterwards can only add catchers, never remove them, so those rows stand without a re-run.
+
+- [x] **Step 2: Re-run every row whose catching test you changed** — rewriting a catching test invalidates its row (6.2.35's lesson).
+
+- [x] **Step 3: Verify the tree is clean** — `git status --short`, only files you meant to change.
 
 ---
 
