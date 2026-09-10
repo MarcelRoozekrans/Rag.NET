@@ -7452,6 +7452,18 @@ editor does not re-break it.
 `RepoConventions` 98 passed / 2 pre-existing skips, up from 95. #529 corrected on the issue before
 the merge closes it.
 
+**The pre-push review found a hang-shaped risk inside the guard for a property that exists because
+of a hang, and that is the finding worth keeping.** The test helper read one redirected stream to the
+end and then the other — which deadlocks if the child fills the second stream's buffer while the
+reader is blocked on the first — and waited on the child with no timeout. Both are unlikely with one
+MSBuild target and `-nologo`. **`TestingPlatformDotnetTestSupport` is in this repository because of
+#275, a deadlock in test infrastructure that hung 2 of 4 runs before entering test code**, so the
+probability was not the point. Fixed by following `CliProcessTests.RunAsync`, which already had the
+correct shape: asynchronous reads and a bounded wait that fails naming the timeout. **The repository
+held both the weaker pattern and the better one, and this branch had reached for the weaker.** All
+four mutation rows were re-run afterwards, because rewriting a catching test invalidates the rows
+that depend on it; all four still caught, same catchers.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.

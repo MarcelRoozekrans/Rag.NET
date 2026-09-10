@@ -104,24 +104,48 @@ public sealed class BuildGuardTests
         Assert.Equal("InvokeTestingPlatform", (string?)target.Attribute("BeforeTargets"));
     }
 
+    private static readonly TimeSpan RunTimeout = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Invokes the guard's target and returns its exit code and combined output.
+    /// </summary>
+    /// <remarks>
+    /// <b>Reads both streams asynchronously and bounds the wait, following
+    /// <c>CliProcessTests.RunAsync</c>.</b> Reading one redirected stream to the end and then the
+    /// other deadlocks if the child fills the second stream's buffer while we are blocked on the
+    /// first — and an unbounded <c>WaitForExit</c> turns a hung child into a hung test run. Both
+    /// are unlikely with one MSBuild target and <c>-nologo</c>. Neither is worth carrying in the
+    /// guard for <c>TestingPlatformDotnetTestSupport</c>, which is in this repository **because of
+    /// #275**, a deadlock in test infrastructure that hung 2 of 4 runs before entering test code.
+    /// </remarks>
     private static (int ExitCode, string Output) RunTarget(bool withFilter)
     {
-        var arguments = $"msbuild \"{BenchmarkProject}\" -t:{TargetName} -p:Configuration=Release -nologo";
-        if (withFilter)
-        {
-            arguments += " -p:VSTestTestCaseFilter=AnyValueAtAll";
-        }
-
-        using var process = Process.Start(new ProcessStartInfo("dotnet", arguments)
+        var startInfo = new ProcessStartInfo("dotnet")
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
-        }) ?? throw new InvalidOperationException("Could not start dotnet msbuild.");
+        };
+        startInfo.ArgumentList.Add("msbuild");
+        startInfo.ArgumentList.Add(BenchmarkProject);
+        startInfo.ArgumentList.Add($"-t:{TargetName}");
+        startInfo.ArgumentList.Add("-p:Configuration=Release");
+        startInfo.ArgumentList.Add("-nologo");
+        if (withFilter)
+        {
+            startInfo.ArgumentList.Add("-p:VSTestTestCaseFilter=AnyValueAtAll");
+        }
 
-        var output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
-        process.WaitForExit();
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Process.Start returned null for dotnet.");
 
-        return (process.ExitCode, output);
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+
+        Assert.True(
+            process.WaitForExit((int)RunTimeout.TotalMilliseconds),
+            $"`dotnet msbuild -t:{TargetName}` did not exit within {RunTimeout.TotalSeconds:0}s.");
+
+        return (process.ExitCode, stdout.Result + stderr.Result);
     }
 }
