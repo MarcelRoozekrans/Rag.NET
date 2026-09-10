@@ -1,6 +1,28 @@
 # Session State
 
-**Last updated:** 2026-09-10 — **twice in one day, both at the merge.** 6.2.35 merged as #540 at
+**Last updated:** 2026-09-10 — **three times in one day, all three at the merge, and this one
+closes the milestone's last local work.** 6.2.36 merged as #545 at 17:55 and this entry was written
+from the same session that built it, on `chore/6236-merged` cut immediately after. The mechanism is
+unchanged and is still the only thing carrying it — the session that built the phase records the
+merge as its next action, so no window opens. **Three is a pattern where two was not**, and the
+thing to notice is that no session yet has had to *discover* a stale entry since the mechanism
+started. The two previous entries follow below unchanged.
+
+**With 6.2.36 closed, every locally-finishable item in Milestone 6 is done.** What remains — 6.1
+Recorded Responses and 6.3 Release v1.0 — is blocked on accounts, not on effort, and has been since
+2026-08-20. **That is a different kind of state than this file has held before**: there is no next
+phase to start, and the next action belongs to the operator rather than to a session. The honest
+next step is a decision (acquire the accounts, record the cassettes, or revisit the 2026-08-20 call
+that keeps 6.1 gating the tag), not a plan.
+
+**The one thing 6.2.36 leaves open, and it is not blocked:** #544. `ResilientVectorStore` still does
+not implement `IHybridSearchable`, so registering `Rag.NET.Resilience` disables native hybrid
+dispatch entirely — and now that the ranker lives on that path, it silently disables semantic ranking
+too. 6.2.36 shipped a warning for it and no fix, deliberately. **It is fully finishable locally** and
+is the only such item left; it has no phase number, which by this repository's record-then-schedule
+rule means it should get one before it is worked.
+
+**Previously, 2026-09-10 — twice in one day, both at the merge.** 6.2.35 merged as #540 at
 13:04 and this entry was written from the same session, as was 6.2.34's before it. **Two is not a
 habit**, and the mechanism is still the only thing carrying it: the session that built the phase
 records the merge as its next action, so no window opens. The first such entry, written this morning,
