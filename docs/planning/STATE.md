@@ -1,6 +1,14 @@
 # Session State
 
-**Last updated:** 2026-09-09 — **THIRTEEN MORE PHASES SHIPPED AND THIS FILE RECORDED NONE OF THEM.**
+**Last updated:** 2026-09-10 — **written within the hour of the merge it records, which is the one
+thing every entry below says never happens.** 6.2.34 merged as #536 at 10:02; this entry was written
+from the same session, on the `chore/state-6234-merged` branch cut immediately after. **The streak
+is broken by mechanism, not by resolve:** the session that built the phase recorded the merge as its
+next action, so there was no window in which the file could go stale. Every prior occurrence
+below was written by a *later* session discovering the gap. Whether it holds depends on the next
+session doing the same, not on this note.
+
+**Previously, 2026-09-09 — THIRTEEN MORE PHASES SHIPPED AND THIS FILE RECORDED NONE OF THEM.**
 6.2.18–6.2.30 are all on `main`. That is the fifth time this document has gone stale at a merge, and
 the note below — written on the fourth — did not prevent the fifth. **The entry that follows was
 itself two days out of date while claiming to correct staleness.** The habit that fails is writing
@@ -72,7 +80,47 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.33 — A Fused Score Is Not a Similarity — **MERGED 2026-09-09** (#531, `5d62f58b`),
+**Phase:** 6.2.34 — The Semantic Ranker, and the Simulator That Lies About It — **MERGED 2026-09-10**
+(#536, `f5870bdf`), closing #328. Verified on `main` by content — `EnableSemanticRanking`,
+`SemanticConfigurationName`, `SearchIndexSettle` and `EnablingTheRankerWithKJustBelowFiftyIsRejected`
+are all present — not by the PR's MERGED label. **No phase is currently open.** The next planned
+phase is 6.3 Release v1.0, still blocked on 6.1, still blocked on accounts.
+
+**A FEATURE SHIPPED *WITH* ITS UNVERIFIABILITY RATHER THAN WAITING FOR A RESOURCE.** The Azure
+simulator accepts a semantic index configuration and `queryType=semantic`, returns HTTP 200 with
+results, and returns **no `rerankerScore` at all**. So the store throws when ranking was requested
+and none comes back. That guard is what makes the feature shippable — and it is also what makes
+everything past it untestable, because the guard fires before any of it runs.
+
+**The mutation sweep inverted two of its own predictions, and that is the transferable part.** Row 6
+— leak the ranker into `HybridSearchAsync` — was flagged in the plan as the one *"nothing may
+catch"*; it failed two existing tests. Row 7 — apply `MinScore` on the ranked path — survived and
+**cannot be closed by any local test**: the line is *unreachable*, not untested. **A predicted gap
+that turns out closed is worth recording as loudly as one that turns out open.** The prediction was
+the guess; the sweep is the evidence. The design's §5 was rewritten from that result rather than
+left as written.
+
+**The one real gap the sweep found was in the plan's own test code, not the implementation.** The
+`k` guard was tested at 10 (reject) and 50 (accept), so a threshold mutated from 50 to 11 passed
+every test while wrongly accepting **49** — the exact value the guidance is about. **A boundary
+tested only from far outside it is not tested.** Same shape as 6.2.31's fused-score test that could
+not fail.
+
+**Two guards this repository owns that `dotnet build` cannot reach, both hit this session.**
+`PackageValidation` compares packed artefacts against the version GitVersion derives — stale
+artefacts from an *earlier branch* failed it, needing a full 73-package repack. And
+`EveryDocsCodeExampleResolvesAgainstTheProducedPackages` compiles every fenced `csharp` block under
+`docs/` against the shipped packages, **scanning the filesystem rather than git**, so an *untracked*
+file breaks it too: the phase's own pre-push review report did, quoting a test line containing
+xunit's `TestContext`. **Run `pack-validate`'s suites before pushing anything that touches a
+`.csproj` or adds a docs page.**
+
+**Pre-push review reports are deliberately not committed.** The 2026-09-09 pair and this phase's own
+are untracked, and #536 briefly tracked one before it was amended back out — committing them adds a
+`docs/` page that must satisfy the docs-example guard forever, for no benefit. **Established
+practice, now written down** because nothing recorded it and the skill's default is to commit.
+
+**Previously:** 6.2.33 — A Fused Score Is Not a Similarity — **MERGED 2026-09-09** (#531, `5d62f58b`),
 closing #530. Verified on `main` by content: the new `HybridScoreScale` member, both stores'
 `minScore: 0.0` on their hybrid paths, the new dense guard test, and `CanDispatchNatively`'s
 predicate unchanged. **#328 split out to 6.2.34** — on verifiability, not size.

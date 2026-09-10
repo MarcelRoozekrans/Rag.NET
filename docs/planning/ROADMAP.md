@@ -7258,11 +7258,12 @@ the local simulator accepts a `semantic` index configuration and a `queryType=se
 returns HTTP 200 with no `rerankerScore` at all, so a test written the obvious way would pass whether
 or not ranking actually happened. That half carries 6.1's account constraint and stays pending.
 
-### Phase 6.2.34: The Semantic Ranker, and the Simulator That Lies About It [status: pending — added 2026-09-09, #328]
+### Phase 6.2.34: The Semantic Ranker, and the Simulator That Lies About It [status: complete 2026-09-10 in #536 — #328, and the two mutation rows that inverted their own predictions]
 **Surface:** Storage
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-09-semantic-ranker-design.md`
 **Plan:** `docs/plans/2026-09-09-semantic-ranker-implementation.md`
+**Completed:** 2026-09-10
 
 **Goal:** Azure AI Search's semantic ranker, opt-in, declaring its scale — the third case of the
 rule 6.2.33 established rather than a decision invented for it.
