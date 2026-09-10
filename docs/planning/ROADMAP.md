@@ -7603,6 +7603,7 @@ and returns no `rerankerScore`, so the throw is testable locally and the ranking
 **Surface:** Storage
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-10-resilient-hybrid-design.md`
+**Plan:** `docs/plans/2026-09-10-resilient-hybrid-implementation.md`
 
 **Goal:** `ResilientVectorStore` stops hiding `IHybridSearchable`, so registering resilience no
 longer silently disables native hybrid dispatch — and, since 6.2.36, semantic ranking with it.
