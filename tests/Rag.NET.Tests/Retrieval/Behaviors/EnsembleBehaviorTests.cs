@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -900,5 +901,282 @@ public class EnsembleBehaviorTests
 
         Assert.NotEmpty(output);
         Assert.DoesNotContain(output, r => r.Chunk.Metadata.TryGetValue("tenant", out var tenant) && tenant == "b");
+    }
+
+    /// <summary>
+    /// A store whose native hybrid query does something client-side fusion cannot reproduce. The
+    /// declaration, not the backend, is what the behaviour reads — this fake names no vendor.
+    /// </summary>
+    private sealed class FakeRankingHybridStore : IVectorStore, IHybridSearchable
+    {
+        public string? NativeOnlyCapability => "semantic ranking";
+
+        public Task<IReadOnlyList<SearchResult>> HybridSearchAsync(
+            string textQuery, ReadOnlyMemory<float> queryEmbedding, SearchOptions options,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SearchResult>>([MakeResult("native", 0, 3.5)]);
+
+        public Task<IReadOnlyList<SearchResult>> SearchAsync(
+            ReadOnlyMemory<float> queryEmbedding, SearchOptions options,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SearchResult>>([MakeResult("dense", 0, 0.9)]);
+
+        public Task StoreAsync(IReadOnlyList<EmbeddedChunk> chunks, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// A store whose declaration is present but blank — which is what a substitute returns for an
+    /// unconfigured <see langword="string"/> property, and what a careless implementer returns.
+    /// </summary>
+    private sealed class FakeBlankDeclarationHybridStore : IVectorStore, IHybridSearchable
+    {
+        public string? NativeOnlyCapability => "   ";
+
+        public Task<IReadOnlyList<SearchResult>> HybridSearchAsync(
+            string textQuery, ReadOnlyMemory<float> queryEmbedding, SearchOptions options,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SearchResult>>([MakeResult("native", 0, 3.5)]);
+
+        public Task<IReadOnlyList<SearchResult>> SearchAsync(
+            ReadOnlyMemory<float> queryEmbedding, SearchOptions options,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SearchResult>>([MakeResult("dense", 0, 0.9)]);
+
+        public Task StoreAsync(IReadOnlyList<EmbeddedChunk> chunks, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// A decorator that hides <see cref="IHybridSearchable"/> the way <c>ResilientVectorStore</c>
+    /// does (#544). Deliberately a local fake rather than a reference to Rag.NET.Resilience: the
+    /// diagnostic is package-agnostic and must stay that way.
+    /// </summary>
+    private sealed class FakeDecoratorOverHybridStore : IVectorStore, IVectorStoreDecorator
+    {
+        public Type InnerStoreType => typeof(FakeRankingHybridStore);
+
+        public Task<IReadOnlyList<SearchResult>> SearchAsync(
+            ReadOnlyMemory<float> queryEmbedding, SearchOptions options,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SearchResult>>([MakeResult("dense", 0, 0.9)]);
+
+        public Task StoreAsync(IReadOnlyList<EmbeddedChunk> chunks, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class CapturingLogger : ILogger
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Entries.Add((logLevel, formatter(state, exception)));
+    }
+
+    private static IEmbeddingGenerator<string, Embedding<float>> MakeEmbedder()
+    {
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 1f, 0f, 0f })]));
+        return embedder;
+    }
+
+    /// <summary>
+    /// A store that declares a native-only capability must not be fused client-side: the caller
+    /// would receive correct results with the capability silently absent (#539).
+    /// </summary>
+    [Theory]
+    [InlineData("MinScore")]
+    [InlineData("EnsembleOptions")]
+    [InlineData("UseHybridSearch")]
+    public async Task HandleAsync_NativeOnlyCapabilityAndCannotDispatchNatively_Throws(string blocker)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = new EnsembleBehavior
+        {
+            Embedder = MakeEmbedder(),
+            VectorStore = new FakeRankingHybridStore(),
+            Bm25Index = Substitute.For<IBm25Index>(),
+        };
+
+        var options = blocker switch
+        {
+            "MinScore" => new RetrievalOptions { UseHybridSearch = true, MinScore = 0.7 },
+            "EnsembleOptions" => new RetrievalOptions { UseHybridSearch = true, EnsembleOptions = new EnsembleOptions() },
+            _ => new RetrievalOptions { UseHybridSearch = false },
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.HandleAsync(MakeCtx(options), ct, (_, _) =>
+                ValueTask.FromResult<IReadOnlyList<SearchResult>>([])).AsTask());
+
+        Assert.Contains("semantic ranking", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(blocker, ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// And when nothing blocks it, the native path serves the query — the capability is honoured,
+    /// not merely guarded. Without this row the theory above would pass against a behaviour that
+    /// threw unconditionally.
+    /// </summary>
+    [Fact]
+    public async Task HandleAsync_NativeOnlyCapabilityAndCanDispatchNatively_UsesTheNativePath()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = new EnsembleBehavior
+        {
+            Embedder = MakeEmbedder(),
+            VectorStore = new FakeRankingHybridStore(),
+            Bm25Index = Substitute.For<IBm25Index>(),
+        };
+
+        var output = await sut.HandleAsync(
+            MakeCtx(new RetrievalOptions { UseHybridSearch = true }), ct,
+            (_, _) => throw new InvalidOperationException("must not call next"));
+
+        var only = Assert.Single(output);
+        Assert.Equal(new DocumentId("native"), only.Chunk.DocumentId);
+    }
+
+    /// <summary>
+    /// The negative control, and the one that keeps this from becoming a behaviour break: a store
+    /// declaring nothing is fused client-side exactly as before, MinScore and all.
+    /// </summary>
+    [Fact]
+    public async Task HandleAsync_NoNativeOnlyCapability_StillFusesClientSideWithAMinScore()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var vectorStore = Substitute.For<IVectorStore>();
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>([MakeResult("doc-1", 0, 0.9)]));
+
+        var bm25 = Substitute.For<IBm25Index>();
+        bm25.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
+            .Returns([MakeBm25Hit("doc-1", 0)]);
+
+        var sut = new EnsembleBehavior { Embedder = MakeEmbedder(), VectorStore = vectorStore, Bm25Index = bm25 };
+
+        var output = await sut.HandleAsync(
+            MakeCtx(new RetrievalOptions { UseHybridSearch = true, MinScore = 0.7 }), ct,
+            (_, _) => throw new InvalidOperationException("must not call next"));
+
+        Assert.NotEmpty(output);
+    }
+
+    /// <summary>
+    /// A store declaring nothing, with hybrid off, still reaches <c>next</c> — moving the refusal
+    /// above the early return must not make that return conditional for ordinary stores.
+    /// </summary>
+    [Fact]
+    public async Task HandleAsync_NoNativeOnlyCapabilityAndHybridOff_StillCallsNext()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = new EnsembleBehavior
+        {
+            Embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>(),
+            VectorStore = Substitute.For<IVectorStore>(),
+            Bm25Index = Substitute.For<IBm25Index>(),
+        };
+
+        var nextCalled = false;
+        await sut.HandleAsync(MakeCtx(new RetrievalOptions { UseHybridSearch = false }), ct, (_, _) =>
+        {
+            nextCalled = true;
+            return ValueTask.FromResult<IReadOnlyList<SearchResult>>([]);
+        });
+
+        Assert.True(nextCalled);
+    }
+
+    /// <summary>
+    /// A decorator that hides the capability cannot be refused — the behaviour has no way to ask
+    /// the decorated instance whether ranking is on, because <see cref="IVectorStoreDecorator"/>
+    /// deliberately exposes only the inner <see cref="Type"/>. It warns instead (#544).
+    /// </summary>
+    [Fact]
+    public async Task HandleAsync_DecoratorHidesHybridCapability_WarnsNamingTheInnerStore()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var logger = new CapturingLogger();
+        var sut = new EnsembleBehavior
+        {
+            Embedder = MakeEmbedder(),
+            VectorStore = new FakeDecoratorOverHybridStore(),
+            Bm25Index = Substitute.For<IBm25Index>(),
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true }) with { Logger = logger };
+
+        await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException("must not call next"));
+
+        Assert.Single(logger.Entries, e =>
+            e.Level == LogLevel.Warning
+            && e.Message.Contains(nameof(FakeRankingHybridStore), StringComparison.Ordinal)
+            && e.Message.Contains("#544", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// And an ordinary undecorated store warns about nothing — the diagnostic must not fire for
+    /// every store in the library that simply has no native hybrid.
+    /// </summary>
+    [Fact]
+    public async Task HandleAsync_OrdinaryStore_DoesNotWarnAboutDecoration()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var logger = new CapturingLogger();
+        var sut = new EnsembleBehavior
+        {
+            Embedder = MakeEmbedder(),
+            VectorStore = Substitute.For<IVectorStore>(),
+            Bm25Index = Substitute.For<IBm25Index>(),
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true }) with { Logger = logger };
+
+        await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException("must not call next"));
+
+        Assert.DoesNotContain(logger.Entries, e => e.Message.Contains("#544", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A blank declaration is treated as absent rather than as an unnamed capability. The value's
+    /// whole job is to be quoted into the refusal, and a blank one produces "is configured for ,
+    /// which only its native hybrid query performs" — a refusal naming nothing actionable. So the
+    /// query takes the ordinary client-side path instead of being refused with an empty reason.
+    /// </summary>
+    /// <remarks>
+    /// Found by six pre-existing tests failing when this guard first shipped: a substituted
+    /// <see langword="string"/> property returns <see cref="string.Empty"/>, not
+    /// <see langword="null"/>, so every test using a substituted hybrid store was refused with a
+    /// garbled message.
+    /// </remarks>
+    [Fact]
+    public async Task HandleAsync_BlankNativeOnlyCapability_IsTreatedAsNoDeclaration()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var bm25 = Substitute.For<IBm25Index>();
+        bm25.Search(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<IDictionary<string, MetadataValue>?>())
+            .Returns([MakeBm25Hit("dense", 0)]);
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = MakeEmbedder(),
+            VectorStore = new FakeBlankDeclarationHybridStore(),
+            Bm25Index = bm25,
+        };
+
+        var output = await sut.HandleAsync(
+            MakeCtx(new RetrievalOptions { UseHybridSearch = true, MinScore = 0.7 }), ct,
+            (_, _) => throw new InvalidOperationException("must not call next"));
+
+        Assert.NotEmpty(output);
     }
 }

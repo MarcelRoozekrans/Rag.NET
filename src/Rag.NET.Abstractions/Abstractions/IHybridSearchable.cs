@@ -54,6 +54,12 @@ public interface IHybridSearchable
     /// that does not forward <see cref="IHybridSearchable"/> hides this declaration along with the
     /// capability itself — see issue #544.
     /// </para>
+    /// <para>
+    /// <b>Blank counts as <see langword="null"/>.</b> The pipeline treats an empty or whitespace
+    /// value as no declaration, because the value exists to be quoted into an error and a blank one
+    /// produces a refusal that names nothing. Return <see langword="null"/> to declare nothing;
+    /// return a noun phrase to declare something.
+    /// </para>
     /// </remarks>
     string? NativeOnlyCapability => null;
 

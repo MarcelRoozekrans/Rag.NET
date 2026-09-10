@@ -532,7 +532,7 @@ git commit -m "feat(abstractions): IHybridSearchable declares what client-side f
 
 **Read §0.1 and §0.2 first.** They are why this task has both a throw and a warning, and why the ranking check sits above the `UseHybridSearch` early return.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `tests/Rag.NET.Tests/Retrieval/Behaviors/EnsembleBehaviorTests.cs`. First the fake — the existing tests use `Substitute.For<IVectorStore>()`, which cannot also be `IHybridSearchable` with a chosen `NativeOnlyCapability`, so this needs a real fake:
 
@@ -656,12 +656,12 @@ Then the tests:
     }
 ```
 
-- [ ] **Step 2: Run them and watch the throw tests fail**
+- [x] **Step 2: Run them and watch the throw tests fail**
 
 Run: `dotnet test tests/Rag.NET.Tests -c Release --filter "FullyQualifiedName~EnsembleBehaviorTests"`
 Expected: the three `HandleAsync_NativeOnlyCapabilityAndCannotDispatchNatively_Throws` rows fail (no exception thrown); the three controls pass.
 
-- [ ] **Step 3: Turn `CanDispatchNatively` into something that can say *why* not**
+- [x] **Step 3: Turn `CanDispatchNatively` into something that can say *why* not**
 
 The throw has to name the blocking condition, and today the three conditions are collapsed into one bool. Replace `CanDispatchNatively` with a method returning the blocker's name, and keep the bool as its negation so line 52 reads the same:
 
@@ -692,7 +692,7 @@ The throw has to name the blocking condition, and today the three conditions are
 
 **Order matters and is not arbitrary:** `UseHybridSearch` is checked first because it is the condition a caller is most likely to have simply forgotten, and reporting a `MinScore` problem to someone who never turned hybrid on would send them to the wrong place.
 
-- [ ] **Step 4: Add the refusal, above the early return**
+- [x] **Step 4: Add the refusal, above the early return**
 
 At the top of `HandleAsync`, replace:
 
@@ -728,12 +728,12 @@ with:
             return await next(ctx, ct).ConfigureAwait(false);
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `dotnet test tests/Rag.NET.Tests -c Release --filter "FullyQualifiedName~EnsembleBehaviorTests"`
 Expected: PASS, all of them — the three new throw rows, the three controls, and every pre-existing test in the class. **The pre-existing ones are the real check here**: none of them uses a store that declares a capability, so all must be untouched by the new branch.
 
-- [ ] **Step 6: Add the decorator warning (§0.1's correction)**
+- [x] **Step 6: Add the decorator warning (§0.1's correction)**
 
 `EnsembleBehavior` cannot throw for the resilience case — it cannot ask a decorated instance whether ranking is on, and `IVectorStoreDecorator` exposes only `InnerStoreType` deliberately, "so no caller can reach around whatever behaviour the decorator adds". Reading that `Type` for a diagnostic is exactly what the interface is for. Add to `src/Rag.NET/Logging/RagPipelineLog.cs`, following the existing source-generated pattern in that file (copy the shape of `EnsembleNativeHybrid` — same `LoggerMessage` attribute style, next free `EventId`):
 
@@ -758,7 +758,7 @@ Then in `HandleAsync`, immediately after the `UseHybridSearch` early return:
 
 **A warning, not a throw, and the distinction is load-bearing.** Throwing here would break every existing user who registers resilience alongside Azure AI Search or Weaviate *without* the ranker — they get correct client-side results today and have no defect to fix. The warning is for the case that is genuinely wrong and cannot be detected precisely from here.
 
-- [ ] **Step 7: Test the warning fires, and does not fire for an ordinary store**
+- [x] **Step 7: Test the warning fires, and does not fire for an ordinary store**
 
 Add to `EnsembleBehaviorTests`, with a minimal fake decorator (do not reference `Rag.NET.Resilience` from this test project — the point is that the diagnostic is package-agnostic):
 
@@ -785,12 +785,22 @@ Assert on a capturing `ILogger` (`FakeLogger` from `Microsoft.Extensions.Diagnos
 Run: `dotnet test tests/Rag.NET.Tests -c Release --filter "FullyQualifiedName~EnsembleBehaviorTests"`
 Expected: PASS.
 
-- [ ] **Step 8: Run the full pipeline suite**
+- [x] **Step 8: Run the full pipeline suite**
 
 Run: `dotnet test tests/Rag.NET.Tests -c Release`
 Expected: Task 0's baseline plus the new tests. Nothing pre-existing moves.
 
-- [ ] **Step 9: Commit**
+*Measured: **1496**, from a baseline of 1487 — nine new tests, nothing pre-existing moved. But it did not go that way first time, and the detour is the most useful thing this task produced:*
+
+**Six pre-existing tests failed when the refusal first shipped, and the cause was a real gap in the contract.** `HandleAsync_MinScoreConfigured_KeepsClientFusion` and five siblings use `Substitute.For<IVectorStore, IHybridSearchable>()`, and **NSubstitute returns `string.Empty` for an unconfigured `string` property, not `null`**. The pattern `{ NativeOnlyCapability: { } declared }` matched `""`, so the refusal fired for every substituted hybrid store — and rendered:
+
+> `ObjectProxy is configured for , which only its native hybrid query performs …  Either adjust MinScore, or turn off  on the store.`
+
+An error naming nothing the caller can act on. The fix was **not** to configure the six substitutes. `NativeOnlyCapability` exists to be quoted into that message, so a blank value is a declaration of nothing usable and the pipeline now treats blank as absent (`string.IsNullOrWhiteSpace`), documented on the interface and pinned by `HandleAsync_BlankNativeOnlyCapability_IsTreatedAsNoDeclaration`. The six tests then passed untouched, which is the correct outcome: they assert behaviour that must not change, and it was this task's change that broke them.
+
+**Also: `MA0051` rejected `HandleAsync` at 63 lines against a 60-line cap.** Both guards were extracted into `RefuseIfNativeOnlyCapabilityIsUnreachable` and `WarnIfADecoratorHidesNativeHybrid`, which reads better than the inline form regardless of the analyzer.
+
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/Rag.NET/Retrieval/Behaviors/EnsembleBehavior.cs src/Rag.NET/Logging/RagPipelineLog.cs tests/Rag.NET.Tests/Retrieval/Behaviors/EnsembleBehaviorTests.cs
