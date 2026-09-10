@@ -83,6 +83,67 @@ figure, and the only thing that caught it was a never-run cell reporting 20,155 
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
 
+## Session handoff — 2026-09-10, end of session
+
+**Written by `pause-work`.** Six PRs merged today (#536, #537, #540, #541, #542) and one phase closed
+that nobody planned this morning.
+
+### Current position
+
+**Milestone 6, active.** No phase is open. **6.2.36 is scoped and not started** — design and roadmap
+entry are on `main` (#542); there is **no implementation plan yet**.
+
+Closed today: **6.2.34** the semantic ranker (#536), **6.2.35** the benchmark filter guard (#540).
+Both recorded at the merge rather than after the drift, which is the first time that has happened
+twice in a row.
+
+### Open decisions — the next session must not re-litigate these
+
+Three were settled by the operator today and are **not open**, though a reader could mistake them
+for open because the design records the alternatives:
+
+- **6.2.36 moves the ranker to `HybridSearchAsync`.** Not "make it unconfigurable", not "revert".
+- **`EnsembleBehavior` throws** when ranking is enabled and the native path is unreachable. Not warn,
+  not document-only.
+- **Pre-push review reports are not committed.** They live on disk untracked, deliberately.
+
+Genuinely open, and named in the 6.2.36 design for the plan to settle:
+
+- **Does `AzureAISearchVectorStore` keep `IScoreScaleAware`?** Once the ranker leaves the dense path
+  it returns `Similarity` unconditionally, which `ScoreScale`'s own remarks define as the assumed
+  default for stores that do *not* implement it. Keep as a discoverable declaration, or remove as
+  vestigial.
+- **What the general `IHybridSearchable` capability probe is called**, and its exact shape.
+  6.2.33's defaulted `HybridScoreScale` is the precedent.
+- **Whether 6.2.36 ships before or after the resilience fix below**, or whether its throw message
+  names resilience as a known cause.
+
+### Blockers, and one open loop that is nobody's yet
+
+- **6.1 and 6.3 are blocked on accounts, not effort.** Unchanged since 2026-08-20. 6.2.36 is the only
+  remaining item that can be finished locally.
+- **THE RESILIENCE / HYBRID FINDING IS NOT FILED.** `ResilientVectorStore` does not implement
+  `IHybridSearchable`, and `EnsembleBehavior` probes the decorated `IVectorStore`, so **enabling
+  resilience silently disables native hybrid dispatch today** for every store that supports it —
+  independent of the ranker, and shipped. It is written up in the 6.2.36 design's §4 and in the
+  ROADMAP block, **and it has no issue number.** The operator was asked and the session ended before
+  an answer. **This is the one thing in this handoff that exists only in prose.**
+
+### Recommended next step
+
+**Merge state permitting, run `writing-plans` for 6.2.36** — the design is complete, the decisions
+are settled, and the only inputs it needs are the three open questions above. Then
+`list-phase-assumptions` → `executing-plans`.
+
+**Before that, decide the resilience issue.** If it is filed, 6.2.36's plan should reference it; if
+it is not, 6.2.36's throw will surface it as an unexplained failure for any user with resilience
+registered.
+
+### Environment left running
+
+**Docker Desktop was started by this session** and is still running. Nothing depends on it between
+sessions; stop it freely.
+
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
