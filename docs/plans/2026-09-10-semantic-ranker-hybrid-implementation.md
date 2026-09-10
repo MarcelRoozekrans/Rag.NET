@@ -915,15 +915,15 @@ So it got a test rather than a note: `TheDenseQueryNeverAsksForSemanticRanking_E
 
 ### Task 7: Roadmap, review and PR
 
-- [ ] **Step 1: Comment on #539** with what the fix was and the two things §0 found — that the design's resilience prediction was backwards, and that `UseHybridSearch = false` was an unnamed silent path. @StefH filed against a real Azure resource and is the one person who can confirm the ranker actually ranks once this ships; say so and ask.
+- [x] **Step 1: Comment on #539** with what the fix was and the two things §0 found — that the design's resilience prediction was backwards, and that `UseHybridSearch = false` was an unnamed silent path. @StefH filed against a real Azure resource and is the one person who can confirm the ranker actually ranks once this ships; say so and ask.
 
-- [ ] **Step 2: Comment on #544** noting that 6.2.36 shipped a warning for the decorated case and that the throw deliberately does not fire there — so #544 is now the only thing standing between a resilience user and silent unranked results.
+- [x] **Step 2: Comment on #544** noting that 6.2.36 shipped a warning for the decorated case and that the throw deliberately does not fire there — so #544 is now the only thing standing between a resilience user and silent unranked results.
 
-- [ ] **Step 3: `docs/planning/ROADMAP.md`**, the Phase 6.2.36 block — record what the phase found in its neighbours' style, including §0's two corrections, the `IScoreScaleAware` removal and its reasoning, and the sweep's row-8 result whichever way it goes. **Do not change the `[status: ...]` marker and do not add `**Completed:**`** — `complete-phase` does that after the merge.
+- [x] **Step 3: `docs/planning/ROADMAP.md`**, the Phase 6.2.36 block — record what the phase found in its neighbours' style, including §0's two corrections, the `IScoreScaleAware` removal and its reasoning, and the sweep's row-8 result whichever way it goes. **Do not change the `[status: ...]` marker and do not add `**Completed:**`** — `complete-phase` does that after the merge.
 
-- [ ] **Step 4: Update the design doc's §4** with a struck-through correction rather than a deletion — the prediction was wrong in a specific and instructive direction (it assumed a probe would fire on a decorator that hides the interface, which is the very defect the section is about), and this repository keeps those.
+- [x] **Step 4: Update the design doc's §4** with a struck-through correction rather than a deletion — the prediction was wrong in a specific and instructive direction (it assumed a probe would fire on a decorator that hides the interface, which is the very defect the section is about), and this repository keeps those.
 
-- [ ] **Step 5: Run every affected suite.** Enumerate them, do not recall them:
+- [x] **Step 5: Run every affected suite.** Enumerate them, do not recall them:
 
 ```bash
 dotnet test tests/Rag.NET.VectorStores.AzureAISearch.Tests -c Release
@@ -935,9 +935,15 @@ dotnet test tests/Rag.NET.VectorStores.Weaviate.Tests -c Release
 
 Weaviate is in the list because Task 3 added a member to an interface it implements. **Do not background any of these.** Compare every count against Task 0's baseline.
 
-- [ ] **Step 6: Run `pre-push-review`.** Record the verdict and the report path here. Fix warnings before the PR, not after.
+- [x] **Step 6: Run `pre-push-review`.** Record the verdict and the report path here. Fix warnings before the PR, not after.
 
-- [ ] **Step 7: Open the PR.** Body must name #539 as fixed, #544 as related-and-not-fixed, and flag the `breaking-change` label for Task 2's interface removal. Record the number here.
+      **Verdict PASS** — `docs/pre-push-review-2026-09-10-1921.md`. 0 blockers, 1 warning, 2 info; the warning fixed before the PR. **The warning was mine and it was on the hot path**: `native_hybrid_hidden_by_decorator` fired on *every* hybrid query from a `[Singleton]` behaviour, for a condition that is a permanent property of the registration and carries no information after the first line. Fixed with an `Interlocked.Exchange` guard (a singleton serves concurrent retrievals, so a plain bool would race), pinned by `HandleAsync_DecoratorHidesHybridCapability_WarnsOncePerInstanceNotPerQuery`, and **mutation row 7 re-run afterwards** — still caught, now by both warning tests. The repo's precedent is `PersistentConversationMemory`, which logs one warning per memory instance for its own permanent score-scale mismatch.
+
+      **`PackageValidation` needed a clean repack, and the first attempt made it worse.** The version guard embeds the branch name, so branching alone invalidated `artifacts/packages` (1 failure). Packing over the directory left *both* generations present — 146 nupkgs — and produced 3 failures. `Remove-Item -Recurse` first, then repack from PowerShell: 23/23. Worth recording because the guard's own message says "repack" and not "clear first".
+
+- [x] **Step 7: Open the PR.** Body must name #539 as fixed, #544 as related-and-not-fixed, and flag the `breaking-change` label for Task 2's interface removal. Record the number here.
+
+      **#545**, 2026-09-10: https://github.com/MarcelRoozekrans/Rag.NET/pull/545 — `breaking-change` label applied.
 
 ---
 
