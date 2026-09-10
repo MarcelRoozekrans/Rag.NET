@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Azure;
 using Azure.Core.Pipeline;
 using AzureSearchClientOptions = Azure.Search.Documents.SearchClientOptions;
@@ -437,37 +436,47 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         Assert.Equal(ScoreScale.OpaqueRanking, ((IHybridSearchable)_sut).HybridScoreScale);
     }
 
-    private static readonly TimeSpan SettleTimeout = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(50);
-
-    /// <summary>Polls until <paramref name="what"/> holds, instead of sleeping a fixed guess.</summary>
-    /// <remarks>
-    /// Every write in this class used to be followed by <c>await Task.Delay(2s)</c>. That is the
-    /// same mistake the store itself made — its <c>StoreAsync</c> slept a second on every call —
-    /// and a fixed sleep is wrong in both directions: too short and the test flakes, too long and
-    /// every test pays the worst case whether or not it needs to. A poll returns as soon as the
-    /// service is actually ready, and on expiry fails naming the condition that never came true
-    /// rather than leaving an assertion to fail for a reason that reads like a product bug.
-    /// </remarks>
-    private static async Task WaitUntilAsync(
-        string what, Func<Task<bool>> condition, CancellationToken cancellationToken)
+    [Fact]
+    public void WithTheRankerOn_TheStoreDeclaresAnOrdinalScale()
     {
-        var start = Stopwatch.GetTimestamp();
-        while (true)
-        {
-            if (await condition())
-            {
-                return;
-            }
+        var sut = new AzureAISearchVectorStore(
+            new Uri("https://dummy.search.windows.net"),
+            "dummy-index",
+            new AzureKeyCredential("dummy-key"),
+            vectorDimensions: 3,
+            clientOptions: null,
+            new AzureAISearchOptions { EnableSemanticRanking = true });
 
-            if (Stopwatch.GetElapsedTime(start) >= SettleTimeout)
-            {
-                Assert.Fail($"'{what}' never became true within {SettleTimeout.TotalSeconds:0}s.");
-            }
-
-            await Task.Delay(PollInterval, cancellationToken);
-        }
+        Assert.Equal(ScoreScale.OpaqueRanking, sut.ScoreScale);
     }
+
+    /// <summary>
+    /// And with it off the store declares Similarity — not silence. Declaring the default
+    /// explicitly is behaviour-preserving, because every consumer branches on OpaqueRanking
+    /// specifically, and it means the scale is discoverable in both configurations.
+    /// </summary>
+    [Fact]
+    public void WithTheRankerOff_TheStoreDeclaresASimilarityScale()
+    {
+        var sut = new AzureAISearchVectorStore(
+            new Uri("https://dummy.search.windows.net"),
+            "dummy-index",
+            new AzureKeyCredential("dummy-key"),
+            vectorDimensions: 3,
+            clientOptions: null,
+            options: null);
+
+        Assert.Equal(ScoreScale.Similarity, sut.ScoreScale);
+    }
+
+    /// <summary>
+    /// Polls until <paramref name="what"/> holds. Lives in <see cref="SearchIndexSettle"/> since
+    /// 2026-09-10 — it was <c>private static</c> here, so a second test class could not reach it
+    /// and reintroduced the fixed delay this helper exists to replace.
+    /// </summary>
+    private static Task WaitUntilAsync(
+        string what, Func<Task<bool>> condition, CancellationToken cancellationToken) =>
+        SearchIndexSettle.WaitUntilAsync(what, condition, cancellationToken);
 
     /// <summary>
     /// Waits until exactly <paramref name="expected"/> chunks of the document are searchable.

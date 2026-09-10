@@ -13,16 +13,24 @@ using RagSearchOptions = Rag.NET.Models.Options.SearchOptions;
 
 namespace Rag.NET.AzureAISearch;
 
-public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable, IChunkLookup, IDisposable
+public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable, IChunkLookup, IScoreScaleAware, IDisposable
 {
     private const int SearchPageSize = 1000; // Azure AI Search maximum
     private const int DeleteBatchSize = 1000; // Azure AI Search maximum
+
+    /// <summary>
+    /// Name of the one semantic configuration this store ever builds. An implementation detail,
+    /// not a knob: the store defines the fields, so it names the configuration built from them.
+    /// </summary>
+    private const string SemanticConfigurationName = "ragnet-semantic-configuration";
+
     private readonly VectorStoreInitialisationGate _initGate = new();
     private readonly SearchIndexClient _indexClient;
     private readonly SearchClient _searchClient;
     private readonly string _indexName;
     private readonly int _vectorDimensions;
     private readonly int? _kNearestNeighborsCount;
+    private readonly bool _semanticRankingEnabled;
 
     public AzureAISearchVectorStore(
         Uri endpoint,
@@ -73,6 +81,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         _indexName = indexName;
         _vectorDimensions = vectorDimensions;
         _kNearestNeighborsCount = options?.KNearestNeighborsCount;
+        _semanticRankingEnabled = options?.EnableSemanticRanking ?? false;
     }
 
     /// <summary>
@@ -84,8 +93,9 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
     /// </summary>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        await _indexClient.CreateOrUpdateIndexAsync(BuildIndex(_indexName, _vectorDimensions), cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        await _indexClient.CreateOrUpdateIndexAsync(
+            BuildIndex(_indexName, _vectorDimensions, _semanticRankingEnabled),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -95,6 +105,15 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         _initGate.EnsureInitialisedAsync(InitializeAsync, cancellationToken);
 
     public void Dispose() => _initGate.Dispose();
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Fixed at construction, as the interface requires. With semantic ranking on, this store
+    /// returns Azure's <c>RerankerScore</c>, which is a relevance rank rather than a similarity;
+    /// with it off, the dense path's cosine similarity is exactly what the default assumes.
+    /// </remarks>
+    public ScoreScale ScoreScale =>
+        _semanticRankingEnabled ? ScoreScale.OpaqueRanking : ScoreScale.Similarity;
 
     /// <summary>
     /// The index schema. Metadata lives in two fields:
@@ -114,7 +133,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
     /// Sub-fields of a complex collection cannot be marked <c>sortable</c> (service constraint:
     /// they are multi-valued per document), so none are.
     /// </summary>
-    private static SearchIndex BuildIndex(string name, int vectorDimensions)
+    private static SearchIndex BuildIndex(string name, int vectorDimensions, bool semanticRankingEnabled)
     {
         var metadataEntries = new ComplexField("metadata_entries", collection: true);
         metadataEntries.Fields.Add(new SimpleField("key", SearchFieldDataType.String) { IsFilterable = true });
@@ -142,11 +161,28 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         vectorSearch.Algorithms.Add(new HnswAlgorithmConfiguration("default-algorithm"));
         vectorSearch.Profiles.Add(new VectorSearchProfile("default-profile", "default-algorithm"));
 
-        return new SearchIndex(name)
+        var index = new SearchIndex(name)
         {
             Fields = fields,
             VectorSearch = vectorSearch,
         };
+
+        // Added only when the ranker is on: a configuration nothing uses is clutter, and adding
+        // it unconditionally would rewrite every existing index on the next initialisation for no
+        // benefit (Azure has no stale-index hazard — CreateOrUpdateIndexAsync always reconciles).
+        if (semanticRankingEnabled)
+        {
+            var semanticSearch = new SemanticSearch();
+            semanticSearch.Configurations.Add(new SemanticConfiguration(
+                SemanticConfigurationName,
+                new SemanticPrioritizedFields
+                {
+                    ContentFields = { new SemanticField("text") },
+                }));
+            index.SemanticSearch = semanticSearch;
+        }
+
+        return index;
     }
 
     /// <summary>Uploads the chunks, and returns as soon as the service has accepted them.</summary>
@@ -331,7 +367,17 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 
         searchOptions.Filter = BuildMetadataFilter(options.MetadataFilter);
 
-        var results = await ExecuteSearchAsync(null, searchOptions, options.MinScore, cancellationToken)
+        if (_semanticRankingEnabled)
+        {
+            searchOptions.QueryType = SearchQueryType.Semantic;
+            searchOptions.SemanticSearch = new SemanticSearchOptions
+            {
+                SemanticConfigurationName = SemanticConfigurationName,
+            };
+        }
+
+        var results = await ExecuteSearchAsync(
+                null, searchOptions, options.MinScore, expectRerankerScore: _semanticRankingEnabled, cancellationToken)
             .ConfigureAwait(false);
         activity?.SetTag("vectorstore.result.count", results.Count);
         return results;
@@ -385,7 +431,8 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         // service-side and the resulting score is ordinal (IHybridSearchable.HybridScoreScale),
         // so a similarity-shaped threshold would filter it arbitrarily. The dense path above
         // still applies it, because there the score is a real cosine similarity.
-        var results = await ExecuteSearchAsync(textQuery, searchOptions, minScore: 0.0, cancellationToken)
+        var results = await ExecuteSearchAsync(
+                textQuery, searchOptions, minScore: 0.0, expectRerankerScore: false, cancellationToken)
             .ConfigureAwait(false);
         activity?.SetTag("vectorstore.result.count", results.Count);
         return results;
@@ -431,8 +478,9 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 
     public async Task CreateCollectionAsync(string name, int vectorDimensions, CancellationToken cancellationToken = default)
     {
-        await _indexClient.CreateOrUpdateIndexAsync(BuildIndex(name, vectorDimensions), cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        await _indexClient.CreateOrUpdateIndexAsync(
+            BuildIndex(name, vectorDimensions, _semanticRankingEnabled),
+            cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DeleteCollectionAsync(string name, CancellationToken cancellationToken = default)
@@ -567,10 +615,40 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         return entries;
     }
 
+    /// <summary>
+    /// Runs the query and maps results, shared by <see cref="SearchAsync"/> and
+    /// <see cref="HybridSearchAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><paramref name="expectRerankerScore"/> is passed in, never read from
+    /// <c>_semanticRankingEnabled</c> here.</b> The field configures the dense path; the hybrid
+    /// path always passes <see langword="false"/> regardless of it, because stacking Azure's
+    /// reranker on top of its own hybrid fusion raises a separate question — what score comes back
+    /// from ranking an already-fused result — that this store does not yet answer. Reading the
+    /// field in the shared method would let enabling the ranker silently change hybrid results too.
+    /// </para>
+    /// <para>
+    /// <b>A service that cannot rank answers successfully rather than failing.</b> Azure returns
+    /// HTTP 200 with ordinary results whenever the tier is below Basic, the region does not support
+    /// semantic ranking, or the configuration name does not match — there is no error to catch, only
+    /// a missing <c>RerankerScore</c> on results that look otherwise normal. When
+    /// <paramref name="expectRerankerScore"/> is set and that score is absent, this throws rather
+    /// than silently handing back ordinary scores dressed up as reranked ones: the absence is the
+    /// only signal the defect leaves, so it has to be treated as an error, not a missing optional.
+    /// </para>
+    /// <para>
+    /// <b><paramref name="minScore"/> is not applied when <paramref name="expectRerankerScore"/> is
+    /// set.</b> The reranker score is Azure's ~0-4 ordinal relevance score, not a similarity — the
+    /// same rule 6.2.33 established for the hybrid path's fused score — so thresholding it as if it
+    /// were a cosine similarity would drop or keep results arbitrarily.
+    /// </para>
+    /// </remarks>
     private async Task<IReadOnlyList<SearchResult>> ExecuteSearchAsync(
         string? searchText,
         Azure.Search.Documents.SearchOptions searchOptions,
         double minScore,
+        bool expectRerankerScore,
         CancellationToken cancellationToken)
     {
         var response = await _searchClient.SearchAsync<SearchDocument>(
@@ -580,10 +658,23 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 
         await foreach (var result in response.Value.GetResultsAsync().WithCancellation(cancellationToken).ConfigureAwait(false))
         {
-            var score = result.Score ?? 0.0;
-            if (score < minScore)
+            double score;
+            if (expectRerankerScore)
             {
-                continue;
+                score = result.SemanticSearch?.RerankerScore
+                    ?? throw new InvalidOperationException(
+                        $"Semantic ranking was requested for index '{_indexName}', but the service " +
+                        "returned no reranker score. This means the service did not actually perform " +
+                        "semantic ranking (the tier, region, or configuration does not support it), " +
+                        "and results would be ordinary scores presented as reranked.");
+            }
+            else
+            {
+                score = result.Score ?? 0.0;
+                if (score < minScore)
+                {
+                    continue;
+                }
             }
 
             results.Add(new SearchResult

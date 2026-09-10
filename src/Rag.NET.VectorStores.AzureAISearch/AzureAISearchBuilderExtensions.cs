@@ -45,5 +45,16 @@ public static class AzureAISearchBuilderExtensions
                 k,
                 "KNearestNeighborsCount must be at least 1, or null to use Azure's own default of 50.");
         }
+
+        if (options.EnableSemanticRanking && options.KNearestNeighborsCount is { } semanticK && semanticK < 50)
+        {
+            throw new ArgumentOutOfRangeException(
+                paramName,
+                semanticK,
+                "KNearestNeighborsCount must be at least 50 when EnableSemanticRanking is set, or " +
+                "null to use Azure's own default of 50. Microsoft documents that the semantic " +
+                "ranker uses up to 50 matches as input and that fewer deprives it of necessary " +
+                "inputs — a quality loss with no error to notice.");
+        }
     }
 }

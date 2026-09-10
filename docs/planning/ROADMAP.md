@@ -7261,6 +7261,8 @@ or not ranking actually happened. That half carries 6.1's account constraint and
 ### Phase 6.2.34: The Semantic Ranker, and the Simulator That Lies About It [status: pending — added 2026-09-09, #328]
 **Surface:** Storage
 **HelpWanted:** no
+**Design:** `docs/plans/2026-09-09-semantic-ranker-design.md`
+**Plan:** `docs/plans/2026-09-09-semantic-ranker-implementation.md`
 
 **Goal:** Azure AI Search's semantic ranker, opt-in, declaring its scale — the third case of the
 rule 6.2.33 established rather than a decision invented for it.
@@ -7274,9 +7276,19 @@ semantic ranking is requested and no reranker score comes back, turning a silent
 
 **The opt-in is per instance, forced rather than chosen.** Semantic ranking reshapes the score of
 the ordinary `SearchAsync` path, whose scale is `IScoreScaleAware.ScoreScale` — which the interface
-requires to be constant for the instance's lifetime. With it enabled the store implements
+requires to be constant for the instance's lifetime. ~~With it enabled the store implements
 `IScoreScaleAware` and returns `OpaqueRanking`; with it disabled the store does not implement the
-interface and the path keeps its genuine cosine similarity.
+interface and the path keeps its genuine cosine similarity.~~ **Corrected 2026-09-10, at
+implementation: the second clause was not expressible.** A class implements an interface or it does
+not, at compile time; there is no conditional implementation. **The store implements
+`IScoreScaleAware` unconditionally** and returns a value fixed at construction — `OpaqueRanking`
+with the ranker on, `Similarity` with it off. **The off case is still behaviour-preserving, for a
+different reason than this paragraph assumed:** `Similarity` is documented in `ScoreScale`'s own
+remarks as the scale assumed of stores that do *not* implement the interface, and the sole consumer
+(`PersistentConversationMemory`) branches on `OpaqueRanking` specifically, so declaring `Similarity`
+and declining to declare at all are indistinguishable to every caller. The design's §1 recorded this
+correction when it was made; **this block did not, until the phase's own pre-push review caught the
+gap between them.**
 
 **The reranker score is returned as it comes**, not rescaled from 0–4 into a fabricated similarity —
 an invented similarity is what #56 was about.
@@ -7286,6 +7298,46 @@ verifiable locally unlike the rest.
 
 **Verification is account-blocked**: Basic tier or higher, billable, region-limited. Ships with
 `<VerifiedByReason>` naming the gap, in the same position as 6.1's cassettes.
+
+**BUILT 2026-09-10, and the sweep inverted two of its own predictions.** Seven commits: the option
+and its `k` guard, the semantic configuration on the index, the query asking for ranking with the
+throw when nothing comes back, the scale declaration, the sweep's own missing test, and the guide.
+`Rag.NET.Tests` 1487 passed / 0 skipped; the Azure suite 45 passed / 1 pre-existing skip, against a
+baseline of 36 — nine tests added. **Not breaking:** everything is off by default and the disabled
+path is byte-identical.
+
+**The mutation sweep found the gap in the plan's own test code, not in the implementation.**
+Dropping the `k < 50` validation survived, because the rejection test used `k=10` and the acceptance
+test `k=50` — shifting the threshold from 50 to 11 passed every test while wrongly accepting **49**,
+the one value the guidance is actually about, since the ranker takes up to 50 matches as input.
+Closed with a test at 49, proved to discriminate. **A boundary tested only from far outside it is
+not tested**, which is the same shape as 6.2.31's fused-score test that could not fail.
+
+**Row 6 predicted an unprotected seam and proved the opposite.** Passing `expectRerankerScore: true`
+from `HybridSearchAsync` — the mutation the plan flagged as the one *"nothing may catch"* — failed
+two existing tests, `HybridSearch_FusesKeywordAndVectorArms` and
+`HybridSearchAsync_DoesNotFilterByMinScore`, the second of them 6.2.33's. The dense path's ranker
+cannot leak into the hybrid path unnoticed. **A predicted gap that turns out closed is worth
+recording as loudly as one that turns out open**; the prediction was the guess, the sweep is the
+evidence.
+
+**Row 7 could not be closed, and that is the phase's real finding.** Applying `MinScore` on the
+ranked path survived — **not because a test is missing, but because the line is unreachable
+locally.** The guard throws whenever `RerankerScore` is null, and the simulator never returns one,
+so *everything downstream of the guard* is unreachable against it. **The unverifiable surface is
+therefore wider than the design's §5 first claimed:** not just "Azure's ranker reorders results",
+but which value reaches `Score` when a reranker score is present, and that `MinScore` is skipped on
+that path. §5 is corrected from the sweep rather than left as written. **The guard that makes the
+feature safe to ship is exactly what stands between every local test and the code beyond it** — the
+price of failing loudly, paid knowingly.
+
+**What is verified locally is real:** the option, the `k` guard and its boundary at 49/50, the
+configuration appearing on the index when enabled and absent when not, both declared scales, and —
+the seam that matters — that the store throws when the service accepts the request and does not
+rank. The simulator's defect (HTTP 200, ordinary results, no `rerankerScore`) is **the exact shape a
+real under-provisioned service takes**, so the guard is tested against a faithful instance of the
+failure it exists for.
+
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
