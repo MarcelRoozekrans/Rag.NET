@@ -367,17 +367,8 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 
         searchOptions.Filter = BuildMetadataFilter(options.MetadataFilter);
 
-        if (_semanticRankingEnabled)
-        {
-            searchOptions.QueryType = SearchQueryType.Semantic;
-            searchOptions.SemanticSearch = new SemanticSearchOptions
-            {
-                SemanticConfigurationName = SemanticConfigurationName,
-            };
-        }
-
         var results = await ExecuteSearchAsync(
-                null, searchOptions, options.MinScore, expectRerankerScore: _semanticRankingEnabled, cancellationToken)
+                null, searchOptions, options.MinScore, expectRerankerScore: false, cancellationToken)
             .ConfigureAwait(false);
         activity?.SetTag("vectorstore.result.count", results.Count);
         return results;
@@ -388,6 +379,11 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
     /// vector search over <paramref name="queryEmbedding"/>, ranked service-side.
     /// </summary>
     /// <remarks>
+    /// With <see cref="AzureAISearchOptions.EnableSemanticRanking"/> on, that fused result is then
+    /// reranked by Azure's semantic ranker and the score returned is the <c>RerankerScore</c> — a
+    /// different number on the same ordinal scale, thresholdable by neither. This is the only path
+    /// that ranks: <see cref="SearchAsync"/> has no text query to rank against (#539).
+    /// <para>
     /// <b><see cref="RagSearchOptions.MinScore"/> is not applied on this path.</b> The fused score
     /// Azure returns here is a rank produced by combining the BM25 and vector rankings server-side
     /// (<see cref="IHybridSearchable.HybridScoreScale"/> is <see cref="ScoreScale.OpaqueRanking"/>
@@ -397,6 +393,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
     /// retrieval pipeline already avoids this trap for pipeline callers — it refuses the native
     /// hybrid dispatch whenever a <c>MinScore</c> is set — so the caller who can still see this is
     /// one reaching <see cref="HybridSearchAsync"/> directly.
+    /// </para>
     /// </remarks>
     public async Task<IReadOnlyList<SearchResult>> HybridSearchAsync(
         string textQuery,
@@ -427,12 +424,24 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 
         searchOptions.Filter = BuildMetadataFilter(options.MetadataFilter);
 
+        if (_semanticRankingEnabled)
+        {
+            searchOptions.QueryType = SearchQueryType.Semantic;
+            searchOptions.SemanticSearch = new SemanticSearchOptions
+            {
+                SemanticConfigurationName = SemanticConfigurationName,
+            };
+        }
+
         // MinScore is deliberately not forwarded: Azure fuses BM25 and vector rankings
         // service-side and the resulting score is ordinal (IHybridSearchable.HybridScoreScale),
         // so a similarity-shaped threshold would filter it arbitrarily. The dense path above
-        // still applies it, because there the score is a real cosine similarity.
+        // still applies it, because there the score is a real cosine similarity. With semantic
+        // ranking on, the score is Azure's reranker score instead -- also ordinal, also not
+        // thresholdable, and already covered by the same HybridScoreScale declaration (6.2.33),
+        // which is why moving the ranker here needs no scale change at all.
         var results = await ExecuteSearchAsync(
-                textQuery, searchOptions, minScore: 0.0, expectRerankerScore: false, cancellationToken)
+                textQuery, searchOptions, minScore: 0.0, expectRerankerScore: _semanticRankingEnabled, cancellationToken)
             .ConfigureAwait(false);
         activity?.SetTag("vectorstore.result.count", results.Count);
         return results;
@@ -622,11 +631,12 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
     /// <remarks>
     /// <para>
     /// <b><paramref name="expectRerankerScore"/> is passed in, never read from
-    /// <c>_semanticRankingEnabled</c> here.</b> The field configures the dense path; the hybrid
-    /// path always passes <see langword="false"/> regardless of it, because stacking Azure's
-    /// reranker on top of its own hybrid fusion raises a separate question — what score comes back
-    /// from ranking an already-fused result — that this store does not yet answer. Reading the
-    /// field in the shared method would let enabling the ranker silently change hybrid results too.
+    /// <c>_semanticRankingEnabled</c> here.</b> The field configures the <i>hybrid</i> path; the
+    /// dense path always passes <see langword="false"/> regardless of it, because semantic ranking
+    /// needs query text and <see cref="SearchAsync"/> has none to give — it takes an embedding and
+    /// a <see cref="RagSearchOptions"/> of <c>TopK</c>/<c>MinScore</c>/<c>MetadataFilter</c>
+    /// (#539). Reading the field in this shared method would put the ranker back on the path that
+    /// cannot carry it, which is exactly the defect 6.2.36 fixed.
     /// </para>
     /// <para>
     /// <b>A service that cannot rank answers successfully rather than failing.</b> Azure returns

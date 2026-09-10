@@ -1,4 +1,4 @@
-using Azure;
+﻿using Azure;
 using Azure.Core.Pipeline;
 using Azure.Search.Documents.Indexes;
 using AzureSearchClientOptions = Azure.Search.Documents.SearchClientOptions;
@@ -117,7 +117,7 @@ public class AzureAISearchSemanticConfigurationTests : IAsyncLifetime
     /// resource, and it is why the feature can ship at all.
     /// </remarks>
     [Fact]
-    public async Task RequestingTheRankerFromAServiceThatDoesNotRank_Throws()
+    public async Task RequestingTheRankerFromAServiceThatDoesNotRank_ThrowsOnTheHybridPath()
     {
         var indexName = $"ragnet-sem-{Guid.CreateVersion7():N}"[..24];
         using var sut = new AzureAISearchVectorStore(
@@ -157,7 +157,8 @@ public class AzureAISearchSemanticConfigurationTests : IAsyncLifetime
             {
                 try
                 {
-                    await sut.SearchAsync(
+                    await sut.HybridSearchAsync(
+                        "semantic ranking candidate",
                         new float[] { 1.0f, 0.0f, 0.0f },
                         new SearchOptions { TopK = 1 },
                         TestContext.Current.CancellationToken);
@@ -173,5 +174,63 @@ public class AzureAISearchSemanticConfigurationTests : IAsyncLifetime
 
         Assert.NotNull(exception);
         Assert.Contains(indexName, exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// With the ranker enabled, the dense path returns ordinary cosine similarities and does not
+    /// throw. Semantic ranking needs query text and <c>IVectorStore.SearchAsync</c> takes an
+    /// embedding and a <c>SearchOptions</c> of <c>TopK</c>/<c>MinScore</c>/<c>MetadataFilter</c> —
+    /// no text, by interface contract — so the ranker cannot run here on any tier in any region
+    /// (#539). Before 6.2.36 this call threw; the throw was correct about the service and wrong
+    /// about the path.
+    /// </summary>
+    [Fact]
+    public async Task WithTheRankerEnabled_TheDensePathStillReturnsOrdinaryScores()
+    {
+        var indexName = $"ragnet-sem-{Guid.CreateVersion7():N}"[..24];
+        using var sut = new AzureAISearchVectorStore(
+            _endpoint,
+            indexName,
+            _credential,
+            vectorDimensions: 3,
+            _clientOptions,
+            new AzureAISearchOptions { EnableSemanticRanking = true });
+
+        await sut.InitializeAsync(TestContext.Current.CancellationToken);
+
+        var docId = $"ais-{Guid.CreateVersion7():N}";
+        await sut.StoreAsync(
+            [
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk
+                    {
+                        Text = "dense path candidate",
+                        DocumentId = new DocumentId(docId),
+                        ChunkIndex = 0,
+                    },
+                    Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+                },
+            ],
+            TestContext.Current.CancellationToken);
+
+        IReadOnlyList<SearchResult> results = [];
+        await SearchIndexSettle.WaitUntilAsync(
+            "the stored chunk is searchable on the dense path",
+            async () =>
+            {
+                results = await sut.SearchAsync(
+                    new float[] { 1.0f, 0.0f, 0.0f },
+                    new SearchOptions { TopK = 1 },
+                    TestContext.Current.CancellationToken);
+                return results.Count > 0;
+            },
+            TestContext.Current.CancellationToken);
+
+        // The assertion has to distinguish a cosine similarity from a reranker score without
+        // pinning the simulator's scoring formula. Azure's reranker score is roughly 0-4 and a
+        // cosine similarity here is bounded by 1, so the range is the discriminator.
+        var only = Assert.Single(results);
+        Assert.InRange(only.Score, 0.0, 1.0);
     }
 }
