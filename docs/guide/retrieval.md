@@ -189,11 +189,14 @@ flowchart TD
     CHECK -- yes --> EXPR{"Nothing configured beyond<br>what native can express?<br>(no sparse arm, no EnsembleOptions,<br>MinScore = 0)"}
     CHECK -- no --> FALLBACK["Dense search + in-memory BM25<br>(+ sparse arm when active)<br>run concurrently"]
     EXPR -- yes --> NATIVE["HybridSearchAsync()<br>backend handles fusion natively<br>e.g. Azure AI Search, Weaviate"]
-    EXPR -- no --> FALLBACK
+    EXPR -- no --> DECL{"Store declares<br>NativeOnlyCapability?<br>(e.g. semantic ranking)"}
+    DECL -- no --> FALLBACK
+    DECL -- yes --> REFUSE["throw InvalidOperationException<br>naming the blocking setting<br>— fusing would drop the capability"]
     FALLBACK --> RRF["RRF merge<br>Reciprocal Rank Fusion"]
 
     style FALLBACK fill:#e8f4fd,stroke:#4a90d9
     style RRF fill:#e8f4fd,stroke:#4a90d9
+    style REFUSE fill:#fdecea,stroke:#d9534f
 ```
 
 | Condition | Behaviour |
@@ -201,8 +204,11 @@ flowchart TD
 | Store implements `IHybridSearchable`, **and** no sparse arm would run, **and** `EnsembleOptions` is not supplied, **and** `MinScore` is `0.0` | Calls `HybridSearchAsync` — the backend handles fusion natively in a single call; scores are on the backend's fusion scale |
 | Store implements `IHybridSearchable`, but the call supplies `EnsembleOptions` (even default-valued), a non-zero `MinScore`, or a sparse arm would run | Client-side fusion, so the configured weights, threshold semantics, and sparse arm all apply |
 | Store does not implement `IHybridSearchable` | Dense search and in-memory BM25 (and, when active, sparse) run concurrently; results merged via Reciprocal Rank Fusion |
+| Store declares `IHybridSearchable.NativeOnlyCapability`, **and** any of the above would keep the client-side path — including `UseHybridSearch` left unset | **Throws `InvalidOperationException`**, naming which setting blocked native dispatch. Client-side fusion would return correct results with the declared capability silently absent, so the request is refused rather than downgraded |
 
-Azure AI Search and Weaviate implement `IHybridSearchable` and perform server-side BM25+vector fusion. pgvector and Qdrant do not; they fall back to the in-memory BM25 index maintained by `RagPipeline`. The probe is on the registered `IVectorStore` instance itself — a decorator that does not forward `IHybridSearchable` (e.g. `ResilientVectorStore`, `FederatedVectorStore`) keeps the client-side path.
+Azure AI Search and Weaviate implement `IHybridSearchable` and perform server-side BM25+vector fusion. pgvector and Qdrant do not; they fall back to the in-memory BM25 index maintained by `RagPipeline`. The probe is on the registered `IVectorStore` instance itself — a decorator that does not forward `IHybridSearchable` (e.g. `ResilientVectorStore`, `FederatedVectorStore`) keeps the client-side path. **That is why registering `Rag.NET.Resilience` disables native hybrid dispatch entirely** ([#544](https://github.com/MarcelRoozekrans/Rag.NET/issues/544)): the decorator hides the interface, so the refusal in the last row cannot fire either — the pipeline logs a `native_hybrid_hidden_by_decorator` warning naming the inner store instead.
+
+**`UseHybridSearch` left unset belongs in that list and was never named there**, because until a store could declare a native-only capability it had no consequence worth naming — the query simply never reached the hybrid branch. With `Azure AI Search`'s [semantic ranking](vector-stores.md#semantic-ranking) enabled it does have one: a caller who enables the ranker at registration and forgets `UseHybridSearch` would otherwise get dense search forever, silently unranked.
 
 Which path served a query is observable without a debugger: the `ragnet.retrieve` activity carries a `retrieval.hybrid.path` tag (`native` or `client`), and the native path logs a debug event `ensemble_native_hybrid` naming the store. The two paths return scores on different scales (the backend's fusion scale vs. client-side RRF values around `0.016`), so telling them apart matters when reading scores.
 

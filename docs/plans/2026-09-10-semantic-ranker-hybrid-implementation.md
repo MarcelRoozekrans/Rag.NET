@@ -814,11 +814,13 @@ git commit -m "feat(retrieval): refuse client-side fusion that would drop a nati
 **Files:**
 
 - Modify: `docs/guide/vector-stores.md` — "Semantic ranking" (~line 507), "Score scale" (~line 918), "Native hybrid search" (~line 552)
-- Modify: `docs/guide/retrieval.md` — "How the hybrid path is selected"
+- Modify: `docs/guide/retrieval.md` — "How the hybrid path is selected" (table, prose and the mermaid diagram)
+- Modify: `docs/guide/observability.md` — the resilience capability-surface paragraph, which claimed native hybrid is "not retried" when #544 shows it is **not reached**
+- Modify: `src/Rag.NET.VectorStores.AzureAISearch/AzureAISearchOptions.cs` — `EnableSemanticRanking`'s own XML doc opened "Whether the dense search path…", the same error one layer down; Step 5's sweep found it
 
 **The semantic-ranking section is wrong in the same way the code was** — it documents the dense path throughout, including a sentence explicitly saying `HybridSearchAsync` is untouched. Rewrite it; do not amend it.
 
-- [ ] **Step 1: Rewrite "Semantic ranking" in `docs/guide/vector-stores.md`**
+- [x] **Step 1: Rewrite "Semantic ranking" in `docs/guide/vector-stores.md`**
 
 Replace the paragraph beginning "Enabling it changes the dense `SearchAsync` path only" and the bullet list under it. The new content must say:
 
@@ -830,19 +832,19 @@ Replace the paragraph beginning "Enabling it changes the dense `SearchAsync` pat
 - The throw is unchanged in kind and moved in place; add the **new** `EnsembleBehavior` refusal, with the four blocking conditions named.
 - A note that registering `Rag.NET.Resilience` prevents native hybrid dispatch entirely (#544), that the pipeline logs a warning when it detects this, and that ranking is therefore silently unavailable in that combination until #544 is fixed.
 
-- [ ] **Step 2: Correct the "Score scale" section**
+- [x] **Step 2: Correct the "Score scale" section**
 
 Two edits. The table row for `ScoreScale.Similarity` must drop "and `AzureAISearchVectorStore` explicitly, when semantic ranking is off"; the row for `OpaqueRanking` must drop "`AzureAISearchVectorStore`, when semantic ranking is on" and leave `FederatedVectorStore`. Then **delete the whole "Azure AI Search implements `IScoreScaleAware` unconditionally" paragraph** and replace it with a short one saying the store no longer implements the interface, that the dense path is a genuine cosine similarity under every option since #539, and that `Similarity` — the documented meaning of the interface's absence — is therefore already the right answer.
 
-- [ ] **Step 3: Correct "Native hybrid search"**
+- [x] **Step 3: Correct "Native hybrid search"**
 
 Its last sentence says plain `SearchAsync` "is why the store is treated as similarity-scaled (see Score scale)". Keep the claim, fix the link target — it now follows from the interface's absence, not from a declaration.
 
-- [ ] **Step 4: Update `docs/guide/retrieval.md`'s dispatch rule**
+- [x] **Step 4: Update `docs/guide/retrieval.md`'s dispatch rule**
 
 The four conditions that keep the client-side path are unchanged, but their consequence is no longer uniform: for a store declaring a native-only capability, each is now an error rather than a routing decision. Add that, naming `UseHybridSearch` as the fourth condition — it was always true and was never listed, because until now it had no consequence worth naming.
 
-- [ ] **Step 5: Check for other stale references**
+- [x] **Step 5: Check for other stale references**
 
 ```bash
 grep -rn "EnableSemanticRanking\|semantic ranking\|IScoreScaleAware" docs/ README.md
@@ -850,7 +852,7 @@ grep -rn "EnableSemanticRanking\|semantic ranking\|IScoreScaleAware" docs/ READM
 
 Fix anything that still describes the dense path or the removed interface. **Read each hit** — several are about `FederatedVectorStore` or the `k` guard and are correct as they stand.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/
