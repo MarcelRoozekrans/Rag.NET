@@ -7599,6 +7599,73 @@ removal breaks no consumer in the repository. **Still account-blocked past the g
 from 6.2.34 and stated rather than glossed: the simulator accepts `queryType=semantic`, returns 200
 and returns no `rerankerScore`, so the throw is testable locally and the ranking itself is not.
 
+### Phase 6.2.37: The Decorator That Hid a Capability [status: pending — added 2026-09-10, #544]
+**Surface:** Storage
+**HelpWanted:** no
+**Design:** `docs/plans/2026-09-10-resilient-hybrid-design.md`
+
+**Goal:** `ResilientVectorStore` stops hiding `IHybridSearchable`, so registering resilience no
+longer silently disables native hybrid dispatch — and, since 6.2.36, semantic ranking with it.
+
+**THE DEFECT IS AS OLD AS THE DECORATOR.** `IHybridSearchable` landed 2026-03-31 and
+`ResilientVectorStore` 2026-08-04; `EnsembleBehavior` injects `IVectorStore` and probes
+`VectorStore is IHybridSearchable`, which is `false` for the decorated instance. So **native hybrid
+dispatch never happens at all under resilience**, for every store that supports it, and has not since
+the day the decorator was written. Until 6.2.36 the cost was a silent downgrade — correct results, an
+extra round trip, client-side RRF instead of the backend's fusion, scores on a scale the caller was
+not told to expect. **6.2.36 raised the stakes**: the ranker now lives on `HybridSearchAsync`, so
+resilience silently disables a feature the caller opted into, and 6.2.36's own refusal cannot catch
+it because that refusal is conditioned on the very probe the decorator falsifies.
+
+**Two measurements narrowed the scope, and both contradicted the obvious framing.**
+`ICollectionManageable` is **never probed on a resolved `IVectorStore`** — nothing in `src/` does
+`is ICollectionManageable`; it is only resolved from DI, where it correctly returns the undecorated
+store. So the decorator dropping it is harmless exactly as its docs claim, and **`IHybridSearchable`
+is the only capability where probe-on-instance collides with decoration**: one interface, not a
+model. And **hybrid and sparse are disjoint today** — Azure AI Search and Weaviate are hybrid and not
+sparse; `InMemoryVectorStore` and the three `*SparseVectorStore` subclasses are sparse and not
+hybrid — so the combinatorial explosion `ResilientVectorStore`'s docs warn about is real in principle
+and empty in practice. Both were read off the interfaces and every implementer, not counted from
+declaration lines, which miss the three sparse subclasses that inherit their base's interfaces.
+
+**Decided: a variant subclass, against the repo's other precedent, and the reason is specific.**
+`ResilientVectorStore` handles its four interfaces two ways — a variant for `ISparseSearchable`, and
+implement-and-delegate-with-a-support-flag for `IChunkLookup` and `IScoreScaleAware`, the latter
+justified by exactly the combinatorial argument this phase declines. A `SupportsNativeHybrid` flag
+would need no new class ever, but it changes the contract of a **public interface other stores
+implement**, and its default would have to be `true` — the opposite polarity to `NativeOnlyCapability`,
+added to the same interface the day before by 6.2.36, whose `null` means *nothing declared*. Two
+adjacent defaulted members with inverted polarity is a trap, and v1.0 is the next milestone. **The
+combinatorial objection is also weaker here than it looks**: it applies to *orthogonal* capabilities,
+and hybrid and sparse are not orthogonal in this pipeline — `SparseArmWouldRun` is one of the four
+conditions that already keeps a sparse-capable store on the client path.
+
+**All three interface members must be forwarded, and that is the part that would be half-done.** Two
+of the three are defaulted, so a variant forwarding only `HybridSearchAsync` compiles, passes the
+probe, and dispatches natively while answering for the backend on the rest. `HybridScoreScale`
+defaulted means the decorator declares a scale on the store's behalf — correct for both current
+implementers by luck. `NativeOnlyCapability` defaulted is the one that bites: **6.2.36's refusal would
+never fire under resilience**, so native dispatch would be restored while the guard on it stayed
+broken. That is #544 reappearing one level in, and the sweep must carry a row for it.
+
+**`Create` will refuse the combination it cannot represent.** A store that is both sparse and hybrid
+fits neither variant — picking either hides the other, which is #544 again — so `Create` throws
+`NotSupportedException` naming the store and both capabilities. A registration-time failure instead
+of a query that quietly does less than asked, which is this milestone's rule applied to its own fix,
+and it costs nothing today because no such store exists.
+
+**Behaviour change, stated rather than discovered:** existing users with resilience and a
+hybrid-capable store will start dispatching natively, through the retry pipeline, on the backend's
+fusion scale. `ResilientVectorStore`'s class doc says native hybrid is "not retried" — that sentence
+described a consequence of the bug as though it were a decision, and gets rewritten.
+
+**6.2.36's `native_hybrid_hidden_by_decorator` warning stays**, though the resilience case stops
+reaching it: it is package-agnostic and catches any future decorator that hides the interface.
+
+**Fully verifiable locally** — the first phase since 6.2.35 with nothing account-blocked. The
+decoration, the probe, the three delegations and the `Create` branch are all exercisable with
+in-process fakes.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
