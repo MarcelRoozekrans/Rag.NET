@@ -29,7 +29,7 @@
 
 **Files:** none.
 
-- [ ] **Step 1: Record the baseline for both suites, before touching anything**
+- [x] **Step 1: Record the baseline for both suites, before touching anything**
 
 ```bash
 dotnet test tests/Rag.NET.Resilience.Tests -c Release
@@ -54,7 +54,7 @@ Write the pass/skip/fail counts into this file under this step. At the time of w
 - Consumes: `ResilientVectorStore`'s `private protected` `Inner` and `Pipeline`.
 - Produces: `public sealed class ResilientHybridVectorStore : ResilientVectorStore, IHybridSearchable`, with a constructor `(IVectorStore inner, ResiliencePipeline pipeline)` that throws `ArgumentException` when `inner` is not `IHybridSearchable`. Task 2's `Create` branch constructs it.
 
-- [ ] **Step 1: Add the test fake**
+- [x] **Step 1: Add the test fake**
 
 `ConfigureResilienceTests` already has `private class CountingVectorStore(int failures, Func<Exception> failure) : IVectorStore` — deliberately not sealed — and `private sealed class SparseCountingVectorStore : CountingVectorStore, ISparseSearchable` built on it. Mirror that shape exactly. Add next to `SparseCountingVectorStore`:
 
@@ -100,7 +100,7 @@ Write the pass/skip/fail counts into this file under this step. At the time of w
 
 `CountingVectorStore`'s constructor takes `(int failures, Func<Exception> failure)`; **read the existing fake before writing this** and match its actual constructor and base-call syntax rather than trusting the snippet.
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Add to `ConfigureResilienceTests`, next to the existing `SparseDecoration_*` and `Decoration_*` tests:
 
@@ -185,7 +185,7 @@ Add to `ConfigureResilienceTests`, next to the existing `SparseDecoration_*` and
 
 **`BuildProviderWithStore` is a placeholder for whatever this file already uses.** `ConfigureResilienceTests` builds a container and calls `rag.ConfigureResilience()` in its existing retry tests (`VectorStore_TransientFailure_IsRetried` at ~line 318 is the closest model). **Read that test and reuse its exact setup** rather than inventing a helper — the retry policy under test must be the configured one, and `ResiliencePipeline.Empty` would retry nothing and make this test vacuous.
 
-- [ ] **Step 3: Run them and confirm they fail for the right reasons**
+- [x] **Step 3: Run them and confirm they fail for the right reasons**
 
 Run: `dotnet test tests/Rag.NET.Resilience.Tests -c Release --filter "FullyQualifiedName~Hybrid"`
 
@@ -193,7 +193,7 @@ Expected: `HybridDecoration_KeepsTheCapabilityProbeHonest`, `..._ForwardsEveryMe
 
 **If the tests compile at this step, something is wrong** — check you have not accidentally created the class first.
 
-- [ ] **Step 4: Write the variant**
+- [x] **Step 4: Write the variant**
 
 Create `src/Rag.NET.Resilience/ResilientHybridVectorStore.cs`:
 
@@ -272,13 +272,13 @@ public sealed class ResilientHybridVectorStore : ResilientVectorStore, IHybridSe
 
 **Match `ResilientSparseVectorStore`'s `Pipeline.ExecuteAsync` shape exactly** — the `static` lambda with a state tuple exists to avoid a closure allocation per call, and the sparse variant is the reference. If the tuple's arity causes trouble, read that file rather than falling back to a capturing lambda.
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `dotnet test tests/Rag.NET.Resilience.Tests -c Release --filter "FullyQualifiedName~Hybrid"`
 
 Expected: PASS, all four. `HybridSearch_TransientFailure_IsRetried` proves the pipeline is wired; the other three prove the probe and the delegations.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/Rag.NET.Resilience/ResilientHybridVectorStore.cs tests/Rag.NET.Resilience.Tests/DependencyInjection/ConfigureResilienceTests.cs
@@ -301,7 +301,7 @@ git commit -m "feat(resilience): forward IHybridSearchable so decoration stops h
 
 **Note on ordering:** Task 1's tests already call `Create` and expect the hybrid variant, so they fail until this task lands. That is deliberate — the variant and its selection are one behavioural change and splitting them would leave Task 1 green only by testing a constructor nobody calls. **If Task 1 Step 5 passed, this task's `Create` branch was written early; check that it was.**
 
-- [ ] **Step 1: Write the failing test for the unrepresentable combination**
+- [x] **Step 1: Write the failing test for the unrepresentable combination**
 
 ```csharp
     /// <summary>
@@ -329,12 +329,12 @@ git commit -m "feat(resilience): forward IHybridSearchable so decoration stops h
 
 This needs a third fake — `SparseAndHybridCountingVectorStore : CountingVectorStore, ISparseSearchable, IHybridSearchable` — with trivial member bodies. It exists only to be refused, so its methods may `throw new NotSupportedException()`; nothing calls them.
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 Run: `dotnet test tests/Rag.NET.Resilience.Tests -c Release --filter "FullyQualifiedName~Create_ForAStoreThatIsBoth"`
 Expected: FAIL — no exception is thrown, because `Create` currently matches `ISparseSearchable` first and returns the sparse variant, silently dropping hybrid.
 
-- [ ] **Step 3: Rewrite `Create`**
+- [x] **Step 3: Rewrite `Create`**
 
 ```csharp
     /// <summary>
@@ -366,12 +366,12 @@ Expected: FAIL — no exception is thrown, because `Create` currently matches `I
 
 **A `switch` on the pair, not a chain of `is` checks.** The chain is what produced the bug being fixed: it answered the first capability it recognised and never asked about the second. The tuple makes the unhandled combination unwritable — a fifth case does not exist, so a future capability forces an edit here rather than silently falling through to a branch that drops it.
 
-- [ ] **Step 4: Run the whole resilience suite**
+- [x] **Step 4: Run the whole resilience suite**
 
 Run: `dotnet test tests/Rag.NET.Resilience.Tests -c Release`
 Expected: Task 0's baseline plus the five new tests. **Nothing pre-existing moves** — in particular `SparseDecoration_PreservesTheScoreScaleProbe` and the two `Decoration_*ChunkLookup*` tests, which assert the branches this rewrite touched.
 
-- [ ] **Step 5: Rewrite the class `<remarks>`**
+- [x] **Step 5: Rewrite the class `<remarks>`**
 
 The `<para>` beginning "Capability probes: use `Create`" ends with a sentence that is now false:
 
@@ -402,7 +402,7 @@ Replace the whole `<para>` with:
     /// </para>
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/Rag.NET.Resilience/ResilientVectorStore.cs tests/Rag.NET.Resilience.Tests/DependencyInjection/ConfigureResilienceTests.cs
@@ -424,7 +424,7 @@ git commit -m "feat(resilience): select the hybrid variant, and refuse the pair 
 
 Tasks 1 and 2 prove the decorator. This proves the thing #544 is actually about: that `EnsembleBehavior` now reaches the native path through a decorator. Without it, the fix is verified only at the layer that was never the complaint.
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 `EnsembleBehaviorTests` already has `FakeRankingHybridStore` and `FakeDecoratorOverHybridStore` from 6.2.36. Add a decorator fake that *does* forward, so the pair reads as before-and-after:
 
@@ -515,17 +515,17 @@ Then two tests:
 
 **`FakeRankingHybridStore` is currently a `private sealed class` with an implicit parameterless constructor** — confirm that before writing `new()` above, and check whether 6.2.36 left it with `NativeOnlyCapability => "semantic ranking"` hard-coded (it did) so the assertion string matches.
 
-- [ ] **Step 2: Run and confirm they pass**
+- [x] **Step 2: Run and confirm they pass**
 
 Run: `dotnet test tests/Rag.NET.Tests -c Release --filter "FullyQualifiedName~EnsembleBehaviorTests"`
 Expected: PASS, all — the pre-existing 6.2.36 tests plus these two. **The `FakeDecoratorOverHybridStore` warning tests must still pass**: that fake still hides the interface, so the warning still fires for it. If they fail, something deleted behaviour Task 0's constraints forbid removing.
 
-- [ ] **Step 3: Run the full pipeline suite**
+- [x] **Step 3: Run the full pipeline suite**
 
 Run: `dotnet test tests/Rag.NET.Tests -c Release`
 Expected: Task 0's baseline plus two.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/Rag.NET.Tests/Retrieval/Behaviors/EnsembleBehaviorTests.cs
@@ -544,19 +544,19 @@ git commit -m "test(retrieval): native dispatch and the refusal both survive a f
 
 Three places were changed by 6.2.36 to describe this bug. All three now describe a bug that is fixed, which is worse than describing none.
 
-- [ ] **Step 1: `vector-stores.md`**
+- [x] **Step 1: `vector-stores.md`**
 
 Remove the blockquote beginning "**Registering `Rag.NET.Resilience` disables native hybrid dispatch entirely**". Replace it with a short note that resilience now preserves native hybrid dispatch and retries it, and that a store which is both sparse and hybrid is refused at registration. Do **not** simply delete it and leave silence: the combination was documented as unsupported, and a reader who followed that advice needs to know it changed.
 
-- [ ] **Step 2: `observability.md`**
+- [x] **Step 2: `observability.md`**
 
 The capability-surfaces paragraph was corrected by 6.2.36 to say native hybrid is "not merely un-retried but **unreachable**". Correct it a second time: it is now forwarded by `ResilientHybridVectorStore` and retried. Keep the `ICollectionManageable` half — it is still not forwarded, and now the paragraph can say why (nothing probes it on the instance).
 
-- [ ] **Step 3: `retrieval.md`**
+- [x] **Step 3: `retrieval.md`**
 
 Remove the sentence added by 6.2.36 stating that registering `Rag.NET.Resilience` disables native hybrid dispatch, and the `native_hybrid_hidden_by_decorator` note attached to it. **Keep the mention of the warning itself** — it still fires for any other decorator — but reword so it no longer names resilience as the example.
 
-- [ ] **Step 4: Sweep for anything missed**
+- [x] **Step 4: Sweep for anything missed**
 
 ```bash
 grep -rn "544\|hidden_by_decorator\|resilience" docs/guide/ | grep -in "hybrid"
@@ -564,12 +564,12 @@ grep -rn "544\|hidden_by_decorator\|resilience" docs/guide/ | grep -in "hybrid"
 
 **Read each hit.** Some are correct as they stand.
 
-- [ ] **Step 5: Run the docs guards**
+- [x] **Step 5: Run the docs guards**
 
 Run: `dotnet test tests/Rag.NET.RepoConventions.Tests -c Release`
 Expected: the baseline (98 passed / 2 pre-existing skips at the time of writing — confirm against Task 0).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add docs/guide/
@@ -582,7 +582,7 @@ git commit -m "docs(resilience): native hybrid survives decoration, so stop docu
 
 **Files:** nothing permanently — apply, test, revert.
 
-- [ ] **Step 1: Run each mutation, recording the line mutated AND the named catcher**
+- [x] **Step 1: Run each mutation, recording the line mutated AND the named catcher**
 
 **Record the site, not just the description** — 6.2.31's sweep was made unreproducible by naming a mutation without naming where it was applied, and 6.2.34, 6.2.35 and 6.2.36 all kept the corrected habit.
 
@@ -596,9 +596,28 @@ git commit -m "docs(resilience): native hybrid survives decoration, so stop docu
 | 6 | `(false, false) => new ResilientHybridVectorStore(inner, pipeline)` — claim a capability the store lacks | `Create` | `Decoration_DoesNotClaimANativeHybridTheInnerStoreLacks`. Expect an `ArgumentException` from the constructor rather than a clean assertion failure; **that still counts as caught**, and note which it was |
 | 7 | delete 6.2.36's `WarnIfADecoratorHidesNativeHybrid` call | `EnsembleBehavior.HandleAsync` | 6.2.36's two warning tests. A control: this phase must not have made that warning dead code |
 
-- [ ] **Step 2: Re-run any row whose catching test you changed** — rewriting a catching test invalidates its row (6.2.35's lesson).
 
-- [ ] **Step 3: Verify the tree is clean** — `git status --short`, only files you meant to change.
+**Results, measured 2026-09-10. Seven rows, all caught — and row 1 exposed a gap that produced an eighth test.**
+
+| # | mutation | site | outcome |
+| --- | --- | --- | --- |
+| 1 | drop `NativeOnlyCapability` forwarding | `ResilientHybridVectorStore` | **caught, but only at one layer** — see below |
+| 2 | drop `HybridScoreScale` forwarding | `ResilientHybridVectorStore` | **caught** — `HybridDecoration_ForwardsEveryMemberRatherThanAnsweringWithTheDefaults` |
+| 3 | call `_hybrid.HybridSearchAsync` directly, bypassing `Pipeline.ExecuteAsync` | `ResilientHybridVectorStore.HybridSearchAsync` | **caught** — `HybridSearch_TransientFailure_IsRetried` |
+| 4 | `(false, true) => new ResilientVectorStore(...)` | `Create` | **caught** — all three hybrid tests |
+| 5 | `(true, true) => new ResilientSparseVectorStore(...)` — the old silent behaviour | `Create` | **caught** — `Create_ForAStoreThatIsBothSparseAndHybrid_RefusesRatherThanPickingOne` |
+| 6 | `(false, false) => new ResilientHybridVectorStore(...)` — claim a capability the store lacks | `Create` | **caught**, loudly: the constructor's `ArgumentException` breaks six tests across both files, not a clean assertion failure. Predicted, and it still counts |
+| 7 | delete 6.2.36's `WarnIfADecoratorHidesNativeHybrid` call | `EnsembleBehavior.HandleAsync` | **caught** — both 6.2.36 warning tests. The control: this phase must not have made that warning dead code, and it did not |
+
+**Row 1 is the finding, and the plan predicted it wrong.** The plan expected it to be caught by *both* the resilience unit test and `HandleAsync_DecoratorForwardsHybridCapability_StillRefusesWhenNativeIsUnreachable`. It was caught only by the first. The retrieval test cannot catch it **by construction**: its `FakeForwardingDecoratorOverHybridStore` forwards `NativeOnlyCapability` itself and never touches `ResilientHybridVectorStore`, so mutating the production class cannot affect it.
+
+So the retrieval suite proved the *contract* — a forwarding decorator makes the refusal fire — and the resilience suite proved the *delegation*, and **nothing proved the real decorator satisfies the real contract**. That seam is the exact shape of #544 itself: two layers each correct in isolation that did not compose.
+
+Closed with `tests/Rag.NET.Resilience.Tests/ResilientHybridDispatchTests.cs`, which wires the real `ResilientVectorStore.Create` output into a real `EnsembleBehavior` — the only place both packages are referenced. Row 1 re-run against it: **caught at both layers**, by `ADecoratedHybridStore_StillRefusesWhenTheNativePathIsUnreachable` and the unit test together.
+
+- [x] **Step 2: Re-run any row whose catching test you changed** — rewriting a catching test invalidates its row (6.2.35's lesson).
+
+- [x] **Step 3: Verify the tree is clean** — `git status --short`, only files you meant to change.
 
 ---
 
