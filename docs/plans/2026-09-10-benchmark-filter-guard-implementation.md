@@ -176,6 +176,8 @@ Assert on the attribute, not on file contents wholesale, so reformatting does no
 
       **Verdict PASS** — `docs/pre-push-review-2026-09-10-1424.md`. 0 blockers, 1 warning, 1 info, both fixed before the PR. The warning: the test helper read one redirected stream to the end and then the other (deadlocks if the child fills the second buffer) and waited with no timeout — a hang-shaped risk inside the guard for a property that exists because of #275, a hang. Fixed per `CliProcessTests.RunAsync`. All four mutation rows re-run afterwards; all four still caught.
 
-- [ ] **Step 4: Open the PR.** Title: `feat(build): refuse a VSTest filter that Microsoft.Testing.Platform will ignore (#529)`. Not breaking for any library consumer — this is a build-time guard on a test project. It **is** breaking for anyone with `dotnet test --filter` on that project in a script or shell history, which is the intent; say so plainly in the body.
+- [x] **Step 4: Open the PR.** — **#540**, 2026-09-10: https://github.com/MarcelRoozekrans/Rag.NET/pull/540
 
-- [ ] **Step 5: Stop.** The merge is the operator's.
+       Title: `feat(build): refuse a VSTest filter that Microsoft.Testing.Platform will ignore (#529)`. Not breaking for any library consumer — this is a build-time guard on a test project. It **is** breaking for anyone with `dotnet test --filter` on that project in a script or shell history, which is the intent; say so plainly in the body.
+
+- [x] **Step 5: Stop.** The merge is the operator's.
