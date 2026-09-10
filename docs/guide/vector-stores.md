@@ -561,14 +561,16 @@ With it on:
   Because the store declares `IHybridSearchable.NativeOnlyCapability`, `EnsembleBehavior` throws
   instead, naming which of those four settings blocked it.
 
-> **Registering `Rag.NET.Resilience` disables native hybrid dispatch entirely**, and therefore
-> semantic ranking with it. `ResilientVectorStore` does not forward `IHybridSearchable`, and the
-> pipeline probes the registered (decorated) store, so every hybrid query falls back to client-side
-> fusion — correct results, no ranking. The refusal above cannot fire for this case, because the
-> decorator hides the declaration along with the capability; the pipeline logs a
-> `native_hybrid_hidden_by_decorator` warning naming the inner store instead. Tracked as
-> [#544](https://github.com/MarcelRoozekrans/Rag.NET/issues/544); until it is fixed, do not combine
-> resilience with semantic ranking.
+> **Resilience and semantic ranking now compose**, and did not before
+> [#544](https://github.com/MarcelRoozekrans/Rag.NET/issues/544). `ResilientVectorStore` did not
+> forward `IHybridSearchable`, and the pipeline probes the registered (decorated) store, so every
+> hybrid query fell back to client-side fusion — correct results, no ranking, no error. If you
+> read this page before that fix and avoided the combination, you no longer need to:
+> `ConfigureResilience` now yields a `ResilientHybridVectorStore` that forwards the whole interface
+> and retries the native query like any other read. One caveat: a store implementing **both**
+> `ISparseSearchable` and `IHybridSearchable` is refused at registration with a
+> `NotSupportedException`, because no decorator variant preserves that pair and silently picking one
+> would re-open the same hole. No shipped store is both.
 
 ### Native hybrid search
 
