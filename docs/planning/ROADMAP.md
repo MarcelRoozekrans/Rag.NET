@@ -7599,7 +7599,7 @@ removal breaks no consumer in the repository. **Still account-blocked past the g
 from 6.2.34 and stated rather than glossed: the simulator accepts `queryType=semantic`, returns 200
 and returns no `rerankerScore`, so the throw is testable locally and the ranking itself is not.
 
-### Phase 6.2.37: The Decorator That Hid a Capability [status: pending — added 2026-09-10, #544]
+### Phase 6.2.37: The Decorator That Hid a Capability [status: complete 2026-09-10 in #549 — #544, and the sweep gap that was the defect's own shape one level up]
 **Surface:** Storage
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-10-resilient-hybrid-design.md`
