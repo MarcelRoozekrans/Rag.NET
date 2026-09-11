@@ -7998,7 +7998,8 @@ unchecked.
 
 **The `src/` change is comment-only and was checked, not asserted**: `git diff` over `src/` contains
 only `///` lines, and the whole-solution build stayed at **0 warnings**. Suites: RepoConventions
-**101**, Security **104**, PackageValidation **23**, `Rag.NET.Tests` **1499** — all at baseline.
+**101**, Security **104**, PackageValidation **23**, `Rag.NET.Tests` **1499** — all at baseline. **Pre-push review
+PASS** — `docs/pre-push-review-2026-09-11-1732.md`, 0 blockers and 0 warnings.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to

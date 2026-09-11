@@ -86,7 +86,7 @@ the method at all.
 
 ### Task 0: Baseline
 
-- [ ] **Step 1: Record the baselines**
+- [x] **Step 1: Record the baselines**
 
 ```bash
 dotnet test tests/Rag.NET.RepoConventions.Tests -c Release     # expect 101 / 2 skipped
@@ -109,7 +109,7 @@ becomes a build warning.
 *outside* the library; this is a feature family *inside* it, so it belongs with its three siblings,
 above them in pipeline order.
 
-- [ ] **Step 1: Read every implementation before writing about it**
+- [x] **Step 1: Read every implementation before writing about it**
 
 `RegexChunkSanitiser`, `LlmChunkSanitiser`, `RegexQuerySanitiser`, `LlmQuerySanitiser`,
 `RegexRetrievalGuard`, `TrustLevelRetrievalGuard`, `QuerySanitiserPipelineDecorator`,
@@ -132,7 +132,7 @@ above them in pipeline order.
   the guard ran at all.**
 - `TrustLevelGuardOptions` is `DropUntrusted = true`, `WarnOnExternal = true`.
 
-- [ ] **Step 2: Write `## Prompt injection defences`**
+- [x] **Step 2: Write `## Prompt injection defences`**
 
 Cover, in this order:
 
@@ -175,9 +175,9 @@ whatever pulls from an adversarial source — and link the ingestion guide rathe
 **(g) A worked registration example** showing the layers composed. **Every type and method in it must
 be one the produced packages ship** — this is checked, see Task 5.
 
-- [ ] **Step 3: Build the docs site** — `npm run build`, which validates internal links.
+- [x] **Step 3: Build the docs site** — `npm run build`, which validates internal links.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/guide/security.md
@@ -190,7 +190,7 @@ git commit -m "docs(security): document the prompt-injection defences (#552)"
 
 **Files:** Modify `docs/guide/security.md` — the posture's family table and its fail-open subsection.
 
-- [ ] **Step 1: Repoint the family table**
+- [x] **Step 1: Repoint the family table**
 
 The prompt-injection row currently reads **"not on this page"** and links `features.md`. It now links
 the Task 1 section. **Delete "Until that section is written here, the reference is the place to
@@ -198,7 +198,7 @@ read"** — design §2 records why that sentence has to go: it sends a reader to
 
 Also remove the `#552` link from that row; the issue is closed by this phase.
 
-- [ ] **Step 2: Widen the fail-open subsection**
+- [x] **Step 2: Widen the fail-open subsection**
 
 `### RBAC fails open` becomes a subsection covering **both** defaults — RBAC's world-readable chunks
 and trust level's `internal` fallback (§0). Keep the RBAC sentence quoted verbatim: 6.2.38's
@@ -208,7 +208,7 @@ the file, and rewording the quote breaks that guard.
 **Run that guard immediately after this step** rather than at the end — it is the one most likely to
 be tripped by this task, and finding out in Task 6 wastes the intervening work.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/guide/security.md
@@ -221,7 +221,7 @@ git commit -m "docs(security): point the posture at the section that now exists"
 
 **Files:** Modify `docs/reference/features.md` — the "Prompt Injection Fortification" section only.
 
-- [ ] **Step 1: Replace the proposal with a description of what shipped**
+- [x] **Step 1: Replace the proposal with a description of what shipped**
 
 The current body is future tense about work to be undertaken. Replace it with: what the package
 actually provides (the four layers, named), a link to the new guide section for detail, and the
@@ -231,13 +231,13 @@ actually provides (the four layers, named), a link to the new guide section for 
 **Keep the `**Status:** ✅ Done` line and the `**Package:**` line.** `FeatureClaimTests` parses those,
 and the status is correct — it was the body that lied.
 
-- [ ] **Step 2: Run the feature-claim guard**
+- [x] **Step 2: Run the feature-claim guard**
 
 ```bash
 dotnet test tests/Rag.NET.RepoConventions.Tests -c Release --filter "FullyQualifiedName~FeatureClaim"
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/reference/features.md
@@ -252,7 +252,7 @@ git commit -m "docs(reference): describe the prompt-injection feature that shipp
 
 **The only `src/` change in this phase, and it must be comment lines only.**
 
-- [ ] **Step 1: Write a `<summary>` for each**
+- [x] **Step 1: Write a `<summary>` for each**
 
 All ten: `UseChunkSanitiser`, `UseLlmChunkSanitiser`, `UseQuerySanitiser`, `UseLlmQuerySanitiser`,
 `UseRetrievalGuard`, `UseTrustLevelGuard`, `UsePromptHardening`, `UseRbac`, `UsePiiDetection`,
@@ -271,7 +271,7 @@ Each summary should carry the fact a caller cannot infer from the signature. For
 `UseLlmQuerySanitiser` and `UseLlmPiiDetection` call `GetRequiredService<IChatClient>()`, so they
 throw at resolution if none is registered.
 
-- [ ] **Step 2: Build and confirm no new warnings**
+- [x] **Step 2: Build and confirm no new warnings**
 
 ```bash
 dotnet build Rag.NET.slnx -c Release
@@ -279,7 +279,7 @@ dotnet build Rag.NET.slnx -c Release
 
 Expected: **0 warnings**, matching Task 0. A malformed `<see cref="">` surfaces here.
 
-- [ ] **Step 3: Confirm the diff is comments only**
+- [x] **Step 3: Confirm the diff is comments only**
 
 ```bash
 git diff --stat src/
@@ -288,7 +288,7 @@ git diff src/ | grep -E "^[+-]" | grep -vE "^(\+\+\+|---)" | grep -v "^[+-]\s*//
 
 **If that command prints anything, an executable line changed.** Stop and revert it.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/Rag.NET.Security/RagBuilderExtensions.cs
@@ -303,7 +303,7 @@ git commit -m "docs(security): document the registration surface for IntelliSens
 
 This is the step 6.2.39 skipped on the reasoning that markdown cannot break packaging validation.
 
-- [ ] **Step 1: Clean repack**
+- [x] **Step 1: Clean repack**
 
 ```powershell
 Remove-Item -Recurse -Force artifacts/packages
@@ -315,7 +315,7 @@ dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$v"
 branch's output leaves both generations present, turning one failure into three. From PowerShell,
 because Git Bash cannot locate `.git` for GitVersion.
 
-- [ ] **Step 2: Run it**
+- [x] **Step 2: Run it**
 
 ```bash
 dotnet test tests/Rag.NET.PackageValidation.Tests -c Release
@@ -330,7 +330,7 @@ references that are correct but structurally unresolvable; a wrong Rag.NET API i
 
 ### Task 6: Roadmap, issue, review and PR
 
-- [ ] **Step 1: Run every affected suite.** Enumerate, do not reason about which are safe to skip —
+- [x] **Step 1: Run every affected suite.** Enumerate, do not reason about which are safe to skip —
   that reasoning failed in 6.2.39:
 
 ```bash
@@ -352,23 +352,23 @@ to do, written two paragraphs above it. Add to the list:
 dotnet test tests/Rag.NET.Security.Tests -c Release
 ```
 
-- [ ] **Step 2: File the `features.md` audit question** — are other ✅ Done entries stale proposals?
+- [x] **Step 2: File the `features.md` audit question** — are other ✅ Done entries stale proposals?
   53 entries, and `FeatureClaimTests` only checks that named packages exist. Design §4 puts this out
   of scope; filing it is how it stays recorded rather than lost.
 
-- [ ] **Step 3: Comment on #552** with what shipped and, specifically, that the issue understated the
+- [x] **Step 3: Comment on #552** with what shipped and, specifically, that the issue understated the
   problem — six methods documented nowhere, not "detail lives in the reference". Let the PR close it.
 
-- [ ] **Step 4: `docs/planning/ROADMAP.md`**, the Phase 6.2.40 block — record what the phase found,
+- [x] **Step 4: `docs/planning/ROADMAP.md`**, the Phase 6.2.40 block — record what the phase found,
   including §0's second fail-open default. **Do not change the `[status: ...]` marker.**
 
-- [ ] **Step 5: Amend the design** with a struck-through note for §0 — the design did not anticipate
+- [x] **Step 5: Amend the design** with a struck-through note for §0 — the design did not anticipate
   the trust-level default and its §5 outline did not include it. Same treatment the last three phases
   gave their designs.
 
-- [ ] **Step 6: Run `pre-push-review`.** Record the verdict and report path.
+- [x] **Step 6: Run `pre-push-review`.** Record the verdict and report path.
 
-- [ ] **Step 7: Open the PR.** Note the comment-only `src/` change and how it was verified. Record the
+- [x] **Step 7: Open the PR.** Note the comment-only `src/` change and how it was verified. Record the
   number here.
 
 ---
