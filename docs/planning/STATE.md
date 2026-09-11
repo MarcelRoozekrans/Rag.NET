@@ -1,7 +1,28 @@
 # Session State
 
-**Last updated:** 2026-09-10 — **four times in one day, all four at the merge, and this one
-corrects the entry before it.** 6.2.37 merged as #549 at 20:16 and this entry was written from the
+**Last updated:** 2026-09-11 — **at the merge, as the previous four were.** 6.2.38 merged as #553
+and this entry was written from the session that built it, on `chore/6238-merged`. A follow-up #554
+carried one line that phase's own `git add` missed: the posture's link to #552 was edited and never
+staged, because the commit named directories instead of the files actually changed. The PR body
+claimed the link was there. **Found by reading `git status`, not by anything systematic**, and worth
+recording because staging by directory will do it again.
+
+**6.2.38 produced 6.2.39 by making an omission visible, which is the posture earning its keep.**
+Writing down what the library defends showed that **all four of its security points act before the
+model is called** and nothing acts after — `IConfidenceScorer` scores groundedness, not whether a
+response leaked a credential the model saw in a chunk. 6.2.39 documents the `IChatClient`
+composition that covers it, taking on no code and no dependency.
+
+**AI.Sentinel was assessed on its merits and the version skew was measured rather than assumed.** It
+is the operator's own package; a throwaway spike forcing this repository's pins against it — two
+majors apart on `ZeroAlloc.Mediator` and `ValueObjects` — showed 55 detectors resolve and construct
+and a scan runs clean of `MissingMethodException`. **The spike also found a blatant injection
+scanning clean in a bare configuration**, almost certainly a missing `EmbeddingGenerator`; reported
+to its author rather than chased, and the reason 6.2.39 will tell readers to verify detection
+against their own configuration.
+
+**Previously, 2026-09-10 — four times in one day, all four at the merge, and that one
+corrected the entry before it.** 6.2.37 merged as #549 at 20:16 and this entry was written from the
 session that built it, on `chore/6237-merged` cut immediately after. The mechanism holds.
 
 **THE PREVIOUS ENTRY WAS WRONG, AND THE LIST THAT CONTRADICTS IT IS IN THIS FILE.** It said 6.2.36
