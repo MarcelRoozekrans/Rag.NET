@@ -52,6 +52,38 @@ as with RBAC.
 
 ---
 
+## §0.2 Query sanitisation does not apply to `RetrieveAsync`
+
+`QuerySanitiserPipelineDecorator` sanitises `AskAsync` and `AskStreamingAsync`. It forwards
+`RetrieveAsync` **unchanged**:
+
+```csharp
+public Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
+    string query, RetrievalOptions? options = null, CancellationToken cancellationToken = default)
+    => inner.RetrieveAsync(query, options, cancellationToken);
+```
+
+So a caller who uses Rag.NET for retrieval only — a common pattern, retrieve chunks and generate
+elsewhere — registers `UseQuerySanitiser` and gets nothing on that path.
+
+**There is a defensible reason**: injection is about hijacking a model, `RetrieveAsync` reaches none,
+and redacting `act as` from a legitimate query would degrade retrieval for no security gain. **But
+nothing records that reasoning.** The file has zero doc comments,
+`QuerySanitiserPipelineDecoratorTests` covers `AskAsync`, `AskStreamingAsync`, `IngestAsync`
+pass-through and the no-sanitiser case — **and not `RetrieveAsync`** — and no published page mentions
+the method at all.
+
+**Consequences for this phase:**
+
+1. The section documents it plainly. Describing `UseQuerySanitiser` without it would manufacture the
+   false sense of protection this milestone exists to remove.
+2. Task 4's `<summary>` for `UseQuerySanitiser` says it too — the IDE is where most callers meet it.
+3. **File the question of intent** (Task 6). Not fix: if the omission is deliberate it needs a comment
+   and a test, and if it is not it needs a behaviour change — and a behaviour change does not belong
+   in a PR reviewed as documentation. Same rule 6.2.38 and 6.2.39 followed.
+
+---
+
 ### Task 0: Baseline
 
 - [ ] **Step 1: Record the baselines**
@@ -308,8 +340,17 @@ dotnet build Rag.NET.slnx -c Release
 npm run build
 ```
 
-`Rag.NET.Security` has no test project of its own; its behaviour is unchanged and the comment-only
-diff from Task 4 Step 3 is the evidence.
+~~`Rag.NET.Security` has no test project of its own; its behaviour is unchanged and the comment-only
+diff from Task 4 Step 3 is the evidence.~~
+
+**WRONG, AND WRONG IN THIS PLAN'S OWN NAMED FAILURE MODE.** `tests/Rag.NET.Security.Tests` exists
+with 16 test files. This sentence reasoned about which suites could not be affected instead of
+enumerating them — the exact thing the Global Constraints and Task 6 Step 1 tell the implementer not
+to do, written two paragraphs above it. Add to the list:
+
+```bash
+dotnet test tests/Rag.NET.Security.Tests -c Release
+```
 
 - [ ] **Step 2: File the `features.md` audit question** — are other ✅ Done entries stale proposals?
   53 entries, and `FeatureClaimTests` only checks that named packages exist. Design §4 puts this out
