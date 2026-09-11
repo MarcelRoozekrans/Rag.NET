@@ -67,8 +67,14 @@ It filters retrieved chunks, redacts at ingest, records an audit trail, and sani
 ### The hosting surfaces force an authentication decision
 
 Four packages expose a network surface: `Rag.NET.Api`, `Rag.NET.Api.Grpc`, `Rag.NET.Mcp` and
-`Rag.NET.Mcp.AspNetCore` (plus the `Rag.NET.Mcp.Tool` executable and the two client packages, which
-consume rather than serve).
+`Rag.NET.Mcp.AspNetCore`. `Rag.NET.Mcp.Tool` is a self-contained executable of the same server,
+configured from `appsettings.json` or the environment.
+
+`Rag.NET.Api.Client` and `Rag.NET.Api.Grpc.Client` consume rather than serve, and their security
+relevance is the mirror image: **they hold the API key.** Where it comes from, how it reaches the
+process, and whether it ends up in a log or a crash dump are the consuming application's
+responsibility — the clients read it from the configuration you give them and send it on every
+call.
 
 **None of them serves an unauthenticated surface by accident**, and the two mechanisms differ:
 
