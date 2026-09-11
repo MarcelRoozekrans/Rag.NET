@@ -7885,7 +7885,25 @@ authorship disclosure sits in the worked example as a visible blockquote, not a 
 **No new tests, deliberately.** The section makes no mechanical claim a test could pin, and 6.2.38's
 `SecurityDocumentationTests` already guards this page's package list and RBAC quote — both unmoved at
 **101**. Adding a test asserting a heading exists would be ceremony. **Nothing entered `src/`**,
-checked with `git diff` rather than asserted. **Pre-push review PASS** —
+checked with `git diff` rather than asserted.
+
+**THE PHASE'S OWN TEST SET WAS WRONG AND CI CAUGHT IT.** The plan reasoned that a markdown-only
+change affects no other suite and ran `RepoConventions` plus the docs build. **`pack-validate`
+failed on the PR**: `DocsCodeExamplesTests` requires every C# example on a published page to resolve
+against what the produced packages actually ship, and the worked example referenced `AddAISentinel`,
+`UseAISentinel`, `SentinelAction` and `OpenAIChatClient` — none of which this repository ships or
+depends on. **"No `src/` change" is not "no suite affected"**: this repository validates its
+documentation against its packages, so a docs-only change is precisely the kind that breaks packaging
+validation. The repository's own note that `dotnet build` cannot reach the `pack-validate` guards was
+on file and went unapplied.
+
+**Fixed by trimming before widening.** The guard's class doc warns that allowlist growth past a
+handful signals the wrong fix, so the severity mapping — AI.Sentinel's configuration detail rather
+than Rag.NET's ordering lesson — came out of the example first, taking five failures to three. The
+three remaining are allowlisted with the argument that makes them correct rather than tolerated: **a
+produced package resolving `AddAISentinel` would mean the boundary had been crossed, which is exactly
+what the section says is not done.** The allowlist entry and the documentation now assert the same
+fact. `PackageValidation` **23/23** after a clean repack. **Pre-push review PASS** —
 `docs/pre-push-review-2026-09-11-0910.md`, 0 blockers and 0 warnings; it reviews the
 self-recommendation as a risk rather than assuming it benign.
 

@@ -256,7 +256,41 @@ section should disturb neither, and if it does, that is worth knowing rather tha
 dotnet test tests/Rag.NET.RepoConventions.Tests -c Release
 ```
 
-Expected: Task 0's baseline, unchanged at 101. **No new tests in this phase** — the section makes no
+Expected: Task 0's baseline, unchanged at 101.
+
+**THIS TASK'S TEST SET WAS WRONG, AND CI CAUGHT WHAT IT MISSED.** The task reasoned that a
+markdown-only change affects no other suite, and ran `RepoConventions` plus `npm run build`.
+`pack-validate` failed on the PR.
+
+`DocsCodeExamplesTests.EveryDocsCodeExampleResolvesAgainstTheProducedPackages` requires **every C#
+example on a published docs page to resolve against what the produced packages actually ship** —
+their assemblies, their transitive closures, the shared framework. The worked example referenced
+`AddAISentinel`, `UseAISentinel`, `SentinelAction` and `OpenAIChatClient`, none of which Rag.NET
+ships or depends on. The guard's own message names the remedy: a reference that is correct but
+structurally unresolvable "belongs in `AllowedExternalReferences`, not a docs rewrite".
+
+**The reasoning error is the interesting part.** "No `src/` change" is not the same as "no suite
+affected" — this repository validates its *documentation* against its *packages*, so a docs-only
+change is exactly the kind that can break packaging validation. The repository's own note that
+`dotnet build` cannot reach the `pack-validate` guards was on file and not applied here.
+
+**Two fixes, in this order:**
+
+1. **Trim the example before widening the allowlist.** The guard's class doc warns that growth past
+   a handful of entries "is a signal the resolvable set needs widening again, not that the list needs
+   to be longer". The severity mapping (`OnCritical`/`OnHigh`, hence both `SentinelAction` failures)
+   is AI.Sentinel's configuration detail, not Rag.NET's ordering lesson, so it came out. Five
+   failures became three.
+2. **Allowlist the remaining three** with reasons, following the `OpenAIChatClient` precedent already
+   present for `resilience.md`. The AI.Sentinel entries carry the argument that makes them correct
+   rather than tolerated: *a produced package resolving `AddAISentinel` would mean the boundary had
+   been crossed, which is exactly what the section says is not done.* The allowlist entry and the
+   documentation now assert the same fact.
+
+**Verified locally after the fix, with a clean repack first** (`Remove-Item artifacts/packages`, then
+`dotnet pack` from PowerShell — the version guard embeds the branch name): `PackageValidation`
+**23/23**, including `EveryAllowedExternalReferenceStillFails`, which re-derives the raw failure set
+and rejects an entry that no longer matches. **No new tests in this phase** — the section makes no
 mechanical claim a test could pin, and adding one that merely asserts a heading exists would be
 ceremony. Say so in the ROADMAP rather than inventing a guard to look thorough.
 
