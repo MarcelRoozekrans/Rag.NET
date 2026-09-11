@@ -69,6 +69,23 @@ model-boundary directions.
 **The composition**, as code: decorate the `IChatClient` before Rag.NET's DI consumes it. Verified
 working (§4).
 
+> **AMENDED 2026-09-11, during implementation. "Before Rag.NET's DI consumes it" is a stronger and
+> more load-bearing requirement than this design treats it as.** Rag.NET's own `IChatClient`
+> decorators — `UseCostBudgeting`, `UseFallbackChain` — rewrite the DI descriptor and can only wrap
+> what is already registered, which is why `CompositionClaims` exists (issue #195). Register the
+> monitor *after* them and Rag.NET's decorator wraps nothing.
+>
+> **Measured, both orders:** correct order resolves to `CostTrackingChatClient` → monitor →
+> provider, and the pipeline resolves; wrong order throws on pipeline resolution. The implementation
+> plan's §0 predicted the error message would name cost budgeting "rather than the ordering",
+> stranding the reader. **That was wrong, in the project's favour** — the message names the ordering,
+> explains the mechanism and states the fix imperatively.
+>
+> Two things the measurement added that neither document anticipated: the guard fires only when
+> `IRagPipeline` is resolved, not `IChatClient`, so a smoke test that resolves the client alone
+> reports a broken composition as fine; and in the correct order Rag.NET's decorators wrap *around*
+> the monitor, which is the right nesting because the monitor then sees the prompt exactly as sent.
+
 **The overlap, stated rather than glossed.** Both do prompt-injection detection, by different means —
 Rag.NET's regex/LLM sanitisers on the query and its retrieval guards on the chunks, a monitor's
 detectors at the boundary. Running both is defence in depth **or duplicated cost**, depending on

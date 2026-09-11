@@ -7854,6 +7854,39 @@ shape**, and the advice costs a sentence.
 
 **Fully verifiable locally.** Nothing enters `src/`.
 
+**BUILT 2026-09-11. Plan: `docs/plans/2026-09-11-model-boundary-monitoring-implementation.md`.**
+
+**THE DESIGN UNDERSTATED ITS OWN CENTRAL INSTRUCTION, AND THE PLAN THEN OVERSTATED THE CONSEQUENCE.**
+"Decorate the `IChatClient` before Rag.NET consumes it" is not a stylistic ordering preference: the
+`UseCostBudgeting` and `UseFallbackChain` extensions rewrite the DI descriptor and can only wrap what
+is already registered, which is why `CompositionClaims` exists (#195). The plan's §0 caught that, then
+predicted the resulting error would name cost budgeting "rather than the ordering" and strand the
+reader. **Measured, that prediction is false and the guard is better than the plan credited**: the
+message names the ordering, explains the mechanism, and states the fix as an imperative sentence. It
+is quoted verbatim in the new section.
+
+**Two findings the probe added that neither document anticipated.** The guard fires **only when
+`IRagPipeline` is resolved, not when `IChatClient` is** — the wrong-order container hands back the
+bare monitor quite happily, so a smoke test that resolves only the chat client reports a broken
+composition as healthy. And in the correct order **Rag.NET's decorators wrap around the monitor**
+(`CostTrackingChatClient` → monitor → provider), which is the right nesting and worth stating: the
+monitor sits closest to the model and sees the prompt exactly as sent.
+
+**An earlier run of the probe was itself wrong and is recorded rather than deleted**: it resolved
+`IChatClient` instead of the pipeline, reported "no guard fired", and would have become a documented
+claim that the guard has a hole. The guard's own doc comment says it is checked at pipeline
+resolution; the probe had not read it.
+
+**The section states the overlap and its cost rather than selling.** Prompt injection is covered
+twice by different means, and two LLM-backed passes over every query is a real expense — so the
+section says to decide deliberately rather than enabling both because each page recommends it. The
+authorship disclosure sits in the worked example as a visible blockquote, not a footnote.
+
+**No new tests, deliberately.** The section makes no mechanical claim a test could pin, and 6.2.38's
+`SecurityDocumentationTests` already guards this page's package list and RBAC quote — both unmoved at
+**101**. Adding a test asserting a heading exists would be ceremony. **Nothing entered `src/`**,
+checked with `git diff` rather than asserted.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
