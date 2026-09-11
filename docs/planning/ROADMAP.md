@@ -7801,6 +7801,7 @@ upstream and are described rather than acted on.
 **Surface:** Docs
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-11-model-boundary-monitoring-design.md`
+**Plan:** `docs/plans/2026-09-11-model-boundary-monitoring-implementation.md`
 
 **Goal:** document the `IChatClient` composition that covers the model boundary, taking on no code
 and no dependency to do it.
