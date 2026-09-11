@@ -176,12 +176,12 @@ something to quietly reword around.**
 **Files:** Modify `docs/guide/security.md` — insert after the `### Dependency advisories` subsection
 that ends the posture, before `## RBAC on Chunks`.
 
-- [ ] **Step 1: Re-read the posture section**
+- [x] **Step 1: Re-read the posture section**
 
 The new section sits directly under it and must not repeat it. The posture already lists the four
 feature families and states the boundary; this section is about what sits *outside* that boundary.
 
-- [ ] **Step 2: Write it**
+- [x] **Step 2: Write it**
 
 `## Watching the model boundary`, covering:
 
@@ -218,7 +218,7 @@ certainly a missing embedding generator, which AI.Sentinel's own quick start set
 general and worth the sentence regardless of the cause: **registration is not protection, and the two
 look identical from outside.**
 
-- [ ] **Step 3: Check the links and the anchors**
+- [x] **Step 3: Check the links and the anchors**
 
 ```bash
 grep -oE "\]\([^)]+\)" docs/guide/security.md | sort -u
@@ -226,7 +226,7 @@ grep -oE "\]\([^)]+\)" docs/guide/security.md | sort -u
 
 Read the list. Every relative path must exist and every anchor must match a real heading.
 
-- [ ] **Step 4: Build the docs site**
+- [x] **Step 4: Build the docs site**
 
 ```bash
 npm run build
@@ -234,7 +234,7 @@ npm run build
 
 Docusaurus validates internal links at build, so this is the link check with teeth.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/guide/security.md
@@ -250,7 +250,7 @@ git commit -m "docs(security): document the model boundary, and the order the co
 6.2.38's `SecurityDocumentationTests` guards this page's package list and its RBAC quote. A new
 section should disturb neither, and if it does, that is worth knowing rather than working around.
 
-- [ ] **Step 1: Run them**
+- [x] **Step 1: Run them**
 
 ```bash
 dotnet test tests/Rag.NET.RepoConventions.Tests -c Release
@@ -264,28 +264,28 @@ ceremony. Say so in the ROADMAP rather than inventing a guard to look thorough.
 
 ### Task 4: Roadmap, review and PR
 
-- [ ] **Step 1: The no-code check, mechanically**
+- [x] **Step 1: The no-code check, mechanically**
 
 ```bash
 git diff main...HEAD --name-only | grep "^src/" && echo "CONSTRAINT VIOLATED" || echo "clean"
 ```
 
-- [ ] **Step 2: `docs/planning/ROADMAP.md`**, the Phase 6.2.39 block — record what the phase found,
+- [x] **Step 2: `docs/planning/ROADMAP.md`**, the Phase 6.2.39 block — record what the phase found,
   in its neighbours' style: §0's ordering trap and whether Task 1 confirmed it. **Do not change the
   `[status: ...]` marker** — `complete-phase` does that after the merge.
 
-- [ ] **Step 3: Correct the design** with a struck-through note if Task 1 confirmed §0 — the design
+- [x] **Step 3: Correct the design** with a struck-through note if Task 1 confirmed §0 — the design
   described the composition as a one-liner and it is not. Same treatment 6.2.36 and 6.2.38 gave their
   designs.
 
-- [ ] **Step 4: Report the spike observations to AI.Sentinel's author.** The bare-config clean scan
+- [x] **Step 4: Report the spike observations to AI.Sentinel's author.** The bare-config clean scan
   and the double-registration via `AddAISentinel` + `AddAISentinelDetectors` (110 instances of 55
   types). **An issue on that repository, not this one** — and the operator is that author, so
   confirm they want it filed rather than assuming.
 
-- [ ] **Step 5: Run `pre-push-review`.** Record the verdict and report path.
+- [x] **Step 5: Run `pre-push-review`.** Record the verdict and report path.
 
-- [ ] **Step 6: Open the PR.** Note that nothing entered `src/`, and record the number here.
+- [x] **Step 6: Open the PR.** Note that nothing entered `src/`, and record the number here.
 
 ---
 
