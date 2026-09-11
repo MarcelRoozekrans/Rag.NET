@@ -141,6 +141,13 @@ the PR.**
 stay at 0 warnings, and `git diff` must show only `///` lines added in the one file. A diff touching
 executable lines in `RagBuilderExtensions.cs` means the phase exceeded its remit.
 
+> **AMENDED 2026-09-11 during implementation.** This design's §5 outline did not anticipate two facts
+> that reading the implementations produced, and both changed what the section leads with:
+> `TrustLevelRetrievalGuard` treats absent `trust_level` metadata as `internal` (a second fail-open
+> default, so the posture's RBAC subsection had to widen to cover both), and query sanitisation does
+> not apply to `RetrieveAsync` (documented, and filed as #559 rather than changed). The design's
+> instruction to read every implementation rather than write from method names is what produced both.
+
 **The claim no test can make** is that the new section is *accurate* — that each description matches
 what the type actually does. The mitigation is the one 6.2.38 established: read every implementation
 rather than writing from the registration method's name. `RegexRetrievalGuard`, `TrustLevelRetrievalGuard`

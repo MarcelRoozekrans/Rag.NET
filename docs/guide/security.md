@@ -27,18 +27,18 @@ to you, and where its current dependency advisories stand — read it before the
 | RBAC on chunks | a caller retrieving chunks they should not see | [below](#rbac-on-chunks) |
 | PII detection and redaction | personal data reaching the vector store | [below](#pii-detection-and-redaction) |
 | Audit log | having no record of what was retrieved or answered | [below](#audit-log) |
-| **Prompt-injection defences** — chunk and query sanitisation, retrieval guards, prompt hardening | attacker-controlled content hijacking the model at query time | **not on this page** — see [Prompt Injection Fortification](../reference/features.md) in the feature reference |
+| Prompt-injection defences — chunk and query sanitisation, retrieval guards, prompt hardening | attacker-controlled content hijacking the model at query time | [below](#prompt-injection-defences) |
 
-**The fourth family is not documented on this page, and that is a gap rather than a decision**
-([#552](https://github.com/MarcelRoozekrans/Rag.NET/issues/552)).
-`Rag.NET.Security` ships `RegexQuerySanitiser`, `LlmQuerySanitiser`, `RegexRetrievalGuard`,
-`TrustLevelRetrievalGuard` and `PromptHardeningAnswerEngineDecorator`, and the feature reference
-describes indirect prompt injection as *the primary RAG security risk*. Until that section is
-written here, the reference is the place to read.
+All four families are documented on this page. The feature reference carries the shorter
+[Prompt Injection Fortification](../reference/features.md) entry for the same subject.
 
-### RBAC fails open
+### Defaults that fail open
 
-The single most important default on this page:
+**Two features on this page do nothing by default when the metadata they depend on is absent.**
+Both are deliberate, both are documented in their own sections, and both will silently protect
+nothing if you register them over content that was ingested before you did.
+
+#### RBAC: untagged chunks are world-readable
 
 > Chunks that do not carry the key are world-readable and pass through for every caller.
 
@@ -52,6 +52,19 @@ is what it was before you turned the feature on.
 
 If you need deny-by-default, tag every document at ingest and treat an untagged chunk as a bug in
 your ingestion, not in your retrieval.
+
+#### Trust levels: untagged chunks are `internal`
+
+`UseTrustLevelGuard` reads a `trust_level` metadata key and **treats its absence as `internal`** —
+the most trusted value. Registered over a corpus ingested without trust tagging, it drops nothing.
+
+Same reasoning as RBAC, same consequence: the feature is real, and it protects exactly the content
+you tagged. See [`UseTrustLevelGuard` treats untagged content as trusted](#usetrustlevelguard-treats-untagged-content-as-trusted).
+
+**A third thing worth knowing, which is narrower scope rather than a fail-open default:**
+`UseQuerySanitiser` applies to `AskAsync` and `AskStreamingAsync` and **not to `RetrieveAsync`** — so
+a retrieval-only caller gets no query sanitisation. See
+[`UseQuerySanitiser` does not apply to `RetrieveAsync`](#usequerysanitiser-does-not-apply-to-retrieveasync).
 
 ### What the library does not do
 
@@ -215,6 +228,114 @@ to `SentinelChatClient`, 55 detectors resolve and construct, and a scan complete
 internals. A detector reaching a changed API only on an alert path was not reached. Both packages
 move independently, so treat this as a dated observation rather than a standing guarantee, and re-run
 it for the versions you actually deploy.
+
+## Prompt injection defences
+
+Indirect prompt injection is the primary security risk specific to RAG: attacker-controlled content —
+a document, a scraped page, an email — carries instructions that hijack the model when a query happens
+to retrieve it. The content is data to you and instructions to the model.
+
+`Rag.NET.Security` defends in four layers. **They are only comprehensible positionally**, so this
+table is in pipeline order rather than alphabetical:
+
+| Layer | Interface | Registration | Runs |
+|---|---|---|---|
+| Chunk sanitisation | `IChunkSanitiser` | `UseChunkSanitiser` / `UseLlmChunkSanitiser` | at ingest, before embedding |
+| Query sanitisation | `IQuerySanitiser` | `UseQuerySanitiser` / `UseLlmQuerySanitiser` | before retrieval |
+| Retrieval guards | `IRetrievalGuard` | `UseRetrievalGuard` / `UseTrustLevelGuard` | on retrieved chunks |
+| Prompt hardening | answer-engine decorator | `UsePromptHardening` | at answer assembly |
+
+All are opt-in and independent. Registering none of them is the default.
+
+### Two extension points you already know
+
+**`UseRbac` registers an `IRetrievalGuard`.** `RbacRetrievalGuard` is the same kind of object as
+`RegexRetrievalGuard` and `TrustLevelRetrievalGuard`, in the same chain — so RBAC and the injection
+guards compose by registration order like any other chain, and there is no separate "RBAC pipeline"
+to reason about.
+
+**`IChunkSanitiser` is shared with PII redaction.** `UsePiiDetection` and `UseChunkSanitiser` register
+into the same ordered chain, so the chaining rules in
+[Chaining regex and LLM detection](#chaining-regex-and-llm-detection) apply unchanged — sanitisers run
+in registration order, and each sees the previous one's output.
+
+### The regex/LLM pairing
+
+Three of the four layers ship a cheap deterministic implementation and an expensive semantic one,
+registerable independently or together. This is the same shape as
+[PII detection](#pii-detection-and-redaction), and the same trade-off: regex is free and literal, the
+LLM variant costs a model call per item and catches paraphrase.
+
+The regex implementations share **one pattern**, case-insensitive with a 1000 ms match timeout. It
+targets role-switch phrases (`ignore previous instructions`, `you are now`, `act as`, `disregard`,
+`new instructions`, `system prompt`) and delimiter injection (`<|system|>`, `<|user|>`, `[INST]`,
+`### instruction`). Matches are replaced with `[REDACTED]` and logged with the matched pattern.
+
+**They fail open.** If sanitisation throws — a regex timeout on a pathological input, an LLM call
+failing — the original text is returned unchanged and the failure is logged. A sanitiser that threw
+would take the whole request down; one that returns unsanitised text does not, and says so in the
+log. The `Use*Llm*` variants resolve `IChatClient` from DI and throw at container resolution if none
+is registered.
+
+### `UseQuerySanitiser` does not apply to `RetrieveAsync`
+
+Query sanitisation is applied by a pipeline decorator that wraps `AskAsync` and `AskStreamingAsync`.
+**`RetrieveAsync` forwards the query unchanged.**
+
+If you use Rag.NET for retrieval only — fetching chunks and generating elsewhere — registering
+`UseQuerySanitiser` has no effect on that path. There is a reasonable argument for it: injection
+hijacks a model, `RetrieveAsync` reaches none, and redacting `act as` from a legitimate query about
+acting would cost recall for no security gain. Sanitise at your own generation boundary if that is
+where your model call happens.
+
+### `UseTrustLevelGuard` treats untagged content as trusted
+
+A chunk with no `trust_level` metadata is read as **`internal`** — the most trusted value. So
+registering the guard over a corpus that was ingested without trust tagging **drops nothing**, and
+does so silently.
+
+This is the same shape as [RBAC's world-readable default](#defaults-that-fail-open), and for the same
+reason: a guard that hid every untagged chunk the moment it was registered would turn a security
+feature into an outage.
+
+`trust_level` is set at ingest, by whatever pulls the content — a web crawler or email connector
+should mark what it fetches as `external` or `untrusted`. `TrustLevelGuardOptions` then decides what
+happens: `DropUntrusted` (default `true`) removes `untrusted` chunks, and `WarnOnExternal` (default
+`true`) logs when `external` ones are retrieved.
+
+### Prompt hardening
+
+`UsePromptHardening` decorates the answer engine with a system prefix instructing the model to treat
+retrieved content strictly as data. The default says so explicitly; `PromptHardeningOptions.SystemPrefix`
+replaces it.
+
+This is the layer that assumes the others leaked. It costs nothing per request and is the cheapest
+thing on this page.
+
+### Confirming a guard actually ran
+
+Both retrieval guards emit a `ragnet.security.guard` activity carrying `security.guard.type`
+(`regex`, `trustlevel`) and `security.guard.action` (`redact`, `drop`). Redactions and drops are also
+logged with the document id.
+
+**Registration is not protection** — a guard registered over untagged content, or a sanitiser whose
+pattern does not match your attacker, is silent in exactly the way a working one is. Send known-bad
+content through and confirm the activity fires before relying on it.
+
+### Composing the layers
+
+```csharp
+services.AddRagNet(b => b
+    .UseChunkSanitiser()        // ingest: strip injection patterns before embedding
+    .UseQuerySanitiser()        // pre-retrieval: strip them from the query too (AskAsync only)
+    .UseRetrievalGuard()        // retrieved chunks: redact what survived
+    .UseTrustLevelGuard(o => o.DropUntrusted = true)
+    .UsePromptHardening());     // answer: tell the model the content is data
+```
+
+Each is independent — register the layers you want. The LLM variants (`UseLlmChunkSanitiser`,
+`UseLlmQuerySanitiser`) slot in beside their regex counterparts and require a registered
+`IChatClient`.
 
 ## RBAC on Chunks
 

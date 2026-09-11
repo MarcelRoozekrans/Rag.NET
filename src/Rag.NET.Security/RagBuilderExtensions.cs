@@ -10,6 +10,16 @@ namespace Rag.NET.Security;
 
 public static class RagBuilderExtensions
 {
+    /// <summary>
+    /// Strips known prompt-injection patterns from chunk text at ingest, before embedding, so
+    /// attacker-controlled content cannot carry instructions into the vector store.
+    /// </summary>
+    /// <remarks>
+    /// Registers a regex <see cref="IChunkSanitiser"/> into the <b>same ordered chain</b>
+    /// <c>UsePiiDetection</c> uses — sanitisers run in registration order and each sees the
+    /// previous one's output. Matches become <c>[REDACTED]</c> and are logged. <b>Fails open</b>:
+    /// if sanitisation throws, the original text is returned unchanged and the failure is logged.
+    /// </remarks>
     public static TBuilder UseChunkSanitiser<TBuilder>(this TBuilder builder)
         where TBuilder : IRagBuilder
     {
@@ -18,6 +28,15 @@ public static class RagBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// The semantic counterpart to <see cref="UseChunkSanitiser{TBuilder}"/>: asks a model whether
+    /// chunk text contains injection attempts, catching paraphrase the regex cannot.
+    /// </summary>
+    /// <remarks>
+    /// Costs a model call per chunk at ingest. Resolves <c>IChatClient</c> with
+    /// <c>GetRequiredService</c>, so registration <b>throws at container resolution</b> when no
+    /// chat client is registered. Chains with the regex sanitiser rather than replacing it.
+    /// </remarks>
     public static TBuilder UseLlmChunkSanitiser<TBuilder>(this TBuilder builder)
         where TBuilder : IRagBuilder
     {
@@ -28,6 +47,15 @@ public static class RagBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Strips known prompt-injection patterns from the user's query before retrieval.
+    /// </summary>
+    /// <remarks>
+    /// <b>Applies to <c>AskAsync</c> and <c>AskStreamingAsync</c> only.</b>
+    /// <c>RetrieveAsync</c> forwards the query unchanged, so a retrieval-only caller gets no query
+    /// sanitisation on that path. <b>Fails open</b>: a sanitiser that throws returns the original
+    /// query and logs.
+    /// </remarks>
     public static TBuilder UseQuerySanitiser<TBuilder>(this TBuilder builder)
         where TBuilder : IRagBuilder
     {
@@ -37,6 +65,16 @@ public static class RagBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// The semantic counterpart to <see cref="UseQuerySanitiser{TBuilder}"/>, catching paraphrased
+    /// injection attempts in the query that the regex pattern misses.
+    /// </summary>
+    /// <remarks>
+    /// Costs a model call per query, and carries the same
+    /// <c>AskAsync</c>/<c>AskStreamingAsync</c>-only scope as the regex variant. Resolves
+    /// <c>IChatClient</c> with <c>GetRequiredService</c>, so registration <b>throws at container
+    /// resolution</b> when none is registered.
+    /// </remarks>
     public static TBuilder UseLlmQuerySanitiser<TBuilder>(this TBuilder builder)
         where TBuilder : IRagBuilder
     {
@@ -61,6 +99,16 @@ public static class RagBuilderExtensions
             sp.GetRequiredService<QuerySanitiserPipelineDecorator>());
     }
 
+    /// <summary>
+    /// Redacts injection patterns from retrieved chunk text, after retrieval and before the chunks
+    /// reach the answer prompt — the layer that catches what survived ingest-time sanitisation.
+    /// </summary>
+    /// <remarks>
+    /// Registers an <see cref="IRetrievalGuard"/>, the <b>same extension point
+    /// <c>UseRbac</c> uses</b>, so guards compose by registration order. Emits a
+    /// <c>ragnet.security.guard</c> activity tagged <c>action=redact</c>, which is how a caller
+    /// confirms it ran.
+    /// </remarks>
     public static TBuilder UseRetrievalGuard<TBuilder>(this TBuilder builder)
         where TBuilder : IRagBuilder
     {
@@ -69,6 +117,22 @@ public static class RagBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Drops or flags retrieved chunks by their <c>trust_level</c> metadata, so content pulled from
+    /// adversarial sources can be excluded from the answer prompt.
+    /// </summary>
+    /// <remarks>
+    /// <b>A chunk with no <c>trust_level</c> key is treated as <c>internal</c></b> — the most
+    /// trusted value — so this guard drops nothing over a corpus ingested without trust tagging.
+    /// That is deliberate: denying untagged content would hide an entire existing corpus the moment
+    /// the guard is registered. Set the level at ingest, on whatever pulls the content. Emits a
+    /// <c>ragnet.security.guard</c> activity tagged <c>action=drop</c>.
+    /// </remarks>
+    /// <param name="builder">The builder to register into.</param>
+    /// <param name="configure">
+    /// Adjusts <see cref="TrustLevelGuardOptions"/>; defaults drop <c>untrusted</c> and warn on
+    /// <c>external</c>.
+    /// </param>
     public static TBuilder UseTrustLevelGuard<TBuilder>(
         this TBuilder builder, Action<TrustLevelGuardOptions>? configure = null)
         where TBuilder : IRagBuilder
@@ -83,6 +147,17 @@ public static class RagBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Prefixes the system prompt with an instruction to treat all retrieved content as data and
+    /// never as instructions — the layer that assumes the others leaked.
+    /// </summary>
+    /// <remarks>
+    /// Decorates the answer engine, costs nothing per request, and is the cheapest of the four
+    /// injection defences. Replace the wording through
+    /// <see cref="PromptHardeningOptions.SystemPrefix"/>.
+    /// </remarks>
+    /// <param name="builder">The builder to register into.</param>
+    /// <param name="configure">Adjusts <see cref="PromptHardeningOptions"/>.</param>
     public static TBuilder UsePromptHardening<TBuilder>(
         this TBuilder builder, Action<PromptHardeningOptions>? configure = null)
         where TBuilder : IRagBuilder
@@ -109,6 +184,16 @@ public static class RagBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Filters retrieved chunks to those the current caller may see, by matching their roles
+    /// against each chunk's <c>allowed_roles</c> metadata.
+    /// </summary>
+    /// <remarks>
+    /// <b>Chunks without the key are world-readable</b> and pass through for every caller — this is
+    /// not deny-by-default, and registering it over an untagged corpus filters nothing. Requires an
+    /// <c>ICallerContext</c>; registers an <see cref="IRetrievalGuard"/>, the same extension point
+    /// the injection guards use.
+    /// </remarks>
     public static TBuilder UseRbac<TBuilder>(this TBuilder builder)
         where TBuilder : IRagBuilder
     {
@@ -120,6 +205,15 @@ public static class RagBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Redacts personal data from chunk text at ingest, before embeddings are stored, so PII never
+    /// reaches the vector store.
+    /// </summary>
+    /// <remarks>
+    /// Registers a regex <see cref="IChunkSanitiser"/> into the <b>same ordered chain</b> the
+    /// injection sanitisers use. Each pattern is evaluated with a one-second timeout; a timeout
+    /// logs and returns the text unchanged rather than blocking ingestion.
+    /// </remarks>
     public static TBuilder UsePiiDetection<TBuilder>(
         this TBuilder builder, Action<PiiDetectionOptions>? configure = null)
         where TBuilder : IRagBuilder
@@ -134,6 +228,16 @@ public static class RagBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// The semantic counterpart to <see cref="UsePiiDetection{TBuilder}"/>, catching personal data
+    /// the regex patterns do not describe.
+    /// </summary>
+    /// <remarks>
+    /// Costs a model call per chunk. Chains after the regex detector when both are registered, so
+    /// the model sees already-redacted text — lower cost and less to hallucinate. Resolves
+    /// <c>IChatClient</c> with <c>GetRequiredService</c>, so registration <b>throws at container
+    /// resolution</b> when none is registered.
+    /// </remarks>
     public static TBuilder UseLlmPiiDetection<TBuilder>(this TBuilder builder)
         where TBuilder : IRagBuilder
     {
