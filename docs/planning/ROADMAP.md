@@ -7797,7 +7797,7 @@ upstream and are described rather than acted on.
 `git diff main...HEAD --name-only | grep ^src/` returns nothing. `RepoConventions` 98 → **101**.
 **Pre-push review PASS** — `docs/pre-push-review-2026-09-11-0743.md`, 0 blockers and 0 warnings.
 
-### Phase 6.2.39: The Boundary Rag.NET Does Not Watch [status: pending — added 2026-09-11]
+### Phase 6.2.39: The Boundary Rag.NET Does Not Watch [status: complete 2026-09-11 in #556 — and the packaging guard the phase's own test set missed]
 **Surface:** Docs
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-11-model-boundary-monitoring-design.md`
