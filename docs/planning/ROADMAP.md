@@ -7907,6 +7907,59 @@ fact. `PackageValidation` **23/23** after a clean repack. **Pre-push review PASS
 `docs/pre-push-review-2026-09-11-0910.md`, 0 blockers and 0 warnings; it reviews the
 self-recommendation as a risk rather than assuming it benign.
 
+### Phase 6.2.40: The Feature Family Nobody Documented [status: pending — added 2026-09-11, #552]
+**Surface:** Docs
+**HelpWanted:** no
+**Design:** `docs/plans/2026-09-11-prompt-injection-documentation-design.md`
+
+**Goal:** document the prompt-injection defences — in the guide, in the feature reference, and in
+IntelliSense — without changing any behaviour.
+
+**#552 UNDERSTATES ITS OWN SUBJECT.** It says the detail "lives in `docs/reference/features.md`".
+Measured against `RagBuilderExtensions.cs`: **six public registration methods have no published
+documentation anywhere.** `UseQuerySanitiser`, `UseLlmQuerySanitiser`, `UseLlmChunkSanitiser`,
+`UseRetrievalGuard` and `UseTrustLevelGuard` appear on no published page at all; `UsePromptHardening`
+gets one passing mention in `extending.md`. A reader cannot discover that `UseTrustLevelGuard` exists.
+
+**THE REFERENCE PAGE IS A DESIGN PROPOSAL MARKED ✅ DONE.** `features.md`'s "Prompt Injection
+Fortification" is written in future tense — *"mitigation layers **to consider**"*, *"the full
+fortification feature **should** promote this to a public, pipeline-level `IChunkSanitiser`
+abstraction"* — describing a promotion that has since happened. It names none of the shipped methods.
+**`FeatureClaimTests` does not catch it**: that guard asserts only that a ✅ Done section names
+packages existing under `src/`, and `Rag.NET.Security` exists, so the claim passes while the body
+describes unbuilt work.
+
+**AND 6.2.39'S POSTURE SECTION POINTS READERS AT IT**, which is why this phase is obliged to fix that
+rather than merely improve on it. The posture says *"the reference is the place to read"* — sending a
+reader to a proposal. The previous phase documented a gap and introduced a misdirection into the one
+page whose value is being believed. Correcting it is in scope, not a nicety.
+
+**A fourth finding, and the operator widened the phase for it: none of the ten public `Use*` methods
+carries an XML `<summary>`** — not the six, and not `UseRbac` or `UsePiiDetection`, which the guide
+covers well. The file's 26 `///` lines are all on private helpers, and nothing guards this because
+`DocumentationQualityTests` scans `Rag.NET.Abstractions` only. **All ten get documented, not just the
+six**: most people meet these methods by typing `b.Use` and reading what the IDE offers, and
+half-fixing the surface for issue-scope reasons would leave `UseRbac` bare beside its newly
+documented neighbours. This makes the phase a **comment-only `src/` change**, checked rather than
+asserted — whole-solution build at 0 warnings, and `git diff` showing only `///` lines added.
+
+**The most useful thing the new section can say is not in either existing section**: `UseRbac`
+registers an `IRetrievalGuard` (`RbacRetrievalGuard`), so RBAC and the retrieval guards are the same
+extension point — and `IChunkSanitiser` is shared with PII redaction, the same interface and the same
+ordered chain. The family is only comprehensible positionally, so the section leads with the pipeline
+order rather than a feature list.
+
+**`pack-validate` runs locally before the PR this time.** 6.2.39 shipped a PR that failed
+`DocsCodeExamplesTests` after reasoning that a markdown-only change could not break packaging
+validation; this section's examples are Rag.NET's own types and should resolve, which is exactly the
+assumption worth checking rather than trusting.
+
+**Filed, not done:** whether other ✅ Done entries in `features.md` are stale proposals — 53 entries,
+an audit rather than a chore, and possibly a widening of `FeatureClaimTests` to check prose against
+reality, which is a hard problem. Widening `DocumentationQualityTests` past `Rag.NET.Abstractions` was
+considered and rejected for the same reason: it would surface a long tail across packages and turn a
+documentation phase into an unbounded cleanup discovered mid-flight.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
