@@ -14,6 +14,101 @@ The security layer adds three independent, composable features to a Rag.NET pipe
 
 All three are opt-in. Register any combination of them through the `RagBuilder` API. They have no mandatory coupling — you can use the audit log without RBAC, or PII redaction without the audit log.
 
+## Security posture
+
+**Rag.NET is a RAG library with opt-in security features, not a security product.** Everything on
+this page is off until you register it. This section states what the project claims, what it leaves
+to you, and where its current dependency advisories stand — read it before the feature guides below.
+
+### The four families, and where each is documented
+
+| Family | Defends against | Documented |
+|---|---|---|
+| RBAC on chunks | a caller retrieving chunks they should not see | [below](#rbac-on-chunks) |
+| PII detection and redaction | personal data reaching the vector store | [below](#pii-detection-and-redaction) |
+| Audit log | having no record of what was retrieved or answered | [below](#audit-log) |
+| **Prompt-injection defences** — chunk and query sanitisation, retrieval guards, prompt hardening | attacker-controlled content hijacking the model at query time | **not on this page** — see [Prompt Injection Fortification](../reference/features.md) in the feature reference |
+
+**The fourth family is not documented on this page, and that is a gap rather than a decision.**
+`Rag.NET.Security` ships `RegexQuerySanitiser`, `LlmQuerySanitiser`, `RegexRetrievalGuard`,
+`TrustLevelRetrievalGuard` and `PromptHardeningAnswerEngineDecorator`, and the feature reference
+describes indirect prompt injection as *the primary RAG security risk*. Until that section is
+written here, the reference is the place to read.
+
+### RBAC fails open
+
+The single most important default on this page:
+
+> Chunks that do not carry the key are world-readable and pass through for every caller.
+
+A chunk without an `allowed_roles` metadata key is visible to everyone. **If you register RBAC
+expecting deny-by-default, you do not have it.**
+
+This is deliberate. The alternative — deny anything untagged — would hide every previously-ingested
+chunk the moment RBAC is registered on an existing corpus, turning a security feature into a silent
+outage. Tagging at ingest is the mechanism, and untagged content is treated as public because that
+is what it was before you turned the feature on.
+
+If you need deny-by-default, tag every document at ingest and treat an untagged chunk as a bug in
+your ingestion, not in your retrieval.
+
+### What the library does not do
+
+It filters retrieved chunks, redacts at ingest, records an audit trail, and sanitises text. It does
+**not**:
+
+- **authenticate your end users** — you supply an `ICallerContext`; the library never establishes who
+  the caller is,
+- **encrypt anything at rest** — that belongs to your vector store and your disk,
+- **manage keys or secrets** — API keys are read from your configuration,
+- **secure the backing store** — an unsecured Qdrant or pgvector reachable from the internet is
+  reachable whatever this library does.
+
+### The hosting surfaces force an authentication decision
+
+Four packages expose a network surface: `Rag.NET.Api`, `Rag.NET.Api.Grpc`, `Rag.NET.Mcp` and
+`Rag.NET.Mcp.AspNetCore`. `Rag.NET.Mcp.Tool` is a self-contained executable of the same server,
+configured from `appsettings.json` or the environment.
+
+`Rag.NET.Api.Client` and `Rag.NET.Api.Grpc.Client` consume rather than serve, and their security
+relevance is the mirror image: **they hold the API key.** Where it comes from, how it reaches the
+process, and whether it ends up in a log or a crash dump are the consuming application's
+responsibility — the clients read it from the configuration you give them and send it on every
+call.
+
+**None of them serves an unauthenticated surface by accident**, and the two mechanisms differ:
+
+- **`Rag.NET.Mcp.AspNetCore`** attaches its API-key filter to the same convention builder that maps
+  the endpoints, so "mapped but unauthenticated" is not expressible. `MapRagNetMcp` throws if the
+  transport was never configured.
+- **`Rag.NET.Api`** cannot do that — registration and mapping happen on two builders that cannot see
+  each other — so `MapRagNetApi` detects instead, throwing when options are missing, when the
+  authentication middleware is absent, and when any of its routes has been made auth-exempt.
+
+`AllowAnonymous` exists on the MCP transport as a real opt-out for a host already behind an
+authenticating gateway. The guard separates *someone decided this* from *nobody thought about it*;
+it does not make the anonymous case impossible.
+
+**The limitation worth knowing: the API key is a shared secret, not an identity.** Every client
+presenting it is indistinguishable from every other, and there is no revocation short of changing
+the key and redeploying everything that holds it. It is a deployment boundary, not an authorization
+model — use it behind a gateway that does identity if you need per-client control.
+
+### Dependency advisories
+
+As of 2026-09-11 the repository carries five open Dependabot advisories. **None of them is in the
+dependency closure of any published NuGet package.**
+
+| Package | Severity | Where it lives | Patch |
+|---|---|---|---|
+| `image-size` (×2) | high | Docusaurus, which builds this documentation site | none available |
+| `nltk` | high | `benchmarks/library-comparison-python/`, a comparison harness | none available |
+| `qs` (×2) | medium | `webpack-dev-server`, reached only by `npm start` | pinned to 6.16.0 here |
+
+If you install any Rag.NET package, none of the above enters your dependency graph — they belong to
+this repository's own tooling. The two unpatched advisories have no fix available upstream; the one
+that did has been pinned in `package.json`'s `overrides` block.
+
 ## RBAC on Chunks
 
 Role-based access control filters retrieved chunks based on an `allowed_roles` metadata key. Chunks that do not carry the key are world-readable and pass through for every caller.

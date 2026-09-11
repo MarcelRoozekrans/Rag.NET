@@ -7707,6 +7707,7 @@ move. **Pre-push review PASS** — `docs/pre-push-review-2026-09-10-2159.md`.
 **Surface:** Docs
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-11-security-posture-design.md`
+**Plan:** `docs/plans/2026-09-11-security-posture-implementation.md`
 
 **Goal:** state the project's security posture and give 71 published packages a vulnerability
 disclosure path, without changing any security behaviour.
@@ -7751,8 +7752,50 @@ not become one that alters what is true, because that puts a security change int
 documentation change.
 
 **Does not gate v1.0**, and was not treated as though it did when triaged. Scheduled now because a
-v1.0 tag is a poor moment to still be missing it. **Fully verifiable locally** — the repo-conventions
-documentation guards already run against `docs/guide/`.
+v1.0 tag is a poor moment to still be missing it. ~~**Fully verifiable locally** — the repo-conventions
+documentation guards already run against `docs/guide/`.~~
+
+**BUILT 2026-09-11. Plan: `docs/plans/2026-09-11-security-posture-implementation.md`.**
+
+**THE DESIGN'S VERIFIABILITY CLAIM WAS FALSE, AND IT WAS A CLAIM ABOUT TOOLING THAT NOBODY
+CHECKED — INSIDE A DOCUMENT ARGUING FOR CHECKING CLAIMS.** Nothing validates `docs/guide/` markdown:
+`DocumentationQualityTests` parses XML summaries under `Rag.NET.Abstractions`,
+`DocumentedConstraintGuardTests` reads `*Options.cs`, and the only occurrences of `docs/guide` in
+that test project are **two comments**. The posture would have landed with no gate at all. The phase
+added `SecurityDocumentationTests` in response — not to check prose, which no test can, but to pin
+the facts that rot without anyone editing the documents. **It failed on its first run**, catching the
+posture naming eight of the ten security-adjacent packages: the two client packages were referred to
+generically rather than by name. They gained a substantive line as a result — *they hold the API
+key*, and where it comes from is the consuming application's problem.
+
+**Enumerating against the code instead of writing from memory found a whole missing feature family,
+filed as #552.** `Rag.NET.Security`'s description *opens* with "Prompt injection defence-in-depth"
+and the package ships `RegexQuerySanitiser`, `TrustLevelRetrievalGuard`,
+`PromptHardeningAnswerEngineDecorator` and more — and **the page called "Security" never mentions
+any of it**. The detail lives only in `docs/reference/features.md`, which calls indirect prompt
+injection *the primary RAG security risk*. Filed, not fixed, per the phase's own boundary; the
+posture names the family, says plainly it is undocumented here, and links both the reference and the
+issue.
+
+**Two drafted claims about authentication were wrong and were corrected by reading the code.** The
+plan expected to write "the MCP write surface is opt-in, so an unconfigured host is
+unauthenticated". It is not: `MapRagNetMcp` attaches the API-key filter to the same convention
+builder it maps, so *"mapped but unauthenticated is not expressible rather than merely detected"*,
+and it throws outright when the transport was never configured. `Rag.NET.Api` reaches the same end
+by the weaker route its own docs describe — detect-and-throw — but throws on three conditions, not
+one. **The real limitation is different and more useful**: the API key is a shared secret, not an
+identity — every client presenting it is indistinguishable, and there is no revocation short of
+rotating it everywhere. That is what the posture says.
+
+**The `qs` advisory is spent**, pinned at `^6.16.0` in the `overrides` block beside
+`serialize-javascript` and `uuid` (#177's precedent), available since 2026-09-07 and unused until
+now. Verified end to end: `npm ls qs` resolves 6.16.0 on both paths, and `npm run build` succeeds —
+the real risk of a transitive pin being a broken docs site. The other four advisories have no patch
+upstream and are described rather than acted on.
+
+**No security behaviour changed, and that was checked mechanically rather than asserted**:
+`git diff main...HEAD --name-only | grep ^src/` returns nothing. `RepoConventions` 98 → **101**.
+**Pre-push review PASS** — `docs/pre-push-review-2026-09-11-0743.md`, 0 blockers and 0 warnings.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
