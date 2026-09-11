@@ -57,7 +57,7 @@ not by the design.** Task 2 verifies it rather than trusting this reasoning.
 
 ### Task 0: Baseline
 
-- [ ] **Step 1: Record the baseline**
+- [x] **Step 1: Record the baseline**
 
 ```bash
 dotnet test tests/Rag.NET.RepoConventions.Tests -c Release
@@ -65,7 +65,7 @@ dotnet test tests/Rag.NET.RepoConventions.Tests -c Release
 
 Expected 101 passed / 2 pre-existing skips (6.2.38 took it from 98). Confirm rather than trust.
 
-- [ ] **Step 2: Confirm the docs site builds before touching it**
+- [x] **Step 2: Confirm the docs site builds before touching it**
 
 ```bash
 npm run build
@@ -83,7 +83,7 @@ So a failure later in the phase is attributable to this phase's edit rather than
 particular way, so the claim gets executed first. **If it turns out wrong, the section changes;
 the design does not get to win on the strength of a well-written paragraph.**
 
-- [ ] **Step 1: Build the probe**
+- [x] **Step 1: Build the probe**
 
 A `net10.0` console project in the scratchpad referencing the **local** `src/Rag.NET/Rag.NET.csproj`
 by `ProjectReference` — not a package, and not AI.Sentinel. A trivial local decorator stands in for
@@ -109,7 +109,7 @@ internal sealed class NoOpMonitorChatClient(IChatClient inner) : IChatClient
 **Read `IChatClient` before writing this** rather than trusting the snippet — the member list has
 already caught out one plan in this milestone (`DeleteByDocumentIdAsync` taking a `string`).
 
-- [ ] **Step 2: Run both orders and record what actually happens**
+- [x] **Step 2: Run both orders and record what actually happens**
 
 Two containers, one assertion each:
 
@@ -126,7 +126,45 @@ extensions actually call `CompositionClaims` before picking one — grep for the
 If none of them is convenient, any claiming extension will do; the point is the guard, not the
 feature.
 
-- [ ] **Step 3: Record the result in this file**
+**MEASURED 2026-09-11. §0's mechanism is confirmed; §0's characterisation of the message is wrong,
+and in the project's favour.**
+
+| Order | `IChatClient` resolves to | Pipeline resolves? |
+| --- | --- | --- |
+| Monitor registered, **then** `AddRagNet(b => b.UseCostBudgeting(...))` | `CostTrackingChatClient` → wrapping `NoOpMonitorChatClient` → wrapping the provider | **yes** |
+| `AddRagNet(...)` first, monitor registered **afterwards** | `NoOpMonitorChatClient` — Rag.NET's decorator silently absent | **throws** |
+
+The thrown message, verbatim:
+
+> UseCostBudgeting is not applied to the IChatClient this container resolves. It decorates whatever
+> is registered at the moment it runs, and this IChatClient was registered (or replaced) afterwards,
+> so the feature UseCostBudgeting configures is silently absent. Move the UseCostBudgeting call
+> after the IChatClient registration. This is checked when the RAG pipeline is resolved because a
+> registration made later cannot be seen at registration time.
+
+**§0 predicted the message would name cost budgeting "rather than about ordering", costing the
+reader an afternoon. That is false.** It names the ordering, explains the mechanism, and states the
+fix in an imperative sentence. The guard is better than the plan gave it credit for, and the section
+should not imply a reader would be stranded by it.
+
+**Two findings that survive, and are the reason this task was worth running:**
+
+1. **The guard fires only when the *pipeline* is resolved, not when `IChatClient` is.** Case B
+   resolved `IChatClient` perfectly happily to the bare monitor — it was `GetRequiredService<IRagPipeline>()`
+   that threw. This is documented behaviour ("checked when the RAG pipeline is resolved"), and it
+   matters to anyone who resolves the chat client in a test or a smoke check and concludes the
+   composition is fine.
+2. **In the correct order, Rag.NET's own decorators wrap *around* the monitor** —
+   `CostTrackingChatClient` → `NoOpMonitorChatClient` → provider. That is the right nesting and worth
+   stating: the monitor sits closest to the model, so it sees the prompt exactly as sent and the
+   response exactly as returned, before any Rag.NET decorator processes it.
+
+**An earlier run of this probe was itself wrong and is recorded rather than deleted**: it resolved
+`IChatClient` instead of the pipeline and reported "no guard fired", which would have become a
+documented claim that the guard has a hole. The guard's own doc comment says it is checked at
+pipeline resolution; the probe had not been reading it.
+
+- [x] **Step 3: Record the result in this file**
 
 Write down what happened, including if it contradicts §0. **A wrong prediction is a finding, not
 something to quietly reword around.**
