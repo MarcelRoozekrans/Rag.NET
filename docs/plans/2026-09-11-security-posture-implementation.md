@@ -53,7 +53,7 @@ This is precisely the gap a posture section exists to close, and it is why the p
 
 ### Task 0: Baseline
 
-- [ ] **Step 1: Record the baseline**
+- [x] **Step 1: Record the baseline**
 
 ```bash
 dotnet test tests/Rag.NET.RepoConventions.Tests -c Release
@@ -61,7 +61,7 @@ dotnet test tests/Rag.NET.RepoConventions.Tests -c Release
 
 Write the count here. Expected 98 passed / 2 pre-existing skips; confirm rather than trust.
 
-- [ ] **Step 2: Confirm the dependency position has not moved since the design**
+- [x] **Step 2: Confirm the dependency position has not moved since the design**
 
 ```bash
 gh api repos/MarcelRoozekrans/Rag.NET/dependabot/alerts --jq '.[] | select(.state=="open") | "\(.security_advisory.severity)\t\(.dependency.package.name)\t\(.dependency.manifest_path)"'
@@ -75,7 +75,7 @@ Expected: 5 open — `image-size` ×2 and `qs` ×2 in `package-lock.json`, `nltk
 
 **Files:** Create `SECURITY.md` (repository root).
 
-- [ ] **Step 1: Establish the supported-version claim before writing it**
+- [x] **Step 1: Establish the supported-version claim before writing it**
 
 ```bash
 gh api repos/MarcelRoozekrans/Rag.NET/releases --jq '.[0].tag_name' 2>/dev/null
@@ -84,7 +84,7 @@ dotnet dotnet-gitversion /output json /showvariable SemVer   # from PowerShell
 
 The published line is `0.1.0` (71 packages, 2026-08-11) and v1.0 is unreleased. **Do not write "1.x is supported"** — it does not exist. The honest claim is that the latest published `0.1.x` is supported and that pre-1.0 means no backport guarantee.
 
-- [ ] **Step 2: Write it**
+- [x] **Step 2: Write it**
 
 Keep it short — a disclosure policy that reads like a contract does not get read. Cover exactly:
 
@@ -95,7 +95,7 @@ Keep it short — a disclosure policy that reads like a contract does not get re
 
 **Do not invent a response-time SLA the maintainer has not agreed to.** "Best effort, typically within a week" is honest for a single-maintainer project; "within 24 hours" is a promise this repository has no evidence of keeping.
 
-- [ ] **Step 3: Verify GitHub sees it**
+- [x] **Step 3: Verify GitHub sees it**
 
 ```bash
 gh api repos/MarcelRoozekrans/Rag.NET/community/profile --jq '.files.security'
@@ -103,7 +103,7 @@ gh api repos/MarcelRoozekrans/Rag.NET/community/profile --jq '.files.security'
 
 Returns non-null once the file is on the default branch — so this reads `null` until the PR merges. **Record that expectation here rather than treating the null as a failure**; check it again after merge.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add SECURITY.md
@@ -116,11 +116,11 @@ git commit -m "docs(security): add a disclosure policy for 71 published packages
 
 **Files:** Modify `docs/guide/security.md` — insert after the front-matter/title block, **before** `## RBAC on Chunks`.
 
-- [ ] **Step 1: Re-read the three feature sections before writing about them**
+- [x] **Step 1: Re-read the three feature sections before writing about them**
 
 The posture summarises what the page already documents. Read `## RBAC on Chunks`, `## PII Detection and Redaction` and `## Audit Log` first so the summary matches the page rather than a recollection of it.
 
-- [ ] **Step 2: Write the section**
+- [x] **Step 2: Write the section**
 
 `## Security posture`, covering, in this order:
 
@@ -153,7 +153,7 @@ With the reasoning: retrofitting RBAC onto an existing corpus would otherwise hi
 
 **(f) The dependency position.** The table from Task 0 Step 2, with the closure argument: **none of these is in a shipped NuGet package's dependency closure**. State which are unpatched and which was fixed here (Task 3).
 
-- [ ] **Step 3: Check every link resolves**
+- [x] **Step 3: Check every link resolves**
 
 ```bash
 grep -oE "\]\([^)]+\)" docs/guide/security.md | sort -u
@@ -161,7 +161,7 @@ grep -oE "\]\([^)]+\)" docs/guide/security.md | sort -u
 
 Read the list; confirm each relative path exists and each anchor matches a real heading. A posture document with a broken link to the prompt-injection docs is worse than one without the link, because it looks answered.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/guide/security.md
@@ -174,7 +174,7 @@ git commit -m "docs(security): state the posture, not just the features"
 
 **Files:** Modify `package.json`.
 
-- [ ] **Step 1: Confirm the patched version and the entry point**
+- [x] **Step 1: Confirm the patched version and the entry point**
 
 ```bash
 npm ls qs 2>&1 | head -20
@@ -182,7 +182,7 @@ npm ls qs 2>&1 | head -20
 
 Expected: `qs` arriving under `webpack-dev-server` (hence `npm start` only). The advisory's patched version is **6.16.0**. **If `npm ls` shows `qs` on a path that reaches `npm run build`, the posture's "reaches only `npm start`" claim is wrong** and Task 2(f) must be corrected before merge.
 
-- [ ] **Step 2: Add the override**
+- [x] **Step 2: Add the override**
 
 `package.json` already has:
 
@@ -195,7 +195,7 @@ Expected: `qs` arriving under `webpack-dev-server` (hence `npm start` only). The
 
 Add `"qs": "^6.16.0"`, matching the existing shape (#177 set that precedent).
 
-- [ ] **Step 3: Regenerate the lockfile and verify**
+- [x] **Step 3: Regenerate the lockfile and verify**
 
 ```bash
 npm install
@@ -204,7 +204,7 @@ npm ls qs
 
 Expected: every `qs` resolves to ≥ 6.16.0. **Commit `package-lock.json` too** — an override without the regenerated lock changes nothing for anyone who installs from the lock.
 
-- [ ] **Step 4: Confirm the docs site still builds**
+- [x] **Step 4: Confirm the docs site still builds**
 
 ```bash
 npm run build
@@ -212,7 +212,7 @@ npm run build
 
 This is the actual regression risk of the task: a transitive pin that breaks the site build. **If it fails, revert the override and record why** — the alert is medium, dev-only, and not worth a broken docs build.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add package.json package-lock.json
@@ -227,7 +227,7 @@ git commit -m "chore(deps): pin qs past its advisory, as serialize-javascript an
 
 Per §0.1 there is no gate on any of this. A test cannot check whether prose is *good*, but it can check that the disclosure policy still exists and that the posture still accounts for every security-adjacent package — the second being the claim most likely to go quietly wrong, because it breaks when someone **adds a package**, not when someone edits the document.
 
-- [ ] **Step 1: Write the tests**
+- [x] **Step 1: Write the tests**
 
 Use `TestProject.FindRepositoryRoot()`, the helper the other guards in this project use (see `BuildGuardTests.cs:42`). Two facts:
 
@@ -267,17 +267,17 @@ Use `TestProject.FindRepositoryRoot()`, the helper the other guards in this proj
 
 **The second test's value is that it fails when a package is added**, which is when the posture silently stops being complete and nobody is looking at the document. Derive the list from the filesystem, never hardcode it — a hardcoded list is a second thing to forget.
 
-- [ ] **Step 2: Run and confirm they fail first**
+- [x] **Step 2: Run and confirm they fail first**
 
 Run: `dotnet test tests/Rag.NET.RepoConventions.Tests -c Release --filter "FullyQualifiedName~SecurityDocumentationTests"`
 
 **Run this BEFORE Tasks 1 and 2 land if executing out of order** — a guard that has never failed is a guard that may not work. If both pass immediately, check you have not already written the documents.
 
-- [ ] **Step 3: Run the whole conventions suite**
+- [x] **Step 3: Run the whole conventions suite**
 
 Expected: Task 0's baseline plus 2.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/Rag.NET.RepoConventions.Tests/SecurityDocumentationTests.cs
@@ -288,13 +288,13 @@ git commit -m "test(conventions): pin the disclosure policy and the posture's pa
 
 ### Task 5: File what was found, do not fix it
 
-- [ ] **Step 1: File the prompt-injection documentation gap**
+- [x] **Step 1: File the prompt-injection documentation gap**
 
 Per §0.2 and the Global Constraints. An issue saying: `docs/guide/security.md` documents three of four security feature families; the prompt-injection family — which `docs/reference/features.md` calls the primary RAG security risk — is absent from the page named "Security", and its detail lives only in the reference. Propose a feature section on the guide page. Label `documentation`.
 
 **Record the issue number here**, and reference it from the posture section's family table so the gap is visible from the document it affects.
 
-- [ ] **Step 2: If anything else surfaced, file that too**
+- [x] **Step 2: If anything else surfaced, file that too**
 
 Especially anything in Task 2(e) — if the MCP transport's actual behaviour differs from "opt-in, unauthenticated by default", that is a finding about the code, not the document, and it is filed rather than fixed here.
 
@@ -302,11 +302,11 @@ Especially anything in Task 2(e) — if the MCP transport's actual behaviour dif
 
 ### Task 6: Roadmap, review and PR
 
-- [ ] **Step 1: `docs/planning/ROADMAP.md`**, the Phase 6.2.38 block — record what the phase found, in its neighbours' style: §0.1's absent gate, §0.2's missing feature family, and the issue number from Task 5. **Do not change the `[status: ...]` marker** — `complete-phase` does that after the merge.
+- [x] **Step 1: `docs/planning/ROADMAP.md`**, the Phase 6.2.38 block — record what the phase found, in its neighbours' style: §0.1's absent gate, §0.2's missing feature family, and the issue number from Task 5. **Do not change the `[status: ...]` marker** — `complete-phase` does that after the merge.
 
-- [ ] **Step 2: Correct the design document's §5** with a struck-through note rather than a deletion, the way 6.2.36 corrected its design's §4. The claim that documentation guards cover `docs/guide/` was wrong and the correction is instructive: it is a claim about tooling that nobody checked, in a document arguing for checking claims.
+- [x] **Step 2: Correct the design document's §5** with a struck-through note rather than a deletion, the way 6.2.36 corrected its design's §4. The claim that documentation guards cover `docs/guide/` was wrong and the correction is instructive: it is a claim about tooling that nobody checked, in a document arguing for checking claims.
 
-- [ ] **Step 3: Run the suites.** Enumerate them:
+- [x] **Step 3: Run the suites.** Enumerate them:
 
 ```bash
 dotnet test tests/Rag.NET.RepoConventions.Tests -c Release
@@ -315,9 +315,9 @@ npm run build
 
 Only the conventions suite and the docs site are affected — no `src/` code changes in this phase. **If a `src/` file appears in `git diff main...HEAD --stat`, the no-behaviour-change constraint was violated.** Check before the PR, not after.
 
-- [ ] **Step 4: Run `pre-push-review`.** Record the verdict and report path here.
+- [x] **Step 4: Run `pre-push-review`.** Record the verdict and report path here.
 
-- [ ] **Step 5: Open the PR.** Note that no security behaviour changed, link the Task 5 issue, and flag the `SECURITY.md` reporting-channel decision for the maintainer. Record the number here.
+- [x] **Step 5: Open the PR.** Note that no security behaviour changed, link the Task 5 issue, and flag the `SECURITY.md` reporting-channel decision for the maintainer. Record the number here.
 
 ---
 

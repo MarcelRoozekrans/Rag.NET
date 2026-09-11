@@ -119,9 +119,23 @@ Out, and this boundary is the phase's main risk:
 
 ## 5. Verifiability
 
-Fully local. `Rag.NET.RepoConventions.Tests` carries documentation guards (`DocumentationQualityTests`,
+Fully local. ~~`Rag.NET.RepoConventions.Tests` carries documentation guards (`DocumentationQualityTests`,
 `DocumentedConstraintGuardTests`, `FeatureClaimTests`) which already run against `docs/guide/`, so
-the new prose is checked by the same gates as the rest. The `qs` override is verified by
+the new prose is checked by the same gates as the rest.~~
+
+> **CORRECTED 2026-09-11, before implementation. The struck sentence is false, and it is a claim
+> about tooling that nobody checked — inside a document arguing for checking claims.** Nothing
+> validates `docs/guide/` markdown. `DocumentationQualityTests` parses XML `<summary>` blocks under
+> `src/Rag.NET.Abstractions`; `DocumentedConstraintGuardTests` reads `*Options.cs` doc comments and
+> checks something enforces the numeric constraints they claim. The only occurrences of the string
+> `docs/guide` in that test project are **two comments** in `TestGateTests.cs`.
+>
+> The prose therefore landed with no gate at all, which changes what "done" means for this phase:
+> verification is reading. The implementation added `SecurityDocumentationTests` in response — not
+> to check the prose, which no test can, but to pin the two facts that rot without anyone editing
+> the documents: that `SECURITY.md` exists and names a channel, and that the posture's package list
+> still covers every security-adjacent package under `src/`. **That guard failed on its first run**
+> and found the posture naming eight of ten packages. The `qs` override is verified by
 `npm ls qs` resolving to 6.16.0 or higher and by the docs site still building.
 
 **The claim this phase cannot verify by test** is that the posture is *complete* — that no security-
