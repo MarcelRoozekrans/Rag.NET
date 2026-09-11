@@ -196,6 +196,15 @@ public sealed class DocsCodeExamplesTests
         ["docs/guide/observability.md: '.AddOtlpExporter(…)' matches no public method (extension methods included) in the package, its dependency closure, or the shared framework."] =
             "OpenTelemetry.Exporter.OpenTelemetryProtocol's extension method — same reasoning as AddConsoleExporter above.",
 
+        ["docs/guide/security.md: 'OpenAIChatClient' is not a public type in the package, its dependency closure, or the shared framework."] =
+            "Same illustrative provider client as the resilience.md entry below, in the model-boundary composition example — Microsoft.Extensions.AI.OpenAI is a package the reader adds themselves and no produced package depends on.",
+
+        ["docs/guide/security.md: '.AddAISentinel(…)' matches no public method (extension methods included) in the package, its dependency closure, or the shared framework."] =
+            "AI.Sentinel's DI registration, in the 'watching the model boundary' example. The section's whole point is that a model-boundary monitor composes through IChatClient *without* Rag.NET depending on it — a produced package resolving this method would mean the boundary had been crossed, which is exactly what that section says is not done.",
+
+        ["docs/guide/security.md: '.UseAISentinel(…)' matches no public method (extension methods included) in the package, its dependency closure, or the shared framework."] =
+            "AI.Sentinel's ChatClientBuilder extension, same example and same reasoning as AddAISentinel above.",
+
         ["docs/guide/resilience.md: 'OpenAIChatClient' is not a public type in the package, its dependency closure, or the shared framework."] =
             "A provider-agnostic fallback-chain example's illustrative client type, from Microsoft.Extensions.AI.OpenAI — a package the reader adds themselves, exactly as getting-started.md's own step 1 does, and no produced package depends on.",
 

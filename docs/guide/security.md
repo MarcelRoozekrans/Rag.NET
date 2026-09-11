@@ -110,6 +110,112 @@ If you install any Rag.NET package, none of the above enters your dependency gra
 this repository's own tooling. The two unpatched advisories have no fix available upstream; the one
 that did has been pinned in `package.json`'s `overrides` block.
 
+## Watching the model boundary
+
+**Every security feature on this page acts before the model is called.** Sanitisers run at ingest and
+before retrieval, guards run on retrieved chunks, prompt hardening runs at assembly. Nothing in
+Rag.NET inspects what comes *back*.
+
+`IConfidenceScorer` looks like it might, and does not: it scores whether a sentence is **supported by
+the retrieved context**, on a 0–1 scale, and fails open at `1.0` when it cannot score. That is a
+groundedness signal for answer quality. It is not an inspection of the response for a secret.
+
+The concrete consequence: **a credential that survives ingest-time redaction, sits in a chunk, and
+gets summarised back to a user is not seen by any part of this library.**
+
+### The shape of the answer
+
+Rag.NET resolves `IChatClient` from DI. Anything that decorates `IChatClient` therefore sits between
+Rag.NET and the model, and sees both directions — the prompt as sent, and the response as returned.
+That is the insertion point for a monitor, and it needs nothing from Rag.NET: no package reference,
+no abstraction, no integration.
+
+### A worked example
+
+[AI.Sentinel](https://github.com/MarcelRoozekrans/AI.Sentinel) is one such monitor — `IChatClient`
+middleware that scans both directions through a detector pipeline and can block, alert or log.
+
+> **Disclosure:** AI.Sentinel is written by the same author as Rag.NET. It is named here because it
+> is a concrete example that was actually tested against this library, not because Rag.NET depends
+> on it or recommends it over alternatives. Any `IChatClient` decorator composes the same way.
+
+```csharp
+// 1. The monitor, wrapping your provider client.
+//    Severity policy and detector configuration are AI.Sentinel's own -- see its documentation.
+services.AddAISentinel(opts => { /* ... */ });
+services.AddChatClient(new OpenAIChatClient(/* ... */)).UseAISentinel();
+
+// 2. Rag.NET afterwards. The order matters -- see below.
+services.AddRagNet(b => b
+    .UseRbac()
+    .UseCostBudgeting(o => o.DailyLimit = 10m));
+```
+
+### Register the monitor first
+
+**Rag.NET's own `IChatClient` decorators rewrite the DI descriptor, so they can only wrap what is
+already registered.** `UseCostBudgeting` and `UseFallbackChain` both do this. Register your monitor
+*after* them and Rag.NET's decorator wraps nothing.
+
+That is not silent. Resolving the pipeline throws:
+
+> UseCostBudgeting is not applied to the IChatClient this container resolves. It decorates whatever
+> is registered at the moment it runs, and this IChatClient was registered (or replaced) afterwards,
+> so the feature UseCostBudgeting configures is silently absent. Move the UseCostBudgeting call after
+> the IChatClient registration. This is checked when the RAG pipeline is resolved because a
+> registration made later cannot be seen at registration time.
+
+**Two details worth knowing**, both measured on 2026-09-11:
+
+- **The check runs when the pipeline is resolved, not when `IChatClient` is.** Resolving the chat
+  client alone succeeds and hands back the bare monitor, so a smoke test that only resolves
+  `IChatClient` will report a composition that is in fact broken. Resolve `IRagPipeline`.
+- **In the correct order, Rag.NET's decorators wrap around the monitor** — the resolved client is
+  `CostTrackingChatClient` → your monitor → your provider. That is the right nesting: the monitor
+  sits closest to the model, so it sees the prompt exactly as sent and the response exactly as
+  returned.
+
+### What overlaps, and what that costs
+
+A monitor is not purely additive with the defences on this page.
+
+| | Rag.NET | A model-boundary monitor |
+|---|---|---|
+| Prompt injection | query sanitisers, retrieval guards, prompt hardening — **before** the call | detectors on the assembled prompt — **at** the call |
+| PII | redacted at ingest, before embedding | detected in the response |
+| Credentials in a response | **not covered** | covered |
+| Groundedness | `IConfidenceScorer` against retrieved context | hallucination detectors |
+
+**Prompt injection is covered twice, by different means.** Whether that is defence in depth or
+duplicated cost depends on your configuration — two LLM-backed passes over every query is a real
+expense. Rag.NET's regex sanitisers are cheap; its LLM sanitiser and a monitor's LLM-escalating
+detectors are not. Decide deliberately rather than enabling both because each page recommends it.
+
+### Verify detection against your own configuration
+
+**Registration is not protection, and the two look identical from outside.** A monitor with detectors
+registered but a dependency unset — an embedding generator, a classifier client — can scan clean and
+report nothing wrong. That was observed in a bare configuration during the 2026-09-11 testing, with
+injection detectors present.
+
+Send a known-bad prompt through your configured pipeline and confirm it is caught, before relying on
+it. This applies to Rag.NET's own sanitisers equally.
+
+### Version compatibility, as measured
+
+AI.Sentinel 2.0.1 targets `net8.0`/`net9.0` while Rag.NET targets `net10.0`, and it builds against
+`ZeroAlloc.Mediator` 4.1.4 and `ZeroAlloc.ValueObjects` 1.7.1 where Rag.NET pins 5.0.1 and 2.0.5 —
+two major versions apart, which NuGet resolves in favour of the higher.
+
+**Verified on 2026-09-11 against those exact versions**: the container builds, `IChatClient` resolves
+to `SentinelChatClient`, 55 detectors resolve and construct, and a scan completes without
+`MissingMethodException` or `TypeLoadException`.
+
+**What that check does not cover:** it exercised construction and the scan path, not every detector's
+internals. A detector reaching a changed API only on an alert path was not reached. Both packages
+move independently, so treat this as a dated observation rather than a standing guarantee, and re-run
+it for the versions you actually deploy.
+
 ## RBAC on Chunks
 
 Role-based access control filters retrieved chunks based on an `allowed_roles` metadata key. Chunks that do not carry the key are world-readable and pass through for every caller.
