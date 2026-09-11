@@ -1,6 +1,37 @@
 # Session State
 
-**Last updated:** 2026-09-11 — **at the merge, as the previous four were.** 6.2.38 merged as #553
+**Last updated:** 2026-09-11 — **at the merge, as the previous five were.** 6.2.39 merged as #556;
+this entry was written from the session that built it, on `chore/6239-merged`.
+
+**THE LESSON FROM 6.2.39 IS ABOUT CHOOSING A TEST SET, AND IT WILL RECUR.** The plan ran
+`RepoConventions` plus the docs build, reasoning that a markdown-only change affects no other suite.
+`pack-validate` failed on the PR: `DocsCodeExamplesTests` requires every C# example on a published
+page to resolve against what the produced packages actually ship. **"No `src/` change" is not "no
+suite affected"** — this repository validates its *documentation against its packages*, so a
+docs-only change is precisely the kind that breaks packaging validation. The repository's own note
+that `dotnet build` cannot reach the `pack-validate` guards was already on file and was not applied.
+**The rule to carry: enumerate the suites, do not reason about which ones could not possibly be
+affected.** That reasoning has now failed twice this week in different directions.
+
+**Two phases in a row have found their own design or plan wrong before shipping**, which is the
+process working rather than a run of bad luck: 6.2.38's design claimed documentation guards covered
+`docs/guide/` and nothing did; 6.2.39's plan predicted an error message would strand a reader when it
+in fact names the fix imperatively. Both corrections are struck through in place rather than
+rewritten away.
+
+**AI.Sentinel #205 filed** — `AddAISentinel` is not idempotent, and that package's own README
+named-pipeline example builds a detection pipeline holding 165 detectors instead of 55. Found while
+testing whether it composes with Rag.NET at the `IChatClient` boundary; the composition itself works
+and is now documented. **The first report of this was wrong** and blamed a call of mine; the issue and
+the PR body were both corrected to the real cause rather than left standing.
+
+**Milestone 6 is back to two remaining phases, both account-blocked** — 6.1 and 6.3. **What is still
+locally finishable is unchanged and is not nothing**: #552 (the security guide omits prompt-injection
+defences, the risk `features.md` calls primary), #184 (breaking, pre-1.0 is the moment), #314 (xunit
+v4, red since 2026-08-18), and nine stale local branches. That list came from this file's own
+*"what is actually open"* section, which a session two days ago claimed was empty without reading it.
+
+**Previously, 2026-09-11 — at the merge, as the previous four were.** 6.2.38 merged as #553
 and this entry was written from the session that built it, on `chore/6238-merged`. A follow-up #554
 carried one line that phase's own `git add` missed: the posture's link to #552 was edited and never
 staged, because the commit named directories instead of the files actually changed. The PR body
