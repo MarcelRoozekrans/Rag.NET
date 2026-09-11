@@ -7599,7 +7599,7 @@ removal breaks no consumer in the repository. **Still account-blocked past the g
 from 6.2.34 and stated rather than glossed: the simulator accepts `queryType=semantic`, returns 200
 and returns no `rerankerScore`, so the throw is testable locally and the ranking itself is not.
 
-### Phase 6.2.37: The Decorator That Hid a Capability [status: pending — added 2026-09-10, #544]
+### Phase 6.2.37: The Decorator That Hid a Capability [status: complete 2026-09-10 in #549 — #544, and the sweep gap that was the defect's own shape one level up]
 **Surface:** Storage
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-10-resilient-hybrid-design.md`
@@ -7702,6 +7702,57 @@ remains a correct example and is now the only one.
 **98** (2 pre-existing skips), PackageValidation **23**; whole solution builds clean, 0 warnings.
 `PersistentConversationMemoryScoreScaleTests` calls the rewritten `Create` at three sites and did not
 move. **Pre-push review PASS** — `docs/pre-push-review-2026-09-10-2159.md`.
+
+### Phase 6.2.38: What the Project Claims About Its Own Security [status: pending — added 2026-09-11]
+**Surface:** Docs
+**HelpWanted:** no
+**Design:** `docs/plans/2026-09-11-security-posture-design.md`
+
+**Goal:** state the project's security posture and give 71 published packages a vulnerability
+disclosure path, without changing any security behaviour.
+
+**RECORDED 2026-09-07, SCHEDULED 2026-09-11, AND THE GAP IS THE POINT.** This is item 3 of
+`STATE.md`'s *"What is actually open, in the order worth taking it"* list. It was recorded with its
+origin and then never placed in a phase — **the record-then-schedule rule failing in its quieter
+direction**, where the recording happens and the scheduling does not. It surfaced again only because
+a session claimed no local work remained and was challenged; the list contradicting that claim was
+in the same file the session had already opened, two-thirds of the way down.
+
+**`docs/guide/security.md` documents features, not posture.** 320 lines on RBAC, PII redaction and
+the audit log, with registration snippets — and no answer to "what does this project claim, and what
+does it leave to me". Ten packages carry a security-adjacent remit (`Rag.NET.Security*` ×3,
+`Rag.NET.Mcp*` ×3, `Rag.NET.Api*` ×4) and nothing draws a boundary around them.
+
+**There is no `SECURITY.md`.** 71 packages have been live on nuget.org since 2026-08-11 with no
+private disclosure channel; a researcher with a finding would open a public issue. Reporting will go
+through GitHub private security advisories rather than an email address, so no personal mailbox is
+published on a public repo.
+
+**The sharpest thing the posture has to state is that RBAC fails open.** `security.md` already says
+it — *"Chunks that do not carry the key are world-readable and pass through for every caller"* —
+**in passing, two-thirds of the way into a feature how-to**. The default is correct, because
+retrofitting RBAC onto an existing corpus would otherwise hide every previously-ingested chunk the
+moment the feature is registered. But a consumer who registers RBAC and assumes deny-by-default has
+an exposure and no reason to suspect it. **Documenting the decision, not changing it.**
+
+**The dependency position is most of the value.** Five Dependabot alerts, triaged 2026-09-07 and
+re-verified 2026-09-11: `image-size` ×2 and `nltk` (high) have no patch and live in the Docusaurus
+build and the Python comparison harness; `qs` ×2 (medium) is patched at 6.16.0 and reaches only
+`npm start` via `webpack-dev-server`. **None is in a shipped NuGet package's closure.** A prospective
+user seeing "3 high" on the repository page needs that argument, and its absence reads as neglect.
+**The one fixable entry is folded in** — a `"qs": "^6.16.0"` line in the `overrides` block that
+already pins `serialize-javascript` and `uuid` past their advisories (#177), available since
+2026-09-07 and unspent.
+
+**No security behaviour changes, and that boundary is the phase's main risk.** If writing the posture
+surfaces something that ought to change, it gets **filed, not fixed** — the rule 6.2.36 followed when
+it found #544 and shipped a diagnostic instead. A phase whose remit is "write down what is true" must
+not become one that alters what is true, because that puts a security change into a PR reviewed as a
+documentation change.
+
+**Does not gate v1.0**, and was not treated as though it did when triaged. Scheduled now because a
+v1.0 tag is a poor moment to still be missing it. **Fully verifiable locally** — the repo-conventions
+documentation guards already run against `docs/guide/`.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
