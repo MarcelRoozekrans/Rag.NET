@@ -7911,6 +7911,7 @@ self-recommendation as a risk rather than assuming it benign.
 **Surface:** Docs
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-11-prompt-injection-documentation-design.md`
+**Plan:** `docs/plans/2026-09-11-prompt-injection-documentation-implementation.md`
 
 **Goal:** document the prompt-injection defences — in the guide, in the feature reference, and in
 IntelliSense — without changing any behaviour.
