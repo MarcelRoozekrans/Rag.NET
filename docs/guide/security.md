@@ -29,7 +29,8 @@ to you, and where its current dependency advisories stand — read it before the
 | Audit log | having no record of what was retrieved or answered | [below](#audit-log) |
 | **Prompt-injection defences** — chunk and query sanitisation, retrieval guards, prompt hardening | attacker-controlled content hijacking the model at query time | **not on this page** — see [Prompt Injection Fortification](../reference/features.md) in the feature reference |
 
-**The fourth family is not documented on this page, and that is a gap rather than a decision.**
+**The fourth family is not documented on this page, and that is a gap rather than a decision**
+([#552](https://github.com/MarcelRoozekrans/Rag.NET/issues/552)).
 `Rag.NET.Security` ships `RegexQuerySanitiser`, `LlmQuerySanitiser`, `RegexRetrievalGuard`,
 `TrustLevelRetrievalGuard` and `PromptHardeningAnswerEngineDecorator`, and the feature reference
 describes indirect prompt injection as *the primary RAG security risk*. Until that section is
