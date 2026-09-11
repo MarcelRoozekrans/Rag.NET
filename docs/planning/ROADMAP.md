@@ -7707,6 +7707,7 @@ move. **Pre-push review PASS** — `docs/pre-push-review-2026-09-10-2159.md`.
 **Surface:** Docs
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-11-security-posture-design.md`
+**Plan:** `docs/plans/2026-09-11-security-posture-implementation.md`
 
 **Goal:** state the project's security posture and give 71 published packages a vulnerability
 disclosure path, without changing any security behaviour.
