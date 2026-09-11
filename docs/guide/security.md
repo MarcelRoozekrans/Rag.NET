@@ -141,11 +141,8 @@ middleware that scans both directions through a detector pipeline and can block,
 
 ```csharp
 // 1. The monitor, wrapping your provider client.
-services.AddAISentinel(opts =>
-{
-    opts.OnCritical = SentinelAction.Quarantine;
-    opts.OnHigh     = SentinelAction.Alert;
-});
+//    Severity policy and detector configuration are AI.Sentinel's own -- see its documentation.
+services.AddAISentinel(opts => { /* ... */ });
 services.AddChatClient(new OpenAIChatClient(/* ... */)).UseAISentinel();
 
 // 2. Rag.NET afterwards. The order matters -- see below.
