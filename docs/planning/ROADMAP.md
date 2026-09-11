@@ -7703,7 +7703,7 @@ remains a correct example and is now the only one.
 `PersistentConversationMemoryScoreScaleTests` calls the rewritten `Create` at three sites and did not
 move. **Pre-push review PASS** — `docs/pre-push-review-2026-09-10-2159.md`.
 
-### Phase 6.2.38: What the Project Claims About Its Own Security [status: pending — added 2026-09-11]
+### Phase 6.2.38: What the Project Claims About Its Own Security [status: complete 2026-09-11 in #553 — and the guard that failed on its first run]
 **Surface:** Docs
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-11-security-posture-design.md`
@@ -7796,6 +7796,62 @@ upstream and are described rather than acted on.
 **No security behaviour changed, and that was checked mechanically rather than asserted**:
 `git diff main...HEAD --name-only | grep ^src/` returns nothing. `RepoConventions` 98 → **101**.
 **Pre-push review PASS** — `docs/pre-push-review-2026-09-11-0743.md`, 0 blockers and 0 warnings.
+
+### Phase 6.2.39: The Boundary Rag.NET Does Not Watch [status: pending — added 2026-09-11]
+**Surface:** Docs
+**HelpWanted:** no
+**Design:** `docs/plans/2026-09-11-model-boundary-monitoring-design.md`
+
+**Goal:** document the `IChatClient` composition that covers the model boundary, taking on no code
+and no dependency to do it.
+
+**6.2.38's posture made an omission visible.** Rag.NET's security features act at four points and
+**all four are before the model is called** — `IChunkSanitiser` at ingest, `IQuerySanitiser`
+pre-retrieval, `IRetrievalGuard` at retrieval, `PromptHardeningAnswerEngineDecorator` at prompt
+assembly. **Nothing acts after.** The one thing that looks like it does, `IConfidenceScorer`, answers
+a different question: it scores whether a sentence is *supported by the retrieved context* and fails
+open at `1.0`. That is a groundedness signal, not an inspection of the response for a credential or
+PII the model saw in a chunk and repeated. A secret surviving ingest-time redaction can be summarised
+back to a user and **no part of this library looks at that**.
+
+**Documentation, not code, and that boundary is the phase's main risk.** A reader of this roadmap
+could reasonably expect an integration package. There deliberately is none: the composition already
+works because both sides sit on `Microsoft.Extensions.AI.IChatClient`, so nothing needs to change on
+either side. And `SecurityPackageWeightTests` exists because one file once put SQLite and a native
+binary on every `UseRbac` consumer — AI.Sentinel brings **thirteen `ZeroAlloc.*` packages** plus
+`Microsoft.Extensions.AI`, which must never enter `Rag.NET.Security`. An integration package is
+post-1.0 work with its own ID to own.
+
+**The example names AI.Sentinel and discloses that it is by the same author**, decided by the
+operator over three alternatives (name without disclosing, describe generically, document nothing).
+The disclosure costs a sentence and pre-empts a reader who notices the shared authorship and wonders
+whether the section is advertising — **which matters more here than elsewhere**, because it lands
+immediately after a posture section whose entire value is being believed. An undisclosed
+self-recommendation found later would be read backwards onto everything above it.
+
+**The overlap gets stated rather than glossed.** Both do prompt-injection detection by different
+means — Rag.NET's sanitisers and guards before the call, a monitor's detectors at the boundary.
+Running both is defence in depth **or duplicated cost**, depending on configuration. Implying they
+are purely additive would be selling rather than documenting.
+
+**MEASURED, NOT ASSUMED, AND THE SPIKE IS WHY THIS IS SCOPED AT ALL.** AI.Sentinel 2.0.1 targets
+`net8.0`/`net9.0` and builds against `ZeroAlloc.Mediator` 4.1.4 and `ValueObjects` 1.7.1, where this
+repository pins **5.0.1 and 2.0.5** — two major versions apart, with NuGet resolving to the higher.
+A throwaway `net10.0` spike on 2026-09-11 forcing those exact pins showed the container builds,
+`IChatClient` resolves to `SentinelChatClient`, **55 distinct detectors resolve and construct**, and a
+scan runs without `MissingMethodException` or `TypeLoadException`. **What it does not prove is
+recorded too**: it exercised construction and the scan path, not every detector's internals, so the
+documented claim is *"verified to load and run on 2026-09-11 against these versions"* — dated and
+version-named so it expires visibly rather than silently.
+
+**One spike observation that is not this repository's to fix**: a blatant injection scanned clean in
+a bare configuration with all five injection-shaped detectors registered — almost certainly a missing
+`EmbeddingGenerator`, which AI.Sentinel's own quick start sets. It is reported to its author rather
+than chased here, and it is why the section will tell readers to verify detection against their own
+configuration. **Registration that silently protects nothing is this milestone's recurring defect
+shape**, and the advice costs a sentence.
+
+**Fully verifiable locally.** Nothing enters `src/`.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
