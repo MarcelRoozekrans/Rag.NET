@@ -8105,6 +8105,60 @@ runs unprovisioned too.
 PackageValidation **23**, docs site builds. **Pre-push review PASS** —
 `docs/pre-push-review-2026-09-12-0914.md`.
 
+### Phase 6.2.42: Two Rules That Were Written Down and Broken Anyway [status: pending — added 2026-09-12]
+**Surface:** Infra
+**HelpWanted:** no
+**Design:** `docs/plans/2026-09-12-mechanical-guards-design.md`
+
+**Goal:** convert two prose rules this repository wrote down and then broke into checks that fire by
+themselves.
+
+**NOT FROM AN ISSUE — FROM THIS REPOSITORY BREAKING ITS OWN RECORDED RULES THREE TIMES IN A DAY.**
+`STATE.md`'s 2026-09-12 entry lists them: *enumerate suites rather than reasoning about which are
+safe to skip* (6.2.40's plan then asserted a test project did not exist — it has 104 tests);
+*commitlint caps headers at 100 and lints every commit a PR adds* (a 104-character header then failed
+CI on #567, on a commit that was not the tip, forcing a branch rebuild); and *source `env.sh` before
+writing "unprovisioned"* (both 6.2.41 sweeps then ran unprovisioned, skipping 26 tests that would
+have passed — the third occurrence, after a note that already said two sessions had done it).
+
+**The pattern is not that the rules were missing.** Each was written, in a file its author had read,
+twice in the same document. **Prose rules are not checked at the moment they apply.** What worked in
+6.2.41 was mechanical — a count-keyed comparison that caught what a text-keyed one would have
+reported as 77 false differences, and `git diff … | grep ^src/` proving a constraint three paragraphs
+of intent could not.
+
+**Guard A: commit header length.** There is **no local commit-message check of any kind** — no
+`.husky`, no `prepare` script, no `commit-msg` hook, `core.hooksPath` at its default. `commitlint`
+runs in CI only. So the loop for a malformed header is commit, push, open a PR, wait, rewrite
+history, force-push. **Header length only, deliberately** — `.commitlintrc.yml` tunes `type-enum`,
+disables `subject-case` and turns `body-max-line-length` off because bodies quote URLs verbatim, and
+a second implementation of that would drift. CI stays authoritative.
+
+**Delivered as a tracked `.githooks/commit-msg` plus a one-time `git config core.hooksPath
+.githooks`**, chosen by the operator over husky-via-`npm prepare` (which would put npm lifecycle
+machinery in a `package.json` that exists only to build the docs site) and over a `RepoConventions`
+test (which fires after the commit exists, so the remedy is still a rewrite). **The cost is stated
+rather than glossed: a hook does nothing until someone runs the config line.** It helps contributors
+who opt in and nobody else, including a future session on a fresh clone.
+
+**Guard B: the BEIR provisioning message.** The skip is correct; the *message* cannot distinguish
+"the corpus is not on this machine" from "the corpus is here and nothing points at it". The second is
+what happened three times — `~/.cache/ragnet-beir` exists with an `env.sh`, and sourcing it takes
+`Embeddings.Onnx.Tests` from 10 skips to **0** and the benchmark project from 149/118 to **175 passed
+/ 92 skipped**. When the variable is unset and the conventional directory exists, the skip will say
+so. **No test changes which conditions it skips under** — only the wording, and only on the branch
+where the data is present but unreferenced.
+
+**The third rule stays prose, deliberately.** A guard for "enumerate the suites" would have to know
+which suites a change could affect — the judgement the rule exists to discipline — so it would either
+run everything or guess, and a guessing guard is worse than none. Its actionable form is already in
+use: 6.2.41's plan listed its suites as literal commands rather than describing them.
+
+**A guard nobody tests is the thing this phase is about**, so the hook gets a `RepoConventions` test
+feeding it a 101-character header and asserting a non-zero exit. **What cannot be tested is
+adoption** — whether anyone runs the config line — and the record will say so rather than implying
+the rule is now enforced for everyone.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
