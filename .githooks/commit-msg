@@ -18,8 +18,27 @@ set -euo pipefail
 # ${#header} below counts CHARACTERS only under a UTF-8-aware LC_CTYPE. A bare `git commit`
 # (and this environment, unpatched) has no LANG or LC_ALL set at all, and bash then falls back to
 # counting BYTES — the exact em-dash trap this hook exists to avoid, reproducing silently. Force
-# the locale rather than trust whatever the invoking shell inherited.
+# the locale — but the export alone proves nothing: `export VAR=value` exits 0 even when the named
+# locale is not installed (bash only prints a warning), so `set -e` never sees a failure here, and
+# a machine without C.UTF-8 would fall back to byte-counting exactly as if this line were absent.
+# The probe right after is what actually guarantees the count below is characters, not this line.
 export LC_ALL=C.UTF-8
+
+# Behavioural probe, not a name check: `locale charmap` reports "UTF-8" even with no locale set
+# and byte-counting already active, so it cannot tell us the export above took effect. Measuring a
+# known one-character, three-byte string can. If this reads 3, the export failed silently and
+# nothing past this point can be trusted to count characters rather than bytes.
+probe="—"
+if [ "${#probe}" -ne 1 ]; then
+  {
+    printf 'commit-msg: no UTF-8-aware locale is available, so this hook cannot measure the\n'
+    printf 'header in characters -- only in bytes, which is the exact miscount this hook exists\n'
+    printf 'to prevent. Refusing rather than risking a false rejection that would look like the\n'
+    printf 'guard working correctly.\n\n'
+    printf 'Install a UTF-8 locale (for example C.UTF-8) to use this hook, or commit without it.\n'
+  } >&2
+  exit 1
+fi
 
 cap=100
 
