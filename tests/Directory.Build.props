@@ -4,5 +4,24 @@
   <PropertyGroup>
     <NoWarn>$(NoWarn);MA0004;HLQ005;HLQ012</NoWarn>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!--
+      Route `dotnet test` through Microsoft.Testing.Platform for EVERY test project, not the VSTest
+      bridge. Not a preference: the .NET 10 SDK refuses that bridge outright
+      (Microsoft.Testing.Platform.MSBuild targets, "Testing with VSTest target is no longer
+      supported"), which is what left the xunit v4 bump in #314 red from 2026-08-18 with every test
+      project failing to BUILD its VSTest target. Phase 6.2.41.
+
+      Microsoft.NET.Test.Sdk STAYS referenced in every project. ci.yml and nightly.yml select
+      projects with `grep -l 'Microsoft.NET.Test.Sdk' tests/*/*.csproj`, and the partition guard
+      compares fast+docker against that same census — so dropping the reference would remove
+      projects from the census while the guard still passed, because `all` shrinks with them. That
+      is the failure the guard exists to catch, reached by disarming the guard.
+
+      Consequence for humans: passing a VSTest filter flag to `dotnet test` now raises RAGNET0001 everywhere
+      (Directory.Build.targets), because MTP ignores the VSTest filter property and this repository
+      refuses the silent version. Use the native runner — see docs/reference/ci.md.
+    -->
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 </Project>

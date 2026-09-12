@@ -88,7 +88,7 @@ project that ran nothing.
 
 **Files:** Modify `tests/Directory.Build.props`.
 
-- [ ] **Step 1: Add the property**
+- [x] **Step 1: Add the property**
 
 ```xml
   <PropertyGroup>
@@ -102,7 +102,7 @@ Add a comment recording **why**, not what: that the .NET 10 SDK no longer suppor
 for Microsoft.Testing.Platform, that this is what unblocked #314, and that
 `Microsoft.NET.Test.Sdk` stays referenced everywhere because both workflows select projects by it.
 
-- [ ] **Step 2: Confirm the property actually reaches a project**
+- [x] **Step 2: Confirm the property actually reaches a project**
 
 Design §4 flags this as an assumption worth checking rather than trusting — the existing precedent
 sets it in a `.csproj`, and MSBuild evaluation order is exactly where "should be fine" goes wrong.
@@ -114,14 +114,21 @@ dotnet msbuild tests/Rag.NET.Tests/Rag.NET.Tests.csproj -getProperty:TestingPlat
 Expected: `true`. **If it prints blank, stop** — the property is not being imported and nothing below
 means anything.
 
-- [ ] **Step 3: Check the already-migrated project**
+*Measured: `true`.* **But the first attempt failed for an unrelated reason worth recording**: the
+explanatory comment contained `‑‑filter`, and **an XML comment cannot contain a double hyphen** —
+`error MSB4024`, which fails the whole props file and therefore every test project at once. 6.2.35
+hit exactly this ("awkward in a file whose subject is a flag spelled with one") and the lesson did
+not transfer, because it was recorded in that phase's notes rather than anywhere this file's author
+would look. The comment now names the flag without spelling it.
+
+- [x] **Step 3: Check the already-migrated project**
 
 `Rag.NET.Benchmarks.Quality.IntegrationTests` now sets it twice. **Leave its local setting in place:**
 the property is redundant but the comment beside it is the only record of why
 `Microsoft.NET.Test.Sdk` stays referenced, and deleting the line to tidy a duplicate would take the
 reasoning with it. Add a line noting the shared props file now covers it.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add tests/Directory.Build.props tests/Rag.NET.Benchmarks.Quality.IntegrationTests/Rag.NET.Benchmarks.Quality.IntegrationTests.csproj
