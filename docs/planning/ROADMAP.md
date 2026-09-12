@@ -8001,7 +8001,7 @@ only `///` lines, and the whole-solution build stayed at **0 warnings**. Suites:
 **101**, Security **104**, PackageValidation **23**, `Rag.NET.Tests` **1499** — all at baseline. **Pre-push review
 PASS** — `docs/pre-push-review-2026-09-11-1732.md`, 0 blockers and 0 warnings.
 
-### Phase 6.2.41: The Migration a Dependency Bump Was Hiding [status: pending — added 2026-09-12, #314]
+### Phase 6.2.41: The Migration a Dependency Bump Was Hiding [status: complete 2026-09-12 in #567 — the premise was false and the migration shipped anyway]
 **Surface:** Infra
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-12-mtp-migration-design.md`
@@ -8091,6 +8091,15 @@ now run every dataset, because for BEIR that is a large cost difference.
 **`--filter` is now refused repo-wide** by 6.2.35's `RAGNET0001`, which armed itself exactly as its
 comment promised — no change to the guard was needed. `ci.md`'s section describing the one project
 that refused filters now describes the rule rather than the exception.
+
+**Post-merge, a gap this phase had left was closed rather than filed.** Both sweeps ran with the BEIR
+cache unsourced — the third time this session's own recorded note about `env.sh` went unapplied — so
+~118 of the benchmark project's 267 tests never executed under either runner. The before/after
+comparison stays sound (same state twice), but verification was project-granular for those.
+Re-running that project **provisioned, under MTP: 175 passed / 92 skipped / 0 failed**, against
+149/118 unprovisioned. **26 more tests execute under MTP and all 26 pass.** The residual 92 are gated
+on `RAGNET_BEIR_LONG_RUNS`, API keys, or capability probes, and CI will not close those because CI
+runs unprovisioned too.
 
 **Nothing entered `src/`**, checked by `git diff`. Build 0 warnings, RepoConventions **101**,
 PackageValidation **23**, docs site builds. **Pre-push review PASS** —
