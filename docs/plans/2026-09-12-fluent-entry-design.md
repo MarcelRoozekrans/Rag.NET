@@ -68,11 +68,28 @@ Both of these can change what gets built, so they come first.
 resolved pipeline behaves identically to the documented order. A passing test deletes a documentation
 sentence; a failing one reveals a real constraint that the new methods must respect.
 
-**2.2 — What does `AddChatClient` do beyond registering?** If it wraps the client in middleware or
-telemetry, a naive `Services.AddSingleton(client)` inside our builder method **silently loses that**,
-and the loss would not show up in any test that only asserts the client resolves. The methods in §3
-must therefore delegate to `AddChatClient` / `AddEmbeddingGenerator` rather than reimplement them, and
-the plan must verify the delegation rather than assert it.
+**2.2 — ANSWERED 2026-09-12, before planning, and it changed the design.** `AddChatClient` is **not a
+registration helper — it is a pipeline entry point.** It returns a `ChatClientBuilder`, and the same
+assembly carries `UseLogging`, `UseOpenTelemetry`, `UseDistributedCache` and `UseFunctionInvocation`.
+A naive `Services.AddSingleton(client)` would therefore discard the entire middleware surface, and no
+test asserting "the client resolves" would notice. The methods in §3 delegate, and the plan verifies
+the delegation rather than asserting it.
+
+**This falsified §3's original dependency claim.** `AddChatClient` and `AddEmbeddingGenerator` live in
+**`Microsoft.Extensions.AI`**; `src/Rag.NET/Rag.NET.csproj` references only
+**`Microsoft.Extensions.AI.Abstractions`**. Delegating and leaving the closure untouched are mutually
+exclusive, and this document originally asserted both.
+
+**Measured cost of the reference, rather than estimated:** one **~518 KB** assembly for `net10.0`. Its
+dependencies are `Microsoft.Extensions.{Caching,Logging,DependencyInjection}.Abstractions`, which core
+already carries; `System.Text.Json`, `System.Threading.Channels` and `System.Diagnostics.DiagnosticSource`,
+framework-provided on `net10.0`; and `System.Numerics.Tensors`, the one genuinely additional package.
+Nothing resembling the ~19 MB closure Phase 4.6 avoided.
+
+**A methodology note, because it nearly produced a false finding.** The first attempt to locate these
+symbols used `strings`, which is **not installed on this machine**. It reported zero matches for every
+symbol, which reads exactly like proof of absence. The figures above come from `grep -a` against the
+assemblies.
 
 ## 3. The two methods
 
@@ -87,9 +104,26 @@ public RagBuilder UseEmbeddingGenerator(IEmbeddingGenerator<string, Embedding<fl
 and external packages are generic over it. Adding members to it is a breaking change for any
 implementer and buys nothing here: the `configure` callback hands the caller a `RagBuilder` already.
 
-**Provider-agnostic by construction.** Both take the `Microsoft.Extensions.AI` abstractions this
-library already consumes, so nothing new enters the dependency closure — the constraint Phase 4.6
-established when it avoided a ~19 MB closure.
+**Provider-agnostic, but NOT closure-free — corrected 2026-09-12.** Both take the
+`Microsoft.Extensions.AI` abstractions this library already consumes, so no *provider* package enters
+the closure and Phase 4.6's constraint holds in the sense that mattered. **But core does take a new
+reference on `Microsoft.Extensions.AI` itself**, ~518 KB, because that is where `AddChatClient` lives.
+This document originally claimed the closure was untouched; that was wrong, and §2.2 records how it
+was found.
+
+**Decided 2026-09-12, by the implementer rather than the operator, who expressed no preference.** The
+alternative was registering directly with `Services.AddSingleton` and taking no reference — but that
+ships a method which silently differs from the standard registration, discarding the middleware
+surface while looking equivalent. **That is the trap family this milestone keeps removing**, and
+~518 KB is a proportionate price for not laying a new one. Reversible by moving the methods to a
+package that already references `Microsoft.Extensions.AI`.
+
+**The signature therefore carries the builder**, so middleware stays reachable through the fluent
+surface rather than being amputated by it:
+
+```csharp
+public RagBuilder UseChatClient(IChatClient client, Action<ChatClientBuilder>? configure = null)
+```
 
 **Chaining composes in both directions, and this is a property to test rather than assume.**
 `UseChatClient` returns `RagBuilder`; the package extensions are generic on `TBuilder : IRagBuilder`
@@ -124,11 +158,13 @@ assemblies, so a rewritten quickstart is checked rather than merely plausible.
 In:
 
 1. **`RagBuilder.UseChatClient`** and **`RagBuilder.UseEmbeddingGenerator`**, delegating to the
-   `Microsoft.Extensions.AI` registrations.
-2. **The ordering test** (§2.1) and the **delegation check** (§2.2).
-3. **Chain-composition tests** in both directions (§3).
-4. **The quickstart rewrite** and the ordering-sentence correction (§4).
-5. **A comment on #184** recording what was found, including which of its premises no longer hold.
+   `Microsoft.Extensions.AI` registrations and exposing the returned builder.
+2. **A `Microsoft.Extensions.AI` package reference on `src/Rag.NET`**, with the closure delta recorded
+   in the phase record rather than left for a reader to discover.
+3. **The ordering test** (§2.1) and the **delegation check** (§2.2).
+4. **Chain-composition tests** in both directions (§3).
+5. **The quickstart rewrite** and the ordering-sentence correction (§4).
+6. **A comment on #184** recording what was found, including which of its premises no longer hold.
 
 Out:
 
