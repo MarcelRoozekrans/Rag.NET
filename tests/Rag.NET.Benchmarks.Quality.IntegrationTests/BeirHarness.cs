@@ -34,10 +34,16 @@ public static class BeirHarness
     public const int Cutoff = 10;
 
     /// <summary>The message an unprovisioned run skips with.</summary>
-    public const string SkipReason =
+    /// <remarks>
+    /// Computed rather than constant so it can name a corpus that is present but unreferenced; see
+    /// <see cref="BeirDatasetCache.DescribeUnreferencedConventionalCache()"/>. Three sessions recorded
+    /// this machine as unprovisioned while the corpus sat at the conventional path.
+    /// </remarks>
+    public static string SkipReason =>
         "Set RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB to an existing all-MiniLM-L6-v2 " +
         "ONNX export (token-level output) and its WordPiece vocab.txt, and RAGNET_BEIR_CACHE to a " +
-        "writable directory for the dataset downloads, to run the BEIR measurements.";
+        "writable directory for the dataset downloads, to run the BEIR measurements." +
+        BeirDatasetCache.DescribeUnreferencedConventionalCache();
 
     /// <summary>The message a run without the cross-encoder skips with.</summary>
     /// <remarks>
