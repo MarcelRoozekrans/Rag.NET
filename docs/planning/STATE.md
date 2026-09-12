@@ -1,6 +1,31 @@
 # Session State
 
-**Last updated:** 2026-09-12 — 6.2.43 built and proposed as #577, awaiting the operator's merge.
+**Last updated:** 2026-09-12 — **at the merge, as the previous ten were.** 6.2.43 merged as #577.
+
+**GUARD C PAID FOR ITSELF THE SAME DAY IT SHIPPED, AND IT OVERTURNED A CONCLUSION THIS PROJECT HAD
+ACTED ON TWICE.** #577's CI went red on the same AzureServiceBus flake that cost a full log read, a
+count comparison against `main` and an out-of-repo reproduction this morning — and still could not be
+attributed. This time the dump printed it in one command:
+
+> `failed ServiceBusIngestionIntegrationTests.PermanentFailure_LandsInTheDeadLetterQueueWithItsReason (1s 318ms)`
+> `ServiceBusException : The lock supplied is invalid … (MessageLockLost).`
+> `at ServiceBusReceiver.CompleteMessageAsync(…)` / `at …ReceiveDeadLetterAsync(…)`
+
+**That is #246's test and #246's exception, and #246 is closed.** #571 was filed only because the
+test could not be named; it now can, and both issues carry the evidence.
+
+**The timing falsifies the standing diagnosis.** The failure is **1.318 s** into the test, and
+`Config.json` declares **`PT5M`**. A five-minute lock cannot expire 1.3 seconds in, so **lock duration
+is not the mechanism and both prior fixes that raised `LockDuration` were inert** — exactly what
+`EmulatorLockBehaviourTests` was written to suspect after #246 was misdiagnosed twice. The failing
+call is `CompleteMessageAsync` on a dead-letter message just received, which is the shape the
+*stopped-processor* hypothesis predicts, not the shape lock expiry predicts.
+`AStoppedProcessorConsumesNothingMore` already exists to test it.
+
+**A re-run of the identical commit passed**, confirming the flake. The race itself remains unfixed;
+6.2.42 scoped only the reporting, deliberately.
+
+**Previously in this entry's phase — 6.2.43 shrank twice, both times before any code.**
 
 **THE PHASE SHRANK TWICE, BOTH TIMES BEFORE ANY CODE WAS WRITTEN, AND THAT IS THE USEFUL PART.**
 6.2.43 was scoped from #184 to add a fluent entry point. What it shipped is **one test and one
