@@ -40,7 +40,7 @@ set by the same `env.sh`, with no hint — and `OnnxEmbeddingGeneratorSmokeTests
 that file as sharing the gate. Guard B's premise applies to them exactly. Related:
 `SkipReasonWiringTests` pins a **hardcoded four-site inventory**, so it cannot notice a site that
 never got a hint. `SecurityDocumentationTests` is the stronger precedent in this repository — it
-derives its list from the filesystem, so it fails when someone **adds** one. Not filed yet.
+derives its list from the filesystem, so it fails when someone **adds** one. **Filed as #575.**
 
 **Milestone 6 remains two account-blocked phases** — 6.1 Recorded Responses and 6.3 Release v1.0.
 **Locally finishable:** #184 (breaking, pre-1.0 is the moment), #559 and #560 from 6.2.40, #571's
