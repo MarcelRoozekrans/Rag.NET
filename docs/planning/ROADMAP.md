@@ -8234,8 +8234,26 @@ sweep verified that passing still worked and never once exercised failing.
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-12-fluent-entry-design.md`
 
-**Goal:** close the one point where the quickstart leaves the fluent chain, and correct the
-documentation claim that put it there.
+**Goal:** settle whether the documented registration-order constraint exists, correct the
+documentation accordingly, and record on #184 that the builder is already fluent.
+
+**SCOPE REDUCED 2026-09-12, before any code was written.** The two builder methods are dropped; the
+phase ships the ordering test, the documentation correction and a comment on #184. The operator
+challenged the design as over-engineering and it did not survive: **the methods unify syntax without
+reducing decisions.** The caller still constructs the same client and still knows the same three
+things exist — the verbose part was never the registration but
+`new OpenAIClient(key).GetChatClient(…).AsIChatClient()`, unchanged either way. Against a stated goal
+of "fewest decisions to something working", the decision count was identical and only the punctuation
+moved. **And the cost was real**: a `Microsoft.Extensions.AI` reference on core, and two ways to
+register the same service with a new question attached — *`AddChatClient` or `UseChatClient`?* The
+design had rejected the no-dependency variant partly for laying that trap, then chose an option that
+lays it too. **What survives is the half the design treated as a footnote**, and it needs no API.
+
+**A finding kept although it no longer decides anything.** `AddChatClient` is not a registration
+helper but a **pipeline entry point returning a `ChatClientBuilder`**, and the same assembly carries
+`UseLogging`, `UseOpenTelemetry`, `UseDistributedCache` and `UseFunctionInvocation`. A naive
+`Services.AddSingleton(client)` would have discarded that surface silently. Recorded because the next
+person to propose an entry-point method will need it.
 
 **FROM #184, WHOSE PREMISE HAS DRIFTED.** The issue describes bootstrapping as "knowing which of
 several extension methods to call, across several packages, in the right order" and asks for "one
