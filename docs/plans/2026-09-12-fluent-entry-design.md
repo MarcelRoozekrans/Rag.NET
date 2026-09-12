@@ -3,6 +3,49 @@
 **Origin:** [#184](https://github.com/MarcelRoozekrans/Rag.NET/issues/184), filed 2026-08-12 as a
 *design* task, labelled `breaking-change`. Scoped 2026-09-12.
 
+## SCOPE REDUCED 2026-09-12, before any code was written
+
+**The two builder methods are dropped. This phase ships the ordering test, the documentation
+correction, and a comment on #184.**
+
+The operator challenged the design as over-engineering. It does not survive the challenge, and the
+reasoning is recorded here rather than quietly deleted, because the design reached §3 before anyone
+asked the question.
+
+**The methods unify syntax without reducing decisions.**
+
+```csharp
+// today
+services.AddChatClient(chatClient);
+services.AddEmbeddingGenerator(embedder);
+services.AddRagNet(rag => rag.UsePgVector(conn, 1536));
+
+// as designed
+services.AddRagNet(rag => rag
+    .UseChatClient(chatClient)
+    .UseEmbeddingGenerator(embedder)
+    .UsePgVector(conn, 1536));
+```
+
+Same objects constructed, same three things the caller must know exist. **The verbose part was never
+the registration** — it is `new OpenAIClient(key).GetChatClient("gpt-4o").AsIChatClient()`, unchanged
+in both. The operator's stated goal was *"fewest decisions to something working"*, and **the decision
+count is identical**. Only the punctuation moved.
+
+**And the cost was real.** A `Microsoft.Extensions.AI` reference on core, and — decisively — **two ways
+to register the same service**, with a new question attached: *do I call `AddChatClient` or
+`UseChatClient`?* §3 originally rejected the no-dependency variant partly for laying that trap, then
+chose an option that lays it too. That is an inconsistency in the reasoning, not a nuance.
+
+**What survives is the half this document treated as a footnote:** a documentation sentence that
+probably states a constraint which does not exist, and an issue whose premise has drifted. Both are
+worth fixing, and neither needs an API.
+
+**The dependency question disappears with the methods.** §2.2's finding stands as a correct and useful
+piece of knowledge — `AddChatClient` is a pipeline entry point returning a `ChatClientBuilder`, not a
+registration helper — but it no longer decides anything here. It is kept because it is the reason a
+naive implementation would have been wrong, and the next person to propose this will need it.
+
 ## 0. The correction this phase opens with
 
 **#184's premise has drifted, and the drift is the most useful thing to record.** The issue describes
@@ -60,7 +103,10 @@ them before calling `AddRagNet`"*. Every consumption found is `sp.GetService` or
 would make DI order irrelevant. **This is stated as a hypothesis, not a finding**, and §2 turns it
 into a test. If it is true, that sentence has been teaching a constraint that does not exist.
 
-## 2. What implementation must establish before writing the methods
+## 2. What implementation must establish
+
+**Only §2.1 remains in scope.** §2.2 is retained as a finding, not as a task — see the
+scope-reduction section at the top.
 
 Both of these can change what gets built, so they come first.
 
@@ -68,13 +114,35 @@ Both of these can change what gets built, so they come first.
 resolved pipeline behaves identically to the documented order. A passing test deletes a documentation
 sentence; a failing one reveals a real constraint that the new methods must respect.
 
-**2.2 — What does `AddChatClient` do beyond registering?** If it wraps the client in middleware or
-telemetry, a naive `Services.AddSingleton(client)` inside our builder method **silently loses that**,
-and the loss would not show up in any test that only asserts the client resolves. The methods in §3
-must therefore delegate to `AddChatClient` / `AddEmbeddingGenerator` rather than reimplement them, and
-the plan must verify the delegation rather than assert it.
+**2.2 — ANSWERED 2026-09-12, before planning, and it changed the design.** `AddChatClient` is **not a
+registration helper — it is a pipeline entry point.** It returns a `ChatClientBuilder`, and the same
+assembly carries `UseLogging`, `UseOpenTelemetry`, `UseDistributedCache` and `UseFunctionInvocation`.
+A naive `Services.AddSingleton(client)` would therefore discard the entire middleware surface, and no
+test asserting "the client resolves" would notice. The methods in §3 delegate, and the plan verifies
+the delegation rather than asserting it.
 
-## 3. The two methods
+**This falsified §3's original dependency claim.** `AddChatClient` and `AddEmbeddingGenerator` live in
+**`Microsoft.Extensions.AI`**; `src/Rag.NET/Rag.NET.csproj` references only
+**`Microsoft.Extensions.AI.Abstractions`**. Delegating and leaving the closure untouched are mutually
+exclusive, and this document originally asserted both.
+
+**Measured cost of the reference, rather than estimated:** one **~518 KB** assembly for `net10.0`. Its
+dependencies are `Microsoft.Extensions.{Caching,Logging,DependencyInjection}.Abstractions`, which core
+already carries; `System.Text.Json`, `System.Threading.Channels` and `System.Diagnostics.DiagnosticSource`,
+framework-provided on `net10.0`; and `System.Numerics.Tensors`, the one genuinely additional package.
+Nothing resembling the ~19 MB closure Phase 4.6 avoided.
+
+**A methodology note, because it nearly produced a false finding.** The first attempt to locate these
+symbols used `strings`, which is **not installed on this machine**. It reported zero matches for every
+symbol, which reads exactly like proof of absence. The figures above come from `grep -a` against the
+assemblies.
+
+## 3. The two methods — SUPERSEDED, NOT BUILT
+
+**This section is kept as the record of a design that was scoped out before implementation, and of
+why. Nothing in it ships.** It is left in place rather than deleted because the next person to
+propose an entry-point method will arrive at the same shape, and the reason it was rejected is more
+useful than its absence.
 
 On the **concrete `RagBuilder`**, not on `IRagBuilder`:
 
@@ -87,9 +155,26 @@ public RagBuilder UseEmbeddingGenerator(IEmbeddingGenerator<string, Embedding<fl
 and external packages are generic over it. Adding members to it is a breaking change for any
 implementer and buys nothing here: the `configure` callback hands the caller a `RagBuilder` already.
 
-**Provider-agnostic by construction.** Both take the `Microsoft.Extensions.AI` abstractions this
-library already consumes, so nothing new enters the dependency closure — the constraint Phase 4.6
-established when it avoided a ~19 MB closure.
+**Provider-agnostic, but NOT closure-free — corrected 2026-09-12.** Both take the
+`Microsoft.Extensions.AI` abstractions this library already consumes, so no *provider* package enters
+the closure and Phase 4.6's constraint holds in the sense that mattered. **But core does take a new
+reference on `Microsoft.Extensions.AI` itself**, ~518 KB, because that is where `AddChatClient` lives.
+This document originally claimed the closure was untouched; that was wrong, and §2.2 records how it
+was found.
+
+**Decided 2026-09-12, by the implementer rather than the operator, who expressed no preference.** The
+alternative was registering directly with `Services.AddSingleton` and taking no reference — but that
+ships a method which silently differs from the standard registration, discarding the middleware
+surface while looking equivalent. **That is the trap family this milestone keeps removing**, and
+~518 KB is a proportionate price for not laying a new one. Reversible by moving the methods to a
+package that already references `Microsoft.Extensions.AI`.
+
+**The signature therefore carries the builder**, so middleware stays reachable through the fluent
+surface rather than being amputated by it:
+
+```csharp
+public RagBuilder UseChatClient(IChatClient client, Action<ChatClientBuilder>? configure = null)
+```
 
 **Chaining composes in both directions, and this is a property to test rather than assume.**
 `UseChatClient` returns `RagBuilder`; the package extensions are generic on `TBuilder : IRagBuilder`
@@ -112,9 +197,13 @@ services.AddRagNet(rag => rag
 
 ## 4. The documentation correction
 
-`docs/getting-started.md` gains the single-statement form, and the *"Register them before calling
-`AddRagNet`"* sentence is corrected or deleted **according to what §2.1 proves, not according to this
-document's expectation**.
+**RESOLVED 2026-09-12.** §2.1's test passed in both orders, including an assertion that each
+container hands back the exact instances registered. **The constraint does not exist**, so the
+*"Register them before calling `AddRagNet`"* sentence is replaced with one saying order does not
+matter and why — Rag.NET resolves both services when the pipeline is built, not when it is registered.
+
+The single-statement rewrite is **not** part of this, since the builder methods that would have made
+it possible were scoped out.
 
 `DocsCodeExamplesTests` already resolves every type named in a `docs/` example against the shipped
 assemblies, so a rewritten quickstart is checked rather than merely plausible.
@@ -123,12 +212,17 @@ assemblies, so a rewritten quickstart is checked rather than merely plausible.
 
 In:
 
-1. **`RagBuilder.UseChatClient`** and **`RagBuilder.UseEmbeddingGenerator`**, delegating to the
-   `Microsoft.Extensions.AI` registrations.
-2. **The ordering test** (§2.1) and the **delegation check** (§2.2).
-3. **Chain-composition tests** in both directions (§3).
-4. **The quickstart rewrite** and the ordering-sentence correction (§4).
-5. **A comment on #184** recording what was found, including which of its premises no longer hold.
+1. **The ordering test** (§2.1) — register the AI services *after* `AddRagNet` and assert the
+   resolved pipeline behaves identically.
+2. **The ordering-sentence correction** in `docs/getting-started.md` (§4), according to what the test
+   proves rather than what this document expects.
+3. **A comment on #184** recording what was found: that the builder is already fluent, which of its
+   premises no longer hold, and why the entry-point methods were scoped out.
+
+Out, in addition to everything below:
+
+- **`RagBuilder.UseChatClient` / `UseEmbeddingGenerator`** and the `Microsoft.Extensions.AI` reference
+  they would require. Dropped with reasons, see the scope-reduction section at the top.
 
 Out:
 
@@ -147,15 +241,14 @@ Out:
 
 ## 6. Verifiability
 
-**§3's methods are directly testable**: register through the builder, resolve `IRagPipeline`, assert
-the client and generator arrive. **§3's chaining claim is testable by compilation** — a test that
-writes both orders is a compile-time assertion that the generic seam composes with the concrete
-methods.
+**§2.1 is the whole of this phase's verification, and it can invalidate its own premise** — which is
+why it is a test rather than a paragraph. Registering the AI services after `AddRagNet` either
+resolves identically, in which case a documentation sentence is deleted, or it does not, in which case
+the sentence is correct and the phase has found a real constraint worth documenting properly.
 
-**§2.1 is the one that can invalidate its own premise**, which is why it is a test and not a
-paragraph. **§2.2 is the one most likely to fail silently**: a test asserting "the client resolves"
-passes whether or not `AddChatClient`'s wrapping survived, so the check must compare against what
-`AddChatClient` itself produces rather than against a bare instance.
+**Either outcome is a result.** The test is not written to confirm the expectation; it is written
+because the expectation rests on reading factory lambdas, and reading is what produced two
+contradictory extension counts in §0.
 
 **What this phase cannot establish** is whether the remaining sprawl matters to anyone. The 78
 extension declarations stay exactly where they are; this adds one small surface at the one point the

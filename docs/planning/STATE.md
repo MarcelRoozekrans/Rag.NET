@@ -1,6 +1,59 @@
 # Session State
 
-**Last updated:** 2026-09-12 — **at the merge, as the previous nine were.** 6.2.42 merged as #572;
+**Last updated:** 2026-09-12 — 6.2.43 built and proposed as #577, awaiting the operator's merge.
+
+**THE PHASE SHRANK TWICE, BOTH TIMES BEFORE ANY CODE WAS WRITTEN, AND THAT IS THE USEFUL PART.**
+6.2.43 was scoped from #184 to add a fluent entry point. What it shipped is **one test and one
+sentence**.
+
+1. **The design contradicted itself.** It asserted both that the new builder methods would delegate
+   to `AddChatClient` and that nothing new would enter core's dependency closure. `AddChatClient`
+   lives in `Microsoft.Extensions.AI`; `src/Rag.NET` references only
+   `Microsoft.Extensions.AI.Abstractions`. Both could not hold.
+2. **Then the operator asked whether it was over-engineering, and it was.** The methods unified
+   syntax without reducing decisions — same objects constructed, same three things the caller must
+   know exist, and the verbose part was never the registration but the client construction, unchanged
+   either way. Against a stated goal of *"fewest decisions to something working"*, **the decision
+   count was identical and only the punctuation moved.** The cost was a core package reference plus
+   **two ways to register one service** — the trap the design had rejected its own alternative for
+   laying, which is an inconsistency in the reasoning rather than a nuance.
+
+**WHAT SHIPPED IS A DELETED CONSTRAINT THAT NEVER EXISTED.** `getting-started.md` told readers to
+*"Register them before calling `AddRagNet`"*. `RegistrationOrderTests` registers both orders, resolves
+the pipeline in each, and asserts each container hands back the **exact instances registered** —
+because resolving in both orders proves only that neither throws, not that they agree. Both pass.
+Every consumption goes through `sp.GetService` inside a factory lambda, so order is irrelevant.
+
+**#184's PREMISE HAD DRIFTED AND TWO OF ITS CLAIMS WERE DEAD.** The builder already exists and the
+quickstart already chains; **#181 is merged**, killing its "the bump is happening regardless"
+argument, and **#161 is closed**. Commented on the issue rather than closed, since the single-statement
+setup remains a legitimate taste call for the maintainer.
+
+**A CONSEQUENCE FOR WHOEVER PLANS NEXT.** #184 is labelled `breaking-change` and was the strongest
+remaining argument for doing breaking work before v1.0 tags. **6.2.43 shipped nothing breaking, so
+that deadline argument has dissolved** — the rest of the locally-finishable work can be sequenced on
+merit rather than against the release.
+
+**TWO METHOD NOTES, BOTH OF WHICH NEARLY PRODUCED FALSE FINDINGS.** Counting the extension surface by
+grep gave **42 and 3 for the same quantity**, because C# signatures wrap across lines. And locating
+symbols in the M.E.AI assemblies with `strings` reported **zero matches for everything** — the command
+is not installed on this machine, which reads exactly like proof of absence. Both were caught; neither
+would have been obvious in review.
+
+**GUARD C PAID FOR ITSELF.** `PackageValidation` failed twice this phase on stale `.nupkg` files from
+the previous branch, and 6.2.42's CI log dump named the failing test and the exact cause in one
+command both times — its first use on a real failure outside the phase that built it.
+
+**NOT FILED, A RECURRING PAPERCUT:** every branch switch invalidates `artifacts/packages`, because
+GitVersion derives the version from the branch name and `EveryPackageCarriesTheVersionGitVersionDerives`
+compares against it. **Third occurrence this session.** The fix is probably to have the guard skip
+when the packages were built for a different branch, rather than to repack each time.
+
+**Milestone 6 remains two account-blocked phases** — 6.1 Recorded Responses and 6.3 Release v1.0.
+**Locally finishable:** #559, #560, #575, #571's emulator race, and AI.Sentinel #205. **#314 stays
+open**, correctly attributed to SDK support.
+
+**Previously, 2026-09-12 — at the merge, as the previous nine were.** 6.2.42 merged as #572;
 this entry was written from the session that built it, on `chore/6242-merged`.
 
 **THE GUARDS CAUGHT THINGS WHILE BEING BUILT, WHICH IS THE ONLY EVIDENCE THAT COUNTS FOR THIS

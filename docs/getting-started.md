@@ -37,7 +37,7 @@ arrives transitively.
 
 ## 2. Register AI services
 
-Rag.NET consumes two standard `Microsoft.Extensions.AI` abstractions. Register them before calling `AddRagNet`:
+Rag.NET consumes two standard `Microsoft.Extensions.AI` abstractions. Register them anywhere in your service configuration — **order does not matter**, because Rag.NET resolves them from the container when the pipeline is built, not when it is registered:
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
