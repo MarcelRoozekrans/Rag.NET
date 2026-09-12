@@ -29,9 +29,29 @@ namespace Rag.NET.Embeddings.Onnx.Tests;
 /// </remarks>
 public sealed class WhitespaceNormalizationTests
 {
-    private const string SkipReason =
+    private static string SkipReason =>
         "Set RAGNET_ONNX_EMBED_VOCAB to an existing WordPiece vocab.txt (e.g. all-MiniLM-L6-v2's) " +
-        "to run the whitespace normalization pins.";
+        "to run the whitespace normalization pins." + ConventionalCacheHint();
+
+    /// <summary>Names a conventional cache whose env.sh exists, or nothing.</summary>
+    /// <remarks>
+    /// Duplicated rather than shared: this project references neither Rag.NET.Benchmarks.Quality nor
+    /// Rag.NET.Testing, and one sentence does not justify coupling two unrelated test projects.
+    /// These tests gate on RAGNET_ONNX_EMBED_VOCAB rather than the BEIR cache, but the same env.sh
+    /// sets both — sourcing it took this project from 10 skips to 0.
+    /// </remarks>
+    private static string ConventionalCacheHint()
+    {
+        var envScript = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".cache",
+            "ragnet-beir",
+            "env.sh");
+
+        return File.Exists(envScript)
+            ? $" '{envScript}' exists on this machine and sets these variables: source it."
+            : string.Empty;
+    }
 
     /// <summary>
     /// A newline between two words must not merge them: <c>alpha</c> and <c>beta</c> are separate

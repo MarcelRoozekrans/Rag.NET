@@ -82,6 +82,102 @@ public sealed class BeirDatasetCache
         return string.IsNullOrWhiteSpace(configured) ? null : configured;
     }
 
+    /// <summary>
+    /// Describes a conventional cache that exists but is not referenced by the environment.
+    /// </summary>
+    /// <returns>
+    /// A sentence naming the directory and its <c>env.sh</c>, or <see langword="null"/> when the
+    /// environment already points somewhere or no conventional cache is present.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// <b>This does not change what is resolved.</b> It reports; it never becomes a fallback.
+    /// Silently adopting a directory the caller did not name would turn a visible skip into an
+    /// invisible hour of re-embedding against a corpus nobody asked for.
+    /// </para>
+    /// <para>
+    /// It exists because "unprovisioned" is a dead end that three separate sessions walked into
+    /// while the corpus sat at the conventional path with its <c>env.sh</c> beside it.
+    /// </para>
+    /// </remarks>
+    public static string? DescribeUnreferencedConventionalCache() =>
+        DescribeUnreferencedConventionalCache(ResolveCacheDirectoryFromEnvironment());
+
+    /// <summary>
+    /// Describes a conventional cache that exists but is not referenced by
+    /// <paramref name="configuredCacheDirectory"/>.
+    /// </summary>
+    /// <param name="configuredCacheDirectory">
+    /// The value <see cref="ResolveCacheDirectoryFromEnvironment"/> would return, supplied directly
+    /// rather than re-read from the environment.
+    /// </param>
+    /// <returns>
+    /// A sentence naming the directory and its <c>env.sh</c>, or <see langword="null"/> when
+    /// <paramref name="configuredCacheDirectory"/> is not <see langword="null"/> or no conventional
+    /// cache is present.
+    /// </returns>
+    /// <remarks>
+    /// Takes the resolved value as a parameter, rather than reading
+    /// <see cref="CacheDirectoryVariable"/> itself, so tests can exercise both branches without
+    /// calling <see cref="Environment.SetEnvironmentVariable(string, string)"/> on it. That variable
+    /// is process-wide, and roughly 30 sibling tests in the integration test assembly read it
+    /// through <c>IsProvisioned</c> / <c>IsDatasetCacheProvisioned</c>; xunit runs test classes in
+    /// parallel, so mutating it from a test would risk a sibling observing the temporary value and
+    /// skipping, or running, incorrectly. The parameterless overload above is what production code
+    /// and <see cref="ResolveCacheDirectoryFromEnvironment"/> callers use; this one exists for tests.
+    /// </remarks>
+    public static string? DescribeUnreferencedConventionalCache(string? configuredCacheDirectory) =>
+        DescribeUnreferencedConventionalCache(
+            configuredCacheDirectory,
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "ragnet-beir"));
+
+    /// <summary>
+    /// Describes a conventional cache at <paramref name="conventionalCacheDirectory"/> that exists
+    /// but is not referenced by <paramref name="configuredCacheDirectory"/>.
+    /// </summary>
+    /// <param name="configuredCacheDirectory">
+    /// The value <see cref="ResolveCacheDirectoryFromEnvironment"/> would return.
+    /// </param>
+    /// <param name="conventionalCacheDirectory">
+    /// The directory to check for, in place of the real <c>~/.cache/ragnet-beir</c>.
+    /// </param>
+    /// <returns>
+    /// A sentence naming the directory and its <c>env.sh</c>, or <see langword="null"/> when
+    /// <paramref name="configuredCacheDirectory"/> is not <see langword="null"/> or
+    /// <paramref name="conventionalCacheDirectory"/> does not exist.
+    /// </returns>
+    /// <remarks>
+    /// Takes the conventional root as a parameter, rather than hard-coding
+    /// <c>~/.cache/ragnet-beir</c>, for the same reason the environment value above is a parameter
+    /// rather than a re-read of <see cref="CacheDirectoryVariable"/>: it lets a test put both
+    /// sentence-forming branches — "source the env.sh" and "set the variable" — and the "not
+    /// present" branch under a temporary directory it controls, deterministically, on any machine,
+    /// rather than depending on whether that machine happens to have the real directory on disk. The
+    /// parameterless overload is what production code uses; this one exists for tests.
+    /// </remarks>
+    public static string? DescribeUnreferencedConventionalCache(
+        string? configuredCacheDirectory, string conventionalCacheDirectory)
+    {
+        if (configuredCacheDirectory is not null)
+        {
+            return null;
+        }
+
+        if (!Directory.Exists(conventionalCacheDirectory))
+        {
+            return null;
+        }
+
+        var envScript = Path.Combine(conventionalCacheDirectory, "env.sh");
+
+        return File.Exists(envScript)
+            ? $" A cache is already present at '{conventionalCacheDirectory}' and nothing points " +
+              $"at it: source '{envScript}' to use it."
+            : $" A cache directory is already present at '{conventionalCacheDirectory}' and " +
+              $"nothing points at it: set {CacheDirectoryVariable} to it to use it.";
+    }
+
     /// <summary>Gets the directory <paramref name="dataset"/> extracts into.</summary>
     /// <param name="dataset">The dataset.</param>
     /// <returns>The directory path, whether or not it exists.</returns>

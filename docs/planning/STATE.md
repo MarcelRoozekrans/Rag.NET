@@ -1,6 +1,134 @@
 # Session State
 
-**Last updated:** 2026-09-12 — **at the merge, as the previous seven were.** 6.2.41 merged as #567;
+**Last updated:** 2026-09-12 — **complete, not yet pushed, and its final whole-branch review's
+findings are fixed.** A final whole-branch review of `feat/6242-mechanical-guards` found ten
+findings — one guard test reading raw YAML text where `TestProject.ReadWorkflowCommands` already
+existed for exactly that mistake; three "BEIR present but unreferenced" hint call sites wired to
+nothing any test would notice if deleted; a doc comment and a pre-push-review sentence both stating
+an overload relationship backwards; a workflow comment still hedging on Linux after this same phase
+closed that question with evidence; a ROADMAP sentence claiming a correction the design document
+never needed; a `STATE.md` paragraph (below) contradicting its own parenthetical; the off-by-one
+commit count this paragraph itself carried; a third Onnx skip site that never got the hint its two
+siblings did; and two documentation gaps — the hook's locale dependency, and its one-line adoption
+path buried 900 lines into a reference page. All ten are fixed on this branch.
+
+**The hardest of the ten, and the one this entry singles out:** the BEIR-hint wiring tests could
+have their `+ …Hint()` suffix deleted from any of the three `SkipReason` properties and nothing
+would fail, on any CI runner — a pure runtime composition test cannot tell "the call happened and
+returned empty" from "the call was deleted" when the live hint is empty, which it always is on a
+machine without `~/.cache/ragnet-beir`. Closed with a new `RepoConventions` guard,
+`SkipReasonWiringTests`, that reads each `SkipReason` property's own source text — anchored on the
+property's signature so a doc comment describing the call cannot satisfy it — and asserts the hint
+call appears inside its expression body. That is deterministic on any machine, because it never
+touches the environment. The runtime composition test in
+`Rag.NET.Benchmarks.Quality.IntegrationTests.SkipMessageTests` stays too, tightened to an exact
+equality on the composed string rather than a substring check — it still catches a wrong
+composition whenever the live hint happens to be non-null, which it is on this machine.
+
+**Counts after the fix wave:** `RepoConventions` **111 passed / 2 skipped** (was 107/2, +4 from the
+new wiring guard's four `[InlineData]` cases), `Embeddings.Onnx.Tests` unchanged at 141/10
+unprovisioned and 151/0 provisioned, `Rag.NET.Benchmarks.Quality.IntegrationTests` unchanged at
+154/118 unprovisioned and 180/92 provisioned, build 0 warnings. Full account, including which of
+Important 2's two offered approaches was chosen and why, in
+`.superpowers/sdd/2026-09-12-mechanical-guards-implementation/final-fix-report.md`.
+
+**Previously, 2026-09-12 — the phase's own record, before its final whole-branch review.**
+**Complete, not yet pushed.** All three guards are built and tested
+on `feat/6242-mechanical-guards` (ten commits ahead of `main` at `305db773`), and this entry was written from the
+session that verified the phase and wrote its record. Unlike the last several entries, this one is
+not "at the merge" — by explicit instruction the PR is opened afterward, by the operator, not by this
+session, so nothing here has merged yet.
+
+**All seven Step-1 suites match their stated expectations exactly, and both BEIR triples confirm
+Guard B's premise.** `RepoConventions` 107 passed / 2 skipped (was 101/2 before this phase's six new
+tests), `PackageValidation` 23/23 (no repack needed — `artifacts/packages` was not stale), `Rag.NET.Tests`
+1499/1499, build 0 warnings, docs site builds. Sourced `~/.cache/ragnet-beir/env.sh` before writing
+anything about provisioning: `Embeddings.Onnx.Tests` went from 141 passed / 10 skipped to **151/0**;
+`Rag.NET.Benchmarks.Quality.IntegrationTests` went from 154/118 to **180 passed / 92 skipped** — the
+same class of gap Guard B's message exists to name. `Rag.NET.E2ETests` did not run — `RequiresLlm`,
+nightly-only, correctly out of scope here.
+
+**THE LINUX ENCODING QUESTION IS CLOSED BY EVIDENCE.**
+`docs/plans/2026-09-12-mechanical-guards-implementation.md`'s self-review said the Linux log
+encoding was unverified and that the BOM sniff existed because of that uncertainty (the design
+document's own prose never made the claim — checked directly — so only the implementation plan
+needed correcting, in two places). It was verified **twice** during Task 1: once by the implementer, once independently
+by the re-reviewer, each inside a fresh `mcr.microsoft.com/dotnet/sdk:10.0` container with no reused
+Windows build output. **Linux produces the identical UTF-16LE-with-`FFFE`-BOM encoding Windows
+does.** The `iconv` branch is the one that fires on every platform checked; the `else: cat` branch is
+dead code, kept only against a future runner disagreeing. Both stale passages were rewritten to say
+the question was closed rather than left open.
+
+**THE EM-DASH TEST CAUGHT A REAL DEFECT ON THE DAY IT WAS WRITTEN, AND THE PLAN'S OWN PREDICTION WAS
+TOO NARROW.** The plan predicted a byte-counting hook would reject valid headers and blamed `sh`/
+`dash`. The truth was wider: `${#header}` counted **bytes under bash itself**, because this
+environment sets neither `LANG` nor `LC_ALL` at all. The first fix — `export LC_ALL=C.UTF-8` — was
+then found by review to fail **silently** on a machine lacking that locale: `export` exits `0` even
+when the named locale does not exist, so `set -e` never fires, and the hook would have reintroduced
+the identical byte-counting trap one layer down, printing a false rejection that looks exactly like
+the guard working. The hook now carries a behavioural probe — it measures a known one-character,
+three-byte string (an em dash) and refuses to run at all if the count comes back wrong, rather than
+trusting the locale's name. This is the phase's clearest evidence for its own thesis: a rule written
+down (byte-counting is the risk to guard against) was broken by the very commit meant to guard
+against it, on the day that commit was written, and only caught because the guard was executed against
+a real string rather than read as a diff.
+
+**GUARD A'S ADOPTION IS STATED AS UNTESTED AND UNTESTABLE — NOT IMPLIED AS ENFORCED.** The hook does
+nothing on a fresh clone until someone runs `git config core.hooksPath .githooks` by hand.
+`core.hooksPath` happens to be set to `.githooks` in this one clone, which is a fact about this
+clone, not about the repository's contributors in general; `CommitMessageHookTests` proves the
+script behaves correctly when run, not that anyone has wired it in. The design, the implementation
+plan, and `CommitMessageHookTests.cs`'s own class remark all say the same thing, and this entry
+repeats it rather than letting a "complete" phase status imply otherwise.
+
+**Pre-push review PASS** — `docs/pre-push-review-2026-09-12-1359.md`, 0 blockers, one cosmetic
+info-level finding (a workflow comment naming only Windows for an encoding now confirmed identical on
+Linux — not incorrect, no behavioral effect). All ten commit headers (through `305db773`) are under
+the 100-character cap (max 93), no nested parentheses in any commit body, no session URL anywhere. Guard C's central
+claim — a red build naming the failing test — was demonstrated by a deliberate failure on two
+platforms, never by a green run; that verbatim output is quoted in full in the pre-push review report
+and in `task-1-report.md`.
+
+**What is left for next: the operator opens the PR** (explicitly out of scope for this session —
+Task 4's brief says to open it, the operator is doing that afterward) **and merges it.** Nothing else
+is outstanding on this phase.
+
+**Previously, 2026-09-12 — at the merge, as the previous eight were.** 6.2.42 was scoped and
+merged as #570; this entry was written from the session that scoped it, on
+`feat/6242-mechanical-guards`.
+
+**CI WENT RED ON A MARKDOWN-ONLY PR AND THE LOG COULD NOT SAY WHICH TEST FAILED.** #570 changes
+nothing but documentation, and `build-test (ubuntu-latest)` reported
+`Rag.NET.Ingestion.AzureServiceBus.Tests` at **81 passed / 1 failed / 82 total**. Main's run twenty
+minutes earlier reported **82 / 82** on the same runner and tier. Identical totals mean no test was
+added or removed, so the diff could not be the cause. **Re-running the identical commit passed**,
+which settles it as a flake. The suite is the one #246 was filed against — *MessageLockLost on
+ubuntu, emulator race* — and **#246 is closed**, so nothing is currently tracking it.
+
+**6.2.41 REMOVED FAILURE DETAIL FROM CI OUTPUT, AND THIS IS THE FIRST RED BUILD SINCE.** Between
+`Run tests:` and `Failed! - Failed: 1` the job log contains **nothing** — no test name, no assertion,
+no stack trace, and zero GitHub annotations. The MTP migration is the cause and it is not
+ubuntu-specific: reproduced with a throwaway two-test project outside the repository, where a
+deliberate `Assert.Equal` failure produced **zero** console mentions of either the test name or the
+assertion. The detail is written to `<project>_net10.0_x64.log` under
+`bin/Release/net10.0/TestResults/`, which is **never uploaded as an artifact** and dies with the
+runner. The file is **UTF-16LE with a BOM**, so a plain `cat` in a workflow prints garbled spaced-out
+text; `iconv -f UTF-16 -t UTF-8` recovers it cleanly, yielding the `failed <Type>.<Method>` line, the
+assertion, expected/actual, and the stack.
+
+**Why 6.2.41's pre-push review missed it.** That review verified test *counts* were identical before
+and after the migration, which was true and is what it claimed. **Every run in the sweep was green,
+so the failure path was never exercised once.** It checked that passing still worked and never
+checked that failing still reported. A migration changes both paths; verifying one is half a
+verification. **This is the same family as the three rules below** — the check that was run was the
+one with a command attached, and the one that mattered had never been written down at all.
+
+**Not yet filed, pending the operator's call:** the diagnosability regression, whose fix is a few
+lines in `ci.yml` and `nightly.yml` dumping the log through `iconv` when a project fails, and the
+#246 recurrence. A fresh issue is the honest form for the latter — reopening #246 would assert it was
+the same test, which is precisely what can no longer be proven.
+
+**Previously, 2026-09-12 — at the merge, as the previous seven were.** 6.2.41 merged as #567;
 this entry was written from the session that built it, on `chore/6241-merged`.
 
 **THE PHASE'S PREMISE WAS FALSE AND TESTING IS WHAT SHOWED IT.** 6.2.41 existed to unblock #314.

@@ -8105,13 +8105,59 @@ runs unprovisioned too.
 PackageValidation **23**, docs site builds. **Pre-push review PASS** —
 `docs/pre-push-review-2026-09-12-0914.md`.
 
-### Phase 6.2.42: Two Rules That Were Written Down and Broken Anyway [status: pending — added 2026-09-12]
+### Phase 6.2.42: Two Rules That Were Written Down and Broken Anyway [status: complete 2026-09-12 — three guards built, tested, and pre-push reviewed; PR pending]
 **Surface:** Infra
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-12-mechanical-guards-design.md`
+**Plan:** `docs/plans/2026-09-12-mechanical-guards-implementation.md`
 
 **Goal:** convert two prose rules this repository wrote down and then broke into checks that fire by
-themselves.
+themselves, and restore CI's ability to name the test that failed.
+
+**DONE 2026-09-12: all three guards shipped, each proven by execution rather than by reading the
+diff.** `CommitMessageHookTests` runs the real `.githooks/commit-msg` script via `Process.Start` and
+asserts what it accepts and rejects — it does not grep the script for "100". `SkipMessageTests`
+asserts the exact sentence `BeirDatasetCache.DescribeUnreferencedConventionalCache` produces for both
+the "source env.sh" and "set the variable" branches, deterministically, under temporary directories.
+`CiFailureReportingTests` pins the dump into all four workflow loops and counts `iconv` occurrences
+against `dotnet test` occurrences so a regression to bare `cat` in any one loop fails the count.
+**The Linux encoding question this phase's own design left open is now closed by evidence, not
+assumption:** both the implementer and an independent re-reviewer built the same
+deliberately-failing throwaway project inside a fresh `mcr.microsoft.com/dotnet/sdk:10.0` container,
+with no reused Windows build output, and read the identical `FF FE` UTF-16LE BOM there that Windows
+produces. The `iconv` branch fires unconditionally on every platform checked; the `else: cat` branch
+is dead code kept only against a future runner disagreeing. The implementation plan's stale "Linux
+is unverified" caveat was corrected to say so — the design document's own prose never made that
+claim, so only the implementation plan needed correcting. **Guard A's adoption remains exactly what the design
+said it would be — untested and untestable by anything automated**: the hook does nothing on a fresh
+clone until `git config core.hooksPath .githooks` is run by hand; `core.hooksPath` happens to be set
+in this clone, which is a fact about this one clone, not about the repository's contributors.
+**Guard B's provisioned numbers, measured fresh this session:** `Embeddings.Onnx.Tests` unprovisioned
+141 passed / 10 skipped, provisioned **151 passed / 0 skipped**; the benchmark project unprovisioned
+154 passed / 118 skipped, provisioned **180 passed / 92 skipped** — the same 26-test gap Guard B
+exists to make visible, reproduced independently of the number that motivated the design. Suites at
+baseline or above: RepoConventions 107/2 (was 101/2 before this phase's six new tests), `Rag.NET.Tests`
+1499, PackageValidation 23, build 0 warnings, docs site builds. **Pre-push review PASS** —
+`docs/pre-push-review-2026-09-12-1359.md`, 0 blockers, 1 cosmetic info-level finding. Not run here,
+correctly: `Rag.NET.E2ETests`, which is `RequiresLlm`-gated and nightly-only.
+
+**AMENDED 2026-09-12, after a final whole-branch review found ten findings, all fixed on this
+branch.** The cosmetic finding the pre-push review above already carried (the workflow comment
+naming only Windows) is one of the ten; the review also found that none of Guard B's three
+"present but unreferenced" hint sites was covered by anything that would notice the hint call being
+deleted, on any CI runner — closed with a new `RepoConventions` source-text guard,
+`SkipReasonWiringTests`, rather than a runtime check, because a runtime composition test cannot
+observe the difference between "called and returned empty" and "never called" when the live hint is
+empty, which it is on every machine without `~/.cache/ragnet-beir`. **RepoConventions is now 111/2**
+(+4, the new guard's four cases); `Embeddings.Onnx.Tests` and
+`Rag.NET.Benchmarks.Quality.IntegrationTests` are unchanged at 141/10 unprovisioned / 151/0
+provisioned and 154/118 unprovisioned / 180/92 provisioned respectively; build stays 0 warnings.
+Full account in
+`.superpowers/sdd/2026-09-12-mechanical-guards-implementation/final-fix-report.md`.
+
+**AMENDED 2026-09-12, after the scoping PR merged.** A third guard was added the following morning —
+see §3 of the design and #571. It is a regression this milestone introduced rather than an old
+habit, and by the phase's own standard it is the strongest of the three.
 
 **NOT FROM AN ISSUE — FROM THIS REPOSITORY BREAKING ITS OWN RECORDED RULES THREE TIMES IN A DAY.**
 `STATE.md`'s 2026-09-12 entry lists them: *enumerate suites rather than reasoning about which are
@@ -8149,6 +8195,24 @@ what happened three times — `~/.cache/ragnet-beir` exists with an `env.sh`, an
 so. **No test changes which conditions it skips under** — only the wording, and only on the branch
 where the data is present but unreferenced.
 
+**Guard C: CI cannot say which test failed.** Added after scoping, from #571. **Phase 6.2.41's
+Microsoft.Testing.Platform migration removed failure detail from CI output** — between `Run tests:`
+and `Failed! - Failed: 1` a job log now carries no test name, no assertion, no stack trace and no
+annotations. On #570 that turned a one-line flake into a full log read, a count comparison against
+`main`, and a reproduction outside the repository, and **the failing test still could not be named.**
+Not ubuntu-specific and not CI-specific: reproduced with a throwaway two-test project where a
+deliberate `Assert.Equal` failure produced zero console mentions of the test or the assertion. The
+detail is written to a per-project log under `TestResults/` that no workflow uploads, so it dies with
+the runner — **and it is UTF-16LE with a BOM**, so a plain `cat` prints unreadable spaced-out text
+while `iconv -f UTF-16 -t UTF-8` recovers it. The fix is a few lines inside the failure branch
+`ci.yml` and `nightly.yml` already have. **It does not touch the #571 emulator race**; it makes the
+next occurrence legible.
+
+**Guard C outranks Guard A on this phase's own criteria.** Guard A costs one branch rebuild when it
+bites and reaches only contributors who run the `core.hooksPath` line; Guard C costs every red build
+indefinitely and reaches everyone with no opt-in. A phase named for rules that were written down and
+broken anyway should not defer the guard that would have caught the breakage it documents.
+
 **The third rule stays prose, deliberately.** A guard for "enumerate the suites" would have to know
 which suites a change could affect — the judgement the rule exists to discipline — so it would either
 run everything or guess, and a guessing guard is worse than none. Its actionable form is already in
@@ -8158,6 +8222,12 @@ use: 6.2.41's plan listed its suites as literal commands rather than describing 
 feeding it a 101-character header and asserting a non-zero exit. **What cannot be tested is
 adoption** — whether anyone runs the config line — and the record will say so rather than implying
 the rule is now enforced for everyone.
+
+**Guard C must be verified by a deliberate failure, not by a green run.** A log dump is exactly the
+change that reviews well and emits nothing — wrong path, wrong branch of the loop, or readable text
+turned to mojibake. The implementation makes a test fail on purpose and reads the test name back out.
+**A green CI run exercises none of this, which is precisely how 6.2.41 shipped the regression**: its
+sweep verified that passing still worked and never once exercised failing.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to

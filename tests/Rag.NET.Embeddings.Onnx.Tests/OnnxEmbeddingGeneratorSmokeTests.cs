@@ -10,6 +10,31 @@ namespace Rag.NET.Embeddings.Onnx.Tests;
 /// </summary>
 public sealed class OnnxEmbeddingGeneratorSmokeTests
 {
+    private static string SkipReason =>
+        "Set RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB to existing model/vocab files " +
+        "to run this test." + ConventionalCacheHint();
+
+    /// <summary>Names a conventional cache whose env.sh exists, or nothing.</summary>
+    /// <remarks>
+    /// Duplicated rather than shared: this project references neither Rag.NET.Benchmarks.Quality nor
+    /// Rag.NET.Testing, and one sentence does not justify coupling two unrelated test projects.
+    /// This test gates on RAGNET_ONNX_EMBED_MODEL/RAGNET_ONNX_EMBED_VOCAB rather than the BEIR
+    /// cache, but the same env.sh sets both — sourcing it is what took this project's other skips
+    /// from 10 to 0.
+    /// </remarks>
+    private static string ConventionalCacheHint()
+    {
+        var envScript = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".cache",
+            "ragnet-beir",
+            "env.sh");
+
+        return File.Exists(envScript)
+            ? $" '{envScript}' exists on this machine and sets these variables: source it."
+            : string.Empty;
+    }
+
     [Fact]
     public async Task GenerateAsync_WithARealModel_ReturnsUnitLengthVectorsUnaffectedByBatching()
     {
@@ -18,7 +43,7 @@ public sealed class OnnxEmbeddingGeneratorSmokeTests
         Assert.SkipWhen(
             string.IsNullOrEmpty(modelPath) || !File.Exists(modelPath) ||
             string.IsNullOrEmpty(vocabPath) || !File.Exists(vocabPath),
-            "Set RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB to existing model/vocab files to run this test.");
+            SkipReason);
 
         var ct = TestContext.Current.CancellationToken;
         using var generator = new OnnxEmbeddingGenerator(new OnnxEmbeddingOptions

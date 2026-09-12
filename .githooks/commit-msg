@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Refuse a commit header that commitlint will reject in CI.
+#
+# SCOPE IS ONE RULE: the 100-character header cap. This is deliberately NOT a local
+# reimplementation of commitlint. .commitlintrc.yml tunes type-enum with `bench`, sets
+# subject-case to 0, and sets body-max-line-length to 0 because bodies quote URLs and error
+# messages verbatim. A second implementation of those rules would drift from the first, and the
+# drift would surface as a false rejection. CI stays authoritative; see the commitlint job.
+#
+# Why a hook at all: commitlint runs in CI only, over the commits a pull request adds. The loop
+# for a long header is commit, push, open a PR, wait, rewrite history, force-push, and when the
+# offending commit is not the tip, `git commit --amend` cannot reach it. Phase 6.2.42.
+#
+# ENABLE PER CLONE:  git config core.hooksPath .githooks
+# A tracked hook does nothing until that line is run. That is a known and accepted cost.
+set -euo pipefail
+
+# ${#header} below counts CHARACTERS only under a UTF-8-aware LC_CTYPE. A bare `git commit`
+# (and this environment, unpatched) has no LANG or LC_ALL set at all, and bash then falls back to
+# counting BYTES — the exact em-dash trap this hook exists to avoid, reproducing silently. Force
+# the locale — but the export alone proves nothing: `export VAR=value` exits 0 even when the named
+# locale is not installed (bash only prints a warning), so `set -e` never sees a failure here, and
+# a machine without C.UTF-8 would fall back to byte-counting exactly as if this line were absent.
+# The probe right after is what actually guarantees the count below is characters, not this line.
+export LC_ALL=C.UTF-8
+
+# Behavioural probe, not a name check: `locale charmap` reports "UTF-8" even with no locale set
+# and byte-counting already active, so it cannot tell us the export above took effect. Measuring a
+# known one-character, three-byte string can. If this reads 3, the export failed silently and
+# nothing past this point can be trusted to count characters rather than bytes.
+probe="—"
+if [ "${#probe}" -ne 1 ]; then
+  {
+    printf 'commit-msg: no UTF-8-aware locale is available, so this hook cannot measure the\n'
+    printf 'header in characters -- only in bytes, which is the exact miscount this hook exists\n'
+    printf 'to prevent. Refusing rather than risking a false rejection that would look like the\n'
+    printf 'guard working correctly.\n\n'
+    printf 'Install a UTF-8 locale (for example C.UTF-8) to use this hook, or commit without it.\n'
+  } >&2
+  exit 1
+fi
+
+cap=100
+
+# The header is the first line that is not a git-generated comment.
+header=$(sed -n '/^[^#]/{p;q;}' "$1")
+
+# ${#header} in bash counts CHARACTERS in a UTF-8 locale, not bytes. This matters: em dashes are
+# one character and three bytes, and this repository's headers use them, so a byte count would
+# reject valid headers while looking like a working guard. Run under bash, never sh: dash counts
+# bytes.
+length=${#header}
+
+if [ "$length" -gt "$cap" ]; then
+  {
+    printf 'commit-msg: the header is %d characters; the cap is %d.\n\n' "$length" "$cap"
+    printf '  %s\n\n' "$header"
+    printf 'commitlint enforces this in CI over every commit a pull request adds, so a header\n'
+    printf 'this long fails the build after the push, and rewriting a commit that is not the tip\n'
+    printf 'costs a rebase rather than an amend.\n\n'
+    printf 'Shorten the header and move the detail into the body. Body line length is not capped\n'
+    printf 'here: .commitlintrc.yml sets body-max-line-length to 0 on purpose.\n'
+  } >&2
+  exit 1
+fi
