@@ -8005,6 +8005,7 @@ PASS** — `docs/pre-push-review-2026-09-11-1732.md`, 0 blockers and 0 warnings.
 **Surface:** Infra
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-12-mtp-migration-design.md`
+**Plan:** `docs/plans/2026-09-12-mtp-migration-implementation.md`
 
 **Goal:** opt every test project into Microsoft.Testing.Platform, which unblocks the xunit v4 bump and
 changes how contributors run a single test.
