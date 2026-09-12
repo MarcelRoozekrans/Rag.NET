@@ -8105,13 +8105,40 @@ runs unprovisioned too.
 PackageValidation **23**, docs site builds. **Pre-push review PASS** —
 `docs/pre-push-review-2026-09-12-0914.md`.
 
-### Phase 6.2.42: Two Rules That Were Written Down and Broken Anyway [status: pending — added 2026-09-12]
+### Phase 6.2.42: Two Rules That Were Written Down and Broken Anyway [status: complete 2026-09-12 — three guards built, tested, and pre-push reviewed; PR pending]
 **Surface:** Infra
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-12-mechanical-guards-design.md`
+**Plan:** `docs/plans/2026-09-12-mechanical-guards-implementation.md`
 
 **Goal:** convert two prose rules this repository wrote down and then broke into checks that fire by
 themselves, and restore CI's ability to name the test that failed.
+
+**DONE 2026-09-12: all three guards shipped, each proven by execution rather than by reading the
+diff.** `CommitMessageHookTests` runs the real `.githooks/commit-msg` script via `Process.Start` and
+asserts what it accepts and rejects — it does not grep the script for "100". `SkipMessageTests`
+asserts the exact sentence `BeirDatasetCache.DescribeUnreferencedConventionalCache` produces for both
+the "source env.sh" and "set the variable" branches, deterministically, under temporary directories.
+`CiFailureReportingTests` pins the dump into all four workflow loops and counts `iconv` occurrences
+against `dotnet test` occurrences so a regression to bare `cat` in any one loop fails the count.
+**The Linux encoding question this phase's own design left open is now closed by evidence, not
+assumption:** both the implementer and an independent re-reviewer built the same
+deliberately-failing throwaway project inside a fresh `mcr.microsoft.com/dotnet/sdk:10.0` container,
+with no reused Windows build output, and read the identical `FF FE` UTF-16LE BOM there that Windows
+produces. The `iconv` branch fires unconditionally on every platform checked; the `else: cat` branch
+is dead code kept only against a future runner disagreeing. Both plan documents' stale "Linux is
+unverified" caveats were corrected to say so. **Guard A's adoption remains exactly what the design
+said it would be — untested and untestable by anything automated**: the hook does nothing on a fresh
+clone until `git config core.hooksPath .githooks` is run by hand; `core.hooksPath` happens to be set
+in this clone, which is a fact about this one clone, not about the repository's contributors.
+**Guard B's provisioned numbers, measured fresh this session:** `Embeddings.Onnx.Tests` unprovisioned
+141 passed / 10 skipped, provisioned **151 passed / 0 skipped**; the benchmark project unprovisioned
+154 passed / 118 skipped, provisioned **180 passed / 92 skipped** — the same 26-test gap Guard B
+exists to make visible, reproduced independently of the number that motivated the design. Suites at
+baseline or above: RepoConventions 107/2 (was 101/2 before this phase's six new tests), `Rag.NET.Tests`
+1499, PackageValidation 23, build 0 warnings, docs site builds. **Pre-push review PASS** —
+`docs/pre-push-review-2026-09-12-1359.md`, 0 blockers, 1 cosmetic info-level finding. Not run here,
+correctly: `Rag.NET.E2ETests`, which is `RequiresLlm`-gated and nightly-only.
 
 **AMENDED 2026-09-12, after the scoping PR merged.** A third guard was added the following morning —
 see §3 of the design and #571. It is a regression this milestone introduced rather than an old

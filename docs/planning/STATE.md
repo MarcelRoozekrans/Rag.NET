@@ -1,6 +1,67 @@
 # Session State
 
-**Last updated:** 2026-09-12 — **at the merge, as the previous eight were.** 6.2.42 was scoped and
+**Last updated:** 2026-09-12 — **complete, not yet pushed.** All three guards are built and tested
+on `feat/6242-mechanical-guards` (nine commits ahead of `main`), and this entry was written from the
+session that verified the phase and wrote its record. Unlike the last several entries, this one is
+not "at the merge" — by explicit instruction the PR is opened afterward, by the operator, not by this
+session, so nothing here has merged yet.
+
+**All seven Step-1 suites match their stated expectations exactly, and both BEIR triples confirm
+Guard B's premise.** `RepoConventions` 107 passed / 2 skipped (was 101/2 before this phase's six new
+tests), `PackageValidation` 23/23 (no repack needed — `artifacts/packages` was not stale), `Rag.NET.Tests`
+1499/1499, build 0 warnings, docs site builds. Sourced `~/.cache/ragnet-beir/env.sh` before writing
+anything about provisioning: `Embeddings.Onnx.Tests` went from 141 passed / 10 skipped to **151/0**;
+`Rag.NET.Benchmarks.Quality.IntegrationTests` went from 154/118 to **180 passed / 92 skipped** — the
+same class of gap Guard B's message exists to name. `Rag.NET.E2ETests` did not run — `RequiresLlm`,
+nightly-only, correctly out of scope here.
+
+**THE LINUX ENCODING QUESTION IS CLOSED BY EVIDENCE, AND THE DESIGN AND PLAN WERE STALE ON IT.** Both
+`docs/plans/2026-09-12-mechanical-guards-design.md`'s self-review and
+`docs/plans/2026-09-12-mechanical-guards-implementation.md` said the Linux log encoding was
+unverified and that the BOM sniff existed because of that uncertainty (the design document's own
+prose never made the claim — checked directly — so only the implementation plan needed correcting,
+in two places). It was verified **twice** during Task 1: once by the implementer, once independently
+by the re-reviewer, each inside a fresh `mcr.microsoft.com/dotnet/sdk:10.0` container with no reused
+Windows build output. **Linux produces the identical UTF-16LE-with-`FFFE`-BOM encoding Windows
+does.** The `iconv` branch is the one that fires on every platform checked; the `else: cat` branch is
+dead code, kept only against a future runner disagreeing. Both stale passages were rewritten to say
+the question was closed rather than left open.
+
+**THE EM-DASH TEST CAUGHT A REAL DEFECT ON THE DAY IT WAS WRITTEN, AND THE PLAN'S OWN PREDICTION WAS
+TOO NARROW.** The plan predicted a byte-counting hook would reject valid headers and blamed `sh`/
+`dash`. The truth was wider: `${#header}` counted **bytes under bash itself**, because this
+environment sets neither `LANG` nor `LC_ALL` at all. The first fix — `export LC_ALL=C.UTF-8` — was
+then found by review to fail **silently** on a machine lacking that locale: `export` exits `0` even
+when the named locale does not exist, so `set -e` never fires, and the hook would have reintroduced
+the identical byte-counting trap one layer down, printing a false rejection that looks exactly like
+the guard working. The hook now carries a behavioural probe — it measures a known one-character,
+three-byte string (an em dash) and refuses to run at all if the count comes back wrong, rather than
+trusting the locale's name. This is the phase's clearest evidence for its own thesis: a rule written
+down (byte-counting is the risk to guard against) was broken by the very commit meant to guard
+against it, on the day that commit was written, and only caught because the guard was executed against
+a real string rather than read as a diff.
+
+**GUARD A'S ADOPTION IS STATED AS UNTESTED AND UNTESTABLE — NOT IMPLIED AS ENFORCED.** The hook does
+nothing on a fresh clone until someone runs `git config core.hooksPath .githooks` by hand.
+`core.hooksPath` happens to be set to `.githooks` in this one clone, which is a fact about this
+clone, not about the repository's contributors in general; `CommitMessageHookTests` proves the
+script behaves correctly when run, not that anyone has wired it in. The design, the implementation
+plan, and `CommitMessageHookTests.cs`'s own class remark all say the same thing, and this entry
+repeats it rather than letting a "complete" phase status imply otherwise.
+
+**Pre-push review PASS** — `docs/pre-push-review-2026-09-12-1359.md`, 0 blockers, one cosmetic
+info-level finding (a workflow comment naming only Windows for an encoding now confirmed identical on
+Linux — not incorrect, no behavioral effect). All nine commit headers are under the 100-character
+cap (max 93), no nested parentheses in any commit body, no session URL anywhere. Guard C's central
+claim — a red build naming the failing test — was demonstrated by a deliberate failure on two
+platforms, never by a green run; that verbatim output is quoted in full in the pre-push review report
+and in `task-1-report.md`.
+
+**What is left for next: the operator opens the PR** (explicitly out of scope for this session —
+Task 4's brief says to open it, the operator is doing that afterward) **and merges it.** Nothing else
+is outstanding on this phase.
+
+**Previously, 2026-09-12 — at the merge, as the previous eight were.** 6.2.42 was scoped and
 merged as #570; this entry was written from the session that scoped it, on
 `feat/6242-mechanical-guards`.
 

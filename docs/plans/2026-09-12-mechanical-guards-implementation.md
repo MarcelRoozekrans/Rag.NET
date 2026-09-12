@@ -75,9 +75,13 @@ failures of Tasks 2 and 3 are legible instead of anonymous.
 **Background the implementer needs.** Microsoft.Testing.Platform prints only a count on failure —
 `Failed! - Failed: 1, Passed: 81, …` — and writes the test name, assertion and stack to
 `<project-dir>/bin/Release/<tfm>/TestResults/<AssemblyName>_<tfm>_<arch>.log`. Nothing uploads that
-file, so it dies with the runner. On Windows it is **UTF-16LE with a `FF FE` BOM**, where `cat` prints
-spaced-out mojibake. The Linux encoding was not verified, which is why the code below sniffs the BOM
-rather than assuming either way.
+file, so it dies with the runner. **UPDATED 2026-09-12, closed by evidence rather than left open: it
+is UTF-16LE with a `FF FE` BOM on both Windows and Linux**, verified twice during Task 1 — by the
+implementer and independently by the re-reviewer — each in a fresh
+`mcr.microsoft.com/dotnet/sdk:10.0` container with no reused Windows build output. `cat` prints
+spaced-out mojibake on both platforms; the code below sniffs the BOM and decodes with `iconv` on
+every platform it has been checked on, so the `iconv` branch fires unconditionally and the `else: cat`
+branch is dead code kept only as a fallback should some future runner disagree.
 
 All four loops contain this line **byte-identically**, at 12 spaces of indentation:
 
@@ -1002,10 +1006,14 @@ used under that exact name in Steps 1 and 4. `ConventionalCacheHint()` is privat
 design, stated where introduced. `TestProject.FindRepositoryRoot()` matches the existing helper.
 `BeirDatasetCache.CacheDirectoryVariable` carries an explicit accessibility check.
 
-**One open risk, stated rather than hidden.** The log encoding was verified on Windows only, where it
-is UTF-16LE with a BOM. The Linux encoding is unverified, which is why Task 1 sniffs the BOM rather
-than assuming — the `else` branch handles UTF-8 correctly either way. Task 1 Step 5 exercises whichever
-branch the implementer's platform takes; the other is exercised by the first real CI failure.
+**A risk that was open at scoping and is now closed.** At scoping, the log encoding was verified on
+Windows only, and this self-review flagged the Linux encoding as unverified. Task 1 closed it by
+evidence: both the implementer and an independent re-reviewer built the same throwaway
+deliberately-failing project inside a fresh `mcr.microsoft.com/dotnet/sdk:10.0` container, with no
+reused Windows build output, and read the same `FF FE` UTF-16LE BOM there. **Linux and Windows produce
+the identical encoding.** The `iconv` branch is the one that fires on every platform checked; the
+`else: cat` branch sniffed for is dead code on the evidence gathered so far, kept only because a future
+runner could still disagree.
 
 **A known limitation of Guard A, not a defect.** The hook measures every commit message, including
 merge commits git generates itself. A local merge of a long branch name could be refused. This was
