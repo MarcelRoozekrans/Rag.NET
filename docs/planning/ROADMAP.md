@@ -8093,7 +8093,8 @@ comment promised — no change to the guard was needed. `ci.md`'s section descri
 that refused filters now describes the rule rather than the exception.
 
 **Nothing entered `src/`**, checked by `git diff`. Build 0 warnings, RepoConventions **101**,
-PackageValidation **23**, docs site builds.
+PackageValidation **23**, docs site builds. **Pre-push review PASS** —
+`docs/pre-push-review-2026-09-12-0914.md`.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to

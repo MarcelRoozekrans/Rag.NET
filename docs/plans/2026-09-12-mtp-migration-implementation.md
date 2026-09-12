@@ -352,7 +352,7 @@ note appended to Task 5.
 
 ### Task 5: Review and PR
 
-- [ ] **Step 1: Run every command in the "Commands this plan runs" block one final time**, plus:
+- [x] **Step 1: Run every command in the "Commands this plan runs" block one final time**, plus:
 
 ```bash
 dotnet build Rag.NET.slnx -c Release
@@ -371,17 +371,17 @@ dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$v"
 dotnet test tests/Rag.NET.PackageValidation.Tests --no-build -c Release
 ```
 
-- [ ] **Step 2: `docs/planning/ROADMAP.md`**, the Phase 6.2.41 block — record the before/after totals,
+- [x] **Step 2: `docs/planning/ROADMAP.md`**, the Phase 6.2.41 block — record the before/after totals,
   whether `xunit.runner.visualstudio` survived, and anything the migration broke. **Do not change the
   `[status: ...]` marker.**
 
-- [ ] **Step 3: Close #314 by superseding it.** This phase adopts its change, so comment there pointing
+- [x] **Step 3: Close #314 by superseding it.** This phase adopts its change, so comment there pointing
   at the PR and close it — a Renovate PR that has been red for a month should not merge; its content
   ships here with the migration that makes it possible.
 
-- [ ] **Step 4: Run `pre-push-review`.** Record the verdict and report path.
+- [x] **Step 4: Run `pre-push-review`.** Record the verdict and report path.
 
-- [ ] **Step 5: Open the PR.** Lead with the developer-facing change, not the property. Record the
+- [x] **Step 5: Open the PR.** Lead with the developer-facing change, not the property. Record the
   number here.
 
 ---
