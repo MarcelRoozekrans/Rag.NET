@@ -29,12 +29,10 @@ public sealed class CiFailureReportingTests
     {
         foreach (var workflow in WorkflowsThatRunTests)
         {
-            var path = Path.Combine(
-                TestProject.FindRepositoryRoot(), ".github", "workflows", workflow);
-            var text = File.ReadAllText(path);
+            var commands = TestProject.ReadWorkflowCommands(TestProject.WorkflowPath(workflow));
 
-            var runs = CountOccurrences(text, "dotnet test \"$project\" --no-build -c Release");
-            var dumps = CountOccurrences(text, "TestResults/*.log");
+            var runs = CountOccurrences(commands, "dotnet test \"$project\" --no-build -c Release");
+            var dumps = CountOccurrences(commands, "TestResults/*.log");
 
             Assert.True(
                 runs > 0,
@@ -55,12 +53,10 @@ public sealed class CiFailureReportingTests
     {
         foreach (var workflow in WorkflowsThatRunTests)
         {
-            var path = Path.Combine(
-                TestProject.FindRepositoryRoot(), ".github", "workflows", workflow);
-            var text = File.ReadAllText(path);
+            var commands = TestProject.ReadWorkflowCommands(TestProject.WorkflowPath(workflow));
 
-            var runs = CountOccurrences(text, "dotnet test \"$project\" --no-build -c Release");
-            var decodes = CountOccurrences(text, "iconv -f UTF-16LE");
+            var runs = CountOccurrences(commands, "dotnet test \"$project\" --no-build -c Release");
+            var decodes = CountOccurrences(commands, "iconv -f UTF-16LE");
 
             Assert.True(
                 runs > 0,

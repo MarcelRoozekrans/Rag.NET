@@ -8126,8 +8126,9 @@ assumption:** both the implementer and an independent re-reviewer built the same
 deliberately-failing throwaway project inside a fresh `mcr.microsoft.com/dotnet/sdk:10.0` container,
 with no reused Windows build output, and read the identical `FF FE` UTF-16LE BOM there that Windows
 produces. The `iconv` branch fires unconditionally on every platform checked; the `else: cat` branch
-is dead code kept only against a future runner disagreeing. Both plan documents' stale "Linux is
-unverified" caveats were corrected to say so. **Guard A's adoption remains exactly what the design
+is dead code kept only against a future runner disagreeing. The implementation plan's stale "Linux
+is unverified" caveat was corrected to say so — the design document's own prose never made that
+claim, so only the implementation plan needed correcting. **Guard A's adoption remains exactly what the design
 said it would be — untested and untestable by anything automated**: the hook does nothing on a fresh
 clone until `git config core.hooksPath .githooks` is run by hand; `core.hooksPath` happens to be set
 in this clone, which is a fact about this one clone, not about the repository's contributors.
@@ -8139,6 +8140,20 @@ baseline or above: RepoConventions 107/2 (was 101/2 before this phase's six new 
 1499, PackageValidation 23, build 0 warnings, docs site builds. **Pre-push review PASS** —
 `docs/pre-push-review-2026-09-12-1359.md`, 0 blockers, 1 cosmetic info-level finding. Not run here,
 correctly: `Rag.NET.E2ETests`, which is `RequiresLlm`-gated and nightly-only.
+
+**AMENDED 2026-09-12, after a final whole-branch review found ten findings, all fixed on this
+branch.** The cosmetic finding the pre-push review above already carried (the workflow comment
+naming only Windows) is one of the ten; the review also found that none of Guard B's three
+"present but unreferenced" hint sites was covered by anything that would notice the hint call being
+deleted, on any CI runner — closed with a new `RepoConventions` source-text guard,
+`SkipReasonWiringTests`, rather than a runtime check, because a runtime composition test cannot
+observe the difference between "called and returned empty" and "never called" when the live hint is
+empty, which it is on every machine without `~/.cache/ragnet-beir`. **RepoConventions is now 111/2**
+(+4, the new guard's four cases); `Embeddings.Onnx.Tests` and
+`Rag.NET.Benchmarks.Quality.IntegrationTests` are unchanged at 141/10 unprovisioned / 151/0
+provisioned and 154/118 unprovisioned / 180/92 provisioned respectively; build stays 0 warnings.
+Full account in
+`.superpowers/sdd/2026-09-12-mechanical-guards-implementation/final-fix-report.md`.
 
 **AMENDED 2026-09-12, after the scoping PR merged.** A third guard was added the following morning —
 see §3 of the design and #571. It is a regression this milestone introduced rather than an old

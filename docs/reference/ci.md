@@ -913,6 +913,13 @@ implementation of those rules would drift from the first. CI remains authoritati
 
 **The hook does nothing until you run that line.** It is tracked, not installed.
 
+It also forces `LC_ALL=C.UTF-8` before counting the header's length, and then runs a behavioural
+probe — measuring a known one-character, three-byte string — rather than trusting that the export
+succeeded: a bare `git commit` may have no UTF-8-aware locale set at all, and `bash` then counts
+*bytes* instead of characters, which would silently reject valid headers containing multi-byte
+characters such as em dashes. If the probe comes back wrong, the hook **refuses to run at all**
+rather than risk a false rejection that would look like the guard working correctly.
+
 ### The gated release
 
 The `release-please.yml` workflow is fully wired and, unlike the push, **cannot be rehearsed**:

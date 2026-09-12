@@ -327,6 +327,11 @@ Quick reference (i9-12900HK, .NET 10, 50-token chunks):
 
 `TokenAware` carries 20–60× chunking overhead from tiktoken encoding — negligible relative to embedding API latency in production.
 
+## Contributing
+
+Working from a clone? Run `git config core.hooksPath .githooks` once to catch an over-length
+commit header before you push — see [Catching a long commit header before you push](docs/reference/ci.md#catching-a-long-commit-header-before-you-push).
+
 ## Requirements
 
 - .NET 10+

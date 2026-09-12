@@ -154,7 +154,7 @@ public sealed class BeirDatasetCache
     /// sentence-forming branches — "source the env.sh" and "set the variable" — and the "not
     /// present" branch under a temporary directory it controls, deterministically, on any machine,
     /// rather than depending on whether that machine happens to have the real directory on disk. The
-    /// two-parameter overload above is what production code uses; this one exists for tests.
+    /// parameterless overload is what production code uses; this one exists for tests.
     /// </remarks>
     public static string? DescribeUnreferencedConventionalCache(
         string? configuredCacheDirectory, string conventionalCacheDirectory)

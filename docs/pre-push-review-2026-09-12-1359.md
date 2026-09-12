@@ -74,7 +74,7 @@ Read the full diff (`git diff origin/main...HEAD`, 2073 lines) file by file.
   unconditionally on any platform. Not a blocker.
 - **`BeirDatasetCache.cs`** — three overloads, each documented with *why* it exists (test seams
   around process-wide environment state and the real filesystem), not just what it does. No behavior
-  change to the two-parameter overload production callers use.
+  change to the parameterless overload production callers use.
 - **`SkipMessageTests.cs`, `CiFailureReportingTests.cs`, `CommitMessageHookTests.cs`** — deterministic,
   no reliance on ambient machine state for the tests that assert exact sentences (temp directories,
   GUID-suffixed). `CommitMessageHookTests` explicitly documents in its class remark that **adoption
@@ -252,3 +252,49 @@ naming the failing test — is demonstrated by a deliberate failure on two platf
 a green run. Guard A's adoption is stated as untested and untestable, matching the design's own
 stance. All nine commits pass the header-length cap, the nested-parenthesis check, and the
 session-URL check. No stray files staged.
+
+## Addendum — final whole-branch review and fix wave, 2026-09-12
+
+A later, final whole-branch review of this same branch (ten commits at the time, `305db773`) found
+ten findings this Task-4 review above did not catch, because they lay outside what this document
+checked:
+
+- **Important 1** — `CiFailureReportingTests` read the raw workflow YAML with `File.ReadAllText`
+  instead of `TestProject.ReadWorkflowCommands`, the reader this project already built and
+  documented for exactly this mistake (see `TestProjectTierTests`'s own remark on the vacuous
+  `Contains("RequiresDocker", yaml)` precedent). Not yet vacuous — the needle counts were 2/2/2,
+  all from command lines — but one wording change to the very comment this addendum's sibling
+  finding (Minor 4, below) touches would have made it so.
+- **Important 2** — none of Guard B's three "present but unreferenced" hint call sites
+  (`BeirHarness.SkipReason`, and the two duplicated `ConventionalCacheHint()` helpers in
+  `Rag.NET.Embeddings.Onnx.Tests`) was covered by anything that would notice the hint call being
+  deleted, on any CI runner: the live hint is empty on every machine without
+  `~/.cache/ragnet-beir`, so a runtime test comparing `SkipReason`'s value against the live hint
+  cannot distinguish "called and returned empty" from "never called." Closed with a new
+  `RepoConventions` source-text guard, `SkipReasonWiringTests`, deterministic on any machine because
+  it never touches the environment; the runtime composition tests were kept and tightened, useful
+  whenever the live hint is non-null.
+- **Minor 3** — a doc comment on `BeirDatasetCache`'s two-parameter overload, and this very
+  document's Code Quality section above, both stated the overload relationship backwards. Fixed in
+  both places.
+- **Minor 4** — the workflow comment this review's own cosmetic finding named is now reworded to
+  say the encoding is confirmed identical on Windows and Linux, done after Important 1 so the
+  reworded prose cannot satisfy that guard.
+- **Minor 5–7** — `ROADMAP.md` claimed a design-document correction that never happened;
+  `STATE.md` contradicted its own parenthetical about which document needed correcting; and both
+  `STATE.md` and this document undercounted the branch by one commit (nine stated, ten actual).
+  All corrected.
+- **Minor 8** — `OnnxEmbeddingGeneratorSmokeTests`, the project's third skip site reading the same
+  environment variables, never got the hint its two siblings did. Given the same hint, the same way.
+- **Minor 9–10** — `docs/reference/ci.md` did not mention that the hook forces `LC_ALL=C.UTF-8` and
+  refuses to run if its probe fails; `README.md` had no pointer to the hook at all. Both added.
+
+**Suites re-run after the fix wave:** `RepoConventions` 111 passed / 2 skipped (was 107/2, +4 from
+the new wiring guard), `Embeddings.Onnx.Tests` unchanged at 141/10 unprovisioned / 151/0 provisioned,
+`Rag.NET.Benchmarks.Quality.IntegrationTests` unchanged at 154/118 unprovisioned / 180/92 provisioned,
+`dotnet build Rag.NET.slnx -c Release` 0 warnings / 0 errors. No skip *condition* was changed anywhere
+— checked directly, the same way the Task-4 review above checked it for Guard B's original diff.
+
+Full account, including which of Important 2's two offered approaches was chosen and why, and proof
+that each new assertion fails when its target is deleted, in
+`.superpowers/sdd/2026-09-12-mechanical-guards-implementation/final-fix-report.md`.

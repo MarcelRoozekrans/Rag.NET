@@ -177,8 +177,9 @@ jobs:
             # Microsoft.Testing.Platform prints the failure COUNT and nothing else: no test name, no
             # assertion, no stack. All of it goes to a per-project log that nothing uploads, so
             # before this dump a red job named no test at all. Phase 6.2.42; see #571.
-            # The file is UTF-16LE with a BOM on Windows, where cat prints spaced-out mojibake, so
-            # sniff the BOM and decode rather than assuming an encoding.
+            # The file is UTF-16LE with a BOM on Windows and Linux alike, verified in a container,
+            # where cat prints spaced-out mojibake, so sniff the BOM and decode rather than
+            # assuming an encoding.
             for log in "$(dirname "$project")"/bin/Release/*/TestResults/*.log; do
               [ -f "$log" ] || continue
               echo "----- failure detail from $log -----"
@@ -224,8 +225,9 @@ jobs:
             # Microsoft.Testing.Platform prints the failure COUNT and nothing else: no test name, no
             # assertion, no stack. All of it goes to a per-project log that nothing uploads, so
             # before this dump a red job named no test at all. Phase 6.2.42; see #571.
-            # The file is UTF-16LE with a BOM on Windows, where cat prints spaced-out mojibake, so
-            # sniff the BOM and decode rather than assuming an encoding.
+            # The file is UTF-16LE with a BOM on Windows and Linux alike, verified in a container,
+            # where cat prints spaced-out mojibake, so sniff the BOM and decode rather than
+            # assuming an encoding.
             for log in "$(dirname "$project")"/bin/Release/*/TestResults/*.log; do
               [ -f "$log" ] || continue
               echo "----- failure detail from $log -----"

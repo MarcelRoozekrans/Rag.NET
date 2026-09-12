@@ -1,7 +1,40 @@
 # Session State
 
-**Last updated:** 2026-09-12 — **complete, not yet pushed.** All three guards are built and tested
-on `feat/6242-mechanical-guards` (nine commits ahead of `main`), and this entry was written from the
+**Last updated:** 2026-09-12 — **complete, not yet pushed, and its final whole-branch review's
+findings are fixed.** A final whole-branch review of `feat/6242-mechanical-guards` found ten
+findings — one guard test reading raw YAML text where `TestProject.ReadWorkflowCommands` already
+existed for exactly that mistake; three "BEIR present but unreferenced" hint call sites wired to
+nothing any test would notice if deleted; a doc comment and a pre-push-review sentence both stating
+an overload relationship backwards; a workflow comment still hedging on Linux after this same phase
+closed that question with evidence; a ROADMAP sentence claiming a correction the design document
+never needed; a `STATE.md` paragraph (below) contradicting its own parenthetical; the off-by-one
+commit count this paragraph itself carried; a third Onnx skip site that never got the hint its two
+siblings did; and two documentation gaps — the hook's locale dependency, and its one-line adoption
+path buried 900 lines into a reference page. All ten are fixed on this branch.
+
+**The hardest of the ten, and the one this entry singles out:** the BEIR-hint wiring tests could
+have their `+ …Hint()` suffix deleted from any of the three `SkipReason` properties and nothing
+would fail, on any CI runner — a pure runtime composition test cannot tell "the call happened and
+returned empty" from "the call was deleted" when the live hint is empty, which it always is on a
+machine without `~/.cache/ragnet-beir`. Closed with a new `RepoConventions` guard,
+`SkipReasonWiringTests`, that reads each `SkipReason` property's own source text — anchored on the
+property's signature so a doc comment describing the call cannot satisfy it — and asserts the hint
+call appears inside its expression body. That is deterministic on any machine, because it never
+touches the environment. The runtime composition test in
+`Rag.NET.Benchmarks.Quality.IntegrationTests.SkipMessageTests` stays too, tightened to an exact
+equality on the composed string rather than a substring check — it still catches a wrong
+composition whenever the live hint happens to be non-null, which it is on this machine.
+
+**Counts after the fix wave:** `RepoConventions` **111 passed / 2 skipped** (was 107/2, +4 from the
+new wiring guard's four `[InlineData]` cases), `Embeddings.Onnx.Tests` unchanged at 141/10
+unprovisioned and 151/0 provisioned, `Rag.NET.Benchmarks.Quality.IntegrationTests` unchanged at
+154/118 unprovisioned and 180/92 provisioned, build 0 warnings. Full account, including which of
+Important 2's two offered approaches was chosen and why, in
+`.superpowers/sdd/2026-09-12-mechanical-guards-implementation/final-fix-report.md`.
+
+**Previously, 2026-09-12 — the phase's own record, before its final whole-branch review.**
+**Complete, not yet pushed.** All three guards are built and tested
+on `feat/6242-mechanical-guards` (ten commits ahead of `main` at `305db773`), and this entry was written from the
 session that verified the phase and wrote its record. Unlike the last several entries, this one is
 not "at the merge" — by explicit instruction the PR is opened afterward, by the operator, not by this
 session, so nothing here has merged yet.
@@ -15,12 +48,11 @@ anything about provisioning: `Embeddings.Onnx.Tests` went from 141 passed / 10 s
 same class of gap Guard B's message exists to name. `Rag.NET.E2ETests` did not run — `RequiresLlm`,
 nightly-only, correctly out of scope here.
 
-**THE LINUX ENCODING QUESTION IS CLOSED BY EVIDENCE, AND THE DESIGN AND PLAN WERE STALE ON IT.** Both
-`docs/plans/2026-09-12-mechanical-guards-design.md`'s self-review and
-`docs/plans/2026-09-12-mechanical-guards-implementation.md` said the Linux log encoding was
-unverified and that the BOM sniff existed because of that uncertainty (the design document's own
-prose never made the claim — checked directly — so only the implementation plan needed correcting,
-in two places). It was verified **twice** during Task 1: once by the implementer, once independently
+**THE LINUX ENCODING QUESTION IS CLOSED BY EVIDENCE.**
+`docs/plans/2026-09-12-mechanical-guards-implementation.md`'s self-review said the Linux log
+encoding was unverified and that the BOM sniff existed because of that uncertainty (the design
+document's own prose never made the claim — checked directly — so only the implementation plan
+needed correcting, in two places). It was verified **twice** during Task 1: once by the implementer, once independently
 by the re-reviewer, each inside a fresh `mcr.microsoft.com/dotnet/sdk:10.0` container with no reused
 Windows build output. **Linux produces the identical UTF-16LE-with-`FFFE`-BOM encoding Windows
 does.** The `iconv` branch is the one that fires on every platform checked; the `else: cat` branch is
@@ -51,8 +83,8 @@ repeats it rather than letting a "complete" phase status imply otherwise.
 
 **Pre-push review PASS** — `docs/pre-push-review-2026-09-12-1359.md`, 0 blockers, one cosmetic
 info-level finding (a workflow comment naming only Windows for an encoding now confirmed identical on
-Linux — not incorrect, no behavioral effect). All nine commit headers are under the 100-character
-cap (max 93), no nested parentheses in any commit body, no session URL anywhere. Guard C's central
+Linux — not incorrect, no behavioral effect). All ten commit headers (through `305db773`) are under
+the 100-character cap (max 93), no nested parentheses in any commit body, no session URL anywhere. Guard C's central
 claim — a red build naming the failing test — was demonstrated by a deliberate failure on two
 platforms, never by a green run; that verbatim output is quoted in full in the pre-push review report
 and in `task-1-report.md`.

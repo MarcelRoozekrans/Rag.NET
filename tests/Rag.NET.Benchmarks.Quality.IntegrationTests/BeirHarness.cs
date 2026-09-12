@@ -33,6 +33,16 @@ public static class BeirHarness
     /// <summary>The rank cutoff the published figures are quoted at.</summary>
     public const int Cutoff = 10;
 
+    /// <summary>The base sentence <see cref="SkipReason"/> appends its hint to.</summary>
+    /// <remarks>
+    /// Named separately from <see cref="SkipReason"/> so a test can assert the composition — base
+    /// sentence plus the live hint — rather than merely that the final string contains a substring.
+    /// </remarks>
+    public const string SkipReasonBaseSentence =
+        "Set RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB to an existing all-MiniLM-L6-v2 " +
+        "ONNX export (token-level output) and its WordPiece vocab.txt, and RAGNET_BEIR_CACHE to a " +
+        "writable directory for the dataset downloads, to run the BEIR measurements.";
+
     /// <summary>The message an unprovisioned run skips with.</summary>
     /// <remarks>
     /// Computed rather than constant so it can name a corpus that is present but unreferenced; see
@@ -40,10 +50,7 @@ public static class BeirHarness
     /// this machine as unprovisioned while the corpus sat at the conventional path.
     /// </remarks>
     public static string SkipReason =>
-        "Set RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB to an existing all-MiniLM-L6-v2 " +
-        "ONNX export (token-level output) and its WordPiece vocab.txt, and RAGNET_BEIR_CACHE to a " +
-        "writable directory for the dataset downloads, to run the BEIR measurements." +
-        BeirDatasetCache.DescribeUnreferencedConventionalCache();
+        SkipReasonBaseSentence + BeirDatasetCache.DescribeUnreferencedConventionalCache();
 
     /// <summary>The message a run without the cross-encoder skips with.</summary>
     /// <remarks>

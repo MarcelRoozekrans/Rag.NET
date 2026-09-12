@@ -100,18 +100,31 @@ public sealed class SkipMessageTests
         Assert.Null(BeirDatasetCache.DescribeUnreferencedConventionalCache(null, conventional));
     }
 
-    /// <summary>The skip reason carries the hint exactly when there is one.</summary>
+    /// <summary>
+    /// <see cref="BeirHarness.SkipReason"/> is exactly the base sentence with the live hint
+    /// appended — not merely a string that happens to contain the hint somewhere.
+    /// </summary>
+    /// <remarks>
+    /// This is a machine-independent equality on the composition, so it fails if the hint is ever
+    /// concatenated in the wrong place, duplicated, or replaced with something that merely
+    /// resembles it. It provably fails if <c>+ BeirDatasetCache.DescribeUnreferencedConventionalCache()</c>
+    /// is removed from <see cref="BeirHarness.SkipReason"/> WHEN the live hint is non-null — on a
+    /// machine without <c>~/.cache/ragnet-beir</c> the hint is null and appending an empty string is
+    /// unobservable from the outside no matter what produced it, which is exactly why
+    /// <c>SkipReasonWiringTests</c> in <c>Rag.NET.RepoConventions.Tests</c> also pins the call site
+    /// in source, deterministically, on any machine.
+    /// </remarks>
     [Fact]
-    public void TheSkipReasonCarriesTheHint()
+    public void TheSkipReasonIsTheBaseSentenceWithTheLiveHintAppended()
     {
         var hint = BeirDatasetCache.DescribeUnreferencedConventionalCache();
 
-        if (hint is null)
-        {
-            Assert.DoesNotContain("ragnet-beir", BeirHarness.SkipReason, StringComparison.Ordinal);
-            return;
-        }
+        Assert.Equal(BeirHarness.SkipReasonBaseSentence + (hint ?? string.Empty), BeirHarness.SkipReason);
 
-        Assert.Contains(hint, BeirHarness.SkipReason, StringComparison.Ordinal);
+        if (hint is not null)
+        {
+            Assert.NotEqual(
+                BeirHarness.SkipReasonBaseSentence, BeirHarness.SkipReason, StringComparer.Ordinal);
+        }
     }
 }
