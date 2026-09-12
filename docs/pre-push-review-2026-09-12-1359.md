@@ -281,9 +281,12 @@ checked:
   say the encoding is confirmed identical on Windows and Linux, done after Important 1 so the
   reworded prose cannot satisfy that guard.
 - **Minor 5–7** — `ROADMAP.md` claimed a design-document correction that never happened;
-  `STATE.md` contradicted its own parenthetical about which document needed correcting; and both
-  `STATE.md` and this document undercounted the branch by one commit (nine stated, ten actual).
-  All corrected.
+  `STATE.md` contradicted its own parenthetical about which document needed correcting; and
+  `STATE.md` undercounted the branch by one commit (nine stated, ten actual). All three corrected
+  in `ROADMAP.md`/`STATE.md`. **This document's own "nine" (lines 26, 92, 106, 108, 253) is left
+  as written, deliberately** — it is a correct historical fact about the range this review actually
+  covered, `6be62654..37928dbf`, not a live count of the branch. Only `STATE.md`'s paragraph, which
+  described the phase's closed-out state rather than a fixed reviewed range, was actually wrong.
 - **Minor 8** — `OnnxEmbeddingGeneratorSmokeTests`, the project's third skip site reading the same
   environment variables, never got the hint its two siblings did. Given the same hint, the same way.
 - **Minor 9–10** — `docs/reference/ci.md` did not mention that the hook forces `LC_ALL=C.UTF-8` and
