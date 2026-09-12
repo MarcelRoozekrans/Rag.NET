@@ -121,7 +121,25 @@ jobs:
               echo "::endgroup::"
               continue
             fi
-            dotnet test "$project" --no-build -c Release --verbosity normal || failed="$failed $project"
+            if dotnet test "$project" --no-build -c Release --verbosity normal; then
+              echo "::endgroup::"
+              continue
+            fi
+            failed="$failed $project"
+            # Microsoft.Testing.Platform prints the failure COUNT and nothing else: no test name, no
+            # assertion, no stack. All of it goes to a per-project log that nothing uploads, so
+            # before this dump a red job named no test at all. Phase 6.2.42; see #571.
+            # The file is UTF-16LE with a BOM on Windows, where cat prints spaced-out mojibake, so
+            # sniff the BOM and decode rather than assuming an encoding.
+            for log in "$(dirname "$project")"/bin/Release/*/TestResults/*.log; do
+              [ -f "$log" ] || continue
+              echo "----- failure detail from $log -----"
+              if [ "$(head -c 2 "$log" | od -An -tx1 | tr -d ' ')" = "fffe" ]; then
+                iconv -f UTF-16LE -t UTF-8 "$log" || cat "$log"
+              else
+                cat "$log"
+              fi
+            done
             echo "::endgroup::"
           done
           if [ -n "$failed" ]; then
@@ -425,7 +443,25 @@ jobs:
               echo "::endgroup::"
               continue
             fi
-            dotnet test "$project" --no-build -c Release --verbosity normal || failed="$failed $project"
+            if dotnet test "$project" --no-build -c Release --verbosity normal; then
+              echo "::endgroup::"
+              continue
+            fi
+            failed="$failed $project"
+            # Microsoft.Testing.Platform prints the failure COUNT and nothing else: no test name, no
+            # assertion, no stack. All of it goes to a per-project log that nothing uploads, so
+            # before this dump a red job named no test at all. Phase 6.2.42; see #571.
+            # The file is UTF-16LE with a BOM on Windows, where cat prints spaced-out mojibake, so
+            # sniff the BOM and decode rather than assuming an encoding.
+            for log in "$(dirname "$project")"/bin/Release/*/TestResults/*.log; do
+              [ -f "$log" ] || continue
+              echo "----- failure detail from $log -----"
+              if [ "$(head -c 2 "$log" | od -An -tx1 | tr -d ' ')" = "fffe" ]; then
+                iconv -f UTF-16LE -t UTF-8 "$log" || cat "$log"
+              else
+                cat "$log"
+              fi
+            done
             echo "::endgroup::"
           done
           if [ -n "$failed" ]; then
