@@ -8001,6 +8001,59 @@ only `///` lines, and the whole-solution build stayed at **0 warnings**. Suites:
 **101**, Security **104**, PackageValidation **23**, `Rag.NET.Tests` **1499** — all at baseline. **Pre-push review
 PASS** — `docs/pre-push-review-2026-09-11-1732.md`, 0 blockers and 0 warnings.
 
+### Phase 6.2.41: The Migration a Dependency Bump Was Hiding [status: pending — added 2026-09-12, #314]
+**Surface:** Infra
+**HelpWanted:** no
+**Design:** `docs/plans/2026-09-12-mtp-migration-design.md`
+
+**Goal:** opt every test project into Microsoft.Testing.Platform, which unblocks the xunit v4 bump and
+changes how contributors run a single test.
+
+**#314 IS NOT A DEPENDENCY BUMP.** A Renovate PR open since 2026-08-18 with three checks red, and all
+three fail for one reason with no xunit API involved: `xunit.v3` 4.0.0 pulls
+`Microsoft.Testing.Platform.MSBuild` 2.3.3, which **on the .NET 10 SDK refuses the VSTest bridge
+outright**. Every test project fails to *build* its VSTest target before a test runs. Renovate can
+never make it green, and the migration is worth doing independent of xunit v4 — the deadline belongs to
+whichever MTP version this repository lands on, and staying on v3 defers rather than avoids it.
+
+**THE FIRST DIAGNOSIS OVERSTATED THE SIZE AND IS CORRECTED HERE.** The comment posted on #314 called
+this a "78-project migration" and a "large phase", and said whether it could proceed incrementally
+"is not obvious from here". Both claims fell to ten more minutes of reading:
+
+- **`tests/Directory.Build.props` is imported by every test project**, so the opt-in is
+  **one property in one shared file**, not 77 `.csproj` edits.
+- **Incremental is not an open question — it is the status quo.**
+  `Rag.NET.Benchmarks.Quality.IntegrationTests` has set `TestingPlatformDotnetTestSupport` since #275,
+  declares `RequiresSecrets` and neither tier marker, and therefore sits in the **fast tier `ci.yml`
+  runs on every pull request**, one project at a time, beside 65 VSTest projects. **Mixed mode has been
+  running for weeks.**
+
+**One detail decides whether the census survives.** That project keeps `Microsoft.NET.Test.Sdk`
+deliberately — its csproj says *"Microsoft.NET.Test.Sdk stays referenced because both workflows
+SELECT"* by it — and `ci.yml`'s partition guard computes its census with
+`grep -l 'Microsoft.NET.Test.Sdk'`. A migration that removed the reference would drop projects out of
+the census **while the guard still passed**, because `all` shrinks alongside `fast` and `docker`.
+Follow the precedent: opt in, keep the reference.
+
+**THE REAL COST LANDS ON DEVELOPERS, NOT CI.** `Directory.Build.targets` (6.2.35, #529) raises
+`error RAGNET0001` when a VSTest filter reaches a project MTP runs, hooked
+`BeforeTargets="InvokeTestingPlatform"` so that it **arms itself for any project adopting MTP later** —
+its comment says so in those words. The moment the property lands, **`dotnet test --filter` becomes an
+error across the whole repository.** That is correct: the filter was previously ignored in silence,
+running every test in the assembly while appearing to narrow. And the guard already emits a
+copy-pasteable replacement naming the native runner and `-class`. **6.2.35 built exactly the right
+guard for a migration nobody had scheduled**, which is this phase's one piece of luck. The phase must
+therefore document the new local workflow rather than merely flip a property — silently changing how
+every contributor runs a single test is this milestone's own defect family, one layer up.
+
+**Unusually well guarded for something this structural**: the partition check catches a project
+falling out of every tier, the assembly-existence pre-check catches a project whose tests silently do
+not run, and `RepoConventions` asserts the tier-marker invariants. **What nothing covers is the
+aggregate** — that the same number of tests ran afterwards as before — so per-project counts get
+recorded before and compared after, and the totals stated here.
+
+**Fully local and unblocked**, unlike 6.1 and 6.3.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
