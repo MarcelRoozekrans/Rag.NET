@@ -34,9 +34,12 @@ for p in tests/*/*.csproj; do
 done
 ```
 
-Docker must be running for the 12 `RequiresDocker` projects. The three `RequiresLlm` projects pull
-~2 GB of models and are nightly-only — **skip them and say so in the record** rather than pretending
-the sweep was total.
+Docker must be running for the 12 `RequiresDocker` projects. ~~The three `RequiresLlm` projects pull~~
+**Measured 2026-09-12: exactly one project declares `<RequiresLlm>true</RequiresLlm>` —
+`Rag.NET.E2ETests`.** The plan said three, from `grep -l "RequiresLlm"`, which also matches the two
+projects that merely mention the string in a comment. It pulls ~2 GB of models and is nightly-only —
+**skip it and say so in the record** rather than pretending the sweep was total. So the sweep covers
+**77 of 78**, not 75.
 
 ---
 
@@ -47,10 +50,10 @@ the sweep was total.
 **Nothing in the repository asserts that the same number of tests ran after a runner change** (design
 §6). This task is the only thing standing between "the migration works" and "the migration is green".
 
-- [ ] **Step 1: Start Docker**, or the 12 Docker-tier projects report a failure that is about the
+- [x] **Step 1: Start Docker**, or the 12 Docker-tier projects report a failure that is about the
   daemon rather than the runner.
 
-- [ ] **Step 2: Build, then run the loop above and save the output**
+- [x] **Step 2: Build, then run the loop above and save the output**
 
 ```bash
 dotnet build Rag.NET.slnx -c Release
@@ -60,10 +63,24 @@ dotnet build Rag.NET.slnx -c Release
 
 Put the file somewhere outside the repository — a scratchpad, not `docs/`.
 
-- [ ] **Step 3: Record the totals in this file**
+- [x] **Step 3: Record the totals in this file**
 
-Number of projects run, total passed, total skipped, and the three `RequiresLlm` projects named as
-deliberately excluded. **A per-project list is what Task 4 compares against**, so keep the file.
+Number of projects run, total passed, total skipped, and the `RequiresLlm` project named as
+deliberately excluded. **A per-project list is what Task 2 compares against**, so keep the file.
+
+**MEASURED 2026-09-12, on `feat/6241-mtp-migration` before any change, VSTest runner, Docker up:**
+
+| | |
+|---|---|
+| projects run | **77** of 78 |
+| total tests | **5336** |
+| skipped | **138** |
+| failed | **0** |
+| excluded | `Rag.NET.E2ETests` (`RequiresLlm`, nightly-only, ~2 GB of models) |
+
+Per-project output kept at `<scratchpad>/mtp-before.txt`. Every line parsed to a count — no project
+produced unrecognised output, which matters because an unparsed line is indistinguishable from a
+project that ran nothing.
 
 ---
 
@@ -163,6 +180,30 @@ assuming:
 ```bash
 grep -rln "dotnet test" --include=*.md . | grep -vE "docs/plans/|docs/planning/|pre-push-review|node_modules"
 ```
+
+**TASK 3 IS LARGER THAN THE DESIGN THOUGHT, AND PART OF IT IS ALREADY BROKEN.**
+
+`docs/reference/ci.md` is the contributor-facing document (there is no `CONTRIBUTING.md`, and
+`README.md` never says `dotnet test`). It contains **five documented `dotnet test … --filter`
+commands** — lines ~128, ~213, ~312, ~333, ~354.
+
+**Three of them target `Rag.NET.Benchmarks.Quality.IntegrationTests`**, which has been MTP since
+#275 — and the same document says so two hundred lines further down:
+
+> `Rag.NET.Benchmarks.Quality.IntegrationTests` sets
+> `<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>`, so `dotnet test` routes
+> through Microsoft.Testing.Platform in-process.
+
+So 6.2.35 shipped a guard that **invalidated three commands in its own repository's CI reference and
+did not update them**. They should be erroring with `RAGNET0001` today, before this phase changes
+anything. Verify that empirically in Step 1 rather than inferring it — if they do *not* error, the
+guard has a gap and that is a bigger finding than this phase.
+
+The remaining two (lines ~128, ~213) target VSTest projects and work today; **this phase is what
+breaks them.**
+
+So Task 3 covers three states, not one: commands already broken and undocumented as such, commands
+this phase breaks, and the general workflow note. All five need rewriting to the native-runner form.
 
 - [ ] **Step 1: Establish what now fails, by running it**
 
@@ -279,7 +320,7 @@ as the final separate commit, for the reason stated in Task 4.
 contributor-facing testing documentation has not been located and guessing a path is how 6.2.40's plan
 claimed a test project did not exist.
 
-**Known weakness** — the three `RequiresLlm` projects are excluded from every sweep, because they pull
-~2 GB of models and are nightly-only. So the phase ships having verified **75 of 78** projects under
-MTP, and the record must say so rather than claiming a complete sweep. The nightly run after merge is
+**Known weakness** — one `RequiresLlm` project (`Rag.NET.E2ETests`) is excluded from every sweep,
+because it pulls ~2 GB of models and is nightly-only. So the phase ships having verified **77 of 78**
+projects under MTP, and the record must say so rather than claiming a complete sweep. The nightly run after merge is
 what covers the remainder, and it is worth watching rather than assuming.
