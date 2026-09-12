@@ -895,6 +895,24 @@ one-off types. Turning a gating check permanently red for commits nobody can ame
 people to ignore it, so the start point is the commit that introduced `.commitlintrc.yml`, and
 the job lints the pull request's base-to-head range only.
 
+### Catching a long commit header before you push
+
+`commitlint` runs in CI only, and it lints **every commit a pull request adds** — not just the tip.
+A header over 100 characters therefore fails after the push, and if the offending commit is not the
+tip, fixing it costs a rebase rather than an amend.
+
+A tracked hook catches it at `git commit` instead. Enable it once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+It checks **header length only**. It is not a local reimplementation of commitlint — this repository
+tunes `type-enum`, `subject-case` and `body-max-line-length` in `.commitlintrc.yml`, and a second
+implementation of those rules would drift from the first. CI remains authoritative.
+
+**The hook does nothing until you run that line.** It is tracked, not installed.
+
 ### The gated release
 
 The `release-please.yml` workflow is fully wired and, unlike the push, **cannot be rehearsed**:
