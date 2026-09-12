@@ -1,6 +1,53 @@
 # Session State
 
-**Last updated:** 2026-09-12 — **complete, not yet pushed, and its final whole-branch review's
+**Last updated:** 2026-09-12 — **at the merge, as the previous nine were.** 6.2.42 merged as #572;
+this entry was written from the session that built it, on `chore/6242-merged`.
+
+**THE GUARDS CAUGHT THINGS WHILE BEING BUILT, WHICH IS THE ONLY EVIDENCE THAT COUNTS FOR THIS
+PHASE.** Two findings are worth carrying forward more than the guards themselves:
+
+1. **The em-dash test earned its keep the day it was written.** `${#header}` counted **bytes under
+   bash** — not only under `sh`, which is all the plan predicted — because this environment sets
+   neither `LANG` nor `LC_ALL`. The first fix, `export LC_ALL=C.UTF-8`, then turned out to fail
+   **silently** on a machine lacking that locale: `export` exits 0 regardless, so `set -e` never
+   fires, and the hook would have rejected valid headers while printing "the header is 104
+   characters" — a message indistinguishable from the guard working. It now probes a known
+   one-character, three-byte string and refuses to run if the count is wrong.
+2. **Guard B's wirings were covered by nothing, and only the final whole-branch review saw it.**
+   Deleting the hint call from either Onnx file failed no test on any machine; on a corpus-less
+   runner — every CI runner — the composition test took its null branch and passed even with the
+   suffix removed. **The sentences were tested; nothing tested that anything used them.** Two
+   task-scoped reviews missed this because each saw only its own diff.
+
+**A PREMISE WAS FALSIFIED BY EVIDENCE RATHER THAN LEFT OPEN.** The design and plan both recorded
+the Linux MTP log encoding as unverified, and the BOM sniff was written to hedge it. Docker was
+available, so it was checked instead of reasoned about — twice, by the implementer and
+independently by the reviewer, each in a fresh `mcr.microsoft.com/dotnet/sdk:10.0` container with
+no reused Windows build output. **Linux produces the identical UTF-16LE with a `fffe` BOM**, so
+`iconv` fires on both platforms and `cat` is the dead branch. The stale caveat was corrected in the
+implementation plan; the design never made the claim.
+
+**WHAT THE PHASE DELIBERATELY DID NOT DO.** Guard A's **adoption cannot be tested** — a hook does
+nothing until someone runs `git config core.hooksPath .githooks`, so it helps contributors who opt
+in and nobody else, including a future session on a fresh clone. The *enumerate-the-suites* rule
+stays prose, because a guard for it would have to make the judgement the rule disciplines. Neither
+is an oversight; both are recorded in the design, the tests' own remarks and the phase record.
+
+**ONE GAP FOUND AT THE END AND NOT CLOSED.**
+`tests/Rag.NET.Chunking.IntegrationTests/LateChunkingIntegrationTests.cs:46` and `:96` carry the
+**identical** skip sentence Guard B fixed elsewhere, gated on the same `RAGNET_ONNX_EMBED_*` pair
+set by the same `env.sh`, with no hint — and `OnnxEmbeddingGeneratorSmokeTests`' own class doc names
+that file as sharing the gate. Guard B's premise applies to them exactly. Related:
+`SkipReasonWiringTests` pins a **hardcoded four-site inventory**, so it cannot notice a site that
+never got a hint. `SecurityDocumentationTests` is the stronger precedent in this repository — it
+derives its list from the filesystem, so it fails when someone **adds** one. **Filed as #575.**
+
+**Milestone 6 remains two account-blocked phases** — 6.1 Recorded Responses and 6.3 Release v1.0.
+**Locally finishable:** #184 (breaking, pre-1.0 is the moment), #559 and #560 from 6.2.40, #571's
+emulator race (this phase made it legible, deliberately without chasing it), the gap above, and
+AI.Sentinel #205 in the other repository. **#314 stays open**, correctly attributed to SDK support.
+
+**Previously, 2026-09-12 — complete, not yet pushed, and its final whole-branch review's
 findings are fixed.** A final whole-branch review of `feat/6242-mechanical-guards` found ten
 findings — one guard test reading raw YAML text where `TestProject.ReadWorkflowCommands` already
 existed for exactly that mistake; three "BEIR present but unreferenced" hint call sites wired to
