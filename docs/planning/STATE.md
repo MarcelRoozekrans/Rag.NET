@@ -1,6 +1,41 @@
 # Session State
 
-**Last updated:** 2026-09-12 — **at the merge, as the previous seven were.** 6.2.41 merged as #567;
+**Last updated:** 2026-09-12 — **at the merge, as the previous eight were.** 6.2.42 was scoped and
+merged as #570; this entry was written from the session that scoped it, on
+`feat/6242-mechanical-guards`.
+
+**CI WENT RED ON A MARKDOWN-ONLY PR AND THE LOG COULD NOT SAY WHICH TEST FAILED.** #570 changes
+nothing but documentation, and `build-test (ubuntu-latest)` reported
+`Rag.NET.Ingestion.AzureServiceBus.Tests` at **81 passed / 1 failed / 82 total**. Main's run twenty
+minutes earlier reported **82 / 82** on the same runner and tier. Identical totals mean no test was
+added or removed, so the diff could not be the cause. **Re-running the identical commit passed**,
+which settles it as a flake. The suite is the one #246 was filed against — *MessageLockLost on
+ubuntu, emulator race* — and **#246 is closed**, so nothing is currently tracking it.
+
+**6.2.41 REMOVED FAILURE DETAIL FROM CI OUTPUT, AND THIS IS THE FIRST RED BUILD SINCE.** Between
+`Run tests:` and `Failed! - Failed: 1` the job log contains **nothing** — no test name, no assertion,
+no stack trace, and zero GitHub annotations. The MTP migration is the cause and it is not
+ubuntu-specific: reproduced with a throwaway two-test project outside the repository, where a
+deliberate `Assert.Equal` failure produced **zero** console mentions of either the test name or the
+assertion. The detail is written to `<project>_net10.0_x64.log` under
+`bin/Release/net10.0/TestResults/`, which is **never uploaded as an artifact** and dies with the
+runner. The file is **UTF-16LE with a BOM**, so a plain `cat` in a workflow prints garbled spaced-out
+text; `iconv -f UTF-16 -t UTF-8` recovers it cleanly, yielding the `failed <Type>.<Method>` line, the
+assertion, expected/actual, and the stack.
+
+**Why 6.2.41's pre-push review missed it.** That review verified test *counts* were identical before
+and after the migration, which was true and is what it claimed. **Every run in the sweep was green,
+so the failure path was never exercised once.** It checked that passing still worked and never
+checked that failing still reported. A migration changes both paths; verifying one is half a
+verification. **This is the same family as the three rules below** — the check that was run was the
+one with a command attached, and the one that mattered had never been written down at all.
+
+**Not yet filed, pending the operator's call:** the diagnosability regression, whose fix is a few
+lines in `ci.yml` and `nightly.yml` dumping the log through `iconv` when a project fails, and the
+#246 recurrence. A fresh issue is the honest form for the latter — reopening #246 would assert it was
+the same test, which is precisely what can no longer be proven.
+
+**Previously, 2026-09-12 — at the merge, as the previous seven were.** 6.2.41 merged as #567;
 this entry was written from the session that built it, on `chore/6241-merged`.
 
 **THE PHASE'S PREMISE WAS FALSE AND TESTING IS WHAT SHOWED IT.** 6.2.41 existed to unblock #314.
