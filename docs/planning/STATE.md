@@ -1,6 +1,48 @@
 # Session State
 
-**Last updated:** 2026-09-12 — **at the merge, as the previous six were.** 6.2.40 merged as #561 at
+**Last updated:** 2026-09-12 — **at the merge, as the previous seven were.** 6.2.41 merged as #567;
+this entry was written from the session that built it, on `chore/6241-merged`.
+
+**THE PHASE'S PREMISE WAS FALSE AND TESTING IS WHAT SHOWED IT.** 6.2.41 existed to unblock #314.
+It does not: `TestingPlatformDotnetTestSupport` opts into the VSTest *bridge*, and MTP 2.3.3 removed
+the bridge. The bump built clean and then ran **nothing** — 77 of 77 projects, no test output. On SDK
+10.0.401 neither `global.json` runner value works; `"MicrosoftTestingPlatform"` is rejected by the
+SDK's own CLI parser. **#314 is blocked on SDK support, not on this repository**, and the diagnosis
+posted there earlier — which said the opposite — was corrected on the PR rather than left standing.
+The migration shipped anyway, on its own merits, after re-asking because the justification had
+changed.
+
+**THE BEIR CACHE WAS PROVISIONED AND I DID NOT SOURCE `env.sh`. THIRD TIME.** This file already
+carried the note — *"source its env.sh BEFORE writing 'unprovisioned' anywhere; two sessions have now
+called it missing when it was there"* — and it happened again. Sourcing it took
+`Embeddings.Onnx.Tests` from **10 skips to 0**. Consequence for 6.2.41: both sweeps ran unprovisioned,
+so the before/after comparison is sound (same state twice) but **~118 of the benchmark project's 267
+tests never executed under either runner**. Verification is project-granular, not test-granular, and
+CI will not close that gap because CI runs unprovisioned too. **Closed the same day by re-running that
+project provisioned under MTP: 175 passed / 92 skipped / 0 failed, against 149/118 unprovisioned —
+26 more tests executed, all passing.** The residual 92 are budget-, secret- or capability-gated.
+
+**Three rules were recorded in this file and then broken by the session that recorded them**, which
+is the thing worth carrying forward more than any individual finding:
+
+1. *Enumerate suites, do not reason about which are safe to skip* — then 6.2.40 asserted a test
+   project did not exist.
+2. *Commitlint caps headers at 100 and lints every commit a PR adds* — then a 104-character header
+   failed CI on #567, on a commit that was not the tip.
+3. *Source `env.sh` before writing "unprovisioned"* — then both 6.2.41 sweeps ran unprovisioned.
+
+**The pattern is not missing rules. It is that prose rules are not checked at the moment they
+apply.** What worked in 6.2.41 was the count-keyed comparison and the `git diff` constraint check —
+both mechanical. What failed was everything expressed as advice. Prefer a command or a guard over a
+sentence.
+
+**Milestone 6 is back to two remaining phases, both account-blocked** — 6.1 and 6.3. **Locally
+finishable:** #184 (breaking, pre-1.0 is the moment), #559 and #560 from 6.2.40, the ~118 unverified
+benchmark tests above, and AI.Sentinel #205 in the other repository. **#314 stays open**, correctly
+attributed; worth muting if it will keep failing, since a permanently red dependency PR is what
+started this.
+
+**Previously, 2026-09-12 — at the merge, as the previous six were.** 6.2.40 merged as #561 at
 20:23 on 2026-09-11; this entry was written from the session that built it, on `chore/6240-merged`.
 
 **THE SAME MISTAKE TWICE IN ONE WEEK, AND WRITING THE RULE DOWN DID NOT PREVENT THE SECOND.**
