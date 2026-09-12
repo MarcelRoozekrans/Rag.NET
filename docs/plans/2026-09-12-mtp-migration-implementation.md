@@ -141,14 +141,14 @@ git commit -m "build(tests): opt every test project into Microsoft.Testing.Platf
 
 **Files:** none.
 
-- [ ] **Step 1: Rebuild and re-run the full loop**
+- [x] **Step 1: Rebuild and re-run the full loop**
 
 ```bash
 dotnet build Rag.NET.slnx -c Release
 # the loop again, redirected to /tmp/mtp-after.txt
 ```
 
-- [ ] **Step 2: Diff the two runs**
+- [x] **Step 2: Diff the two runs**
 
 ```bash
 diff /tmp/mtp-before.txt /tmp/mtp-after.txt
@@ -162,12 +162,32 @@ change shape. **Do not expect differences in counts.** Compare project by projec
   catch under VSTest semantics,
 - a project **failing** is a real incompatibility and stops the phase.
 
-- [ ] **Step 3: Record the comparison in this file**
+- [x] **Step 3: Record the comparison in this file**
 
 Totals before and after, and any project whose count moved, with the reason. **If every count matches,
 say so explicitly** — a phase that claims a migration preserved coverage should show the arithmetic.
 
-- [ ] **Step 4: Run the guards that know about tiers**
+**MEASURED 2026-09-12. Every count matches exactly.**
+
+| | before (VSTest) | after (MTP) |
+|---|---|---|
+| projects run | 77 | **77** |
+| total tests | 5336 | **5336** |
+| skipped | 138 | **138** |
+| failed | 0 | **0** |
+| projects whose (passed, skipped, total) changed | — | **0** |
+
+**The output format changed and the counts did not**, which is the distinction this task exists to
+make. MTP prints `Passed! - Failed: 0, Passed: 5, …` against VSTest's
+`Passed!  - Failed:     0, Passed:     5, …`, and reports the framework as `net10.0|x64` rather than
+`net10.0`. A comparison keyed on the text would have reported 77 differences; one keyed on the parsed
+triple reports none.
+
+`RepoConventions` — the suite holding the tier invariants and `BuildGuardTests`, which covers the
+`RAGNET0001` guard whose blast radius this phase widens from one project to all — **101 passed / 2
+pre-existing skips, unchanged.**
+
+- [x] **Step 4: Run the guards that know about tiers**
 
 ```bash
 dotnet test tests/Rag.NET.RepoConventions.Tests --no-build -c Release
