@@ -8105,7 +8105,7 @@ runs unprovisioned too.
 PackageValidation **23**, docs site builds. **Pre-push review PASS** —
 `docs/pre-push-review-2026-09-12-0914.md`.
 
-### Phase 6.2.42: Two Rules That Were Written Down and Broken Anyway [status: complete 2026-09-12 — three guards built, tested, and pre-push reviewed; PR pending]
+### Phase 6.2.42: Two Rules That Were Written Down and Broken Anyway [status: complete 2026-09-12 — three guards built, tested, pre-push reviewed, and MERGED as #572]
 **Surface:** Infra
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-12-mechanical-guards-design.md`
