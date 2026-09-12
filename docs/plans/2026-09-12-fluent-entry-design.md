@@ -197,9 +197,13 @@ services.AddRagNet(rag => rag
 
 ## 4. The documentation correction
 
-`docs/getting-started.md` gains the single-statement form, and the *"Register them before calling
-`AddRagNet`"* sentence is corrected or deleted **according to what §2.1 proves, not according to this
-document's expectation**.
+**RESOLVED 2026-09-12.** §2.1's test passed in both orders, including an assertion that each
+container hands back the exact instances registered. **The constraint does not exist**, so the
+*"Register them before calling `AddRagNet`"* sentence is replaced with one saying order does not
+matter and why — Rag.NET resolves both services when the pipeline is built, not when it is registered.
+
+The single-statement rewrite is **not** part of this, since the builder methods that would have made
+it possible were scoped out.
 
 `DocsCodeExamplesTests` already resolves every type named in a `docs/` example against the shipped
 assemblies, so a rewritten quickstart is checked rather than merely plausible.
