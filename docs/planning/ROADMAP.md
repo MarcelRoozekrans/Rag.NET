@@ -8005,6 +8005,7 @@ PASS** — `docs/pre-push-review-2026-09-11-1732.md`, 0 blockers and 0 warnings.
 **Surface:** Infra
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-12-mtp-migration-design.md`
+**Plan:** `docs/plans/2026-09-12-mtp-migration-implementation.md`
 
 **Goal:** opt every test project into Microsoft.Testing.Platform, which unblocks the xunit v4 bump and
 changes how contributors run a single test.
@@ -8053,6 +8054,47 @@ aggregate** — that the same number of tests ran afterwards as before — so pe
 recorded before and compared after, and the totals stated here.
 
 **Fully local and unblocked**, unlike 6.1 and 6.3.
+
+**BUILT 2026-09-12. Plan: `docs/plans/2026-09-12-mtp-migration-implementation.md`.**
+
+**THE PHASE'S CENTRAL PREMISE WAS FALSIFIED BY TESTING IT, AND THE GOAL ABOVE IS WRONG.** Migrating
+does **not** unblock #314. `TestingPlatformDotnetTestSupport` opts into the VSTest *bridge*, and MTP
+2.3.3 — which `xunit.v3` 4.0.0 pulls — **removed the bridge**. The property works under xunit v3's
+older MTP and does nothing under v4's. Applied on top of the migration, the bump **built clean** and
+then produced **no test output at all** for 77 of 77 projects, with the same error as before. Both
+`global.json` runner values were then tried on SDK 10.0.401: `"VSTest"` gives the MTP error, and
+`"MicrosoftTestingPlatform"` is **rejected by the SDK's own CLI parser**. So xunit v4 has no working
+`dotnet test` path on this SDK; the blocker is SDK support, not this repository. **Bump reverted, and
+the #314 diagnosis corrected on the PR** — the first comment there was wrong and said so.
+
+**The migration shipped anyway, on its own merits and by the operator's call once the justification
+changed.** In-process MTP avoids the VSTest adapter deadlock that motivated #275, and skip reasons
+become visible — which matters on suites gated behind `RAGNET_*` variables. **Coverage proven rather
+than asserted: 77 projects, 5336 tests, 138 skips, identical per project before and after.** The
+output format changed (`net10.0|x64`, different spacing) and the counts did not — a text-keyed
+comparison would have reported 77 differences; a count-keyed one reported none.
+
+**THE DOCUMENTATION DAMAGE WAS FOUR TIMES LARGER THAN SCOPED, AND MOSTLY PRE-EXISTING.** The phase
+expected to fix a handful of `--filter` commands. Enumerated properly there were **thirteen**, of
+which **eleven target `Benchmarks.Quality.IntegrationTests` and had been broken since #275 made it
+MTP** — verified empirically by reverting the migration and watching a documented command still fail.
+**6.2.35 invalidated eleven documented commands and nobody noticed for a fortnight.** All thirteen
+are now native-runner form. *(The count of "five" came from a truncated grep — the third such error
+in this session.)*
+
+**One capability is genuinely gone and is documented rather than papered over.** Three commands used
+`--filter "DisplayName~X&DisplayName~<dataset>"` to run a single BEIR dataset. Neither `-method`
+wildcards nor the query filter language addresses a theory data row — both run **all** rows — and the
+harness reads no dataset-selecting environment variable. The converted commands say inline that they
+now run every dataset, because for BEIR that is a large cost difference.
+
+**`--filter` is now refused repo-wide** by 6.2.35's `RAGNET0001`, which armed itself exactly as its
+comment promised — no change to the guard was needed. `ci.md`'s section describing the one project
+that refused filters now describes the rule rather than the exception.
+
+**Nothing entered `src/`**, checked by `git diff`. Build 0 warnings, RepoConventions **101**,
+PackageValidation **23**, docs site builds. **Pre-push review PASS** —
+`docs/pre-push-review-2026-09-12-0914.md`.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to

@@ -44,6 +44,9 @@
          names the native xunit v3 runner, which honours -class, -method and -filter. See
          docs/reference/ci.md. The guard is hooked to MTP's runner rather than to this property, so
          it arms itself for any project that adopts MTP later. -->
+    <!-- Redundant since phase 6.2.41 set this for every test project in tests/Directory.Build.props.
+         Kept because the reasoning above it is the only record of why Microsoft.NET.Test.Sdk stays
+         referenced, and deleting the line to tidy a duplicate would take that with it. -->
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 

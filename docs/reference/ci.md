@@ -124,8 +124,8 @@ green on 2026-08-03 — the test's first run anywhere:
 dotnet build tests/Rag.NET.Parsers.Pdf.Tests -c Release -p:EnableOcr=true
 mkdir -p tessdata && curl -fsSL -o tessdata/eng.traineddata \
   https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata
-RAGNET_TESSDATA="$PWD/tessdata" dotnet test tests/Rag.NET.Parsers.Pdf.Tests --no-build -c Release \
-  --filter "FullyQualifiedName~OcrFallback_RealTesseract"
+RAGNET_TESSDATA="$PWD/tessdata" tests/Rag.NET.Parsers.Pdf.Tests/bin/Release/net10.0/Rag.NET.Parsers.Pdf.Tests.exe -c Release \
+  -method "*OcrFallback_RealTesseract*"
 ```
 
 The nightly still supplies the secret; it is harmless there and starts mattering only if someone
@@ -210,7 +210,7 @@ mkdir -p "$RAGNET_WHISPER_MODEL_DIR"
 curl -fsSL -o "$RAGNET_WHISPER_MODEL_DIR/ggml-base.bin"   https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin
 echo "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe  $RAGNET_WHISPER_MODEL_DIR/ggml-base.bin"   | sha256sum -c -
 
-dotnet test tests/Rag.NET.Parsers.Audio.Tests --filter RealTranscriptionTests
+tests/Rag.NET.Parsers.Audio.Tests/bin/Release/net10.0/Rag.NET.Parsers.Audio.Tests.exe \n  -class "*RealTranscriptionTests"
 ```
 
 The download is optional: with the directory set but empty, the parser fetches the model itself on
@@ -308,8 +308,8 @@ the job's presence report also prints the variable as unset, so a log reader is 
 were off rather than left to infer it from a test count. To run one:
 
 ```bash
-RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build \
-  --filter "DisplayName~BeirRealChunkingTests&DisplayName~arguana"
+RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+  -class "*BeirRealChunkingTests"   # every dataset; see "Selecting one dataset"
 ```
 
 **`RAGNET_BEIR_RUN_INDEX` — repeat runs, for the cost measurement only.** Phase 5.1 publishes no
@@ -329,8 +329,8 @@ comparability rule requires anyway. To measure both .NET entrants twice:
 ```bash
 for i in 1 2; do
   RAGNET_BEIR_LONG_RUNS=1 RAGNET_BEIR_RUN_INDEX=$i \
-    dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build \
-    --filter "FullyQualifiedName~BeirComparisonControlTests"
+    tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+    -class "*BeirComparisonControlTests"
 done
 ```
 
@@ -350,8 +350,8 @@ a dump the data cannot support — below `2` it **throws** rather than skipping,
 one-run table to fall back to:
 
 ```bash
-RAGNET_COST_MATRIX_RUNS=3 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests \
-  --no-build --filter "DisplayName~DumpsTheGatedCostMatrix"
+RAGNET_COST_MATRIX_RUNS=3 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+  -method "*DumpsTheGatedCostMatrix*"
 ```
 
 A cell whose sidecars are missing or whose spread is past the bar **fails** and is named, along
@@ -437,8 +437,8 @@ echo "5d3e70fd0c9ff14b9b5169a51e957b7a9c74897afd0a35ce4bd318150c1d4d4a  $dir/mod
 echo "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3  $dir/vocab.txt"  | sha256sum -c -
 
 RAGNET_ONNX_RERANK_MODEL="$dir/model.onnx" RAGNET_ONNX_RERANK_VOCAB="$dir/vocab.txt" \
-RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build \
-  --filter "DisplayName~UnderCrossEncoderRerank&DisplayName~scifact"
+RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+  -method "*UnderCrossEncoderRerank*"   # every dataset; see "Selecting one dataset"
 ```
 
 **The SPLADE cell needs a second model, which the nightly also does not provision** — for the reason
@@ -486,8 +486,8 @@ inputs, and the fact dumps the .NET-side vector for each one (the full procedure
 
 ```bash
 RAGNET_IDENTITY_BATTERY_DIR="$RAGNET_BEIR_CACHE/identity-battery" \
-  dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests \
-  --filter "DisplayName~DumpsEachBatteryInputsVector"
+  tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+  -method "*DumpsEachBatteryInputsVector*"
 ```
 
 **The answer-level GraphRAG evaluation (Phase 5.2.2) has three more, and they gate spend, not
@@ -510,13 +510,13 @@ budget cell like the rest of the graph work):
 # Pilot: 100 stratified queries, all three arms, generating what the cache lacks (~$1 derived).
 RAGNET_GRAPHRAG_ANSWERS_GENERATE=1 RAGNET_GRAPHRAG_ANSWERS_MAX_QUERIES=100 \
 RAGNET_GRAPHRAG_ANSWERS_ARMS=dense,local,global \
-RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build \
-  --filter "FullyQualifiedName~BeirGraphRagAnswerTests"
+RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+  -class "*BeirGraphRagAnswerTests"
 
 # Full run, all 2,255 judged and 301 null queries; drop GENERATE to replay only, which is what the pin checks.
 RAGNET_GRAPHRAG_ANSWERS_GENERATE=1 \
-RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build \
-  --filter "FullyQualifiedName~BeirGraphRagAnswerTests"
+RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+  -class "*BeirGraphRagAnswerTests"
 ```
 
 ### Self-query, `RAGNET_SELF_QUERY_GENERATE`
@@ -1009,12 +1009,14 @@ The explicit `dotnet build` before any `--no-build` run is load-bearing rather t
 Warnings are errors across the whole solution (`Directory.Build.props`), so CI needs no extra
 strictness flag — a warning fails the build wherever it is built.
 
-### Narrowing a run: `--filter`, and the one project that refuses it
+### Narrowing a run: `--filter` is refused everywhere
 
-`--filter` works normally everywhere except **`tests/Rag.NET.Benchmarks.Quality.IntegrationTests`**,
-where it is **refused with `error RAGNET0001`** rather than silently ignored.
+**`--filter` no longer works with `dotnet test` anywhere in this repository.** It is **refused with
+`error RAGNET0001`** rather than silently ignored, on every test project.
 
-That project sets `TestingPlatformDotnetTestSupport`, so Microsoft.Testing.Platform is its runner.
+Since phase 6.2.41, `tests/Directory.Build.props` sets `TestingPlatformDotnetTestSupport` for every
+test project, so Microsoft.Testing.Platform is the runner throughout. Before that it was one project,
+and this section described the exception; the exception is now the rule.
 `--filter` sets the MSBuild property `VSTestTestCaseFilter`, which MTP does not apply: it raises the
 warning `MTP0001` and then **runs every test in the assembly**. Measured 2026-09-10 — a filter naming
 one class ran **267** tests, 149 of them for real. The failure mode is not an error but a long green
@@ -1022,7 +1024,9 @@ run whose results are attributed to the wrong test; during #495 it produced exac
 self-query prompts while they were read as deep-research ones.
 
 The guard lives in the repository root `Directory.Build.targets` and arms itself for any project MTP
-runs, so nothing has to be remembered when a second one adopts it.
+runs. **That is why the 6.2.41 migration needed no change to it**: it was written to key on the
+runner rather than on the property, and it began covering all 78 projects the moment the property
+moved into the shared props file.
 
 **Use the native xunit v3 runner instead**, which honours `-class`, `-method` and `-filter` (query
 syntax):
@@ -1032,6 +1036,20 @@ dotnet build tests/Rag.NET.Benchmarks.Quality.IntegrationTests -c Release
 
 ./tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirDeepResearchTests
 ```
+
+#### Selecting one dataset
+
+**One thing `--filter` could do that the native runner cannot: select a single theory data row.**
+Commands in this file used to read `--filter "DisplayName~BeirRealChunkingTests&DisplayName~arguana"`
+to run one BEIR dataset. Neither the simple filters nor the query filter language addresses a data
+row — `-method` and `-filter` both select the *theory* and run **all** of its rows. Verified
+2026-09-12.
+
+For BEIR that is a real cost difference, so the converted commands in this file say so inline rather
+than quietly running every dataset. There is no environment variable that narrows the dataset either
+— `RAGNET_BEIR_CACHE`, `RAGNET_BEIR_LONG_RUNS` and `RAGNET_BEIR_RUN_INDEX` are the only ones the
+harness reads. If you need one dataset, the options today are to run them all, or to add a selector
+to the harness.
 
 **It is worth preferring for a second reason:** it prints per-test output and the **skip reason** for
 skipped tests, which `dotnet test` suppresses. On this project, where almost everything is gated
