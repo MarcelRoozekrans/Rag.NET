@@ -8229,7 +8229,7 @@ turned to mojibake. The implementation makes a test fail on purpose and reads th
 **A green CI run exercises none of this, which is precisely how 6.2.41 shipped the regression**: its
 sweep verified that passing still worked and never once exercised failing.
 
-### Phase 6.2.43: The Entry Point That Was Already Fluent [status: complete 2026-09-12 in #577 — shipped a documentation correction and the test that earned it; the builder methods were scoped out before any code]
+### Phase 6.2.43: The Entry Point That Was Already Fluent [status: complete 2026-09-12, merged as #577 — shipped a documentation correction and the test that earned it; the builder methods were scoped out before any code]
 **Surface:** API
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-12-fluent-entry-design.md`
