@@ -230,9 +230,36 @@ The remaining two (lines ~128, ~213) target VSTest projects and work today; **th
 breaks them.**
 
 So Task 3 covers three states, not one: commands already broken and undocumented as such, commands
-this phase breaks, and the general workflow note. All five need rewriting to the native-runner form.
+this phase breaks, and the general workflow note.
 
-- [ ] **Step 1: Establish what now fails, by running it**
+~~All five need rewriting to the native-runner form.~~ **THERE ARE THIRTEEN, NOT FIVE.** The count of
+five came from a `grep … | head -6` read as a complete list — the third truncated-grep error in this
+session, and the second in this phase. Enumerated properly:
+
+| Target | Commands | State before this phase |
+|---|---|---|
+| `Benchmarks.Quality.IntegrationTests` | **11** | **already broken** since #275 made it MTP |
+| `Parsers.Pdf.Tests`, `Parsers.Audio.Tests` | **2** | broken *by* this phase |
+
+(`benchmarks.md` carries two more `--filter` flags, but they belong to BenchmarkDotNet, a different
+tool, and are untouched.)
+
+**So 6.2.35 invalidated eleven documented commands, not three, and it went unnoticed for a
+fortnight.** Verified empirically rather than inferred: with the migration temporarily reverted, a
+documented command against that project still fails with `RAGNET0001`.
+
+**The operator chose to fix all thirteen here** over fixing only the two this phase breaks, on the
+grounds that shipping a migration while knowingly leaving broken documented commands is the failure
+this phase is criticising 6.2.35 for.
+
+**One capability is genuinely gone and is documented rather than papered over.** Three commands used
+`--filter "DisplayName~X&DisplayName~<dataset>"` to run a *single BEIR dataset*. Measured 2026-09-12:
+neither `-method` wildcards nor the query filter language addresses a theory data row — both select
+the theory and run **all** its rows — and the harness reads no dataset-selecting environment
+variable. The converted commands say inline that they now run every dataset, because for BEIR that is
+a large cost difference and silently changing it would be worse than the filter being gone.
+
+- [x] **Step 1: Establish what now fails, by running it**
 
 ```bash
 dotnet test tests/Rag.NET.Tests --no-build -c Release --filter "FullyQualifiedName~EnsembleBehaviorTests"
@@ -244,14 +271,14 @@ the documentation quotes it, because a reader who hits it searches for what they
 Before this phase that command worked on 77 of 78 projects. After it, it works on none. **That is the
 migration's felt cost and the reason this task exists.**
 
-- [ ] **Step 2: Document the replacement**
+- [x] **Step 2: Document the replacement**
 
 State plainly: `--filter` no longer works with `dotnet test` anywhere in this repository, because
 Microsoft.Testing.Platform ignores the VSTest filter property and the repository refuses the silent
 version rather than allowing it. Give the native-runner form the guard already prints, with a real
 worked example against a real test class.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add <the documents changed>

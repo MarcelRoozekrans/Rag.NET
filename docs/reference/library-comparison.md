@@ -364,8 +364,8 @@ derived or third-party data and never are.
   # Prove the embedder first; a diff invalidates the stage. The battery has two halves:
   uv run python identity_check.py --write-battery "$RAGNET_BEIR_CACHE/identity-battery"
   RAGNET_IDENTITY_BATTERY_DIR="$RAGNET_BEIR_CACHE/identity-battery" \
-    dotnet test ../../tests/Rag.NET.Benchmarks.Quality.IntegrationTests \
-    --filter "DisplayName~DumpsEachBatteryInputsVector"   # the .NET half: dumps <name>.txt
+    ../../tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+    -method "*DumpsEachBatteryInputsVector*"   # the .NET half: dumps <name>.txt
   uv run python identity_check.py "$RAGNET_BEIR_CACHE/identity-battery"   # all six must be OK
   uv run python run_entrant.py scifact langchain   # then arguana, llamaindex, haystack…
   ```
@@ -373,8 +373,8 @@ derived or third-party data and never are.
 - **Scoring every row** happens on the .NET side, gated like every expensive case:
 
   ```bash
-  RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests \
-    --filter "DisplayName~ThroughLangChain&DisplayName~scifact"
+  RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+    -method "*ThroughLangChain*"   # every dataset; see ci.md
   ```
 
   `BeirComparisonControlTests` is the control row, `BeirSemanticKernelDefaultsTests` the SK row,
@@ -396,11 +396,11 @@ derived or third-party data and never are.
       done
     done
     RAGNET_BEIR_LONG_RUNS=1 RAGNET_BEIR_RUN_INDEX=$i \
-      dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests \
-      --filter "FullyQualifiedName~BeirComparisonControlTests|FullyQualifiedName~BeirSemanticKernelDefaultsTests"
+      tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+      -class "*BeirComparisonControlTests" -class "*BeirSemanticKernelDefaultsTests"
   done
-  RAGNET_COST_MATRIX_RUNS=3 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests \
-    --filter "DisplayName~DumpsTheGatedCostMatrix" --logger "console;verbosity=detailed"
+  RAGNET_COST_MATRIX_RUNS=3 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+    -method "*DumpsTheGatedCostMatrix*"
   ```
 
   The machine must be otherwise idle — every figure is a latency measurement, and a full Release
