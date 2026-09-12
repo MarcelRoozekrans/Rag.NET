@@ -8111,7 +8111,11 @@ PackageValidation **23**, docs site builds. **Pre-push review PASS** —
 **Design:** `docs/plans/2026-09-12-mechanical-guards-design.md`
 
 **Goal:** convert two prose rules this repository wrote down and then broke into checks that fire by
-themselves.
+themselves, and restore CI's ability to name the test that failed.
+
+**AMENDED 2026-09-12, after the scoping PR merged.** A third guard was added the following morning —
+see §3 of the design and #571. It is a regression this milestone introduced rather than an old
+habit, and by the phase's own standard it is the strongest of the three.
 
 **NOT FROM AN ISSUE — FROM THIS REPOSITORY BREAKING ITS OWN RECORDED RULES THREE TIMES IN A DAY.**
 `STATE.md`'s 2026-09-12 entry lists them: *enumerate suites rather than reasoning about which are
@@ -8149,6 +8153,24 @@ what happened three times — `~/.cache/ragnet-beir` exists with an `env.sh`, an
 so. **No test changes which conditions it skips under** — only the wording, and only on the branch
 where the data is present but unreferenced.
 
+**Guard C: CI cannot say which test failed.** Added after scoping, from #571. **Phase 6.2.41's
+Microsoft.Testing.Platform migration removed failure detail from CI output** — between `Run tests:`
+and `Failed! - Failed: 1` a job log now carries no test name, no assertion, no stack trace and no
+annotations. On #570 that turned a one-line flake into a full log read, a count comparison against
+`main`, and a reproduction outside the repository, and **the failing test still could not be named.**
+Not ubuntu-specific and not CI-specific: reproduced with a throwaway two-test project where a
+deliberate `Assert.Equal` failure produced zero console mentions of the test or the assertion. The
+detail is written to a per-project log under `TestResults/` that no workflow uploads, so it dies with
+the runner — **and it is UTF-16LE with a BOM**, so a plain `cat` prints unreadable spaced-out text
+while `iconv -f UTF-16 -t UTF-8` recovers it. The fix is a few lines inside the failure branch
+`ci.yml` and `nightly.yml` already have. **It does not touch the #571 emulator race**; it makes the
+next occurrence legible.
+
+**Guard C outranks Guard A on this phase's own criteria.** Guard A costs one branch rebuild when it
+bites and reaches only contributors who run the `core.hooksPath` line; Guard C costs every red build
+indefinitely and reaches everyone with no opt-in. A phase named for rules that were written down and
+broken anyway should not defer the guard that would have caught the breakage it documents.
+
 **The third rule stays prose, deliberately.** A guard for "enumerate the suites" would have to know
 which suites a change could affect — the judgement the rule exists to discipline — so it would either
 run everything or guess, and a guessing guard is worse than none. Its actionable form is already in
@@ -8158,6 +8180,12 @@ use: 6.2.41's plan listed its suites as literal commands rather than describing 
 feeding it a 101-character header and asserting a non-zero exit. **What cannot be tested is
 adoption** — whether anyone runs the config line — and the record will say so rather than implying
 the rule is now enforced for everyone.
+
+**Guard C must be verified by a deliberate failure, not by a green run.** A log dump is exactly the
+change that reviews well and emits nothing — wrong path, wrong branch of the loop, or readable text
+turned to mojibake. The implementation makes a test fail on purpose and reads the test name back out.
+**A green CI run exercises none of this, which is precisely how 6.2.41 shipped the regression**: its
+sweep verified that passing still worked and never once exercised failing.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
