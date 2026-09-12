@@ -298,7 +298,7 @@ would make a revert throw away the part that worked. The bump is also the whole 
 without it leaves #314 open and the value unrealised — so it belongs in this phase rather than a
 successor.
 
-- [ ] **Step 1: Take #314's change**
+- [x] **Step 1: Take #314's change**
 
 ```
 xunit.runner.visualstudio  3.1.5 → 4.0.0
@@ -310,17 +310,43 @@ xunit.v3.extensibility.core 3.2.2 → 4.0.0
 this phase just stopped using VSTest. If nothing references it, removing it is cleaner than bumping
 it — but verify by building, not by reasoning.
 
-- [ ] **Step 2: Build and re-run the full loop a third time**
+- [x] **Step 2: Build and re-run the full loop a third time**
 
 Same commands, `/tmp/mtp-after-v4.txt`. Compare against Task 2's output. **Any count change here is
 xunit v4's doing, not the migration's**, which is exactly why the commits are separate.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit** — **NOT DONE. The bump was applied, measured, and reverted.**
 
-```bash
-git add Directory.Packages.props
-git commit -m "chore(deps): update xunit-dotnet monorepo to v4 (#314)"
-```
+**THE MIGRATION DOES NOT UNBLOCK #314, AND THE DESIGN'S CENTRAL PREMISE IS WRONG.**
+
+Applied the bump, built clean (0 warnings — the build that had been red since 2026-08-18), then ran
+the third sweep: **77 of 77 projects produced `NO OUTPUT`.** Not a format change — the same
+`Microsoft.Testing.Platform.MSBuild` 2.3.3 error as before the migration:
+
+> Testing with VSTest target is no longer supported … opt-in to the new dotnet test experience
+
+**`TestingPlatformDotnetTestSupport` is the opt-in for the VSTest *bridge*, and MTP 2.3.3 removed the
+bridge.** Under xunit v3's older MTP the property works (Task 2's 5336 matching tests are real and
+were measured). Under v4's MTP 2.3.3 it does nothing.
+
+The error asks for "the new dotnet test experience", configured in `global.json`. Both documented
+values were tried on SDK **10.0.401**:
+
+| `"test": { "runner": … }` | Result |
+|---|---|
+| `"VSTest"` | the MTP 2.3.3 error above |
+| `"MicrosoftTestingPlatform"` | **`Test runner 'MicrosoftTestingPlatform' is not supported`** — rejected by the SDK's own CLI parser |
+
+**So xunit v4 has no working `dotnet test` path on this SDK at all.** A malformed `global.json` is
+also worth knowing about: it throws in `Microsoft.DotNet.Cli.Parser`'s static constructor, which
+breaks *every* `dotnet` invocation in the repository until the file is removed.
+
+**Bump reverted.** `Directory.Packages.props` is unchanged from `main`.
+
+**This falsifies the diagnosis posted on #314**, which said the migration was what stood between that
+PR and green. It is not: the blocker is SDK support for the runner mode MTP 2.3.3 requires. #314
+needs correcting, and the phase needs a decision it no longer has an automatic answer to — see the
+note appended to Task 5.
 
 ---
 
