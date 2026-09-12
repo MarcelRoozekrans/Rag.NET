@@ -8229,6 +8229,63 @@ turned to mojibake. The implementation makes a test fail on purpose and reads th
 **A green CI run exercises none of this, which is precisely how 6.2.41 shipped the regression**: its
 sweep verified that passing still worked and never once exercised failing.
 
+### Phase 6.2.43: The Entry Point That Was Already Fluent [status: pending — added 2026-09-12]
+**Surface:** API
+**HelpWanted:** no
+**Design:** `docs/plans/2026-09-12-fluent-entry-design.md`
+
+**Goal:** close the one point where the quickstart leaves the fluent chain, and correct the
+documentation claim that put it there.
+
+**FROM #184, WHOSE PREMISE HAS DRIFTED.** The issue describes bootstrapping as "knowing which of
+several extension methods to call, across several packages, in the right order" and asks for "one
+builder where everything is configured fluently". **The builder exists and the documented quickstart
+is already fluent** — `services.AddRagNet(rag => rag.UsePgVector(…).AddPdfParser())`, with optional
+packages attaching through `TBuilder where TBuilder : IRagBuilder` returning `TBuilder`. Two of the
+issue's supporting claims no longer hold: **#181 is merged**, so "the bump is happening regardless"
+is gone, and **#161 is closed**.
+
+**A methodological note that changed the scope.** The extension surface was first counted by grep,
+and two reasonable-looking greps returned **42** and **3** for the same quantity, because C#
+signatures wrap across lines. The scope came from reading `IRagBuilder`, `RagBuilder` and
+`ServiceCollectionExtensions` instead. No count in the design is exact and none of the work derives
+from one.
+
+**What actually remains is one seam.** The model and embedder are registered outside the chain, as
+two `Microsoft.Extensions.AI` calls before it. There is no `UseChatClient` or `UseEmbeddingGenerator`
+on `RagBuilder` — checked directly; the seam is absent rather than differently named.
+
+**And the stated reason for the ordering may not exist.** `getting-started.md` says "Register them
+before calling `AddRagNet`", but every consumption found is `sp.GetService` or `sp.GetRequiredService`
+**inside a factory lambda** — resolution time, not registration time. **Recorded as a hypothesis, not
+a finding**: implementation turns it into a test, because a passing test deletes a documentation
+sentence and a failing one reveals a real constraint the new methods must respect.
+
+**Two methods, on the concrete `RagBuilder` rather than on `IRagBuilder`** — the latter is a shipped
+three-member abstraction that external packages are generic over, so adding to it would break
+implementers and buy nothing, since the `configure` callback already hands the caller a `RagBuilder`.
+Both take the `Microsoft.Extensions.AI` abstractions the library already consumes, so nothing new
+enters the dependency closure. **Chaining composes in both directions** and that is tested by
+compilation rather than assumed.
+
+**The risk most likely to fail silently is `AddChatClient`'s own behaviour.** If it wraps the client
+in middleware or telemetry, a naive `Services.AddSingleton(client)` loses it, and a test asserting
+"the client resolves" passes either way. The methods delegate to the real registrations and the check
+compares against what `AddChatClient` produces, not against a bare instance.
+
+**Additive despite #184's `breaking-change` label: every call site that compiles today still
+compiles.** Rejected explicitly rather than overlooked — provider-specific `UseOpenAI(key)`, which
+would give Rag.NET provider-shaped surface it does not own; removing or renaming any existing
+extension; adding members to `IRagBuilder`; and the options-discoverability layer, which the operator
+traded away in favour of "fewest decisions to something working".
+
+**A consequence worth flagging before it surprises the next planner.** #184 is labelled
+`breaking-change` and was the strongest remaining argument for doing breaking work before v1.0 tags.
+**If it closes additively, that argument dissolves**, and Milestone 6's remaining locally-finishable
+work no longer has a deadline attached to the release. The phase comments its findings on #184 —
+including the falsified premises — rather than closing it quietly as though the original scope had
+been delivered.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
