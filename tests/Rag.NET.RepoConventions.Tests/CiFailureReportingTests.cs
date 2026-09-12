@@ -49,16 +49,29 @@ public sealed class CiFailureReportingTests
         }
     }
 
-    /// <summary>The dump must decode UTF-16 rather than printing it as bytes.</summary>
+    /// <summary>Every dump must decode UTF-16 rather than printing it as bytes.</summary>
     [Fact]
     public void TheDumpDecodesTheLogRatherThanPrintingItRaw()
     {
         foreach (var workflow in WorkflowsThatRunTests)
         {
-            var text = File.ReadAllText(Path.Combine(
-                TestProject.FindRepositoryRoot(), ".github", "workflows", workflow));
+            var path = Path.Combine(
+                TestProject.FindRepositoryRoot(), ".github", "workflows", workflow);
+            var text = File.ReadAllText(path);
 
-            Assert.Contains("iconv -f UTF-16LE", text, StringComparison.Ordinal);
+            var runs = CountOccurrences(text, "dotnet test \"$project\" --no-build -c Release");
+            var decodes = CountOccurrences(text, "iconv -f UTF-16LE");
+
+            Assert.True(
+                runs > 0,
+                $"{workflow} no longer runs tests with the pinned command, so this guard is " +
+                "asserting nothing. Either the workflow changed shape or this test is stale.");
+
+            Assert.True(
+                decodes >= runs,
+                $"{workflow} runs `dotnet test` in {runs} place(s) but decodes the failure log " +
+                $"with iconv in only {decodes}. A loop whose dump falls back to a bare `cat` " +
+                "prints UTF-16LE as spaced-out mojibake instead of the test name and assertion.");
         }
     }
 
