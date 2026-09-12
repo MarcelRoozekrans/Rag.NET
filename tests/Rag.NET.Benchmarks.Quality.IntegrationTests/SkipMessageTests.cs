@@ -16,7 +16,7 @@ public sealed class SkipMessageTests
 {
     /// <summary>With the variable set, there is nothing to hint about.</summary>
     /// <remarks>
-    /// Passes the resolved value straight into the parameterised overload rather than setting
+    /// Passes the resolved value straight into an overload rather than setting
     /// <see cref="BeirDatasetCache.CacheDirectoryVariable"/> via
     /// <see cref="Environment.SetEnvironmentVariable(string, string)"/> — that variable is
     /// process-wide, xunit runs test classes in parallel, and roughly 30 sibling tests read it
@@ -29,28 +29,75 @@ public sealed class SkipMessageTests
         Assert.Null(BeirDatasetCache.DescribeUnreferencedConventionalCache(Path.GetTempPath()));
     }
 
-    /// <summary>The hint names the directory and the file to source.</summary>
+    /// <summary>
+    /// When the conventional directory exists and has an <c>env.sh</c> beside it, the hint names
+    /// both and tells the reader to source the file.
+    /// </summary>
     /// <remarks>
-    /// Runs only where the conventional directory exists, because the hint is about a real
-    /// directory. On a machine without one there is nothing to assert.
+    /// Builds the conventional directory under a temporary root supplied to the three-parameter
+    /// overload, rather than depending on the real <c>~/.cache/ragnet-beir</c>: every CI runner
+    /// lacks that directory, and a test gated on its presence would leave this exact sentence — the
+    /// one a human actually reads — asserted by nothing outside a machine that happens to have it.
+    /// A GUID-suffixed directory name keeps this test from colliding with its siblings, which xunit
+    /// may run in the same process at the same time.
     /// </remarks>
     [Fact]
-    public void TheHintNamesTheDirectoryWhenTheCacheIsPresentButUnreferenced()
+    public void TheHintNamesTheDirectoryAndTheFileToSourceWhenAnEnvScriptIsPresent()
     {
-        var conventional = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".cache",
-            "ragnet-beir");
+        var conventional = Path.Combine(Path.GetTempPath(), $"ragnet-beir-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(conventional);
+        var envScript = Path.Combine(conventional, "env.sh");
+        File.WriteAllText(envScript, string.Empty);
 
-        Assert.SkipUnless(
-            Directory.Exists(conventional),
-            $"No conventional cache at '{conventional}' on this machine, so there is no " +
-            "present-but-unreferenced case to assert.");
+        try
+        {
+            var hint = BeirDatasetCache.DescribeUnreferencedConventionalCache(null, conventional);
 
-        var hint = BeirDatasetCache.DescribeUnreferencedConventionalCache(null);
+            Assert.Equal(
+                $" A cache is already present at '{conventional}' and nothing points at it: " +
+                $"source '{envScript}' to use it.",
+                hint);
+        }
+        finally
+        {
+            Directory.Delete(conventional, recursive: true);
+        }
+    }
 
-        Assert.NotNull(hint);
-        Assert.Contains("ragnet-beir", hint, StringComparison.Ordinal);
+    /// <summary>
+    /// When the conventional directory exists without an <c>env.sh</c>, the hint names the
+    /// directory and tells the reader to set the variable instead.
+    /// </summary>
+    /// <remarks>See the sibling test for why a temporary directory is used here.</remarks>
+    [Fact]
+    public void TheHintNamesTheDirectoryAndTheVariableWhenNoEnvScriptIsPresent()
+    {
+        var conventional = Path.Combine(Path.GetTempPath(), $"ragnet-beir-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(conventional);
+
+        try
+        {
+            var hint = BeirDatasetCache.DescribeUnreferencedConventionalCache(null, conventional);
+
+            Assert.Equal(
+                $" A cache directory is already present at '{conventional}' and nothing points " +
+                $"at it: set {BeirDatasetCache.CacheDirectoryVariable} to it to use it.",
+                hint);
+        }
+        finally
+        {
+            Directory.Delete(conventional, recursive: true);
+        }
+    }
+
+    /// <summary>When the conventional directory does not exist, there is nothing to hint about.</summary>
+    [Fact]
+    public void NoHintWhenNoConventionalDirectoryExists()
+    {
+        var conventional = Path.Combine(Path.GetTempPath(), $"ragnet-beir-test-{Guid.NewGuid():N}");
+
+        Assert.False(Directory.Exists(conventional));
+        Assert.Null(BeirDatasetCache.DescribeUnreferencedConventionalCache(null, conventional));
     }
 
     /// <summary>The skip reason carries the hint exactly when there is one.</summary>

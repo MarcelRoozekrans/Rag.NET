@@ -126,30 +126,56 @@ public sealed class BeirDatasetCache
     /// skipping, or running, incorrectly. The parameterless overload above is what production code
     /// and <see cref="ResolveCacheDirectoryFromEnvironment"/> callers use; this one exists for tests.
     /// </remarks>
-    public static string? DescribeUnreferencedConventionalCache(string? configuredCacheDirectory)
+    public static string? DescribeUnreferencedConventionalCache(string? configuredCacheDirectory) =>
+        DescribeUnreferencedConventionalCache(
+            configuredCacheDirectory,
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache", "ragnet-beir"));
+
+    /// <summary>
+    /// Describes a conventional cache at <paramref name="conventionalCacheDirectory"/> that exists
+    /// but is not referenced by <paramref name="configuredCacheDirectory"/>.
+    /// </summary>
+    /// <param name="configuredCacheDirectory">
+    /// The value <see cref="ResolveCacheDirectoryFromEnvironment"/> would return.
+    /// </param>
+    /// <param name="conventionalCacheDirectory">
+    /// The directory to check for, in place of the real <c>~/.cache/ragnet-beir</c>.
+    /// </param>
+    /// <returns>
+    /// A sentence naming the directory and its <c>env.sh</c>, or <see langword="null"/> when
+    /// <paramref name="configuredCacheDirectory"/> is not <see langword="null"/> or
+    /// <paramref name="conventionalCacheDirectory"/> does not exist.
+    /// </returns>
+    /// <remarks>
+    /// Takes the conventional root as a parameter, rather than hard-coding
+    /// <c>~/.cache/ragnet-beir</c>, for the same reason the environment value above is a parameter
+    /// rather than a re-read of <see cref="CacheDirectoryVariable"/>: it lets a test put both
+    /// sentence-forming branches — "source the env.sh" and "set the variable" — and the "not
+    /// present" branch under a temporary directory it controls, deterministically, on any machine,
+    /// rather than depending on whether that machine happens to have the real directory on disk. The
+    /// two-parameter overload above is what production code uses; this one exists for tests.
+    /// </remarks>
+    public static string? DescribeUnreferencedConventionalCache(
+        string? configuredCacheDirectory, string conventionalCacheDirectory)
     {
         if (configuredCacheDirectory is not null)
         {
             return null;
         }
 
-        var conventional = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".cache",
-            "ragnet-beir");
-
-        if (!Directory.Exists(conventional))
+        if (!Directory.Exists(conventionalCacheDirectory))
         {
             return null;
         }
 
-        var envScript = Path.Combine(conventional, "env.sh");
+        var envScript = Path.Combine(conventionalCacheDirectory, "env.sh");
 
         return File.Exists(envScript)
-            ? $" A cache is already present at '{conventional}' and nothing points at it: source " +
-              $"'{envScript}' to use it."
-            : $" A cache directory is already present at '{conventional}' and nothing points at " +
-              $"it: set {CacheDirectoryVariable} to it to use it.";
+            ? $" A cache is already present at '{conventionalCacheDirectory}' and nothing points " +
+              $"at it: source '{envScript}' to use it."
+            : $" A cache directory is already present at '{conventionalCacheDirectory}' and " +
+              $"nothing points at it: set {CacheDirectoryVariable} to it to use it.";
     }
 
     /// <summary>Gets the directory <paramref name="dataset"/> extracts into.</summary>
