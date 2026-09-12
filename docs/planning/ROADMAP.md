@@ -7907,7 +7907,7 @@ fact. `PackageValidation` **23/23** after a clean repack. **Pre-push review PASS
 `docs/pre-push-review-2026-09-11-0910.md`, 0 blockers and 0 warnings; it reviews the
 self-recommendation as a risk rather than assuming it benign.
 
-### Phase 6.2.40: The Feature Family Nobody Documented [status: pending — added 2026-09-11, #552]
+### Phase 6.2.40: The Feature Family Nobody Documented [status: complete 2026-09-11 in #561 — #552, and the two findings it filed rather than fixed]
 **Surface:** Docs
 **HelpWanted:** no
 **Design:** `docs/plans/2026-09-11-prompt-injection-documentation-design.md`
