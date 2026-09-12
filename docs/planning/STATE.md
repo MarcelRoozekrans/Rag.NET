@@ -1,6 +1,37 @@
 # Session State
 
-**Last updated:** 2026-09-11 — **at the merge, as the previous five were.** 6.2.39 merged as #556;
+**Last updated:** 2026-09-12 — **at the merge, as the previous six were.** 6.2.40 merged as #561 at
+20:23 on 2026-09-11; this entry was written from the session that built it, on `chore/6240-merged`.
+
+**THE SAME MISTAKE TWICE IN ONE WEEK, AND WRITING THE RULE DOWN DID NOT PREVENT THE SECOND.**
+6.2.39's plan reasoned that a markdown-only change could affect no other suite and skipped
+`pack-validate`; CI caught it. 6.2.40's plan then asserted "`Rag.NET.Security` has no test project of
+its own" — it has 16 files and 104 tests — **two paragraphs below its own constraint saying to
+enumerate suites rather than reason about which are safe to skip.**
+
+**The lesson is not "write the constraint down".** It was written down, in the same document, and
+restated in the Global Constraints. It still failed. The operative difference in 6.2.40 was that
+`pack-validate` *was* run locally, because that step had a command attached to it rather than a
+principle. **A constraint expressed as a rule gets reasoned around; the same constraint expressed as
+a command in a task step gets executed.** Future plans should list the suites to run as literal
+commands, never as "the affected suites".
+
+**Two findings came from reading implementations rather than method names**, which is now three
+phases running that this discipline has paid out. `TrustLevelRetrievalGuard` treats absent
+`trust_level` metadata as `internal`, a second fail-open default the posture had not mentioned; and
+query sanitisation does not apply to `RetrieveAsync`, which is defensible but recorded nowhere — no
+doc comment, no test, no page. Documented and filed as **#559**, not changed, because a behaviour
+change does not belong in a PR reviewed as documentation. **#560** filed for the other 52 ✅ Done
+entries in `features.md`, one of which turned out to be a design proposal marked Done.
+
+**Milestone 6 is back to two remaining phases, both account-blocked** — 6.1 and 6.3. **Locally
+finishable and still open:** #184 (breaking, pre-1.0 is the moment), #314 (xunit v4, red since
+2026-08-18), #559 and #560 from this phase, and AI.Sentinel #205 in the other repository.
+
+**Eight stale local branches are being kept deliberately** — the operator declined deletion on
+2026-09-11 after all eight were verified present on `main` by content. Do not re-propose it.
+
+**Previously, 2026-09-11 — at the merge, as the previous five were.** 6.2.39 merged as #556;
 this entry was written from the session that built it, on `chore/6239-merged`.
 
 **THE LESSON FROM 6.2.39 IS ABOUT CHOOSING A TEST SET, AND IT WILL RECUR.** The plan ran
