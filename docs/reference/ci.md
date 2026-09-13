@@ -1071,10 +1071,26 @@ row — `-method` and `-filter` both select the *theory* and run **all** of its 
 2026-09-12.
 
 For BEIR that is a real cost difference, so the converted commands in this file say so inline rather
-than quietly running every dataset. There is no environment variable that narrows the dataset either
-— `RAGNET_BEIR_CACHE`, `RAGNET_BEIR_LONG_RUNS` and `RAGNET_BEIR_RUN_INDEX` are the only ones the
-harness reads. If you need one dataset, the options today are to run them all, or to add a selector
-to the harness.
+than quietly running every dataset.
+
+**Corrected 2026-09-13.** This section previously said there was no environment variable that
+narrowed the dataset either, and then listed the one that does. **`RAGNET_BEIR_LONG_RUNS` takes a
+comma-separated list of dataset names** — `1` or `true` opts every dataset in, `0` or `false` opts
+out, and anything else is read as dataset names, *throwing* on a name the suite does not know rather
+than falling back to "everything" and turning a typo into the most expensive run available. See
+`BeirRunBudget.IsOptedInFor`.
+
+So the cost *is* narrowable for every cell the budget gates: a row for a dataset you did not select
+skips, and the run pays for the one you asked for.
+
+```bash
+RAGNET_BEIR_LONG_RUNS=arguana   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class "*BeirRealChunkingTests"
+```
+
+**The filter-level limitation above is unchanged and still true**: no filter selects a theory data
+row, so the theory still *runs* and its other rows still appear — they skip rather than work. What
+was wrong was only the claim about environment variables, and the error came from enumerating the
+three names without reading what the second one does with its value.
 
 **It is worth preferring for a second reason:** it prints per-test output and the **skip reason** for
 skipped tests, which `dotnet test` suppresses. On this project, where almost everything is gated
