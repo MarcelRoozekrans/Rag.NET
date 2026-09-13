@@ -1,3 +1,4 @@
+using Rag.NET.Testing;
 using Rag.NET.Benchmarks.Quality;
 using Rag.NET.Benchmarks.Quality.GraphExtractions;
 using Rag.NET.Graph;
@@ -43,7 +44,8 @@ public sealed class GraphExtractionCorpusTests
     {
         Assert.SkipUnless(
             BeirHarness.IsDatasetCacheProvisioned(out var cacheDirectory),
-            "Set RAGNET_BEIR_CACHE to a writable directory to check the extraction corpora.");
+            "Set RAGNET_BEIR_CACHE to a writable directory to check the extraction corpora."
+            + BeirProvisioningHint.Describe());
 
         var dataset = await LoadAsync(cacheDirectory);
         var selection = GraphExtractionCorpusSelection.Select(

@@ -1,3 +1,4 @@
+using Rag.NET.Testing;
 using Rag.NET.Benchmarks.Quality;
 using Xunit;
 
@@ -39,7 +40,8 @@ public sealed class MultiHopRagSliceTests
     {
         Assert.SkipUnless(
             BeirHarness.IsDatasetCacheProvisioned(out var cacheDirectory),
-            "Set RAGNET_BEIR_CACHE to a writable directory to check the MultiHop-RAG slice.");
+            "Set RAGNET_BEIR_CACHE to a writable directory to check the MultiHop-RAG slice."
+            + BeirProvisioningHint.Describe());
 
         var dataset = await LoadAsync(cacheDirectory);
         var outside = EvidenceOutsideTheSlice(dataset);
