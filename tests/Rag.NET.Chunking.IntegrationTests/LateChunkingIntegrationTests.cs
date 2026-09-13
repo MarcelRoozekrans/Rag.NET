@@ -1,3 +1,4 @@
+using Rag.NET.Testing;
 using Rag.NET.Chunking;
 using Rag.NET.Embeddings.Onnx;
 using Rag.NET.Models;
@@ -43,7 +44,8 @@ public sealed class LateChunkingIntegrationTests
         Assert.SkipWhen(
             string.IsNullOrEmpty(modelPath) || !File.Exists(modelPath) ||
             string.IsNullOrEmpty(vocabPath) || !File.Exists(vocabPath),
-            "Set RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB to existing model/vocab files to run this test.");
+            "Set RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB to existing model/vocab files "
+            + "to run this test." + BeirProvisioningHint.Describe());
 
         var ct = TestContext.Current.CancellationToken;
         using var generator = new OnnxTokenEmbeddingGenerator(new OnnxTokenEmbeddingOptions
@@ -93,7 +95,8 @@ public sealed class LateChunkingIntegrationTests
         Assert.SkipWhen(
             string.IsNullOrEmpty(modelPath) || !File.Exists(modelPath) ||
             string.IsNullOrEmpty(vocabPath) || !File.Exists(vocabPath),
-            "Set RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB to existing model/vocab files to run this test.");
+            "Set RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB to existing model/vocab files "
+            + "to run this test." + BeirProvisioningHint.Describe());
 
         var ct = TestContext.Current.CancellationToken;
         using var generator = new OnnxTokenEmbeddingGenerator(new OnnxTokenEmbeddingOptions

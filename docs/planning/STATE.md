@@ -1,6 +1,168 @@
 # Session State
 
-**Last updated:** 2026-09-13 — **at the merge.** #246's diagnostic merged as #581. Not a numbered
+**Last updated:** 2026-09-13 — **at the merge.** #559 closed in #593. **This empties the
+locally-finishable queue.**
+
+**#559 WAS NOT A BUG. IT WAS A DEFENSIBLE DECISION THAT NOTHING RECORDED.**
+`QuerySanitiserPipelineDecorator` forwards `RetrieveAsync` unsanitised while sanitising `AskAsync`
+and `AskStreamingAsync`. No doc comment on the file, no test over that path, nothing published —
+**which is indistinguishable from an oversight to everyone except its author.** Confirmed
+deliberate by the operator; the reasoning now lives in the type's remarks, and a test pins it.
+
+**The reasoning:** injection hijacks a model and `RetrieveAsync` reaches none, since it returns
+chunks to a caller who decides what to do with them. Redacting `ignore previous` from a legitimate
+query *about* that phrase would corrupt the search terms while protecting nothing. **The cost is
+stated rather than left to be discovered:** a retrieval-only caller gets nothing on their path.
+
+**THE TEST SAYS WHAT TO DO WHEN IT FAILS.** Revisit the decision; do not update the assertion. A
+test quietly edited to match new behaviour is how a security scope changes without anyone deciding
+to change it. Verified non-vacuous by mutation.
+
+## Where the project stands
+
+**Milestone 6 is down to its two account-blocked phases** — 6.1 Recorded Responses and 6.3 Release
+v1.0. **Nothing else can be advanced without the operator's accounts.**
+
+**Not blocked, but not mine to choose:** #299, #298, #283, #184, #175, #153 are research questions,
+design decisions or explicitly help-wanted — each needs a direction before code.
+
+**Waiting on itself:** #246's emulator race. The diagnostic shipped in #581 means the next
+occurrence arrives with its lock state attached. **Lock expiry is already ruled out by
+measurement**, and the leading candidate is that something settles the message first — the
+signature of a deliberate double-settle matches the real failure exactly.
+
+**Elsewhere:** AI.Sentinel #205.
+
+**Addressed, awaiting a close:** #560 and #575.
+
+## The lesson this run keeps producing
+
+**Four times in two days a guard's calibration, not its idea, was the defect** — a 42-vs-3 count
+from two reasonable greps; a proposal-scan finding 1 where the answer was 7; #560's guard failing
+eleven *correct* entries; #575's flagging two files for a doc comment. **Twice, mutation-testing
+was the only thing between me and editing correct work to satisfy a broken check.** Budget for
+calibration, and mutation-test a guard before trusting any number it produces.
+
+**Previously, 2026-09-13 — at the merge.** #587 fixed and closed in #590.
+
+**A PAPERCUT THAT WAS A VERBAL NOTE FIVE TIMES BECAME AN ISSUE, THEN A FIX, IN ABOUT FORTY
+MINUTES.** `EveryPackageCarriesTheVersionGitVersionDerives` failed on **every branch switch**,
+because GitVersion takes the prerelease label from the branch name — six occurrences in one day,
+each costing a ~3-minute repack of 73 packages. It now skips when the packed versions are
+internally consistent and differ from the derived version **only in the prerelease label**, which
+is all a branch switch changes.
+
+**THE CARE WAS IN WHAT IT STILL REFUSES TO EXCUSE**, because turning a failure into a skip is
+exactly how a guard stops guarding unnoticed. The SDK default `1.0.0` — the defect this guard
+exists for — differs in `MajorMinorPatch` rather than in the label, so it still fails; so do
+versions that disagree with each other, a missing `<version>`, and a wrong `Major.Minor.Patch`.
+Seven cases pin the boundary. **CI cannot reach the skip at all**: both workflows pack on the
+commit they then check.
+
+**THE DECISION WAS EXTRACTED AS A PURE FUNCTION SO IT COULD BE TESTED.** Inline, verifying it would
+have meant packing 73 packages twice. That is the general move whenever a guard grows a relaxation:
+make the relaxation testable without the expensive setup the guard needs.
+
+**It demonstrated itself on its first run** — `artifacts/packages` still held the previous branch's
+build, so the very branch that introduced the fix hit the condition and skipped with the real
+message.
+
+**STILL OPEN AND MINE:** #559 is the last locally-finishable one, and it is a **design decision
+rather than code** — whether `UseQuerySanitiser` skipping `RetrieveAsync` is deliberate. #560 and
+#575 are addressed and await a close.
+
+**Milestone 6 remains two account-blocked phases** — 6.1 and 6.3. Also finishable: #246 once it
+reports itself, and AI.Sentinel #205.
+
+**Previously, 2026-09-13 — at the merge.** #575's derived guard merged as #588. Issue work,
+not a numbered phase.
+
+**KEYING ON THE GROUND TRUTH FOUND MORE THAN KEYING ON THE SYMPTOM.** #575 reported two skip sites
+missing the provisioning hint, found by searching for an identical sentence. Keying on the **five
+variables `~/.cache/ragnet-beir/env.sh` actually exports** found **five** — the other three phrase
+their gates differently and a sentence search could never have seen them.
+
+**AND THE SENTENCE WOULD HAVE BEEN WRONG THE OTHER WAY.** Seventeen test files carry a
+`"Set RAGNET_…"` message, but most gate on Whisper, Tesseract or Document Intelligence settings
+`env.sh` does not provision. **A phrasing-keyed guard would have demanded a false claim in six
+places.** #575 called "which gates count" the real work; the answer is that the variable list is
+ground truth and the wording is not.
+
+**THE INVENTORY NOW DERIVES ITSELF.** `SkipReasonWiringTests` walks `tests/`, selects files that
+*call* a skip and name a provisioned variable, and requires the hint — directly or through a shared
+skip reason that already carries it, which ~30 cases do via `BeirHarness.SkipReason`. A new test
+gating on a provisioned variable is caught the day it is written; adding a **variable** is a
+deliberate one-line decision. The five names are hard-coded because **CI has no copy of `env.sh`**.
+
+**TWO CALIBRATION MISTAKES, AND THE PATTERN IS NOW UNMISTAKABLE.** A substring match on
+`Assert.Skip` flagged two files that only mention it in **doc comments**; fixed by matching the call
+shape `TestGateTests.SkipGateCall()` already uses, deliberately the same so two guards cannot
+disagree about what a skip site is. And **the first mutation test passed when it should have
+failed** — it removed one of a file's two hint calls, but the guard is per-file by design, since one
+`SkipReason` property legitimately serves several sites.
+
+**THIS IS THE FOURTH TIME IN TWO DAYS THAT A GUARD'S CALIBRATION, NOT ITS IDEA, WAS THE DEFECT.**
+Text scans gave 42-vs-3 for one quantity; a proposal-language scan found 1 where the real answer was
+7; #560's guard failed eleven correct entries by accepting types but not members; and this one
+flagged two files for a doc comment. **The idea was right every time. The matcher was wrong every
+time.** Budget for calibrating a guard, and mutation-test it before trusting a number it produces.
+
+**A PRIOR RULING WAS REVERSED, CORRECTLY.** 6.2.42 duplicated the hint helper rather than couple
+unrelated test projects — right at two copies, wrong at five call sites across four projects with
+nothing keeping them in step. It now lives in `Rag.NET.Testing`.
+
+**FILED: #587**, the `artifacts/packages` papercut — `EveryPackageCarriesTheVersionGitVersionDerives`
+fails on every branch switch because GitVersion derives the version from the branch name. **Six
+occurrences in one day**, each costing a ~3-minute repack of 73 packages. Filed after being carried
+as a verbal note five times.
+
+**STILL OPEN FOR THE OPERATOR:** close **#571** as a duplicate of **#246**, and close **#560** and
+**#575** if their findings satisfy.
+
+**Milestone 6 remains two account-blocked phases** — 6.1 and 6.3. **Locally finishable:** #559,
+#587, #246 once it reports itself, and AI.Sentinel #205.
+
+**Previously, 2026-09-13 — at the merge.** #560's guard merged as #584. Issue work, not a
+numbered phase.
+
+**#560's PREMISE WAS MEASURED AND DID NOT HOLD.** It asks whether other `✅ Done` entries in
+`features.md` are stale proposals. Across **all 64** — the issue says 53; the surface grew —
+**exactly one** carries proposal-shaped language, and the entry that prompted the issue was already
+corrected by 6.2.40. The rest are backed by shipping code, spot-checked against source. **Not 52
+unaudited false claims: one stale entry, already fixed.**
+
+**WHAT WAS REAL: seven entries named nothing a reader could call** — which is the original complaint,
+that the prompting entry "named none of the shipped registration methods". Each now names its entry
+point, and `FeatureClaimSymbolTests` requires every Done entry with a **Package:** line to name a
+backticked token that **resolves against the produced assemblies**, reusing the catalog
+`DocsCodeExamplesTests` already trusts.
+
+**TWO WRONG ANSWERS ON THE WAY, AND THE SECOND NEARLY DID DAMAGE.** Three text-shape scans were
+tried and the first two were confidently wrong — one stripped the `**Status:**` line, which is
+*exactly* where several entries name their type, and one rejected `GetDeltaToken()` for carrying
+parentheses. Then **the guard's own first draft failed eleven entries** by accepting types only,
+including ones naming `DecayRate`, `AskAsync` and `SystemPrompt` — callable entry points that happen
+to be members. **Editing eleven correct entries to satisfy it would have damaged the documentation
+to please a bad check.** Widened instead: 11 failures became the 7 real ones.
+
+**THE LESSON, THIRD TIME THIS WEEK: a mechanical check is only worth what its calibration is worth.**
+Prefer resolving symbols against assemblies over matching prose shapes, and when a guard fails work
+you believe is correct, suspect the guard before editing the work.
+
+**WHAT NO GUARD SETTLES.** One resolvable symbol is enough, so an entry naming a real type while
+describing behaviour that type does not have still passes. `FeatureClaimTests` still cannot tell
+whether described work was done. That residual is recorded on #560 rather than implied away.
+
+**STILL OPEN FOR THE OPERATOR, and the list is not shrinking:** close **#571** as a duplicate of
+**#246**; close **#560** if the measurement satisfies; and file the `artifacts/packages` papercut —
+**five occurrences now**, every branch switch, because GitVersion derives the version from the branch
+name and `EveryPackageCarriesTheVersionGitVersionDerives` compares against it. The fix is probably to
+skip the check when the packages were built for a different branch.
+
+**Milestone 6 remains two account-blocked phases** — 6.1 and 6.3. **Locally finishable:** #559,
+#575, #246 once it reports itself, and AI.Sentinel #205.
+
+**Previously, 2026-09-13 — at the merge.** #246's diagnostic merged as #581. Not a numbered
 phase: issue work, recorded here because the findings outlive it.
 
 **#246's MECHANISM IS RULED OUT BY MEASUREMENT. BOTH PREVIOUS FIXES WERE INERT.** The intermittent

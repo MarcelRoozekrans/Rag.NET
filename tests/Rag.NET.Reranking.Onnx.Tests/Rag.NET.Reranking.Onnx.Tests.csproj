@@ -18,4 +18,8 @@
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Testing\Rag.NET.Testing.csproj" />
+  </ItemGroup>
+
 </Project>

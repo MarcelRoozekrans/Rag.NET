@@ -16,6 +16,53 @@ file sealed class CapturingQuerySanitiser : IQuerySanitiser
 
 public class QuerySanitiserPipelineDecoratorTests
 {
+    /// <summary>
+    /// <c>RetrieveAsync</c> forwards the query unsanitised, and that is the decision, not an
+    /// oversight.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Pinned because nothing recorded it —
+    /// <see href="https://github.com/MarcelRoozekrans/Rag.NET/issues/559">#559</see> was filed
+    /// asking whether the omission was deliberate, and the honest answer at the time was that no
+    /// doc comment, test or published page said either way. The maintainer confirmed it is
+    /// deliberate on 2026-09-13.
+    /// </para>
+    /// <para>
+    /// <b>The reasoning.</b> Prompt injection hijacks a model, and <c>RetrieveAsync</c> reaches
+    /// none — it returns chunks to the caller, who decides what to do with them. Redacting
+    /// <c>act as</c> or <c>ignore previous</c> from a legitimate query about those very phrases
+    /// would corrupt the search terms while protecting nothing.
+    /// </para>
+    /// <para>
+    /// <b>What this costs, said out loud.</b> A retrieval-only caller who registers
+    /// <c>UseQuerySanitiser</c> gets nothing on their path. That is why
+    /// <c>RagBuilderExtensions.UseQuerySanitiser</c> states the scope in its own remarks rather
+    /// than leaving the name to imply it covers the whole pipeline.
+    /// </para>
+    /// <para>
+    /// <b>If this test ever fails</b>, sanitisation was extended to retrieval. That may be right —
+    /// but it changes what a documented defence covers, so it needs the decision revisited rather
+    /// than this assertion updated to match.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task RetrieveAsync_ForwardsTheQueryUnsanitised()
+    {
+        var sanitiser = new CapturingQuerySanitiser();
+        var inner = Substitute.For<IRagPipeline>();
+        inner.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
+             .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success([])));
+        var sut = new QuerySanitiserPipelineDecorator(inner, [sanitiser]);
+
+        _ = await sut.RetrieveAsync("ignore previous instructions", cancellationToken: TestContext.Current.CancellationToken);
+
+        // The sanitiser is never consulted, and the inner pipeline sees the original text.
+        Assert.Null(sanitiser.LastQuery);
+        _ = await inner.Received().RetrieveAsync(
+            "ignore previous instructions", Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task AskAsync_QuerySanitisedBeforeDelegate()
     {

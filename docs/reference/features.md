@@ -105,7 +105,7 @@ Language-specific separator hierarchies for Python, JS/TS, Java, Go, Ruby, Rust,
 
 **Why:** Generic character splitting ignores code structure. Heuristic splitters work for all languages without per-language compiler dependencies.
 
-**Status:** ✅ Done
+**Status:** ✅ Done — `CodeChunkingStrategy`, registered with `UseCodeChunking`.
 
 ---
 
@@ -361,7 +361,7 @@ Process chunks sequentially: generate an initial answer from the first chunk, th
 
 **Why:** Handles context-window overflow gracefully with a different trade-off profile than map-reduce.
 
-**Status:** ✅ Done
+**Status:** ✅ Done — `RefineAnswerEngine`, registered with `UseRefineAnswerEngine`.
 **Exercised by:** benchmark — the `refine` arm of `BeirGraphRagAnswerTests` over MultiHop-RAG's 2,556 gold answers, pinned at **−0.1055 against the `chatengine` control** in `MultiHopRagAnswerReproduction`, `p<0.0001` — significantly worse than a single call on this corpus. **Read with its caveat, which is a live question rather than a hedge:** the deficit may be partly structural rather than mechanism, and MapReduce has since shown that a per-chunk shape can hide a defect worth 0.46 (#430). Refine rewrites sequentially over chunks — the same per-chunk shape — and has not been re-examined since that fix. Measured 2026-08-30 (Phase 6.2.1).
 
 ---
@@ -451,7 +451,7 @@ await pipeline.IngestFromProviderAsync(provider, source, metadata, options);
 ---
 
 ### Recursive Web Crawler
-**Status:** ✅ Done
+**Status:** ✅ Done — `WebCrawlerDataProvider`, with depth bounded by `WebCrawlerOptions.MaxDepth`.
 **Package:** `Rag.NET.DataProviders.Web`
 
 Fetch a seed URL and follow links up to a configurable depth, loading all discovered pages as documents.
@@ -476,7 +476,7 @@ partitioned by something unrelated to the URLs inside it.
 ---
 
 ### RSS Feed Loader
-**Status:** ✅ Done
+**Status:** ✅ Done — `RssDataProvider`.
 **Package:** `Rag.NET.DataProviders.Web`
 
 Ingest documents from RSS/Atom feeds, enabling near-real-time ingestion of news, blog posts, and update streams.
@@ -587,7 +587,7 @@ Ingest issues and comments from Linear via the GraphQL API (`POST /graphql`, the
 
 ### Image Description via Vision LLM
 **Package:** `Rag.NET.Parsers.Vision`
-**Status:** ✅ Done
+**Status:** ✅ Done — `ImageChunkingStrategy` and `ImageDescriptionOptions`, registered with `UseImageDescription`.
 
 For image files (PNG, JPG, etc.) and embedded figures in PDFs/DOCX: if OCR yields too little text, call a vision LLM (e.g., GPT-4o) to generate a natural-language description. Inject the description as a chunk adjacent to surrounding document text with position metadata. A context-aware variant passes surrounding paragraph text to ground the description.
 
@@ -597,7 +597,7 @@ For image files (PNG, JPG, etc.) and embedded figures in PDFs/DOCX: if OCR yield
 
 ### Video Description via Vision LLM
 **Package:** `Rag.NET.Parsers.Vision`
-**Status:** ✅ Done
+**Status:** ✅ Done — `VideoChunkingStrategy` and `VideoDescriptionOptions`, registered with `UseVideoDescription`.
 
 Pass video files (MP4, MOV, MKV) to a vision LLM that generates a textual description of the content, stored as chunks for retrieval.
 
@@ -612,7 +612,7 @@ Transcribe WAV, MP3, FLAC, OGG, and other audio files using [Whisper.net](https:
 
 **Why:** Meeting recordings, podcasts, and voice notes are a growing source of enterprise knowledge that text-only pipelines cannot reach.
 
-**Status:** ✅ Done
+**Status:** ✅ Done — `AudioDocumentParser` and `AudioParserOptions`, registered with `AddAudioParser`.
 
 ---
 

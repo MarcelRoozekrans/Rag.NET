@@ -1,3 +1,4 @@
+using Rag.NET.Testing;
 using System.Diagnostics;
 using Rag.NET.Models;
 using Xunit;
@@ -21,7 +22,8 @@ public sealed class OnnxRerankerTelemetryTests
         Assert.SkipWhen(
             string.IsNullOrEmpty(modelPath) || !File.Exists(modelPath) ||
             string.IsNullOrEmpty(vocabPath) || !File.Exists(vocabPath),
-            "Set RAGNET_ONNX_RERANK_MODEL and RAGNET_ONNX_RERANK_VOCAB to existing model/vocab files to run this test.");
+            "Set RAGNET_ONNX_RERANK_MODEL and RAGNET_ONNX_RERANK_VOCAB to existing model/vocab files "
+            + "to run this test." + BeirProvisioningHint.Describe());
 
         using var reranker = new OnnxReranker(new OnnxRerankerOptions
         {
