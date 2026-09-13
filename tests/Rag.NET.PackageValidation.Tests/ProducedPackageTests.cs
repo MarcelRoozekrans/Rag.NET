@@ -223,6 +223,24 @@ public sealed class ProducedPackageTests
         // derived version, that assertion fails the release itself.
         var packages = DiscoverPackages();
         var derived = DeriveVersionFromGitHistory();
+        var versions = new List<string>(packages.Count);
+        foreach (var package in packages)
+        {
+            // Null lands as empty, which can never match the derived MajorMinorPatch, so a
+            // package with no version element falls through to the assertion below rather
+            // than being mistaken for staleness.
+            versions.Add(ReadNuspecElement(package, "version") ?? string.Empty);
+        }
+
+        Assert.SkipWhen(
+            IsAnotherBranchsPack(versions, derived),
+            $"artifacts/packages holds a consistent '{(versions.Count > 0 ? versions[0] : string.Empty)}' " +
+            $"build while GitVersion derives '{derived}' here. GitVersion takes the prerelease " +
+            "label from the BRANCH NAME, so every branch switch invalidates the directory without " +
+            "anything being wrong with it. Nothing was validated, because nothing current was " +
+            "packed. Repack with: dotnet pack Rag.NET.slnx -c Release -o artifacts/packages " +
+            "-p:Version=\"$(dotnet dotnet-gitversion /output json /showvariable SemVer)\". CI " +
+            "always packs on the commit it checks, so this skip cannot fire there. See #587.");
 
         foreach (var package in packages)
         {
@@ -294,6 +312,66 @@ public sealed class ProducedPackageTests
     /// own source of truth rather than a copy of its rules.
     /// </summary>
     /// <returns>The derived semantic version, for example <c>0.1.0-preview.1496</c>.</returns>
+    /// <summary>
+    /// Whether the packed versions are a consistent build of another branch rather than a defect.
+    /// </summary>
+    /// <param name="versions">Every produced package's declared version.</param>
+    /// <param name="derived">What GitVersion derives for the current commit.</param>
+    /// <returns><see langword="true"/> only when staleness explains the mismatch.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this distinction is worth drawing.</b> GitVersion takes the prerelease label from the
+    /// branch name, so switching branches invalidates <c>artifacts/packages</c> wholesale — six
+    /// times in one day's work, each costing a full repack of 73 packages to satisfy a check about
+    /// something the branch never touched. Reporting routine staleness as a failure trains a reader
+    /// to repack reflexively, which is the habit that makes a real mismatch easy to miss. #587.
+    /// </para>
+    /// <para>
+    /// <b>What it deliberately does not excuse.</b> The defect this guard exists for is a pack that
+    /// silently fell back to the SDK default <c>1.0.0</c>, and <c>1.0.0</c> differs in
+    /// <c>MajorMinorPatch</c> rather than only in the prerelease label, so it still fails. So does
+    /// any set whose versions disagree with each other — one package carrying a different version
+    /// from its siblings is a real defect however it arose, and is never staleness.
+    /// </para>
+    /// <para>
+    /// <b>CI is unaffected.</b> Both workflows pack on the commit they then check, so the versions
+    /// match and this returns <see langword="false"/> there. The relaxation is local only.
+    /// </para>
+    /// </remarks>
+    internal static bool IsAnotherBranchsPack(IReadOnlyList<string> versions, string derived)
+    {
+        if (versions.Count == 0)
+        {
+            return false;
+        }
+
+        var first = versions[0];
+        foreach (var version in versions)
+        {
+            if (!string.Equals(version, first, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        if (string.Equals(first, derived, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            MajorMinorPatchOf(first), MajorMinorPatchOf(derived), StringComparison.Ordinal);
+    }
+
+    /// <summary>Takes the version up to its prerelease label.</summary>
+    /// <param name="version">A semantic version.</param>
+    /// <returns>The <c>Major.Minor.Patch</c> portion.</returns>
+    private static string MajorMinorPatchOf(string version)
+    {
+        var dash = version.IndexOf('-', StringComparison.Ordinal);
+        return dash < 0 ? version : version[..dash];
+    }
+
     private static string DeriveVersionFromGitHistory()
     {
         var startInfo = new ProcessStartInfo
