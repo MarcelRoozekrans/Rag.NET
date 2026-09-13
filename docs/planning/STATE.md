@@ -1,6 +1,37 @@
 # Session State
 
-**Last updated:** 2026-09-13 — **at the merge.** #575's derived guard merged as #588. Issue work,
+**Last updated:** 2026-09-13 — **at the merge.** #587 fixed and closed in #590.
+
+**A PAPERCUT THAT WAS A VERBAL NOTE FIVE TIMES BECAME AN ISSUE, THEN A FIX, IN ABOUT FORTY
+MINUTES.** `EveryPackageCarriesTheVersionGitVersionDerives` failed on **every branch switch**,
+because GitVersion takes the prerelease label from the branch name — six occurrences in one day,
+each costing a ~3-minute repack of 73 packages. It now skips when the packed versions are
+internally consistent and differ from the derived version **only in the prerelease label**, which
+is all a branch switch changes.
+
+**THE CARE WAS IN WHAT IT STILL REFUSES TO EXCUSE**, because turning a failure into a skip is
+exactly how a guard stops guarding unnoticed. The SDK default `1.0.0` — the defect this guard
+exists for — differs in `MajorMinorPatch` rather than in the label, so it still fails; so do
+versions that disagree with each other, a missing `<version>`, and a wrong `Major.Minor.Patch`.
+Seven cases pin the boundary. **CI cannot reach the skip at all**: both workflows pack on the
+commit they then check.
+
+**THE DECISION WAS EXTRACTED AS A PURE FUNCTION SO IT COULD BE TESTED.** Inline, verifying it would
+have meant packing 73 packages twice. That is the general move whenever a guard grows a relaxation:
+make the relaxation testable without the expensive setup the guard needs.
+
+**It demonstrated itself on its first run** — `artifacts/packages` still held the previous branch's
+build, so the very branch that introduced the fix hit the condition and skipped with the real
+message.
+
+**STILL OPEN AND MINE:** #559 is the last locally-finishable one, and it is a **design decision
+rather than code** — whether `UseQuerySanitiser` skipping `RetrieveAsync` is deliberate. #560 and
+#575 are addressed and await a close.
+
+**Milestone 6 remains two account-blocked phases** — 6.1 and 6.3. Also finishable: #246 once it
+reports itself, and AI.Sentinel #205.
+
+**Previously, 2026-09-13 — at the merge.** #575's derived guard merged as #588. Issue work,
 not a numbered phase.
 
 **KEYING ON THE GROUND TRUTH FOUND MORE THAN KEYING ON THE SYMPTOM.** #575 reported two skip sites
