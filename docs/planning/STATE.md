@@ -1,6 +1,46 @@
 # Session State
 
-**Last updated:** 2026-09-13 — **at the merge.** #559 closed in #593. **This empties the
+**Last updated:** 2026-09-13 — **at the merge.** #596 fixed and closed in #597; #559 recorded in
+#594.
+
+**A DESIGN QUESTION ABOUT MULTILINGUAL PROMPTS FOUND A CORRECTNESS BUG.** Asked whether the system
+prompts should become configurable per language. **They are already configurable** —
+`RagOptions.SystemPrompt`, `MapPromptTemplate`, `ReducePromptTemplate`, `EntityExtractionPrompt`,
+`SystemPrefix` and the rest all take any language. Per-language variants would choose the language
+*for* the caller and leave the real defect untouched.
+
+**THE REAL DEFECT: one prompt's English wording was load-bearing for parsing.** MapReduce asked the
+model to reply `"not found"` for an irrelevant excerpt, then filtered on that exact phrase. A
+non-English system prompt yields `nicht gefunden`, the match fails, and **the excerpt is treated as
+relevant** — its I-found-nothing sentence flowing into the reduce step as source material, silently.
+
+**IT HAD ALREADY COST A CORRECT ANSWER, IN ENGLISH.** The repository held a measured transcript from
+2026-08-30 on an existing test: real maps returned `Not found. The answer to the question is "not
+found".` under a caller formatting instruction; three refusals reached the reduce, which called it a
+contradiction and **discarded the answer it had**. That earlier fix appended the protocol last,
+making the failure less likely while leaving the exact match in place.
+
+**THE FIX:** a symbolic `<NOT_FOUND>` token, recognised with `Contains` rather than equality — which
+is what makes the 2026-08-30 shape *survivable* rather than merely unlikely. `FlareAnswerEngine` had
+always used a symbolic token for the same reason; the two engines now agree. **The legacy phrase is
+still recognised**, because a caller with a custom `MapPromptTemplate` saying "not found" would
+otherwise break in exactly the silent way the change removes.
+
+**THE TRANSCRIPT WAS KEPT WHEN THE TEST WAS UPDATED.** Changing the sentinel meant editing an
+assertion that pinned the old wording — the move #559 warns against. It was right here because the
+change *is* the decision and it is issue-backed, but the 2026-08-30 history was left intact: it is
+the evidence for the new shape, and deleting it would have removed the reason while keeping the
+result.
+
+**A TOOLING NOTE THAT COST THREE ATTEMPTS.** Heredocs in this environment collapse `\` to `\`, so
+patch scripts matching C# escape sequences silently fail to find their anchors — and the same
+collapse produced the `SyntaxWarning: invalid escape sequence` messages seen earlier today. Build
+the backslashes with `chr(92)` when matching source that contains them.
+
+**Milestone 6 remains two account-blocked phases** — 6.1 and 6.3. **Open and not mine to choose:**
+#298, #283, #184, #175, #153. **#246** waits to report itself. **AI.Sentinel #205** is elsewhere.
+
+**Previously, 2026-09-13 — at the merge.** #559 closed in #593. **This empties the
 locally-finishable queue.**
 
 **#559 WAS NOT A BUG. IT WAS A DEFENSIBLE DECISION THAT NOTHING RECORDED.**
