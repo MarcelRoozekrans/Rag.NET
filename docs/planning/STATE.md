@@ -1,6 +1,54 @@
 # Session State
 
-**Last updated:** 2026-09-13 — **at the merge.** #560's guard merged as #584. Issue work, not a
+**Last updated:** 2026-09-13 — **at the merge.** #575's derived guard merged as #588. Issue work,
+not a numbered phase.
+
+**KEYING ON THE GROUND TRUTH FOUND MORE THAN KEYING ON THE SYMPTOM.** #575 reported two skip sites
+missing the provisioning hint, found by searching for an identical sentence. Keying on the **five
+variables `~/.cache/ragnet-beir/env.sh` actually exports** found **five** — the other three phrase
+their gates differently and a sentence search could never have seen them.
+
+**AND THE SENTENCE WOULD HAVE BEEN WRONG THE OTHER WAY.** Seventeen test files carry a
+`"Set RAGNET_…"` message, but most gate on Whisper, Tesseract or Document Intelligence settings
+`env.sh` does not provision. **A phrasing-keyed guard would have demanded a false claim in six
+places.** #575 called "which gates count" the real work; the answer is that the variable list is
+ground truth and the wording is not.
+
+**THE INVENTORY NOW DERIVES ITSELF.** `SkipReasonWiringTests` walks `tests/`, selects files that
+*call* a skip and name a provisioned variable, and requires the hint — directly or through a shared
+skip reason that already carries it, which ~30 cases do via `BeirHarness.SkipReason`. A new test
+gating on a provisioned variable is caught the day it is written; adding a **variable** is a
+deliberate one-line decision. The five names are hard-coded because **CI has no copy of `env.sh`**.
+
+**TWO CALIBRATION MISTAKES, AND THE PATTERN IS NOW UNMISTAKABLE.** A substring match on
+`Assert.Skip` flagged two files that only mention it in **doc comments**; fixed by matching the call
+shape `TestGateTests.SkipGateCall()` already uses, deliberately the same so two guards cannot
+disagree about what a skip site is. And **the first mutation test passed when it should have
+failed** — it removed one of a file's two hint calls, but the guard is per-file by design, since one
+`SkipReason` property legitimately serves several sites.
+
+**THIS IS THE FOURTH TIME IN TWO DAYS THAT A GUARD'S CALIBRATION, NOT ITS IDEA, WAS THE DEFECT.**
+Text scans gave 42-vs-3 for one quantity; a proposal-language scan found 1 where the real answer was
+7; #560's guard failed eleven correct entries by accepting types but not members; and this one
+flagged two files for a doc comment. **The idea was right every time. The matcher was wrong every
+time.** Budget for calibrating a guard, and mutation-test it before trusting a number it produces.
+
+**A PRIOR RULING WAS REVERSED, CORRECTLY.** 6.2.42 duplicated the hint helper rather than couple
+unrelated test projects — right at two copies, wrong at five call sites across four projects with
+nothing keeping them in step. It now lives in `Rag.NET.Testing`.
+
+**FILED: #587**, the `artifacts/packages` papercut — `EveryPackageCarriesTheVersionGitVersionDerives`
+fails on every branch switch because GitVersion derives the version from the branch name. **Six
+occurrences in one day**, each costing a ~3-minute repack of 73 packages. Filed after being carried
+as a verbal note five times.
+
+**STILL OPEN FOR THE OPERATOR:** close **#571** as a duplicate of **#246**, and close **#560** and
+**#575** if their findings satisfy.
+
+**Milestone 6 remains two account-blocked phases** — 6.1 and 6.3. **Locally finishable:** #559,
+#587, #246 once it reports itself, and AI.Sentinel #205.
+
+**Previously, 2026-09-13 — at the merge.** #560's guard merged as #584. Issue work, not a
 numbered phase.
 
 **#560's PREMISE WAS MEASURED AND DID NOT HOLD.** It asks whether other `✅ Done` entries in
