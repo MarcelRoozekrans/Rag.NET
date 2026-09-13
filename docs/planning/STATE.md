@@ -1,6 +1,46 @@
 # Session State
 
-**Last updated:** 2026-09-13 — **at the merge.** #246's diagnostic merged as #581. Not a numbered
+**Last updated:** 2026-09-13 — **at the merge.** #560's guard merged as #584. Issue work, not a
+numbered phase.
+
+**#560's PREMISE WAS MEASURED AND DID NOT HOLD.** It asks whether other `✅ Done` entries in
+`features.md` are stale proposals. Across **all 64** — the issue says 53; the surface grew —
+**exactly one** carries proposal-shaped language, and the entry that prompted the issue was already
+corrected by 6.2.40. The rest are backed by shipping code, spot-checked against source. **Not 52
+unaudited false claims: one stale entry, already fixed.**
+
+**WHAT WAS REAL: seven entries named nothing a reader could call** — which is the original complaint,
+that the prompting entry "named none of the shipped registration methods". Each now names its entry
+point, and `FeatureClaimSymbolTests` requires every Done entry with a **Package:** line to name a
+backticked token that **resolves against the produced assemblies**, reusing the catalog
+`DocsCodeExamplesTests` already trusts.
+
+**TWO WRONG ANSWERS ON THE WAY, AND THE SECOND NEARLY DID DAMAGE.** Three text-shape scans were
+tried and the first two were confidently wrong — one stripped the `**Status:**` line, which is
+*exactly* where several entries name their type, and one rejected `GetDeltaToken()` for carrying
+parentheses. Then **the guard's own first draft failed eleven entries** by accepting types only,
+including ones naming `DecayRate`, `AskAsync` and `SystemPrompt` — callable entry points that happen
+to be members. **Editing eleven correct entries to satisfy it would have damaged the documentation
+to please a bad check.** Widened instead: 11 failures became the 7 real ones.
+
+**THE LESSON, THIRD TIME THIS WEEK: a mechanical check is only worth what its calibration is worth.**
+Prefer resolving symbols against assemblies over matching prose shapes, and when a guard fails work
+you believe is correct, suspect the guard before editing the work.
+
+**WHAT NO GUARD SETTLES.** One resolvable symbol is enough, so an entry naming a real type while
+describing behaviour that type does not have still passes. `FeatureClaimTests` still cannot tell
+whether described work was done. That residual is recorded on #560 rather than implied away.
+
+**STILL OPEN FOR THE OPERATOR, and the list is not shrinking:** close **#571** as a duplicate of
+**#246**; close **#560** if the measurement satisfies; and file the `artifacts/packages` papercut —
+**five occurrences now**, every branch switch, because GitVersion derives the version from the branch
+name and `EveryPackageCarriesTheVersionGitVersionDerives` compares against it. The fix is probably to
+skip the check when the packages were built for a different branch.
+
+**Milestone 6 remains two account-blocked phases** — 6.1 and 6.3. **Locally finishable:** #559,
+#575, #246 once it reports itself, and AI.Sentinel #205.
+
+**Previously, 2026-09-13 — at the merge.** #246's diagnostic merged as #581. Not a numbered
 phase: issue work, recorded here because the findings outlive it.
 
 **#246's MECHANISM IS RULED OUT BY MEASUREMENT. BOTH PREVIOUS FIXES WERE INERT.** The intermittent
