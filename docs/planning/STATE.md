@@ -1,6 +1,49 @@
 # Session State
 
-**Last updated:** 2026-09-13 — **at the merge.** #587 fixed and closed in #590.
+**Last updated:** 2026-09-13 — **at the merge.** #559 closed in #593. **This empties the
+locally-finishable queue.**
+
+**#559 WAS NOT A BUG. IT WAS A DEFENSIBLE DECISION THAT NOTHING RECORDED.**
+`QuerySanitiserPipelineDecorator` forwards `RetrieveAsync` unsanitised while sanitising `AskAsync`
+and `AskStreamingAsync`. No doc comment on the file, no test over that path, nothing published —
+**which is indistinguishable from an oversight to everyone except its author.** Confirmed
+deliberate by the operator; the reasoning now lives in the type's remarks, and a test pins it.
+
+**The reasoning:** injection hijacks a model and `RetrieveAsync` reaches none, since it returns
+chunks to a caller who decides what to do with them. Redacting `ignore previous` from a legitimate
+query *about* that phrase would corrupt the search terms while protecting nothing. **The cost is
+stated rather than left to be discovered:** a retrieval-only caller gets nothing on their path.
+
+**THE TEST SAYS WHAT TO DO WHEN IT FAILS.** Revisit the decision; do not update the assertion. A
+test quietly edited to match new behaviour is how a security scope changes without anyone deciding
+to change it. Verified non-vacuous by mutation.
+
+## Where the project stands
+
+**Milestone 6 is down to its two account-blocked phases** — 6.1 Recorded Responses and 6.3 Release
+v1.0. **Nothing else can be advanced without the operator's accounts.**
+
+**Not blocked, but not mine to choose:** #299, #298, #283, #184, #175, #153 are research questions,
+design decisions or explicitly help-wanted — each needs a direction before code.
+
+**Waiting on itself:** #246's emulator race. The diagnostic shipped in #581 means the next
+occurrence arrives with its lock state attached. **Lock expiry is already ruled out by
+measurement**, and the leading candidate is that something settles the message first — the
+signature of a deliberate double-settle matches the real failure exactly.
+
+**Elsewhere:** AI.Sentinel #205.
+
+**Addressed, awaiting a close:** #560 and #575.
+
+## The lesson this run keeps producing
+
+**Four times in two days a guard's calibration, not its idea, was the defect** — a 42-vs-3 count
+from two reasonable greps; a proposal-scan finding 1 where the answer was 7; #560's guard failing
+eleven *correct* entries; #575's flagging two files for a doc comment. **Twice, mutation-testing
+was the only thing between me and editing correct work to satisfy a broken check.** Budget for
+calibration, and mutation-test a guard before trusting any number it produces.
+
+**Previously, 2026-09-13 — at the merge.** #587 fixed and closed in #590.
 
 **A PAPERCUT THAT WAS A VERBAL NOTE FIVE TIMES BECAME AN ISSUE, THEN A FIX, IN ABOUT FORTY
 MINUTES.** `EveryPackageCarriesTheVersionGitVersionDerives` failed on **every branch switch**,
