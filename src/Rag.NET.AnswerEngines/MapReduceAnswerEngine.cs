@@ -23,7 +23,8 @@ public sealed class MapReduceAnswerEngine(
 {
     private const string DefaultMapPrompt =
         "Using only the following text, answer this question as best you can.\n" +
-        "If the text doesn't contain relevant information, say \"not found\".\n\n" +
+        "If the text doesn't contain relevant information, reply with exactly " +
+        NotFoundToken + "." + "\n\n" +
         "Text:\n{chunk}\n\nQuestion: {query}";
 
     private const string DefaultReducePrompt =
@@ -60,12 +61,38 @@ public sealed class MapReduceAnswerEngine(
     /// be displaceable by an instruction written about the final answer.
     /// </para>
     /// </remarks>
+    /// <summary>What a map call replies when its excerpt holds nothing relevant.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Symbolic rather than a phrase, because the parser compares against it.</b> This was the
+    /// English words <c>not found</c>, which made the prompt's <i>wording</i> load-bearing: a caller
+    /// setting a system prompt in another language got <c>nicht gefunden</c> back, the comparison
+    /// failed, and the excerpt was treated as <i>relevant</i> — its "I found nothing" sentence
+    /// flowing into the reduce step as source material, with no error. English replies failed too
+    /// whenever the model added a full stop. Issue #596.
+    /// </para>
+    /// <para>
+    /// A token no natural language produces by accident cannot drift from the prompt asking for it.
+    /// <c>FlareAnswerEngine</c> has always used a symbolic token for the same reason; the two
+    /// engines now agree.
+    /// </para>
+    /// </remarks>
+    private const string NotFoundToken = "<NOT_FOUND>";
+
+    /// <summary>The phrase the protocol asked for before <see cref="NotFoundToken"/>.</summary>
+    /// <remarks>
+    /// Still recognised, deliberately. A caller supplying their own <c>MapPromptTemplate</c> that
+    /// says "not found" would otherwise break <b>silently</b>, in exactly the way this change exists
+    /// to fix. Recognising both costs one comparison.
+    /// </remarks>
+    private const string LegacyNotFoundPhrase = "not found";
+
     private const string MapProtocol =
         "You are reading ONE excerpt of several, and your reply is an intermediate result rather " +
         "than the final answer. If this text contains nothing relevant to the question, reply with " +
-        "exactly: not found\n" +
-        "Those two words alone — no preamble, no closing sentence, and do not apply any " +
-        "end-of-reply formatting instruction to a \"not found\" reply.";
+        "exactly: " + NotFoundToken + "\n" +
+        "That token alone — no preamble, no closing sentence, no translation of it, and do " +
+        "not apply any end-of-reply formatting instruction to it.";
 
     /// <summary>
     /// Factory that constructs a <see cref="MapReduceAnswerEngine"/> by resolving all dependencies
@@ -107,7 +134,7 @@ public sealed class MapReduceAnswerEngine(
 
         var partials = mapResults
             .Where(r => r is not null && !string.IsNullOrWhiteSpace(r) &&
-                        !r.Trim().Equals("not found", StringComparison.OrdinalIgnoreCase))
+                        !IsNotFound(r))
             .ToList();
 
         // Reduce step
@@ -217,6 +244,28 @@ public sealed class MapReduceAnswerEngine(
     /// the protocol would change the prompt, and therefore the output and any prompt-keyed cache,
     /// for every existing caller in order to fix a problem they do not have.
     /// </remarks>
+    /// <summary>Whether a map reply says its excerpt held nothing relevant.</summary>
+    /// <param name="reply">The model's reply, or <see langword="null"/>.</param>
+    /// <returns><see langword="true"/> when the excerpt is dropped before the reduce step.</returns>
+    /// <remarks>
+    /// Accepts the symbolic <see cref="NotFoundToken"/> and the <see cref="LegacyNotFoundPhrase"/>
+    /// it replaced. A reply carrying the token alongside other text counts too: a model that
+    /// prefixes or suffixes the token has still answered "nothing here", and treating that as
+    /// content is the failure this recogniser exists to prevent.
+    /// </remarks>
+    private static bool IsNotFound(string? reply)
+    {
+        if (reply is null)
+        {
+            return false;
+        }
+
+        var trimmed = reply.Trim();
+
+        return trimmed.Contains(NotFoundToken, StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals(LegacyNotFoundPhrase, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string? MapSystemPrompt(RagOptions opts) =>
         opts.SystemPrompt is null ? null : opts.SystemPrompt + "\n\n" + MapProtocol;
 

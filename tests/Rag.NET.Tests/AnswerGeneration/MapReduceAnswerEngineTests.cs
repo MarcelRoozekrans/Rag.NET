@@ -11,6 +11,9 @@ namespace Rag.NET.Tests.AnswerGeneration;
 
 public class MapReduceAnswerEngineTests
 {
+    private const string Quote = "\"";
+
+
     private readonly IChatClient _chatClient = Substitute.For<IChatClient>();
     private readonly MapReduceAnswerEngine _sut;
 
@@ -163,7 +166,7 @@ public class MapReduceAnswerEngineTests
         //
         // Containment rather than equality since 2026-08-30: map calls append MapProtocol after the
         // caller's prompt, so that a caller instruction about the shape of a reply cannot reshape
-        // the "not found" sentinel the reduce filter matches exactly. This assertion's intent — the
+        // the refusal sentinel the reduce filter looks for. This assertion's intent — the
         // caller's prompt reaches both steps — is unchanged; only its strictness is, and
         // AskAsync_WithACallerSystemPrompt_TellsTheMapsToKeepTheRefusalSentinel pins the difference
         // between the two steps precisely.
@@ -207,6 +210,114 @@ public class MapReduceAnswerEngineTests
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
+
+    /// <summary>A map reply of the symbolic sentinel is dropped before the reduce.</summary>
+    [Fact]
+    public async Task AskAsync_MapRepliesWithTheToken_ExcerptIsDropped()
+    {
+        var sources = new List<SearchResult> { MakeSource("chunk A"), MakeSource("chunk B") };
+
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ChatReply("<NOT_FOUND>"), ChatReply("partial answer"), ChatReply("final"));
+
+        var result = await _sut.AskAsync("What?", sources, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal("final", result.Answer);
+        await _chatClient.Received(1).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m =>
+                m.Text != null
+                && m.Text.Contains("partial answer", StringComparison.Ordinal)
+                && !m.Text.Contains("<NOT_FOUND>", StringComparison.Ordinal))),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The 2026-08-30 shape — the sentinel wrapped in a caller-mandated sentence — is now dropped.
+    /// </summary>
+    /// <remarks>
+    /// That transcript is recorded on
+    /// <see cref="AskAsync_WithACallerSystemPrompt_TellsTheMapsToKeepTheRefusalSentinel"/>: real
+    /// maps returned <c>Not found. The answer to the question is "not found".</c>, which an exact
+    /// match missed, so three refusals reached the reduce and it discarded a correct answer as
+    /// contradicted. Appending the protocol made that less likely; recognising the token
+    /// <i>anywhere</i> in the reply makes it survivable. Issue #596.
+    /// </remarks>
+    [Fact]
+    public async Task AskAsync_TokenWrappedInACallerMandatedSentence_IsStillDropped()
+    {
+        var sources = new List<SearchResult> { MakeSource("chunk A"), MakeSource("chunk B") };
+
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(
+                ChatReply("<NOT_FOUND>. The answer to the question is " + Quote + "...To be determined" + Quote + "."),
+                ChatReply("partial answer"),
+                ChatReply("final"));
+
+        var result = await _sut.AskAsync("What?", sources, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal("final", result.Answer);
+        await _chatClient.Received(1).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m =>
+                m.Text != null
+                && m.Text.Contains("partial answer", StringComparison.Ordinal)
+                && !m.Text.Contains("To be determined", StringComparison.Ordinal))),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The sentinel survives a caller prompting in another language, which the phrase did not.
+    /// </summary>
+    /// <remarks>
+    /// The point of issue #596. A model prompted in German answers in German, so the English words
+    /// <c>not found</c> came back as <c>nicht gefunden</c>, the exact match failed, and an excerpt
+    /// holding nothing relevant was treated as source material — silently. A symbolic token is not
+    /// translated, so the surrounding language no longer decides whether the filter works.
+    /// </remarks>
+    [Fact]
+    public async Task AskAsync_TokenAmongNonEnglishText_IsStillDropped()
+    {
+        var sources = new List<SearchResult> { MakeSource("chunk A"), MakeSource("chunk B") };
+
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(
+                ChatReply("<NOT_FOUND> Dieser Auszug enthaelt nichts Relevantes."),
+                ChatReply("partial answer"),
+                ChatReply("final"));
+
+        var result = await _sut.AskAsync("Was?", sources, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal("final", result.Answer);
+        await _chatClient.Received(1).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m =>
+                m.Text != null
+                && m.Text.Contains("partial answer", StringComparison.Ordinal)
+                && !m.Text.Contains("nichts Relevantes", StringComparison.Ordinal))),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The phrase the token replaced is still recognised, so custom templates keep working.</summary>
+    /// <remarks>
+    /// A caller whose own <c>MapPromptTemplate</c> still asks for "not found" would otherwise break
+    /// silently — their irrelevant excerpts arriving in the reduce as content, which is the failure
+    /// issue #596 exists to remove rather than relocate.
+    /// </remarks>
+    [Fact]
+    public async Task AskAsync_LegacyPhraseFromACustomTemplate_IsStillDropped()
+    {
+        var sources = new List<SearchResult> { MakeSource("chunk A"), MakeSource("chunk B") };
+
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ChatReply("not found"), ChatReply("partial answer"), ChatReply("final"));
+
+        var result = await _sut.AskAsync("What?", sources, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal("final", result.Answer);
+    }
+
     /// <summary>
     /// A caller system prompt must not be able to reshape the map step's refusal sentinel.
     /// </summary>
@@ -223,6 +334,15 @@ public class MapReduceAnswerEngineTests
     /// sentinel survives any caller formatting instruction. This asserts the instruction actually
     /// reaches the maps and stays out of the reduce — the reduce produces the reply the caller
     /// asked for, so their prompt applies there as written.
+    /// </para>
+    /// <para>
+    /// <b>Updated 2026-09-13 for issue #596:</b> the sentinel became the symbolic
+    /// <c>&lt;NOT_FOUND&gt;</c> rather than the English words <c>not found</c>. The 2026-08-30
+    /// transcript above is <i>why</i> that matters — the model wrapped the phrase in a sentence and
+    /// the exact match failed. A prompt appended last makes that less likely; a token the
+    /// recogniser can find anywhere in the reply makes it survivable, and a token no natural
+    /// language emits by accident also survives a caller prompting in German or Japanese. Only the
+    /// sentinel's spelling changed here; this test's intent is unchanged.
     /// </para>
     /// </remarks>
     [Fact]
@@ -247,7 +367,7 @@ public class MapReduceAnswerEngineTests
                 m.Role == ChatRole.System
                 && m.Text != null
                 && m.Text.Contains("End your reply with exactly this sentence", StringComparison.Ordinal)
-                && m.Text.Contains("reply with exactly: not found", StringComparison.Ordinal))),
+                && m.Text.Contains("reply with exactly: <NOT_FOUND>", StringComparison.Ordinal))),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
 
         // The reduce call carries the caller's prompt alone — it produces the caller's reply.
@@ -256,7 +376,7 @@ public class MapReduceAnswerEngineTests
                 m.Role == ChatRole.System
                 && m.Text != null
                 && m.Text.Contains("End your reply with exactly this sentence", StringComparison.Ordinal)
-                && !m.Text.Contains("reply with exactly: not found", StringComparison.Ordinal))),
+                && !m.Text.Contains("reply with exactly: <NOT_FOUND>", StringComparison.Ordinal))),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
