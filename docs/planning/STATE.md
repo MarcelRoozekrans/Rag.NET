@@ -1,6 +1,48 @@
 # Session State
 
-**Last updated:** 2026-09-12 — **at the merge, as the previous ten were.** 6.2.43 merged as #577.
+**Last updated:** 2026-09-13 — **at the merge.** #246's diagnostic merged as #581. Not a numbered
+phase: issue work, recorded here because the findings outlive it.
+
+**#246's MECHANISM IS RULED OUT BY MEASUREMENT. BOTH PREVIOUS FIXES WERE INERT.** The intermittent
+`MessageLockLost` in `ReceiveDeadLetterAsync` had been diagnosed twice as lock expiry and fixed twice
+by raising the queue's `LockDuration`, most recently `PT1M` → `PT5M`. Instrumenting the line that
+throws showed the lock carrying its **full 300 seconds** at the moment of the call, on every observed
+run — matching the CI failure that threw **1.318 s** into the test. **A lock with five minutes left
+has not expired.** Neither change could ever have helped.
+
+**IT REPRODUCES LOCALLY — NOT CI-ONLY, NOT UBUNTU-ONLY.** 1 failure in 20 runs on Windows against the
+same emulator image. `straysHeld=0` and `deliveryCount=1` on every pass, so the stray-accumulation
+path is not involved and the message is on its first delivery.
+
+**A NEW CLUE, FROM VERIFYING THE DIAGNOSTIC RATHER THAN FROM THEORISING.** Forcing a deliberate
+double-settle produced `MessageLockLost` with `lockRemaining=300.0s` — **the same signature as the
+real failure.** Settling an already-settled message reports a lost lock while the lock still looks
+valid. So of the two candidates the exception names, *"already been removed from the queue"* now
+leads over *"received by a different receiver instance"*. **Consistent with, not proof of** — but the
+first time this bug's mechanism has been narrowed by measurement rather than argument.
+
+**NOT FIXED, DELIBERATELY.** The failure could not be caught with instrumentation attached: 20 local
+runs, 5 full-project runs, and 8-way CPU pressure all stayed green. **Guessing a third time is how
+the first two fixes happened.** What shipped is the evidence path — silent on the passing path, and
+since 6.2.42 CI dumps a failing project's log, so **the next occurrence arrives self-documenting**.
+
+**THE CANDIDATE FIX, RECORDED RATHER THAN TAKEN.** `ReceiveDeadLetterAsync` receives-and-completes
+purely to read `DeadLetterReason`. This class already prefers peeking on shared queues —
+`QueueStillHoldsAsync` does, with a comment explaining why — and **a peek takes no lock, so
+`MessageLockLost` becomes structurally impossible.** Not done: it would remove the failure without
+explaining it, and peek has not been confirmed to expose `DeadLetterReason` on the emulator's
+dead-letter sub-queue. Decide once the next failure reports itself.
+
+**STILL OPEN FOR THE OPERATOR:** close **#571** as a duplicate of **#246**, and file the
+`artifacts/packages` papercut — every branch switch invalidates it, because GitVersion derives the
+version from the branch name and `EveryPackageCarriesTheVersionGitVersionDerives` compares against
+it. Hit four times now. The fix is probably to skip the check when the packages were built for a
+different branch, rather than repacking each time.
+
+**Milestone 6 remains two account-blocked phases** — 6.1 and 6.3. **Locally finishable:** #559, #560,
+#575, #246 itself once it reports, and AI.Sentinel #205.
+
+**Previously, 2026-09-12 — **at the merge, as the previous ten were.** 6.2.43 merged as #577.
 
 **GUARD C PAID FOR ITSELF THE SAME DAY IT SHIPPED, AND IT OVERTURNED A CONCLUSION THIS PROJECT HAD
 ACTED ON TWICE.** #577's CI went red on the same AzureServiceBus flake that cost a full log read, a
