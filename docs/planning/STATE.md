@@ -42,7 +42,7 @@ different branch, rather than repacking each time.
 **Milestone 6 remains two account-blocked phases** — 6.1 and 6.3. **Locally finishable:** #559, #560,
 #575, #246 itself once it reports, and AI.Sentinel #205.
 
-**Previously, 2026-09-12 — **at the merge, as the previous ten were.** 6.2.43 merged as #577.
+**Previously, 2026-09-12 — at the merge, as the previous ten were.** 6.2.43 merged as #577.
 
 **GUARD C PAID FOR ITSELF THE SAME DAY IT SHIPPED, AND IT OVERTURNED A CONCLUSION THIS PROJECT HAD
 ACTED ON TWICE.** #577's CI went red on the same AzureServiceBus flake that cost a full log read, a
