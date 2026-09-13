@@ -1,3 +1,4 @@
+using Rag.NET.Testing;
 using Rag.NET.Benchmarks.Quality;
 using Xunit;
 
@@ -38,10 +39,10 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 public sealed class BeirPythonEntrantsTests
 {
     /// <summary>The message a run without the dataset cache skips with.</summary>
-    private const string DatasetCacheSkipReason =
+    private static string DatasetCacheSkipReason =>
         "Set RAGNET_BEIR_CACHE to the directory holding the extracted BEIR datasets to score " +
         "the Python entrants' run files. No model is needed: these cases only read text and a " +
-        "run file.";
+        "run file." + BeirProvisioningHint.Describe();
 
     private readonly ITestOutputHelper _output;
 
