@@ -1,3 +1,4 @@
+using System.Globalization;
 using Azure.Messaging.ServiceBus;
 using Rag.NET.Ingestion.AzureServiceBus.Settlement;
 using Xunit;
@@ -203,7 +204,7 @@ public sealed class ServiceBusIngestionIntegrationTests(ServiceBusEmulatorFixtur
 
                 if (message.Body.ToString().Contains(documentId, StringComparison.Ordinal))
                 {
-                    await deadLetters.CompleteMessageAsync(message, ct);
+                    await CompleteCarryingLockStateAsync(deadLetters, message, strays.Count, ct);
                     return message;
                 }
 
@@ -216,4 +217,70 @@ public sealed class ServiceBusIngestionIntegrationTests(ServiceBusEmulatorFixtur
                 await deadLetters.AbandonMessageAsync(stray, propertiesToModify: null, ct);
         }
     }
+    /// <summary>
+    /// Settles <paramref name="message"/>, and on failure rethrows carrying the lock state the
+    /// broker saw — the evidence #246 has never had.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this exists.</b> <see href="https://github.com/MarcelRoozekrans/Rag.NET/issues/246">#246</see>
+    /// is an intermittent <c>MessageLockLost</c> on this call. It has been diagnosed twice as lock
+    /// expiry and "fixed" twice by raising the queue's <c>LockDuration</c>, most recently from
+    /// <c>PT1M</c> to <c>PT5M</c>. **Both fixes were inert**: instrumenting this line on 2026-09-12
+    /// showed the lock carrying its <b>full 300 seconds</b> at the moment of the call, on every
+    /// observed run. A lock with five minutes left has not expired, so expiry was never the
+    /// mechanism.
+    /// </para>
+    /// <para>
+    /// <b>Why a permanent diagnostic rather than a fix.</b> The mechanism is still unknown. The
+    /// failure reproduced once in twenty local runs and could not be caught again — not by
+    /// re-running, not by running the full project, and not under eight-way CPU pressure. Guessing
+    /// a third time is how the first two fixes happened. The exception's own wording names the two
+    /// remaining candidates — the message was "already removed from the queue", or "received by a
+    /// different receiver instance" — and distinguishing them needs the state at the moment of
+    /// failure, which is what this captures.
+    /// </para>
+    /// <para>
+    /// <b>Silent unless it fires.</b> Nothing is written on the passing path, so test output stays
+    /// pristine. Since phase 6.2.42 CI dumps a failing project's log, so the next occurrence in CI
+    /// arrives with this context attached rather than costing another investigation.
+    /// </para>
+    /// <para>
+    /// <b>Known limit.</b> The caller's <c>finally</c> abandons strays, and an exception there
+    /// would replace this one. Left alone deliberately: <c>strays</c> was empty on every observed
+    /// run, so the masking path has never been seen, and widening this change to cover a
+    /// hypothetical would be the same over-reach as the two previous fixes.
+    /// </para>
+    /// </remarks>
+    /// <param name="receiver">The dead-letter receiver holding the lock.</param>
+    /// <param name="message">The message to settle.</param>
+    /// <param name="strayCount">How many other messages this receiver is holding locks on.</param>
+    /// <param name="ct">The cancellation token.</param>
+    private static async Task CompleteCarryingLockStateAsync(
+        ServiceBusReceiver receiver,
+        ServiceBusReceivedMessage message,
+        int strayCount,
+        CancellationToken ct)
+    {
+        var attemptedAt = DateTimeOffset.UtcNow;
+        try
+        {
+            await receiver.CompleteMessageAsync(message, ct);
+        }
+        catch (ServiceBusException ex)
+        {
+            throw new InvalidOperationException(
+                $"Settling the dead-lettered message failed with {ex.Reason}. Lock state at the " +
+                $"attempt, recorded for #246: lockedUntil={message.LockedUntil:O} " +
+                $"attemptedAt={attemptedAt:O} " +
+                $"lockRemaining={(message.LockedUntil - attemptedAt).TotalSeconds.ToString("F1", CultureInfo.InvariantCulture)}s " +
+                $"deliveryCount={message.DeliveryCount} lockToken={message.LockToken} " +
+                $"sequenceNumber={message.SequenceNumber} enqueuedTime={message.EnqueuedTime:O} " +
+                $"straysHeld={strayCount}. " +
+                "A positive lockRemaining rules out expiry and therefore rules out LockDuration " +
+                "as the mechanism, which is what #246 was twice fixed for.",
+                ex);
+        }
+    }
+
 }
