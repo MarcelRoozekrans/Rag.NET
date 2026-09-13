@@ -581,9 +581,36 @@ public static class BeirRunBudget
             "**Two of the three calls in that traversal term no longer happen.** " +
             "GetRelationshipsAsync and GetCommunitiesForEntityAsync were awaited with their " +
             "results discarded, and #239 removed them; the ~45,000 scans above are a HISTORICAL " +
-            "term and a re-measurement should come in under it. The sentence is left as written " +
-            "because it records what was derived at the time. GetNeighborsAsync stays -- local " +
-            "search reads its PageRank scores, which is the one result the traversal used. " +
+            "term. The sentence is left as written because it records what was derived at the " +
+            "time. GetNeighborsAsync stays -- local search reads its PageRank scores, which is " +
+            "the one result the traversal used. " +
+            "**RE-MEASURED 2026-09-13, TWICE, AND THE TRAVERSAL TERM IS GONE (#298 step 2).** " +
+            "The local-search pass over all 2,255 judged queries now takes 208.0 s and 202.7 s " +
+            "on two consecutive runs, and the candidate-set control 163.1 s and 158.2 s; the " +
+            "test reports 251.563 s and 249.641 s, 0.8% apart. A 15-to-40 minute traversal term " +
+            "cannot fit inside a 3.4 minute pass, and the relationships table is unchanged at " +
+            "147,021 rows -- so it is an INDEXED problem now rather than a smaller one. That " +
+            "conclusion survives the cache caveat below, because embedding warmth does not " +
+            "touch SQL scans: those 45,000 scans would still happen and would still cost " +
+            "minutes. #297 removed them; this is the evidence. " +
+            "**The wall-clock totals are NOT comparable to the 43 m 29 s above, and no part of " +
+            "that drop is claimed for the index.** Both runs report `embedding cache: 325,661 " +
+            "hits, 0 misses`, where the 2026-08-15 run recorded 145,840 hits against 177,566 " +
+            "misses -- it computed roughly 177,000 embeddings these did not. Most of the " +
+            "difference is that, not the schema. " +
+            "Conditions, recorded to the same standard as the figures above: Windows 11, " +
+            ".NET 10.0.12, CPU ONNX Runtime, 20 logical processors at 4% load, 34.7 GB free of " +
+            "63.7 GB, the Hyper-V VM shut down and Docker/WSL2 idle at zero CPU. An earlier " +
+            "attempt the same evening measured 713 s and 287 s for the same command while a VM " +
+            "held all but 3.4 GB of memory, which is why both numbers above come from runs made " +
+            "after it was stopped, and why one run would not have been enough. " +
+            "**One inconsistency, unexplained and not resolved by picking a reading.** The two " +
+            "pass timings sum to 371 s against a reported test time of 251.6 s, consistently " +
+            "across both runs. Either they overlap or they are measured on different clocks. No " +
+            "total is quoted from them. " +
+            "Quality was bit-identical across both runs and reproduces what is already recorded: " +
+            "nDCG@10 0.56897 for the graph path, 0.59658 for the candidate-set control, against " +
+            "the Real leg anchor of 0.63967. " +
             "**It needs a report cache covering the FULL corpus graph, which is not the slice's.** " +
             "Report cache keys are the rendered report prompts, and those are a function of the " +
             "graph: the corpus graph's ~3,587 communities are ~3,587 entries the slice's 607 do " +

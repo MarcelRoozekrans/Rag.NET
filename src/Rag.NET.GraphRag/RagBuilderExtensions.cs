@@ -22,6 +22,14 @@ public static class RagBuilderExtensions
     /// </summary>
     /// <remarks>
     /// <para>
+    /// <b>Without a <c>graph</c> store the entity graph is kept in memory and does not survive the
+    /// process.</b> The next ingest rebuilds it from scratch — 22 m 18 s on a 609-document corpus,
+    /// measured — so anything beyond an experiment should pass
+    /// <c>graph: g =&gt; g.UseSqlite("graph.db")</c>. The default stays in-memory because refusing
+    /// to start would tax every quick trial, but it warns once when the store is first resolved
+    /// rather than being silent about it, per issue #298.
+    /// </para>
+    /// <para>
     /// <b>Placing the ingestion behaviours is the whole point of the call.</b> This method used to
     /// register four behaviours and stop, and none of those types is in either default pipeline, so
     /// <c>UseGraphRag()</c> on its own extracted no entities, detected no communities and built no
@@ -79,12 +87,15 @@ public static class RagBuilderExtensions
         chunks?.Invoke(chunkStoreBuilder);
         chunkStoreBuilder.UseInMemoryIfUnset();
 
-        // Graph store — default to in-memory SQLite if not configured
+        // Graph store. Unconfigured means in-memory, which is convenient and costly to rediscover:
+        // the graph dies with the process and the next ingest rebuilds it. UseEphemeralInMemory
+        // warns about that when the store is first resolved, rather than leaving the default
+        // silent as it was before #298.
         var graphStoreBuilder = new GraphStoreBuilder(builder.Services);
         if (graph is not null)
             graph(graphStoreBuilder);
         else
-            graphStoreBuilder.UseSqlite(":memory:");
+            graphStoreBuilder.UseEphemeralInMemory();
 
         // Ingestion behaviors
         builder.Services.AddSingleton<GraphEntityExtractionBehavior>(sp =>
