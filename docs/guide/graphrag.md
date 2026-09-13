@@ -188,6 +188,13 @@ rag.UseGraphRag(
 > at process exit while a configured graph store persists, so the two halves disagree after a restart
 > until the next ingest. Configure `chunks:` unless you mean that.
 
+> **The graph itself defaults to in-memory too, and rebuilding it is the expensive half.** Omitting
+> `graph:` keeps the entity graph in an in-memory SQLite database that is discarded at process exit,
+> and the next ingest rebuilds it from scratch — **22 minutes 18 seconds on a 609-document corpus**,
+> measured. Rag.NET logs a warning the first time an unconfigured graph store is resolved rather than
+> failing to start, so a quick trial still works; pass `graph: g => g.UseSqlite("graphrag.db")` for
+> anything else.
+
 **Nothing is lost from retrieval.** Local search seeds from the graph chunk store and global search
 reads community reports from it — each asks the store that holds what it needs, which is cheaper than
 the old arrangement: global search no longer makes a second pass through your whole retrieval
