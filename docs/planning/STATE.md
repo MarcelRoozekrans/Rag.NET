@@ -38,7 +38,13 @@ collapse produced the `SyntaxWarning: invalid escape sequence` messages seen ear
 the backslashes with `chr(92)` when matching source that contains them.
 
 **Milestone 6 remains two account-blocked phases** — 6.1 and 6.3. **Open and not mine to choose:**
-#298, #283, #184, #175, #153. **#246** waits to report itself. **AI.Sentinel #205** is elsewhere.
+#298, #283, #184, #175, #153. **#246** waits to report itself.
+
+**AI.Sentinel #205 is CLOSED** — since 2026-09-12, and it was listed as outstanding here and in
+conversation throughout 2026-09-13 anyway. **Exactly the staleness this session kept finding in
+issues, in the status list used to find it**: #299, #184 and #560 were all fixed-but-open, and
+the check that caught them was never turned on the tracker entry itself. Verify a carried item
+the same way a claim is verified.
 
 **Previously, 2026-09-13 — at the merge.** #559 closed in #593. **This empties the
 locally-finishable queue.**
