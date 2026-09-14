@@ -385,6 +385,39 @@ jobs:
             !${{ runner.temp }}/beir/embeddings
           key: beir-corpora-${{ hashFiles('src/Rag.NET.Benchmarks.Quality/BeirDatasetDescriptor.cs', 'src/Rag.NET.Benchmarks.Quality/MultiHopRagSource.cs') }}
 
+      # The other half of RAGNET_BEIR_CACHE, and the half that costs the time rather than the
+      # bytes. The corpus cache above removed the download; this removes the recomputation. The two
+      # cells this job runs — SciFact and ArguAna under Parity, the only two BeirRunBudget marks
+      # FitsTheNightly — embed roughly 29,000 texts on a CPU runner, and that is where the sixteen
+      # minutes go. Measured on the developer machine at 1,580 bytes per vector, the set this job
+      # produces is tens of megabytes, not the 2.6 GB a machine that has run every ablation holds.
+      #
+      # restore-keys IS correct here and is FORBIDDEN two steps above, and the difference is a
+      # property rather than a preference. EmbeddingCache addresses entries by
+      # SHA-256 over the model identity and the text, so an entry restored from an older cache is
+      # either keyed by the exact text being embedded, in which case it is that text's vector, or
+      # is never looked up at all. A stale corpus MEASURES; a stale vector cannot be read by
+      # mistake. BeirCorpusCacheTests forbids the other step what this one requires, for that
+      # reason and no other.
+      #
+      # MINILM_REVISION is in the key and it is load-bearing, NOT decoration. BeirHarness's
+      # ModelIdentity names the model but not its revision, so bumping the pin does not change one
+      # cache key: without the revision here, restore-keys would hand a bumped run the previous
+      # model's vectors and every one of them would read as a hit. The workflow already treats the
+      # revision as identity-bearing — it pins it and checks a SHA-256 against it, because a
+      # silently different model moves the parity number by an amount nobody could attribute — and
+      # this key is what makes the cache agree. See the note on ModelIdentity itself.
+      #
+      # The key also rotates on run_id because a cache entry is immutable once written. A fixed key
+      # would freeze whatever the first night embedded and never pick up a cell added later, which
+      # is the failure mode that looks exactly like a working cache.
+      - name: Cache the BEIR embedding vectors
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/beir/embeddings
+          key: beir-embeddings-${{ env.MINILM_REVISION }}-${{ github.run_id }}
+          restore-keys: beir-embeddings-${{ env.MINILM_REVISION }}-
+
       # The two ONNX variables and the BEIR cache are set HERE rather than in the job's `env:`
       # block, and that is not a style choice: `runner` is not one of the contexts available to
       # `jobs.<id>.env`, and a literal "$RUNNER_TEMP/beir" would reach the test process unexpanded.

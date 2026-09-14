@@ -216,6 +216,59 @@ public sealed partial class TestProject
         return string.Join(' ', builder.ToString().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 
+    /// <summary>
+    /// Reads one workflow step's body, located by its <c>name:</c>, with comment lines removed.
+    /// </summary>
+    /// <param name="workflowPath">The absolute path of the workflow file.</param>
+    /// <param name="stepName">The text identifying the step, matched inside its <c>- name:</c> line.</param>
+    /// <returns>The step's lines, trimmed and newline-joined, or empty when no step matches.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Why not <see cref="ReadWorkflowCommands"/>.</b> That flattens the whole file to one line,
+    /// which is right for asking whether a command runs anywhere and wrong for asking what one step
+    /// says. Two cache steps in <c>nightly.yml</c> hold opposite requirements about
+    /// <c>restore-keys</c> — the corpora must not have them, the vectors must — and a whole-file
+    /// search cannot tell those apart or even express either.
+    /// </para>
+    /// <para>
+    /// <b>Comments are dropped for the reason <see cref="ReadWorkflowCommands"/> records.</b> Prose
+    /// cannot satisfy an assertion about what runs: a guard asserting on raw text once passed
+    /// because the string it looked for appeared in the surrounding explanation.
+    /// </para>
+    /// <para>
+    /// <b>Returning empty rather than throwing</b> leaves the caller to say what a missing step
+    /// means. A guard that treats absence as failure and one that treats it as not-applicable are
+    /// both reasonable, and that is not this helper's decision to make.
+    /// </para>
+    /// </remarks>
+    public static string ReadWorkflowStep(string workflowPath, string stepName)
+    {
+        var collected = new List<string>();
+        var inside = false;
+
+        foreach (var line in File.ReadLines(workflowPath))
+        {
+            var trimmed = line.Trim();
+
+            if (trimmed.StartsWith("- name:", StringComparison.Ordinal))
+            {
+                if (inside)
+                {
+                    break;
+                }
+
+                inside = trimmed.Contains(stepName, StringComparison.Ordinal);
+            }
+
+            if (inside && !trimmed.StartsWith('#'))
+            {
+                collected.Add(trimmed);
+            }
+        }
+
+        return string.Join(Environment.NewLine, collected);
+    }
+
     /// <summary>Discovers every test project under <c>tests/</c>.</summary>
     /// <returns>The discovered projects, in directory order.</returns>
     public static IReadOnlyList<TestProject> DiscoverAll()
