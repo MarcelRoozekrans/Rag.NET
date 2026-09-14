@@ -1,6 +1,63 @@
 # Session State
 
-**Last updated:** 2026-09-14 — **at the merge.** #603 merged; #283's body edited in place.
+**Last updated:** 2026-09-14 — **at the merge.** #605 merged, closing #175. **#246 finally
+reported itself**, in CI, on this PR's build.
+
+**#246 IS THE HEADLINE, NOT #175.** The instrumentation added 2026-09-12 and the failure-log dump
+from 6.2.42 both fired on `ubuntu-latest` at 06:40:45Z and produced the evidence this issue has never
+had in four weeks of being open:
+
+| Interval | Value |
+|---|---|
+| Dead-lettered to lock acquired | 104 ms |
+| Lock acquired to `CompleteMessageAsync` | **3.4 ms** |
+| Lock remaining at the attempt | **300.0 s of 300** |
+
+`deliveryCount=1`, `straysHeld=0`, `sequenceNumber=2`. **That rules out four things at once** — expiry
+for the third time and the first from CI, the test holding the lock too long, stray interference, and
+any prior redelivery. Both previous "fixes" raised `LockDuration`; both were aimed at a mechanism the
+evidence now excludes three separate ways.
+
+**AND THE TIMINGS EXPOSED A STRUCTURAL FACT THE CODE COMMENT MISSED.** `ReceiveDeadLetterAsync` is
+not polling. It is called once and blocks in `ReceiveMessageAsync` for up to 60 s **while `sut` is
+still running** — and `sut` is what dead-letters the message. The long-poll is satisfied *by the
+dead-letter transfer itself*, 104 ms after it, so the lock is taken against an entity the broker is
+mid-write on. **That is not recorded as the cause.** It is the third plausible story this bug has
+had and the first two shipped as fixes.
+
+**WHAT WAS PROPOSED IS A MEASUREMENT, NOT A FIX** — on catching `MessageLockLost`, re-receive at
+once and record `sequenceNumber` and `deliveryCount`. Same sequence with `deliveryCount=1` means a
+phantom delivery; `deliveryCount=2` means a real revocation; **nothing coming back means the complete
+landed and only its acknowledgement was lost**, in which case every lock-directed fix has been aimed
+at the wrong thing three times running.
+
+**BOTH EMULATOR CONTAINERS ARE UNPINNED** — `servicebus-emulator:latest` and `azure-sql-edge:latest`,
+and the run log shows both pulled fresh. Diagnosing an intermittent against a moving emulator on a
+moving database is how it stays intermittent. Worth its own change whatever #246 turns out to be.
+
+**#175 WAS ANSWERED AGAINST ITS FRAMING AND IN FAVOUR OF ITS CONCERN.** It asked whether one ungated
+case should go behind `BeirRunBudget`. **Eleven cases** load MultiHop-RAG on the nightly gated only
+on `RAGNET_BEIR_CACHE`, and **three of the ten it did not name shipped in #168 itself**, the PR it was
+filed against. #229 arrived three days later citing the questioned case *by name* as its precedent.
+Gating one of eleven removes no bytes.
+
+**WHAT WAS REAL WAS THAT NOTHING CACHED THE CORPORA AT ALL.** `$RUNNER_TEMP` is fresh per job, so all
+five came down every night. The nightly now caches that directory. Two properties decide whether that
+is safe and `BeirCorpusCacheTests` pins both: **`embeddings` is excluded**, and there are **no
+`restore-keys`** — `BeirDatasetCache` treats a directory holding `corpus.jsonl` and `queries.jsonl` as
+present and never re-verifies it, because the MD5 is checked during a download a cache hit skips. All
+four ways the guard can rot were mutation-checked.
+
+**THE NIGHTLY HAS FAILED 5 OF 26 SCHEDULED RUNS SINCE 2026-08-19, AND THAT IS NOT FILED.** Three are
+same-total, same-skip-count, sub-5-second mass failures of the BEIR project: 09-01 passed 137 in
+16 m 41 s; 09-02 failed 9 in 4.3 s. The logs cannot name the tests. **Deliberately not attributed** —
+guessing is what got #246 misdiagnosed twice. Guard C will name the next one.
+
+**Open and not mine to choose:** **#153** only — #184 and #175 both closed today. **#283** is
+unblocked as to instructions and blocked as to accounts. **Milestone 6 remains two account-blocked
+phases**, 6.1 and 6.3.
+
+**Previously, 2026-09-14 — at the merge.** #603 merged; #283's body edited in place.
 
 **#283 IS STILL BLOCKED, AND NOT BY ANYTHING IN THIS REPOSITORY.** It needs people with ordinary
 accounts on Asana, Notion, Slack and the rest. The operator lacking those is the blocker the issue
