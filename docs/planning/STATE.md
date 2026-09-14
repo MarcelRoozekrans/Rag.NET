@@ -1,6 +1,39 @@
 # Session State
 
-**Last updated:** 2026-09-14 — **at the merge.** #298 closed; #599, #600 and #601 merged.
+**Last updated:** 2026-09-14 — **at the merge.** #603 merged; #283's body edited in place.
+
+**#283 IS STILL BLOCKED, AND NOT BY ANYTHING IN THIS REPOSITORY.** It needs people with ordinary
+accounts on Asana, Notion, Slack and the rest. The operator lacking those is the blocker the issue
+names, and no amount of work here moves it. **What was fixable was that volunteers hit an error at
+step 2**, which is now fixed.
+
+**THREE BROKEN COMMANDS IN THE ISSUE, NOT THE ONE FIRST REPORTED** — the record step, the
+secret-guard check and the replay verification all said `dotnet test --filter`, refused repo-wide
+with `RAGNET0001` since 6.2.41. Each replacement was **verified to select what it claims**, not
+merely to run: 3 tests for the Asana class, 4 for `CassetteSecretTests`. That distinction is the
+point — the old `--filter` *looked* like it selected one test while running the whole assembly, so
+"the command runs" was never evidence.
+
+**The opening line was corrected too.** It promised "no .NET expertise beyond running `dotnet
+test`", which is no longer the shape of the task and would have walked a contributor into the exact
+error the rest of the fix removes.
+
+**THIRD INSTANCE OF THE SAME ENUMERATION FAILURE.** 6.2.41 converted thirteen `--filter` commands
+and enumerated the ones in `docs/reference/ci.md`. Everything outside that file kept its broken
+form: `BeirRunBudget` (#601), `docs/reference/retrieval-quality.md` (#603), and this issue. **The
+rule the phase itself recorded — enumerate the occurrences, do not reason about where they live —
+was applied to a directory rather than to the repository.** Published docs and the issue tracker
+are now clean; the only surviving mentions are the prose explaining the ban.
+
+**A verification habit that failed twice today, both mine:** `git grep` for merged content without
+`-i`, reporting MISSING for text I had written in capitals. Both times the content was on `main`.
+Case-fold the check, or grep a distinctive lowercase fragment.
+
+**Milestone 6 remains two account-blocked phases** — 6.1 and 6.3. **Open and not mine to choose:**
+#184, #175, #153. **#283** is unblocked as to instructions and blocked as to accounts. **#246**
+waits to report itself.
+
+**Previously, 2026-09-14 — at the merge.** #298 closed; #599, #600 and #601 merged.
 
 **A QUESTION ABOUT MULTILINGUAL PROMPTS ENDED IN A MEASURED ANSWER TO A YEAR-OLD ARCHITECTURE
 QUESTION.** The chain: prompts are already per-caller configurable, so the real defect was that one
