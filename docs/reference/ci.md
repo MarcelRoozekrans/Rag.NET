@@ -555,6 +555,34 @@ RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Re
   -class "*BeirGraphRagAnswerTests"
 ```
 
+### The graph caches are published, so none of the above is needed to replay
+
+Everything in this section describes **filling** the caches, which costs money and needs a key. To
+only **replay** them — which is what the pinned figures check, and what anyone reproducing the
+GraphRAG results actually wants — download the published bundle instead:
+
+```bash
+curl -L -o ragnet-graphrag-cache.tar.gz   https://github.com/MarcelRoozekrans/Rag.NET/releases/download/graphrag-cache-2026-09-14/ragnet-graphrag-cache.tar.gz
+tar -xzf ragnet-graphrag-cache.tar.gz -C "$RAGNET_BEIR_CACHE"
+```
+
+93 MB compressed, 143 MB unpacked: `graph-extractions`, `graph-reports` and `graph-answers`, which
+is every cache the graph cells replay from. With those in place `BeirGraphRagAnswerTests` and the
+extraction-backed cells run with **no `OPENROUTER_API_KEY` at all**, because refuse-on-miss is the
+default and a populated cache never misses.
+
+**It carries only MultiHop-RAG, and that is structural rather than a filter.**
+`BeirProtocol.GraphRag` is declared by that dataset alone, so nothing else can have written to those
+directories. MultiHop-RAG is **ODC-By 1.0** by its own authors' declaration, which permits
+redistributing a derived database provided the attribution travels with it — so `NOTICE.md` is
+inside the archive and belongs there if you pass the bundle on.
+
+**The `hypotheticals`, `metadata-extraction` and `self-query` caches are deliberately absent.** They
+span FiQA and TREC-COVID, whose upstream terms permit no redistribution — see the licence fields on
+`BeirDatasetDescriptor`, which follow upstream rather than the Hugging Face mirrors' blanket tag —
+and every cache here is hash-sharded with no dataset separation, so they cannot be split by corpus
+without re-deriving them. Filling those still needs a key, and the sections above still apply.
+
 ### Self-query, `RAGNET_SELF_QUERY_GENERATE`
 
 Fills the `self-query` cache with real model replies. Requires `OPENROUTER_API_KEY`; no workflow
