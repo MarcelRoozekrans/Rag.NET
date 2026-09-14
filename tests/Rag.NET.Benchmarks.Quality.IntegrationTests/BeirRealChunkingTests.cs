@@ -228,6 +228,21 @@ public sealed class BeirRealChunkingTests
         // later by an nDCG that failed to move. The counts it prints are also what sets the
         // over-retrieval factor in BeirHarness — if MaxChunksPerDocument is 1, retrieval is
         // retrieving exactly the cutoff and pooling has nothing to pool.
+        //
+        // NOT gated by BeirRunBudget, and #175 asked whether it should be — the nightly sets
+        // RAGNET_BEIR_CACHE, so this case fetches MultiHop-RAG's two Hugging Face files (11.4 MiB)
+        // on every run. The answer is no, on evidence rather than on taste. Gating this case would
+        // remove nothing: MultiHopRagSliceTests shipped three more ungated fetches of the same two
+        // files in the same PR, GraphExtractionCorpusTests now contributes six, and
+        // BeirGraphRagCorpusTests.Chunking_UnderTheGraphPath — which arrived three days after the
+        // issue and cites this method by name as its precedent — one more. Eleven cases in all,
+        // one budget gate, and no change in bytes downloaded.
+        //
+        // The recurring cost was real and is now answered where it lives: nightly.yml caches the
+        // corpus directory, so an unavailable Hugging Face costs a cache miss rather than eleven
+        // red tests. BeirCorpusCacheTests pins that. What this case must keep is what it was built
+        // for — a chunker that stopped chunking, caught in seconds on every corpus without a model,
+        // rather than an hour later by an nDCG that failed to move.
         Assert.SkipUnless(
             BeirHarness.IsDatasetCacheProvisioned(out var cacheDirectory),
             "Set RAGNET_BEIR_CACHE to a writable directory to check chunking against the corpora.");

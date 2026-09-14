@@ -355,6 +355,36 @@ jobs:
       - name: Install libgomp1 for Whisper's native library
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libgomp1
 
+      # The corpora, unlike the models above, were re-downloaded from scratch every single night:
+      # four BEIR archives from TU Darmstadt plus MultiHop-RAG's two JSON files from Hugging Face,
+      # on every run, because $RUNNER_TEMP is fresh per job and nothing cached it. Issue #175 raised
+      # the Hugging Face half. Its framing was that one ungated test case had made that fetch
+      # recurring, which turned out to understate it twice over: nine other cases in this project
+      # fetch the same two files on the same run, and the very PR the issue was filed against
+      # already shipped three of them. Gating the case it named would not have removed one byte.
+      # What removes the nightly fetch is caching what was never cached.
+      #
+      # The `embeddings` subdirectory is excluded, deliberately. EmbeddingCache writes vectors under
+      # the same root, and they are a different kind of thing: not pinned by anything here, growing
+      # with every ablation rather than with the corpus list, and the reason the parity legs cost
+      # minutes rather than seconds. Caching them would be a real speed-up and a separate decision
+      # with its own argument about size and eviction. This step buys availability, not time.
+      #
+      # No `restore-keys`, and that omission is the load-bearing part. BeirDatasetCache treats a
+      # directory holding corpus.jsonl and queries.jsonl as present and never re-verifies it — the
+      # published MD5 is checked on download, which a cache hit skips by definition. A prefix-matched
+      # restore would hand back a corpus pinned to a digest the descriptors no longer name, and
+      # nothing downstream would say so. Hashing the two files that hold every pin means a prose edit
+      # to either costs one night's re-download, which is precisely today's behaviour, while a
+      # changed revision or MD5 can never be served from the old cache.
+      - name: Cache the BEIR corpora
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ runner.temp }}/beir
+            !${{ runner.temp }}/beir/embeddings
+          key: beir-corpora-${{ hashFiles('src/Rag.NET.Benchmarks.Quality/BeirDatasetDescriptor.cs', 'src/Rag.NET.Benchmarks.Quality/MultiHopRagSource.cs') }}
+
       # The two ONNX variables and the BEIR cache are set HERE rather than in the job's `env:`
       # block, and that is not a style choice: `runner` is not one of the contexts available to
       # `jobs.<id>.env`, and a literal "$RUNNER_TEMP/beir" would reach the test process unexpanded.
