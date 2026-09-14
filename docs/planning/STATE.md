@@ -1,6 +1,56 @@
 # Session State
 
-**Last updated:** 2026-09-13 — **at the merge.** #596 fixed and closed in #597; #559 recorded in
+**Last updated:** 2026-09-14 — **at the merge.** #298 closed; #599, #600 and #601 merged.
+
+**A QUESTION ABOUT MULTILINGUAL PROMPTS ENDED IN A MEASURED ANSWER TO A YEAR-OLD ARCHITECTURE
+QUESTION.** The chain: prompts are already per-caller configurable, so the real defect was that one
+prompt's English wording was load-bearing for parsing (#596/#597) — then #299's survey turned out
+already fixed — then #298's re-measurement, never run, finally was.
+
+**#298 IS CLOSED, AND ITS OWN RECOMMENDATION WAS VINDICATED RATHER THAN OVERTURNED.** It argued
+"not yet, and the reason is specific rather than conservative": the pain attributed to SQLite was a
+schema defect, and a new engine benchmarked against a known-wrong schema would be flattered. **Now
+measured.** The traversal term derived at **15-40 minutes** cannot fit inside a local-search pass
+that takes **208.0 s and 202.7 s** over two runs, and the `relationships` table is unchanged at
+147,021 rows — an *indexed* problem, not a smaller one.
+
+**THE NUMBER CARRIES ITS OWN CAVEAT, DELIBERATELY.** The wall-clock drop from 43 m 29 s is mostly
+the embedding cache: both runs report **325,661 hits and zero misses**, where 2026-08-15 recorded
+145,840 hits against **177,566 misses**. None of that drop is claimed for the index. The traversal
+conclusion survives because embedding warmth does not touch SQL scans.
+
+**WHAT CLOSING #298 DOES NOT SETTLE, said on the issue so nobody reads it as settled:**
+concurrency — `SqliteGraphStore` still holds one `SqliteConnection` opened in the constructor and
+registered as a singleton, which #298 itself called the strongest argument — and collapsing two
+databases for Postgres users. Either needs its own issue and its own evidence.
+
+**MEASUREMENT DISCIPLINE, LEARNED EXPENSIVELY IN ONE EVENING.** The first attempt gave **713 s**,
+the second **287 s**, for the identical command — while a Hyper-V VM held all but **3.4 GB** of
+63.7 GB. After the operator stopped it, two runs agreed to **0.8%**. **One run would have produced a
+confident wrong number**; the repo's own `CostReproducibility` rule refuses a figure from a single
+run, and this is why. Conditions are now recorded beside the figure, including the failed attempt.
+
+**AND THE MEASUREMENT NEARLY WENT UNRECORDED TWICE.** The first successful run used a command
+without `-showLiveOutput`, so the test's own figures — including the cache counts that decide
+comparability — were never captured. Then the captured output *was* in the log and a `cut -c1-170`
+hid it. **Truncation cost three separate findings today.**
+
+**#601: THE PRINTED COMMAND DID NOT WORK AND HAD TO BE FIXED TO FOLLOW THE ISSUE.** Every gated
+cell said `dotnet test --filter`, which has raised `RAGNET0001` since 6.2.41. Converting it meant
+moving three guards with it, because the printed string is a guarded artifact — it selected nothing
+once and `vstest` exited 0, recording a pass for a run that never happened. **The new dataset guard
+failed 12 cells on its first run, on my own prose**: it read the whole skip message and tripped on
+the sentence warning readers off `--filter`. Fourth calibration failure this week, first one where
+the thing caught was mine.
+
+**TOOLING NOTE THAT COST THREE PATCHES.** Heredocs here collapse `\` to `\`, so a C# `'\n'`
+literal became a real newline. Build backslashes with `chr(92)` when patching source that contains
+them.
+
+**Milestone 6 remains two account-blocked phases** — 6.1 and 6.3. **Open and not mine to choose:**
+#283, #184, #175, #153. **#246** waits to report itself.
+
+**Previously, 2026-09-13 — at the merge.** #596 fixed and closed in #597; #559 recorded in
 #594.
 
 **A DESIGN QUESTION ABOUT MULTILINGUAL PROMPTS FOUND A CORRECTNESS BUG.** Asked whether the system
