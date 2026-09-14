@@ -1,6 +1,42 @@
 # Session State
 
-**Last updated:** 2026-09-14 — **at the merge.** #611 merged and **#610 closed: the GraphRAG caches
+**Last updated:** 2026-09-14 — **at the merge.** #613 and #612 merged, **#607 closed: the embedding
+cache is re-keyed on the model revision.**
+
+**THE RE-KEY WAS THE OPERATOR'S CALL, AND THE COST TURNED OUT SMALLER THAN THE DECISION IMPLIED.**
+`ModelIdentity` named `all-MiniLM-L6-v2/onnx` — a repository, not an export — so bumping
+`MINILM_REVISION` changed no cache key and every vector the previous export produced read as a hit.
+It now carries the revision, which re-keys all **1,761,084** local entries.
+
+**NOTHING COULD BE MIGRATED IN PLACE, AND THE ON-DISK FORMAT IS WHY.** An entry holds `RAGNETE1`,
+the 32-byte key digest, the dimension and the floats — **never the text**. Computing a new digest
+needs the input, which was never stored. Old entries are **unreachable rather than wrong** and cost
+only disk. **Check the format before quoting a migration cost**: the answer was in a 44-byte header.
+
+**THE BILL IS WHAT YOU NEXT ASK FOR, NOT WHAT YOU DISCARDED.** The cache fills lazily, one text at a
+time. The nightly's two cells cost minutes; a full ablation sweep costs hours **and only if somebody
+sweeps**. `2,653.6 MB` of now-unreachable vectors sits in `~/.cache/ragnet-beir/embeddings`, plus a
+further `1,017 MB` in `embeddings-warmbak` — **~3.6 GB reclaimable by deleting them**, and nothing
+reads either any more.
+
+**`ModelRevisionAgreementTests` KEEPS THE TWO PINS TOGETHER.** It asserts the workflow's
+`MINILM_REVISION` equals `BeirHarness.PinnedModelRevision` **and** that `ModelIdentity` is built from
+that constant — two constants that agree while nothing consumes them is not the property worth
+having. It reads both as **source text rather than through a project reference**, deliberately: the
+constant lives in a `RequiresSecrets` project that runs in the advisory nightly tier, and a guard
+living there would let the pins drift through a merge, which is the failure it exists to catch.
+Three mutations each fail it.
+
+**THE ESCAPING TAX, THIRD INSTANCE IN ONE DAY.** Writing that guard through a bash heredoc collapsed
+a doubled `\\s` down to a single `\s` and mangled every regex in it, exactly as recorded twice before. **Write C# containing
+regexes or quotes with the file tool, not through a heredoc** — the workaround of building
+backslashes with `chr(92)` is more fragile than simply not using the shell for it.
+
+**Open and not mine to choose:** **#153** only. **#283** is unblocked as to instructions, blocked as
+to accounts. **#246** has reported once and is still open, waiting for a second occurrence to decide
+between its remaining branches. **Milestone 6 remains two account-blocked phases**, 6.1 and 6.3.
+
+**Previously, 2026-09-14 — at the merge.** #611 merged and **#610 closed: the GraphRAG caches
 are published.** GraphRAG now reproduces with no API key.
 
 **THE BUNDLE.** `graphrag-cache-2026-09-14`, a deliberately non-`v` tag so release-please's namespace
