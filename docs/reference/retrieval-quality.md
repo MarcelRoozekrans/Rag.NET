@@ -627,12 +627,38 @@ export RAGNET_BEIR_CACHE=~/.cache/ragnet-beir
 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests
 ```
 
-**Run one dataset at a time.** SciFact is minutes; FiQA's parity leg alone is over an hour. Select
-with `--filter "DisplayName~arguana"`, and note that it must be `DisplayName` —
-`FullyQualifiedName` stops at the method name and carries no theory arguments, so
-`FullyQualifiedName~arguana` selects nothing whatsoever and reports that as "no test matches" rather
-than as a failure. `Chunking_SplitsEveryCorpusIntoMoreUnitsThanDocuments` needs no model and finishes
-in seconds; it is where the unit counts on this page came from.
+**Run one dataset at a time.** SciFact is minutes; FiQA's parity leg alone is over an hour.
+
+**Corrected 2026-09-14.** This paragraph used to say to select with
+`--filter "DisplayName~arguana"`. That command no longer runs: `--filter` is **refused repo-wide**
+with `error RAGNET0001` since every test project moved to Microsoft.Testing.Platform — see
+[Narrowing a run](./ci.md#narrowing-a-run---filter-is-refused-everywhere). Phase 6.2.41 converted
+thirteen such commands and enumerated only `ci.md`'s, so this page kept telling readers to run
+something that errors before a test starts.
+
+**The expensive cells narrow by environment variable, not by filter.** `RAGNET_BEIR_LONG_RUNS`
+takes a comma-separated list of dataset names, so only the ones you name opt in:
+
+```bash
+RAGNET_BEIR_LONG_RUNS=arguana   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class "*BeirParityTests"
+```
+
+**This narrows cost, not test selection, and the difference matters.** No filter the native runner
+accepts addresses a single theory data row, so the theory still runs and the datasets you did not
+name *skip* rather than work. Cells cheap enough for the nightly are not gated at all and run for
+every dataset regardless — the variable governs the opt-in cells, which are the ones worth
+narrowing.
+
+`Chunking_SplitsEveryCorpusIntoMoreUnitsThanDocuments` needs no model and finishes in seconds; it is
+where the unit counts on this page came from:
+
+```bash
+tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -method "*Chunking_SplitsEveryCorpusIntoMoreUnitsThanDocuments*"
+```
+
+The runner does not build; build the project first. It also prints each test's **skip reason**,
+which `dotnet test` suppresses — on this page's suites that is usually the thing you needed to read,
+because it names the variable to set.
 
 **The embedding cache** is what makes measuring a dataset twice affordable. It lives under
 `RAGNET_BEIR_CACHE`, is keyed on the model identity **and** a hash of the exact text, and a corrupt or
