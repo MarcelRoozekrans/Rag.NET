@@ -1,6 +1,55 @@
 # Session State
 
-**Last updated:** 2026-09-14 — **at the merge.** #608 and #606 merged. **#607 filed: the embedding
+**Last updated:** 2026-09-14 — **at the merge.** #611 merged and **#610 closed: the GraphRAG caches
+are published.** GraphRAG now reproduces with no API key.
+
+**THE BUNDLE.** `graphrag-cache-2026-09-14`, a deliberately non-`v` tag so release-please's namespace
+is untouched and `v0.1.0` stays Latest. 97,640,288 bytes, md5 `b642d577be195a88aaa14ff003b27ca8`,
+verified by **anonymous** download against the local file. `graph-extractions`, `graph-reports`,
+`graph-answers` — 93 MB compressed, 143 MB unpacked. `docs/reference/ci.md` carries the curl and tar
+commands, both **run before being written down**.
+
+**THE PRE-PUBLICATION SCAN IS THE PART TO REMEMBER.** The first build carried
+`AzureAD+<username>` in **466,032 tar headers** — never in any file's content, which was checked
+separately, but stamped into every header by `tar`. It is invisible in a file listing and permanent
+once published. Rebuilt with `--owner=0 --group=0 --numeric-owner` and re-scanned the **artifact**
+rather than trusting the flag. **Scan any artifact before it leaves this machine**, and scan the
+built thing, not the inputs.
+
+**WHAT IS PUBLISHABLE WAS DECIDED PER DATASET, NOT PER CACHE.** MultiHop-RAG is ODC-By 1.0 **by its
+own authors' declaration**; SciFact and ArguAna permit redistribution with attribution; **FiQA** names
+no licence and is non-commercial only; **TREC-COVID**'s CORD-19 agreement permits text and data mining
+only. The three graph caches carry MultiHop-RAG **structurally** — `BeirProtocol.GraphRag` is declared
+by that dataset alone, so nothing else *can* have written there. `hypotheticals`,
+`metadata-extraction` and `self-query` span the forbidden two and are hash-sharded with **no dataset
+separation**, so they cannot be split without re-deriving them. That is now a property of the
+licensing, not an oversight.
+
+**THE MODEL-TERMS GATE WAS TRACED, NOT ASSUMED.** `openai.com` returns **403** to automated fetches,
+so the primary source was the CDN PDF, which uses subset-font encoding and had to be decoded through
+its own `ToUnicode` CMaps. Services Agreement §4.1 assigns Output to the Customer; **no clause
+restricting redistribution or publication of Output exists in the document** — a searched negative.
+The one Output-use restriction is developing competing models. **We are not OpenAI's Customer;
+OpenRouter is**, and §6.1 delegates to the Model Terms — the release notes say so rather than
+implying a cleaner chain than exists.
+
+**TWO 404s, ONE INTERESTING, AND THE FIRST ACCOUNT OF THEM WAS WRONG.** `gh release create` treats
+`file#name` as a **label, not a filename**, so the asset landed as `…-v1.tar.gz` while the notes
+documented the plain name. The resulting 404 was **the correct answer to a wrong question**. Only the
+post-rename 404 was propagation, and a poll returned **302 on its first attempt and all fifteen** —
+so an early claim of a twenty-minute outage was an estimate stated as fact and is corrected on #610.
+**Check the name you are requesting before concluding anything about propagation or permissions.**
+
+**A GREEN COMMAND THAT CHANGED NOTHING.** The correction above nearly failed silently: Windows Python
+cannot open a `/c/...` POSIX path, so the patch threw — while the `gh … --edit-last` in the same
+command **succeeded**, re-posting the unchanged text. Verified afterwards by grepping the live
+comment rather than trusting an exit code.
+
+**Open and not mine to choose:** **#153**, and **#607**'s three options. **#283** is unblocked as to
+instructions, blocked as to accounts. **#246** has reported once and is still open. **Milestone 6
+remains two account-blocked phases**, 6.1 and 6.3.
+
+**Previously, 2026-09-14 — at the merge.** #608 and #606 merged. **#607 filed: the embedding
 cache key cannot tell two models apart.**
 
 **THE NIGHTLY NOW CACHES BOTH HALVES OF `RAGNET_BEIR_CACHE`, AND THE TWO STEPS HOLD OPPOSITE RULES.**
