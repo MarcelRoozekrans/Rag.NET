@@ -1,6 +1,176 @@
 # Session State
 
-**Last updated:** 2026-09-14 — **at the merge.** #608 and #606 merged. **#607 filed: the embedding
+**Last updated:** 2026-09-14 — **#618 and #617 merged. #615 closed: gleaning earns its call.**
+
+**GLEANING WAS MEASURED AND THE DEFAULT STANDS.** #153 priced the second model call per chunk at
+**66.8% of ingestion's input tokens**; nothing had ever measured the other side. Replayed from the
+extraction cache at **no spend** — 60 articles, 2,044 chunks, 4,088 calls, **100% cache hit rate** —
+it adds **20.2% more entities and 35.8% more relationships net of repeats**. Those tokens are
+**bought, not wasted**, which also completes #153's reasoning: `GleaningPasses = 0` saves two-thirds
+of ingestion and costs a third of the graph's relationships.
+
+**THE DEDUPLICATION CHECK MOVED THE ANSWER BY A FIFTH.** `PerformGleaningAsync` appends the gleaned
+lists **without deduplicating**, so a model restating itself scores as an addition — and **18.7% of
+gleaned relationships** name a pair the first pass already returned. The raw lift is +44.0%. **When
+a delta is measured by counting what a second call returns, check how much of it is a repeat.**
+
+**A TEST THAT WAS CONFIDENTLY WRONG, AND THE ASSERTION THAT CAUGHT IT.** The first version rebuilt
+both prompts from `GraphRagOptions` and looked them up directly. It hit **0%** — the cache keys on
+`GraphExtractionPrompt.Render` of the **message list**, which prefixes the role — and printed a
+well-formatted table reading *"gleaning added 0 entities, 0.0% lift"*. **A broken replay and a true
+finding of zero are indistinguishable in the output.** The hit rate is now asserted at 80%, not
+merely printed. Without it the measurement would have argued for deleting a call that earns its keep.
+
+**AND THE FIX EXISTED ALREADY.** `GraphExtractionPlanProbe` drives the real ingestion path through a
+recording `IChatClient`, three directories away, and was found only after guessing once at the
+mismatch. **Look for the existing probe before reconstructing a prompt, a key, or a protocol.**
+
+**RECORDED, NOT FILED: 577 of 2,044 gleaning calls — 28.2% — returned nothing.** A quarter of the
+second calls are pure cost, nothing obviously predicts which, and there is no evidence it is
+predictable. Filing it would be recording a hunch as work. The number is on #615 for whoever next has
+a reason to look.
+
+**Open:** **#283** account-blocked, **#246** reopened and waiting for a second occurrence, and
+Milestone 6's two account-blocked phases. Three Renovate PRs — #585, #579, #562 — are the only
+routine maintenance outstanding.
+
+**Previously, 2026-09-14 — #616 merged. #246 REOPENED: it had been closed as completed for a
+month while still failing.**
+
+**#246 WAS NEVER OPEN TODAY, AND THIS FILE SAID IT WAS — IN FOUR PLACES.** It was closed as
+*completed* on 2026-08-16, **the day it was raised**, by the `PT5M` fix. Its own next comment says
+*"My PT5M fix did not work, and the evidence says it addressed the wrong mechanism."* It stayed
+closed regardless, through a month of failures, and through today's capture on the #605 build. Now
+reopened.
+
+**WHAT KEPT IT CLOSED WAS ONE GREEN RUN.** The 2026-08-17 comment reads *"the next ubuntu run was
+green"*. For a failure that reproduces about once in a dozen runs, **a single green run is the
+expected outcome whether or not anything was fixed** — the same lesson this file already records for
+performance numbers, applied to a flake instead of a benchmark. **Never close an intermittent on one
+passing run.**
+
+**AND CHECK ISSUE STATE BEFORE QUOTING IT.** "#246 is still open" was carried through this session
+and written into this file repeatedly without once being checked. `gh issue view` costs a second.
+
+**Previously, 2026-09-14 — #614 merged. #153 closed on a measurement that overturned its own
+reasoning, and #615 filed on the better question it surfaced.**
+
+**EVERY ISSUE THAT WAS "OPEN AND NOT MINE TO CHOOSE" IS NOW CLOSED** — #184, #175, #153. What
+remains open is #246, #283, #607's successor work in #615, and the two account-blocked phases.
+
+**#153 SAID NO, AND ITS OWN REASON FOR SAYING NO WAS WRONG.** It argued the saving lands on the
+smallest prompt path because "retrieved chunk text dominates". Measured over 400 real chunks and 400
+real extraction payloads with `cl100k_base`: in the **gleaning** prompt the serialised state is
+**196 tokens against the chunk's 114** — the larger half, 50.8%. That claim is true of the **answer**
+prompt and was carried across to a different one. **If TOON is ever revisited, revisit it knowing
+this call site is state-dominated, not text-dominated.**
+
+**THE NUMBERS, AND THE DENOMINATOR THAT MATTERS.** At TOON's own claimed 42.6% the saving is 21.6% of
+the gleaning prompt but only **14.5% of the 578 tokens ingestion spends per chunk**, because
+`GleaningPasses = 1` sends **two** prompts and the first carries no state. Judging against the
+gleaning prompt alone flatters it by half. `GleaningPasses = 0` saves **66.8%** — **4.6x** — for a
+config change. **Not dominance and not presented as such**: dropping gleaning changes what gets
+extracted, while a format change does not.
+
+**WHICH IS #615: GLEANING IS TWO-THIRDS OF INGESTION'S PROMPT TOKENS AND NOBODY HAS MEASURED WHAT IT
+ADDS.** No test or run separates entities found by the initial extraction from those the second call
+adds. The default doubles ingestion spend on an unquantified benefit. **#121 is why that needs care
+rather than a quick check** — this path once produced zero entities for the package's entire life
+without a test failing, and "does the graph still have entities" is exactly the assertion that missed
+it. Most of it is replayable from the extraction cache without new spend.
+
+**MEASURE THE CEILING BEFORE BUILDING THE THING.** The whole of #153 was settled without writing a
+TOON encoder, by asking what fraction of the prompt could even shrink. A throwaway `dotnet run`
+file-based app, the repo's own tokenizer, real corpus and real cache. **Not committed** — the issue
+comment carries everything needed to re-run it.
+
+**Previously, 2026-09-14 — at the merge.** #613 and #612 merged, **#607 closed: the embedding
+cache is re-keyed on the model revision.**
+
+**THE RE-KEY WAS THE OPERATOR'S CALL, AND THE COST TURNED OUT SMALLER THAN THE DECISION IMPLIED.**
+`ModelIdentity` named `all-MiniLM-L6-v2/onnx` — a repository, not an export — so bumping
+`MINILM_REVISION` changed no cache key and every vector the previous export produced read as a hit.
+It now carries the revision, which re-keys all **1,761,084** local entries.
+
+**NOTHING COULD BE MIGRATED IN PLACE, AND THE ON-DISK FORMAT IS WHY.** An entry holds `RAGNETE1`,
+the 32-byte key digest, the dimension and the floats — **never the text**. Computing a new digest
+needs the input, which was never stored. Old entries are **unreachable rather than wrong** and cost
+only disk. **Check the format before quoting a migration cost**: the answer was in a 44-byte header.
+
+**THE BILL IS WHAT YOU NEXT ASK FOR, NOT WHAT YOU DISCARDED.** The cache fills lazily, one text at a
+time. The nightly's two cells cost minutes; a full ablation sweep costs hours **and only if somebody
+sweeps**. `2,653.6 MB` of now-unreachable vectors sits in `~/.cache/ragnet-beir/embeddings`, plus a
+further `1,017 MB` in `embeddings-warmbak` — **~3.6 GB reclaimable by deleting them**, and nothing
+reads either any more.
+
+**`ModelRevisionAgreementTests` KEEPS THE TWO PINS TOGETHER.** It asserts the workflow's
+`MINILM_REVISION` equals `BeirHarness.PinnedModelRevision` **and** that `ModelIdentity` is built from
+that constant — two constants that agree while nothing consumes them is not the property worth
+having. It reads both as **source text rather than through a project reference**, deliberately: the
+constant lives in a `RequiresSecrets` project that runs in the advisory nightly tier, and a guard
+living there would let the pins drift through a merge, which is the failure it exists to catch.
+Three mutations each fail it.
+
+**THE ESCAPING TAX, THIRD INSTANCE IN ONE DAY.** Writing that guard through a bash heredoc collapsed
+a doubled `\\s` down to a single `\s` and mangled every regex in it,
+exactly as recorded twice before. **Write C# containing regexes or quotes with the file
+tool, not through a heredoc** — the workaround of building
+backslashes with `chr(92)` is more fragile than simply not using the shell for it.
+
+**Open and not mine to choose:** **#153** only. **#283** is unblocked as to instructions, blocked as
+to accounts. **#246** has reported once and is still open, waiting for a second occurrence to decide
+between its remaining branches. **Milestone 6 remains two account-blocked phases**, 6.1 and 6.3.
+
+**Previously, 2026-09-14 — at the merge.** #611 merged and **#610 closed: the GraphRAG caches
+are published.** GraphRAG now reproduces with no API key.
+
+**THE BUNDLE.** `graphrag-cache-2026-09-14`, a deliberately non-`v` tag so release-please's namespace
+is untouched and `v0.1.0` stays Latest. 97,640,288 bytes, md5 `b642d577be195a88aaa14ff003b27ca8`,
+verified by **anonymous** download against the local file. `graph-extractions`, `graph-reports`,
+`graph-answers` — 93 MB compressed, 143 MB unpacked. `docs/reference/ci.md` carries the curl and tar
+commands, both **run before being written down**.
+
+**THE PRE-PUBLICATION SCAN IS THE PART TO REMEMBER.** The first build carried
+`AzureAD+<username>` in **466,032 tar headers** — never in any file's content, which was checked
+separately, but stamped into every header by `tar`. It is invisible in a file listing and permanent
+once published. Rebuilt with `--owner=0 --group=0 --numeric-owner` and re-scanned the **artifact**
+rather than trusting the flag. **Scan any artifact before it leaves this machine**, and scan the
+built thing, not the inputs.
+
+**WHAT IS PUBLISHABLE WAS DECIDED PER DATASET, NOT PER CACHE.** MultiHop-RAG is ODC-By 1.0 **by its
+own authors' declaration**; SciFact and ArguAna permit redistribution with attribution; **FiQA** names
+no licence and is non-commercial only; **TREC-COVID**'s CORD-19 agreement permits text and data mining
+only. The three graph caches carry MultiHop-RAG **structurally** — `BeirProtocol.GraphRag` is declared
+by that dataset alone, so nothing else *can* have written there. `hypotheticals`,
+`metadata-extraction` and `self-query` span the forbidden two and are hash-sharded with **no dataset
+separation**, so they cannot be split without re-deriving them. That is now a property of the
+licensing, not an oversight.
+
+**THE MODEL-TERMS GATE WAS TRACED, NOT ASSUMED.** `openai.com` returns **403** to automated fetches,
+so the primary source was the CDN PDF, which uses subset-font encoding and had to be decoded through
+its own `ToUnicode` CMaps. Services Agreement §4.1 assigns Output to the Customer; **no clause
+restricting redistribution or publication of Output exists in the document** — a searched negative.
+The one Output-use restriction is developing competing models. **We are not OpenAI's Customer;
+OpenRouter is**, and §6.1 delegates to the Model Terms — the release notes say so rather than
+implying a cleaner chain than exists.
+
+**TWO 404s, ONE INTERESTING, AND THE FIRST ACCOUNT OF THEM WAS WRONG.** `gh release create` treats
+`file#name` as a **label, not a filename**, so the asset landed as `…-v1.tar.gz` while the notes
+documented the plain name. The resulting 404 was **the correct answer to a wrong question**. Only the
+post-rename 404 was propagation, and a poll returned **302 on its first attempt and all fifteen** —
+so an early claim of a twenty-minute outage was an estimate stated as fact and is corrected on #610.
+**Check the name you are requesting before concluding anything about propagation or permissions.**
+
+**A GREEN COMMAND THAT CHANGED NOTHING.** The correction above nearly failed silently: Windows Python
+cannot open a `/c/...` POSIX path, so the patch threw — while the `gh … --edit-last` in the same
+command **succeeded**, re-posting the unchanged text. Verified afterwards by grepping the live
+comment rather than trusting an exit code.
+
+**Open and not mine to choose:** **#153**, and **#607**'s three options. **#283** is unblocked as to
+instructions, blocked as to accounts. **#246** has reported once and is still open. **Milestone 6
+remains two account-blocked phases**, 6.1 and 6.3.
+
+**Previously, 2026-09-14 — at the merge.** #608 and #606 merged. **#607 filed: the embedding
 cache key cannot tell two models apart.**
 
 **THE NIGHTLY NOW CACHES BOTH HALVES OF `RAGNET_BEIR_CACHE`, AND THE TWO STEPS HOLD OPPOSITE RULES.**
