@@ -1,6 +1,129 @@
 # Session State
 
-**Last updated:** 2026-09-14 — **at the merge.** #603 merged; #283's body edited in place.
+**Last updated:** 2026-09-14 — **at the merge.** #608 and #606 merged. **#607 filed: the embedding
+cache key cannot tell two models apart.**
+
+**THE NIGHTLY NOW CACHES BOTH HALVES OF `RAGNET_BEIR_CACHE`, AND THE TWO STEPS HOLD OPPOSITE RULES.**
+The corpora must have **no** `restore-keys`; the vectors **must**. That looks like an inconsistency
+waiting to be tidied, so both are asserted. The difference is a property: `EmbeddingCache` addresses
+entries by SHA-256 over model identity and text, so a restored vector is either that text's vector or
+is never looked up. **A stale corpus measures; a stale vector cannot be read by mistake.**
+
+**#607 IS THE REAL FIND, AND IT CAME OUT OF WRITING THE CACHE.** `BeirHarness.ModelIdentity` is the
+only salt on every embedding key, and its comment claimed it carried *everything that changes a
+vector*. It does not carry the model's **revision** — the string names a repository, not an export,
+while `nightly.yml` pins `MINILM_REVISION` and SHA-256-checks it on the stated grounds that a
+silently different model moves the parity number unattributably. **Bump the pin and not one key
+changes.** Adding the cache is what would have made that load-bearing: `restore-keys` would have
+handed a bumped run the old model's vectors as hits.
+
+**CI is covered by the Actions key; a developer machine is not.** The constant was deliberately NOT
+changed — it re-keys every entry and discards every local cache, **1,761,084 entries / 2,653.6 MB**
+measured here. #607 carries three options. **No measurement has ever been taken against a wrong
+model**: the pin has held one value, so this is a latent trap, not a live corruption.
+
+**A GUARD PASSED A MUTATION IT SHOULD HAVE FAILED — THE SECOND TIME IN ONE DAY.** The first version
+asserted `Contains("MINILM_REVISION")` over the whole step, and removing the revision from `key:`
+**passed**, because `restore-keys:` still mentioned it. Assertions are now per line. **A whole-blob
+`Contains` cannot express a per-field requirement**, and a guard that spans two fields with opposite
+rules will pass on either one satisfying it.
+
+**LOCAL CACHE INVENTORY, MEASURED 2026-09-14** — the answer to "can we publish this":
+
+| Group | Files | Size |
+|---|---|---|
+| `embeddings` | 1,761,084 | **2,653.6 MB** |
+| every LLM-generated cache combined | ~493,000 | **~150 MB** |
+| corpora, extracted plus retained zips | 24 | ~395 MB |
+
+**The LLM caches are the ones worth publishing** — `graph-answers`, `graph-extractions`,
+`graph-reports`, `hypotheticals`, `metadata-extraction`, `self-query`. They cost **money**, not time,
+and they are what currently forces an OpenRouter key. 150 MB fits a release asset. **BLOCKED on
+licence**: `BeirDatasetCache` says the corpora are "not ours to redistribute under", and whether
+derived extractions inherit that is a per-dataset question **nobody has traced to primary sources**.
+Do that before any upload.
+
+**Vectors are NOT worth importing**, for three measured reasons: 1.76 M files is minutes of tar on
+both save and restore; 2.6 GB against a 10 GB whole-repo Actions quota; and most of it is ablations
+the nightly never runs. It fills its own now.
+
+**AN E2E FAILURE WHOSE EVIDENCE I DESTROYED MYSELF.** `Rag.NET.E2ETests` failed 1 of 11 cases in a
+full sweep. **The test cannot be named**, because the sweep loop piped every project through
+`grep "Total:"` and discarded the rest, and MTP writes its log only on failure — so the passing
+re-run left no log at all. This is the truncation mistake already recorded twice in this file, made
+*in the harness written to check my own work*, two commits after shipping a guard whose whole purpose
+is preserving exactly that evidence in CI. **A sweep must tee full output.**
+
+**Measured rather than guessed at, after an early estimate of "1 in 3" from three runs:** six local
+runs on 2026-09-14, **one failure — about 1 in 6**. Three dedicated captured runs afterwards all
+passed 11/11. **The failing run was the fastest of the six** — 264.4 s against 288-424 s for the
+passes — which is the same early-bail shape as the nightly's 4.3 s mass failures, and is a signal
+rather than a diagnosis. Both sweeps ran E2E after forty-odd other projects, and only one failed, so
+container contention is a candidate and not a conclusion. **Not filed**: an unnamed, unreproduced
+flake with no captured output is not an actionable issue. The next sweep keeps its output.
+
+**Open and not mine to choose:** **#153**, and **#607**'s three options. Publishing the LLM caches
+waits on the licence trace. **#283** is unblocked as to instructions, blocked as to accounts. **#246**
+has reported once and is still open. **Milestone 6 remains two account-blocked phases**, 6.1 and 6.3.
+
+**Previously, 2026-09-14 — at the merge.** #605 merged, closing #175. **#246 finally
+reported itself**, in CI, on this PR's build.
+
+**#246 IS THE HEADLINE, NOT #175.** The instrumentation added 2026-09-12 and the failure-log dump
+from 6.2.42 both fired on `ubuntu-latest` at 06:40:45Z and produced the evidence this issue has never
+had in four weeks of being open:
+
+| Interval | Value |
+|---|---|
+| Dead-lettered to lock acquired | 104 ms |
+| Lock acquired to `CompleteMessageAsync` | **3.4 ms** |
+| Lock remaining at the attempt | **300.0 s of 300** |
+
+`deliveryCount=1`, `straysHeld=0`, `sequenceNumber=2`. **That rules out four things at once** — expiry
+for the third time and the first from CI, the test holding the lock too long, stray interference, and
+any prior redelivery. Both previous "fixes" raised `LockDuration`; both were aimed at a mechanism the
+evidence now excludes three separate ways.
+
+**AND THE TIMINGS EXPOSED A STRUCTURAL FACT THE CODE COMMENT MISSED.** `ReceiveDeadLetterAsync` is
+not polling. It is called once and blocks in `ReceiveMessageAsync` for up to 60 s **while `sut` is
+still running** — and `sut` is what dead-letters the message. The long-poll is satisfied *by the
+dead-letter transfer itself*, 104 ms after it, so the lock is taken against an entity the broker is
+mid-write on. **That is not recorded as the cause.** It is the third plausible story this bug has
+had and the first two shipped as fixes.
+
+**WHAT WAS PROPOSED IS A MEASUREMENT, NOT A FIX** — on catching `MessageLockLost`, re-receive at
+once and record `sequenceNumber` and `deliveryCount`. Same sequence with `deliveryCount=1` means a
+phantom delivery; `deliveryCount=2` means a real revocation; **nothing coming back means the complete
+landed and only its acknowledgement was lost**, in which case every lock-directed fix has been aimed
+at the wrong thing three times running.
+
+**BOTH EMULATOR CONTAINERS ARE UNPINNED** — `servicebus-emulator:latest` and `azure-sql-edge:latest`,
+and the run log shows both pulled fresh. Diagnosing an intermittent against a moving emulator on a
+moving database is how it stays intermittent. Worth its own change whatever #246 turns out to be.
+
+**#175 WAS ANSWERED AGAINST ITS FRAMING AND IN FAVOUR OF ITS CONCERN.** It asked whether one ungated
+case should go behind `BeirRunBudget`. **Eleven cases** load MultiHop-RAG on the nightly gated only
+on `RAGNET_BEIR_CACHE`, and **three of the ten it did not name shipped in #168 itself**, the PR it was
+filed against. #229 arrived three days later citing the questioned case *by name* as its precedent.
+Gating one of eleven removes no bytes.
+
+**WHAT WAS REAL WAS THAT NOTHING CACHED THE CORPORA AT ALL.** `$RUNNER_TEMP` is fresh per job, so all
+five came down every night. The nightly now caches that directory. Two properties decide whether that
+is safe and `BeirCorpusCacheTests` pins both: **`embeddings` is excluded**, and there are **no
+`restore-keys`** — `BeirDatasetCache` treats a directory holding `corpus.jsonl` and `queries.jsonl` as
+present and never re-verifies it, because the MD5 is checked during a download a cache hit skips. All
+four ways the guard can rot were mutation-checked.
+
+**THE NIGHTLY HAS FAILED 5 OF 26 SCHEDULED RUNS SINCE 2026-08-19, AND THAT IS NOT FILED.** Three are
+same-total, same-skip-count, sub-5-second mass failures of the BEIR project: 09-01 passed 137 in
+16 m 41 s; 09-02 failed 9 in 4.3 s. The logs cannot name the tests. **Deliberately not attributed** —
+guessing is what got #246 misdiagnosed twice. Guard C will name the next one.
+
+**Open and not mine to choose:** **#153** only — #184 and #175 both closed today. **#283** is
+unblocked as to instructions and blocked as to accounts. **Milestone 6 remains two account-blocked
+phases**, 6.1 and 6.3.
+
+**Previously, 2026-09-14 — at the merge.** #603 merged; #283's body edited in place.
 
 **#283 IS STILL BLOCKED, AND NOT BY ANYTHING IN THIS REPOSITORY.** It needs people with ordinary
 accounts on Asana, Notion, Slack and the rest. The operator lacking those is the blocker the issue

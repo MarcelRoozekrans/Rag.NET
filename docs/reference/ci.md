@@ -111,6 +111,42 @@ caches it between runs, and points all three variables at runner paths — and *
 are not there afterwards, because there is no fork-safety argument for skipping a test whose input
 the job could have fetched.
 
+**The corpora are cached too, and were not until #175.** Every nightly run re-downloaded all five —
+four BEIR archives from TU Darmstadt and MultiHop-RAG's two Hugging Face files — because
+`$RUNNER_TEMP` is fresh per job and nothing kept them. The models above are pinned behind caches and
+so touch Hugging Face only on a miss; MultiHop-RAG touched it nightly, which is the part #175
+raised. The job now caches `$RUNNER_TEMP/beir` on a key hashing `BeirDatasetDescriptor.cs` and
+`MultiHopRagSource.cs`, the two files holding every pin.
+
+Two properties of that step are load-bearing and are pinned by `BeirCorpusCacheTests`. The
+`embeddings` subdirectory is **excluded** — `EmbeddingCache` writes vectors under the same root, they
+grow with the ablation list rather than the corpus list, and caching them is a separate decision with
+its own argument about size. And the step has **no `restore-keys`**, unlike the NuGet cache above it:
+`BeirDatasetCache` treats a directory holding `corpus.jsonl` and `queries.jsonl` as present and never
+re-verifies it, because the published MD5 is checked during download and a cache hit skips the
+download. A prefix-matched restore would serve a corpus pinned to a digest the descriptors no longer
+name, and every measurement taken over it would be filed under the new pin.
+
+**The vectors are cached separately, and that step requires what the corpus step forbids.** The
+corpus cache removed the download; the embedding cache removes the recomputation, which is the
+larger cost — the two cells `BeirRunBudget` marks `FitsTheNightly`, SciFact and ArguAna under
+Parity, embed roughly 29,000 texts on a CPU runner and account for most of the job's measurement
+time. This step **does** carry `restore-keys`, and the reason is a property rather than a
+preference: `EmbeddingCache` addresses entries by SHA-256 over the model identity and the text, so a
+restored entry is either keyed by the exact text being embedded — in which case it is that text's
+vector — or is never looked up. **A stale corpus measures; a stale vector cannot be read by
+mistake.** The key also rotates on `run_id`, because a cache entry is immutable once written and a
+fixed key would freeze whatever the first night embedded.
+
+`MINILM_REVISION` appears on both the key and the fallback prefix, and it is load-bearing.
+`BeirHarness.ModelIdentity` names the model but **not its revision**, so bumping the pin changes no
+cache key at all — without the revision here, `restore-keys` would hand a bumped run the previous
+model's vectors and every one would read as a hit. `BeirEmbeddingCacheTests` asserts it on each line
+separately, after a whole-step search passed a mutation that removed it from the key while the
+prefix line still mentioned it. The underlying gap in `ModelIdentity` is
+[#607](https://github.com/MarcelRoozekrans/Rag.NET/issues/607); CI is covered by this key, a
+developer machine is not.
+
 **`RAGNET_TESSDATA` reaches nothing in CI, and that is now a decision with a runnable procedure
 rather than an open defect.** Its only reader, the real-Tesseract OCR test, is inside
 `#if ENABLE_OCR`, which no workflow build defines — deliberately: the published

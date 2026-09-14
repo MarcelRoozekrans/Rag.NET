@@ -355,6 +355,69 @@ jobs:
       - name: Install libgomp1 for Whisper's native library
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libgomp1
 
+      # The corpora, unlike the models above, were re-downloaded from scratch every single night:
+      # four BEIR archives from TU Darmstadt plus MultiHop-RAG's two JSON files from Hugging Face,
+      # on every run, because $RUNNER_TEMP is fresh per job and nothing cached it. Issue #175 raised
+      # the Hugging Face half. Its framing was that one ungated test case had made that fetch
+      # recurring, which turned out to understate it twice over: nine other cases in this project
+      # fetch the same two files on the same run, and the very PR the issue was filed against
+      # already shipped three of them. Gating the case it named would not have removed one byte.
+      # What removes the nightly fetch is caching what was never cached.
+      #
+      # The `embeddings` subdirectory is excluded, deliberately. EmbeddingCache writes vectors under
+      # the same root, and they are a different kind of thing: not pinned by anything here, growing
+      # with every ablation rather than with the corpus list, and the reason the parity legs cost
+      # minutes rather than seconds. Caching them would be a real speed-up and a separate decision
+      # with its own argument about size and eviction. This step buys availability, not time.
+      #
+      # No `restore-keys`, and that omission is the load-bearing part. BeirDatasetCache treats a
+      # directory holding corpus.jsonl and queries.jsonl as present and never re-verifies it — the
+      # published MD5 is checked on download, which a cache hit skips by definition. A prefix-matched
+      # restore would hand back a corpus pinned to a digest the descriptors no longer name, and
+      # nothing downstream would say so. Hashing the two files that hold every pin means a prose edit
+      # to either costs one night's re-download, which is precisely today's behaviour, while a
+      # changed revision or MD5 can never be served from the old cache.
+      - name: Cache the BEIR corpora
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ runner.temp }}/beir
+            !${{ runner.temp }}/beir/embeddings
+          key: beir-corpora-${{ hashFiles('src/Rag.NET.Benchmarks.Quality/BeirDatasetDescriptor.cs', 'src/Rag.NET.Benchmarks.Quality/MultiHopRagSource.cs') }}
+
+      # The other half of RAGNET_BEIR_CACHE, and the half that costs the time rather than the
+      # bytes. The corpus cache above removed the download; this removes the recomputation. The two
+      # cells this job runs — SciFact and ArguAna under Parity, the only two BeirRunBudget marks
+      # FitsTheNightly — embed roughly 29,000 texts on a CPU runner, and that is where the sixteen
+      # minutes go. Measured on the developer machine at 1,580 bytes per vector, the set this job
+      # produces is tens of megabytes, not the 2.6 GB a machine that has run every ablation holds.
+      #
+      # restore-keys IS correct here and is FORBIDDEN two steps above, and the difference is a
+      # property rather than a preference. EmbeddingCache addresses entries by
+      # SHA-256 over the model identity and the text, so an entry restored from an older cache is
+      # either keyed by the exact text being embedded, in which case it is that text's vector, or
+      # is never looked up at all. A stale corpus MEASURES; a stale vector cannot be read by
+      # mistake. BeirCorpusCacheTests forbids the other step what this one requires, for that
+      # reason and no other.
+      #
+      # MINILM_REVISION is in the key and it is load-bearing, NOT decoration. BeirHarness's
+      # ModelIdentity names the model but not its revision, so bumping the pin does not change one
+      # cache key: without the revision here, restore-keys would hand a bumped run the previous
+      # model's vectors and every one of them would read as a hit. The workflow already treats the
+      # revision as identity-bearing — it pins it and checks a SHA-256 against it, because a
+      # silently different model moves the parity number by an amount nobody could attribute — and
+      # this key is what makes the cache agree. See the note on ModelIdentity itself.
+      #
+      # The key also rotates on run_id because a cache entry is immutable once written. A fixed key
+      # would freeze whatever the first night embedded and never pick up a cell added later, which
+      # is the failure mode that looks exactly like a working cache.
+      - name: Cache the BEIR embedding vectors
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/beir/embeddings
+          key: beir-embeddings-${{ env.MINILM_REVISION }}-${{ github.run_id }}
+          restore-keys: beir-embeddings-${{ env.MINILM_REVISION }}-
+
       # The two ONNX variables and the BEIR cache are set HERE rather than in the job's `env:`
       # block, and that is not a style choice: `runner` is not one of the contexts available to
       # `jobs.<id>.env`, and a literal "$RUNNER_TEMP/beir" would reach the test process unexpanded.
