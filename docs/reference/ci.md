@@ -111,6 +111,22 @@ caches it between runs, and points all three variables at runner paths — and *
 are not there afterwards, because there is no fork-safety argument for skipping a test whose input
 the job could have fetched.
 
+**The corpora are cached too, and were not until #175.** Every nightly run re-downloaded all five —
+four BEIR archives from TU Darmstadt and MultiHop-RAG's two Hugging Face files — because
+`$RUNNER_TEMP` is fresh per job and nothing kept them. The models above are pinned behind caches and
+so touch Hugging Face only on a miss; MultiHop-RAG touched it nightly, which is the part #175
+raised. The job now caches `$RUNNER_TEMP/beir` on a key hashing `BeirDatasetDescriptor.cs` and
+`MultiHopRagSource.cs`, the two files holding every pin.
+
+Two properties of that step are load-bearing and are pinned by `BeirCorpusCacheTests`. The
+`embeddings` subdirectory is **excluded** — `EmbeddingCache` writes vectors under the same root, they
+grow with the ablation list rather than the corpus list, and caching them is a separate decision with
+its own argument about size. And the step has **no `restore-keys`**, unlike the NuGet cache above it:
+`BeirDatasetCache` treats a directory holding `corpus.jsonl` and `queries.jsonl` as present and never
+re-verifies it, because the published MD5 is checked during download and a cache hit skips the
+download. A prefix-matched restore would serve a corpus pinned to a digest the descriptors no longer
+name, and every measurement taken over it would be filed under the new pin.
+
 **`RAGNET_TESSDATA` reaches nothing in CI, and that is now a decision with a runnable procedure
 rather than an open defect.** Its only reader, the real-Tesseract OCR test, is inside
 `#if ENABLE_OCR`, which no workflow build defines — deliberately: the published
