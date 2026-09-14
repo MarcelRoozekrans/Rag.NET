@@ -1,6 +1,24 @@
 # Session State
 
-**Last updated:** 2026-09-14 — **#614 merged. #153 closed on a measurement that overturned its own
+**Last updated:** 2026-09-14 — **#616 merged. #246 REOPENED: it had been closed as completed for a
+month while still failing.**
+
+**#246 WAS NEVER OPEN TODAY, AND THIS FILE SAID IT WAS — IN FOUR PLACES.** It was closed as
+*completed* on 2026-08-16, **the day it was raised**, by the `PT5M` fix. Its own next comment says
+*"My PT5M fix did not work, and the evidence says it addressed the wrong mechanism."* It stayed
+closed regardless, through a month of failures, and through today's capture on the #605 build. Now
+reopened.
+
+**WHAT KEPT IT CLOSED WAS ONE GREEN RUN.** The 2026-08-17 comment reads *"the next ubuntu run was
+green"*. For a failure that reproduces about once in a dozen runs, **a single green run is the
+expected outcome whether or not anything was fixed** — the same lesson this file already records for
+performance numbers, applied to a flake instead of a benchmark. **Never close an intermittent on one
+passing run.**
+
+**AND CHECK ISSUE STATE BEFORE QUOTING IT.** "#246 is still open" was carried through this session
+and written into this file repeatedly without once being checked. `gh issue view` costs a second.
+
+**Previously, 2026-09-14 — #614 merged. #153 closed on a measurement that overturned its own
 reasoning, and #615 filed on the better question it surfaced.**
 
 **EVERY ISSUE THAT WAS "OPEN AND NOT MINE TO CHOOSE" IS NOW CLOSED** — #184, #175, #153. What
