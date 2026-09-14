@@ -1,6 +1,65 @@
 # Session State
 
-**Last updated:** 2026-09-14 — **at the merge.** #605 merged, closing #175. **#246 finally
+**Last updated:** 2026-09-14 — **at the merge.** #608 and #606 merged. **#607 filed: the embedding
+cache key cannot tell two models apart.**
+
+**THE NIGHTLY NOW CACHES BOTH HALVES OF `RAGNET_BEIR_CACHE`, AND THE TWO STEPS HOLD OPPOSITE RULES.**
+The corpora must have **no** `restore-keys`; the vectors **must**. That looks like an inconsistency
+waiting to be tidied, so both are asserted. The difference is a property: `EmbeddingCache` addresses
+entries by SHA-256 over model identity and text, so a restored vector is either that text's vector or
+is never looked up. **A stale corpus measures; a stale vector cannot be read by mistake.**
+
+**#607 IS THE REAL FIND, AND IT CAME OUT OF WRITING THE CACHE.** `BeirHarness.ModelIdentity` is the
+only salt on every embedding key, and its comment claimed it carried *everything that changes a
+vector*. It does not carry the model's **revision** — the string names a repository, not an export,
+while `nightly.yml` pins `MINILM_REVISION` and SHA-256-checks it on the stated grounds that a
+silently different model moves the parity number unattributably. **Bump the pin and not one key
+changes.** Adding the cache is what would have made that load-bearing: `restore-keys` would have
+handed a bumped run the old model's vectors as hits.
+
+**CI is covered by the Actions key; a developer machine is not.** The constant was deliberately NOT
+changed — it re-keys every entry and discards every local cache, **1,761,084 entries / 2,653.6 MB**
+measured here. #607 carries three options. **No measurement has ever been taken against a wrong
+model**: the pin has held one value, so this is a latent trap, not a live corruption.
+
+**A GUARD PASSED A MUTATION IT SHOULD HAVE FAILED — THE SECOND TIME IN ONE DAY.** The first version
+asserted `Contains("MINILM_REVISION")` over the whole step, and removing the revision from `key:`
+**passed**, because `restore-keys:` still mentioned it. Assertions are now per line. **A whole-blob
+`Contains` cannot express a per-field requirement**, and a guard that spans two fields with opposite
+rules will pass on either one satisfying it.
+
+**LOCAL CACHE INVENTORY, MEASURED 2026-09-14** — the answer to "can we publish this":
+
+| Group | Files | Size |
+|---|---|---|
+| `embeddings` | 1,761,084 | **2,653.6 MB** |
+| every LLM-generated cache combined | ~493,000 | **~150 MB** |
+| corpora, extracted plus retained zips | 24 | ~395 MB |
+
+**The LLM caches are the ones worth publishing** — `graph-answers`, `graph-extractions`,
+`graph-reports`, `hypotheticals`, `metadata-extraction`, `self-query`. They cost **money**, not time,
+and they are what currently forces an OpenRouter key. 150 MB fits a release asset. **BLOCKED on
+licence**: `BeirDatasetCache` says the corpora are "not ours to redistribute under", and whether
+derived extractions inherit that is a per-dataset question **nobody has traced to primary sources**.
+Do that before any upload.
+
+**Vectors are NOT worth importing**, for three measured reasons: 1.76 M files is minutes of tar on
+both save and restore; 2.6 GB against a 10 GB whole-repo Actions quota; and most of it is ablations
+the nightly never runs. It fills its own now.
+
+**AN E2E FAILURE WHOSE EVIDENCE I DESTROYED MYSELF.** `Rag.NET.E2ETests` failed 1 of 11 in a full
+sweep, having passed 11/11 before and after — roughly 1 in 3 across the day. **The test cannot be
+named**, because the sweep loop piped every project through `grep "Total:"` and discarded the rest,
+and MTP writes its log only on failure so the passing re-run left nothing. This is the truncation
+mistake already recorded twice in this file, made *in the harness written to check my own work*, two
+commits after shipping a guard whose whole purpose is preserving that evidence in CI. **A sweep must
+tee full output.**
+
+**Open and not mine to choose:** **#153**, and **#607**'s three options. Publishing the LLM caches
+waits on the licence trace. **#283** is unblocked as to instructions, blocked as to accounts. **#246**
+has reported once and is still open. **Milestone 6 remains two account-blocked phases**, 6.1 and 6.3.
+
+**Previously, 2026-09-14 — at the merge.** #605 merged, closing #175. **#246 finally
 reported itself**, in CI, on this PR's build.
 
 **#246 IS THE HEADLINE, NOT #175.** The instrumentation added 2026-09-12 and the failure-log dump
