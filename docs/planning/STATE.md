@@ -1,6 +1,40 @@
 # Session State
 
-**Last updated:** 2026-09-14 — **#616 merged. #246 REOPENED: it had been closed as completed for a
+**Last updated:** 2026-09-14 — **#618 and #617 merged. #615 closed: gleaning earns its call.**
+
+**GLEANING WAS MEASURED AND THE DEFAULT STANDS.** #153 priced the second model call per chunk at
+**66.8% of ingestion's input tokens**; nothing had ever measured the other side. Replayed from the
+extraction cache at **no spend** — 60 articles, 2,044 chunks, 4,088 calls, **100% cache hit rate** —
+it adds **20.2% more entities and 35.8% more relationships net of repeats**. Those tokens are
+**bought, not wasted**, which also completes #153's reasoning: `GleaningPasses = 0` saves two-thirds
+of ingestion and costs a third of the graph's relationships.
+
+**THE DEDUPLICATION CHECK MOVED THE ANSWER BY A FIFTH.** `PerformGleaningAsync` appends the gleaned
+lists **without deduplicating**, so a model restating itself scores as an addition — and **18.7% of
+gleaned relationships** name a pair the first pass already returned. The raw lift is +44.0%. **When
+a delta is measured by counting what a second call returns, check how much of it is a repeat.**
+
+**A TEST THAT WAS CONFIDENTLY WRONG, AND THE ASSERTION THAT CAUGHT IT.** The first version rebuilt
+both prompts from `GraphRagOptions` and looked them up directly. It hit **0%** — the cache keys on
+`GraphExtractionPrompt.Render` of the **message list**, which prefixes the role — and printed a
+well-formatted table reading *"gleaning added 0 entities, 0.0% lift"*. **A broken replay and a true
+finding of zero are indistinguishable in the output.** The hit rate is now asserted at 80%, not
+merely printed. Without it the measurement would have argued for deleting a call that earns its keep.
+
+**AND THE FIX EXISTED ALREADY.** `GraphExtractionPlanProbe` drives the real ingestion path through a
+recording `IChatClient`, three directories away, and was found only after guessing once at the
+mismatch. **Look for the existing probe before reconstructing a prompt, a key, or a protocol.**
+
+**RECORDED, NOT FILED: 577 of 2,044 gleaning calls — 28.2% — returned nothing.** A quarter of the
+second calls are pure cost, nothing obviously predicts which, and there is no evidence it is
+predictable. Filing it would be recording a hunch as work. The number is on #615 for whoever next has
+a reason to look.
+
+**Open:** **#283** account-blocked, **#246** reopened and waiting for a second occurrence, and
+Milestone 6's two account-blocked phases. Three Renovate PRs — #585, #579, #562 — are the only
+routine maintenance outstanding.
+
+**Previously, 2026-09-14 — #616 merged. #246 REOPENED: it had been closed as completed for a
 month while still failing.**
 
 **#246 WAS NEVER OPEN TODAY, AND THIS FILE SAID IT WAS — IN FOUR PLACES.** It was closed as
