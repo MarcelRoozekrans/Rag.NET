@@ -28,8 +28,9 @@ living there would let the pins drift through a merge, which is the failure it e
 Three mutations each fail it.
 
 **THE ESCAPING TAX, THIRD INSTANCE IN ONE DAY.** Writing that guard through a bash heredoc collapsed
-a doubled `\\s` down to a single `\s` and mangled every regex in it, exactly as recorded twice before. **Write C# containing
-regexes or quotes with the file tool, not through a heredoc** — the workaround of building
+a doubled `\\s` down to a single `\s` and mangled every regex in it,
+exactly as recorded twice before. **Write C# containing regexes or quotes with the file
+tool, not through a heredoc** — the workaround of building
 backslashes with `chr(92)` is more fragile than simply not using the shell for it.
 
 **Open and not mine to choose:** **#153** only. **#283** is unblocked as to instructions, blocked as
