@@ -523,17 +523,17 @@ public static class BeirRunBudget
             "gate is keyed on (dataset, protocol), so the two share this cell and the filter in the " +
             "skip message selects BOTH -- which is right for a cell that prices both, and wrong for " +
             "an operator who wanted only one. For the corpus run alone: " +
-            "--filter \"FullyQualifiedName~BeirGraphRagCorpusTests.NdcgAt10_UnderTheGraphPath\" -- " +
+            "-method \"*NdcgAt10_UnderTheGraphPath* \" -- " +
             "the method, not the class, because since Phase 5.2.1 the class also holds the depth " +
             "control's run, which is priced by its own cell. For the " +
-            "slice guard alone: --filter \"FullyQualifiedName~GraphRagFunctionsTests\". A THIRD case " +
+            "slice guard alone: -class \"*GraphRagFunctionsTests\". A THIRD case " +
             "shares the cell since #239: BeirGraphRagCorpusTests.Ablations_UnderTheGraphPath, one more " +
             "graph build plus one query pass, recorded in Phase 5.2.1 rather than pinned. A FOURTH " +
             "since Phase 5.2.2: BeirGraphRagAnswerTests, the same graph build plus one answering pass " +
             "per arm replayed from the graph-answers cache; its own pins live in " +
             "MultiHopRagAnswerReproduction and its generation gate is described on the class. The " +
             "confound check that has to pass before either number means anything is " +
-            "--filter \"DisplayName~Chunking_UnderTheGraphPath\", which needs no model and takes " +
+            "-method \"*Chunking_UnderTheGraphPath*\", which needs no model and takes " +
             "under a second. " +
             "**Its cost is now MEASURED, 2026-08-15: 43 m 29 s wall clock (01:16-01:59), of " +
             "which 1,338.1 s (22 m 18 s) is graph construction**, 2,564.3 s the scored " +
@@ -1249,7 +1249,10 @@ public static class BeirRunBudget
         would pay. The nightly keeps SciFact and ArguAna PARITY (~15-20 min cold, all four cases),
         which is the published number this milestone exists to protect.
         To run this case:
-          {OptInVariable}={cost.Dataset} dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build --filter "{Filter(cost)}"
+          {OptInVariable}={cost.Dataset} tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe {Selector(cost)}
+        Build the project first; the runner does not build. `dotnet test --filter` is NOT the
+        command: Directory.Build.targets raises RAGNET0001 for a VSTest filter under
+        Microsoft.Testing.Platform, which every test project uses since phase 6.2.41.
         """;
 
     /// <summary>Names the protocol the way the run's own output does.</summary>
@@ -1334,7 +1337,7 @@ public static class BeirRunBudget
     };
 
     /// <summary>
-    /// Every cell in the table, paired with the <c>--filter</c> its skip message prints.
+    /// Every cell in the table, paired with the native-runner selector its skip message prints.
     /// </summary>
     /// <remarks>
     /// Exists for <see cref="BeirRunBudgetTests.EveryCellsPrintedFilterCanSelectATest"/>, and it
@@ -1344,16 +1347,16 @@ public static class BeirRunBudget
     /// test.
     /// </remarks>
     internal static IEnumerable<(string Dataset, BeirProtocol Protocol, string Filter)>
-        PrintedFilters()
+        PrintedSelectors()
     {
         foreach (var cost in Costs)
         {
-            yield return (cost.Dataset, cost.Protocol, Filter(cost));
+            yield return (cost.Dataset, cost.Protocol, Selector(cost));
         }
     }
 
     /// <summary>
-    /// The <c>--filter</c> that selects this case.
+    /// The native-runner selector arguments that select this case.
     /// </summary>
     /// <remarks>
     /// <c>DisplayName</c> on both halves, never <c>FullyQualifiedName</c>: the latter stops at the
@@ -1392,17 +1395,18 @@ public static class BeirRunBudget
     /// first by its own name.
     /// </para>
     /// </remarks>
-    private static string Filter(Cost cost)
+    private static string Selector(Cost cost)
     {
         if (cost.Protocol is BeirProtocol.GraphRag)
         {
-            return $"FullyQualifiedName~{nameof(GraphRagFunctionsTests)}" +
-                   $"|FullyQualifiedName~{nameof(BeirGraphRagCorpusTests)}." +
-                   nameof(BeirGraphRagCorpusTests.NdcgAt10_UnderTheGraphPath_IsMeasuredOverTheWholeCorpus) +
-                   $"|FullyQualifiedName~{nameof(BeirGraphRagCorpusTests)}." +
-                   nameof(BeirGraphRagCorpusTests.Ablations_UnderTheGraphPath_PageRankWeightZero_AndGraphReach) +
-                   $"|FullyQualifiedName~{nameof(BeirGraphRagAnswerTests)}";
+            return Class(nameof(GraphRagFunctionsTests))
+                   + " " + Method(nameof(BeirGraphRagCorpusTests.NdcgAt10_UnderTheGraphPath_IsMeasuredOverTheWholeCorpus))
+                   + " " + Method(nameof(BeirGraphRagCorpusTests.Ablations_UnderTheGraphPath_PageRankWeightZero_AndGraphReach))
+                   + " " + Class(nameof(BeirGraphRagAnswerTests));
         }
+
+        var isClass = cost.Protocol is BeirProtocol.Parity or BeirProtocol.Real
+            or BeirProtocol.Comparison or BeirProtocol.SemanticKernel;
 
         var discriminator = cost.Protocol switch
         {
@@ -1435,8 +1439,22 @@ public static class BeirRunBudget
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 
-        return $"DisplayName~{discriminator}&DisplayName~{cost.Dataset}";
+        return isClass ? Class(discriminator) : Method(discriminator);
     }
+
+    /// <summary>Renders a class selector for the native runner.</summary>
+    /// <param name="name">The class's simple name.</param>
+    /// <returns>The argument, quoted.</returns>
+    private static string Class(string name) => $"-class \"*{name}\"";
+
+    /// <summary>Renders a method selector for the native runner.</summary>
+    /// <param name="fragment">A fragment of the method name, or the whole name.</param>
+    /// <returns>The argument, quoted.</returns>
+    /// <remarks>
+    /// Wildcarded on both sides: the discriminators are fragments, and several carry a trailing
+    /// underscore that is load-bearing rather than cosmetic — see the switch above.
+    /// </remarks>
+    private static string Method(string fragment) => $"-method \"*{fragment}*\"";
 
     /// <summary>What one dataset costs under one protocol, and whether the nightly can afford it.</summary>
     /// <param name="Dataset">The BEIR dataset name.</param>
