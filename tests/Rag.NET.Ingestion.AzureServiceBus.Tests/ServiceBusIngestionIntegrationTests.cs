@@ -256,7 +256,7 @@ public sealed class ServiceBusIngestionIntegrationTests(ServiceBusEmulatorFixtur
     /// <param name="message">The message to settle.</param>
     /// <param name="strayCount">How many other messages this receiver is holding locks on.</param>
     /// <param name="ct">The cancellation token.</param>
-    private static async Task CompleteCarryingLockStateAsync(
+    private async Task CompleteCarryingLockStateAsync(
         ServiceBusReceiver receiver,
         ServiceBusReceivedMessage message,
         int strayCount,
@@ -269,6 +269,8 @@ public sealed class ServiceBusIngestionIntegrationTests(ServiceBusEmulatorFixtur
         }
         catch (ServiceBusException ex)
         {
+            var afterwards = await DescribeWhatTheBrokerStillHoldsAsync(message, ct);
+
             throw new InvalidOperationException(
                 $"Settling the dead-lettered message failed with {ex.Reason}. Lock state at the " +
                 $"attempt, recorded for #246: lockedUntil={message.LockedUntil:O} " +
@@ -278,9 +280,97 @@ public sealed class ServiceBusIngestionIntegrationTests(ServiceBusEmulatorFixtur
                 $"sequenceNumber={message.SequenceNumber} enqueuedTime={message.EnqueuedTime:O} " +
                 $"straysHeld={strayCount}. " +
                 "A positive lockRemaining rules out expiry and therefore rules out LockDuration " +
-                "as the mechanism, which is what #246 was twice fixed for.",
+                "as the mechanism, which is what #246 was twice fixed for. " + afterwards,
                 ex);
         }
     }
 
+    /// <summary>
+    /// Re-reads the dead-letter sub-queue after a failed settle and names which branch it implies.
+    /// </summary>
+    /// <param name="message">The message whose settle failed.</param>
+    /// <param name="ct">The cancellation token.</param>
+    /// <returns>A sentence for the failure message.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>The discriminator #246 has been missing.</b> The SDK's own wording names two remaining
+    /// causes once expiry is excluded — the message "has already been removed from the queue", or it
+    /// "was received by a different receiver instance" — and the state at the moment of failure
+    /// cannot tell them apart. What comes back <i>afterwards</i> can:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>Same sequence number, <c>deliveryCount</c> 1: the first delivery never counted. The
+    /// lock was issued against state the broker then rewrote, which is the "already removed"
+    /// branch — consistent with the receive being satisfied by the dead-letter transfer itself,
+    /// 104 ms after it, on the run captured 2026-09-14.</item>
+    /// <item>Same sequence number, <c>deliveryCount</c> 2: the first delivery was real and the lock
+    /// was genuinely revoked. The "different receiver" branch.</item>
+    /// <item>Nothing at all: the complete <b>landed</b> and only its acknowledgement was lost. Every
+    /// lock-directed fix would then have been aimed at the wrong thing three times over.</item>
+    /// </list>
+    /// <para>
+    /// <b>A fresh client, not the failing receiver.</b> If the original link is what went wrong,
+    /// asking it is asking the suspect. This opens its own connection so the answer is about the
+    /// broker's state rather than about one link's health.
+    /// </para>
+    /// <para>
+    /// <b>Never masks the real failure.</b> Everything here is inside a catch-all that degrades to
+    /// a note. A diagnostic that throws while explaining a throw destroys the evidence it exists to
+    /// capture — which is exactly what the known limit on the stray-abandon path warns about.
+    /// Anything it does receive is abandoned, so the probe leaves the queue as it found it.
+    /// </para>
+    /// </remarks>
+    private async Task<string> DescribeWhatTheBrokerStillHoldsAsync(
+        ServiceBusReceivedMessage message, CancellationToken ct)
+    {
+        try
+        {
+            await using var client = new ServiceBusClient(fixture.ConnectionString);
+            await using var receiver = client.CreateReceiver(
+                ServiceBusEmulatorFixture.QueueName,
+                new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
+
+            var again = await receiver.ReceiveMessageAsync(ProbeBound, ct);
+            if (again is null)
+            {
+                return "AFTERWARDS the dead-letter sub-queue handed back nothing within " +
+                    $"{ProbeBound.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture)}s, " +
+                    "which points at the complete having LANDED and only its acknowledgement being " +
+                    "lost — not at a lock problem at all.";
+            }
+
+            var same = again.SequenceNumber == message.SequenceNumber;
+            await receiver.AbandonMessageAsync(again, propertiesToModify: null, ct);
+
+            var reading = (same, again.DeliveryCount) switch
+            {
+                (true, 1) => "the first delivery NEVER COUNTED, so the lock was issued against " +
+                    "state the broker then rewrote — the \"already removed\" branch",
+                (true, _) => "the first delivery was REAL and the lock was revoked — the " +
+                    "\"different receiver\" branch",
+                (false, _) => "a DIFFERENT message came back, so this says nothing about the one " +
+                    "that failed and the probe needs to key on the document id",
+            };
+
+            return $"AFTERWARDS sequenceNumber={again.SequenceNumber} " +
+                $"deliveryCount={again.DeliveryCount} sameMessage={same}: {reading}.";
+        }
+        // CA1031 and ERP022 both object, and both are right in general: this repository does not
+        // swallow exceptions, and a catch-all that returns a string is the shape that hides
+        // defects. Suppressed here, narrowly, because the alternative is worse in exactly the way
+        // #246 has already suffered twice. This runs only while an exception is being constructed;
+        // if it throws, it replaces the captured lock state — the one piece of evidence four weeks
+        // of this issue lacked — with a failure about the diagnostic. The exception is not
+        // discarded either: the whole of it, type, message and stack, goes into the returned text
+        // and therefore into the failure a human reads.
+#pragma warning disable CA1031, ERP022
+        catch (Exception probeFailure)
+        {
+            return "AFTERWARDS could not be read: the probe itself failed with " + probeFailure;
+        }
+#pragma warning restore CA1031, ERP022
+    }
+
+    /// <summary>How long the after-the-fact probe waits. Short: the test has already failed.</summary>
+    private static readonly TimeSpan ProbeBound = TimeSpan.FromSeconds(10);
 }

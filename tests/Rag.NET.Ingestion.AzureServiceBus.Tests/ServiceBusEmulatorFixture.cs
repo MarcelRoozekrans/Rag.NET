@@ -40,15 +40,20 @@ public sealed class ServiceBusEmulatorFixture : IAsyncLifetime
     private const string SaPassword = "R4gNet!Emulator";
     private const int AmqpPort = 5672;
 
-    // LockDuration is PT5M, not the PT1M this started with (#246, raised 2026-08-16). A message
-    // lock that expires before a test settles its message surfaces as
-    // "The lock supplied is invalid ... (MessageLockLost)", and it is a property of how loaded the
-    // runner is, not of the code under test: the Docker tier runs several emulators at once and the
-    // failure has only ever been seen on ubuntu. It tripped again on PR #270, which added an
-    // Azurite container to that same tier — so the load that causes it is now higher than when the
-    // flake was filed, and raising the ceiling is the fix #246 itself prescribed. Five minutes is
-    // far beyond any of these tests' Bound, so a real hang still fails on the timeout rather than
-    // being masked by a longer lock.
+    // LockDuration is PT5M, raised from PT1M for #246 on the theory that a loaded runner let locks
+    // expire before a test settled its message.
+    //
+    // THAT THEORY IS DISPROVEN AND THIS VALUE IS NOT THE FIX. Instrumenting the failing call showed
+    // the lock carrying its FULL 300 SECONDS at the moment it was rejected, on every observed run
+    // including the CI capture of 2026-09-14 — where the settle came 3.4 ms after the lock was
+    // taken, at deliveryCount 1. A lock with five minutes left has not expired, so expiry was never
+    // the mechanism and neither PT1M nor PT5M was ever load-bearing. #246 was closed as completed
+    // by this change and stayed closed for a month while still failing; it is open again.
+    //
+    // The value is left at PT5M rather than reverted. It is harmless — far beyond any of these
+    // tests' Bound, so a real hang still fails on the timeout rather than being masked — and
+    // changing it now would be a third guess at a mechanism that is still unknown. What is under
+    // investigation is recorded on #246 and instrumented in ServiceBusIngestionIntegrationTests.
     private const string ConfigJson = $$"""
         {
           "UserConfig": {
