@@ -139,13 +139,25 @@ mistake.** The key also rotates on `run_id`, because a cache entry is immutable 
 fixed key would freeze whatever the first night embedded.
 
 `MINILM_REVISION` appears on both the key and the fallback prefix, and it is load-bearing.
-`BeirHarness.ModelIdentity` names the model but **not its revision**, so bumping the pin changes no
-cache key at all — without the revision here, `restore-keys` would hand a bumped run the previous
-model's vectors and every one would read as a hit. `BeirEmbeddingCacheTests` asserts it on each line
-separately, after a whole-step search passed a mutation that removed it from the key while the
-prefix line still mentioned it. The underlying gap in `ModelIdentity` is
-[#607](https://github.com/MarcelRoozekrans/Rag.NET/issues/607); CI is covered by this key, a
-developer machine is not.
+`BeirEmbeddingCacheTests` asserts it on each line separately, after a whole-step search passed a
+mutation that removed it from the key while the prefix line still mentioned it.
+
+**`BeirHarness.ModelIdentity` now carries the revision too, and until
+[#607](https://github.com/MarcelRoozekrans/Rag.NET/issues/607) it did not.** It named
+`all-MiniLM-L6-v2/onnx` — a repository, not an export — so bumping the pin changed no cache key at
+all, and every vector the previous export produced read as a hit. That made CI's protection the only
+protection: a developer machine had nothing between a bumped model and the old export's vectors.
+Both halves are now keyed on the revision, and `ModelRevisionAgreementTests` asserts that the
+workflow's pin and the harness constant are the same string **and** that the identity is actually
+built from it — because two constants that agree while nothing consumes them is not the property
+worth having.
+
+**Bumping the model now goes cold on purpose, everywhere.** An entry stores `RAGNETE1`, the 32-byte
+key digest, the dimension and the floats — **never the text** — so no entry can be re-keyed in
+place: computing the new digest needs the input, which was never kept. The old entries become
+unreachable rather than wrong. Nothing is re-embedded until something asks for it, so the bill is
+whatever cells are actually run: the nightly's two cost minutes, a full ablation sweep costs hours,
+and it costs those hours only if somebody sweeps.
 
 **`RAGNET_TESSDATA` reaches nothing in CI, and that is now a decision with a runnable procedure
 rather than an open defect.** Its only reader, the real-Tesseract OCR test, is inside
@@ -554,6 +566,34 @@ RAGNET_GRAPHRAG_ANSWERS_GENERATE=1 \
 RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
   -class "*BeirGraphRagAnswerTests"
 ```
+
+### The graph caches are published, so none of the above is needed to replay
+
+Everything in this section describes **filling** the caches, which costs money and needs a key. To
+only **replay** them — which is what the pinned figures check, and what anyone reproducing the
+GraphRAG results actually wants — download the published bundle instead:
+
+```bash
+curl -L -o ragnet-graphrag-cache.tar.gz   https://github.com/MarcelRoozekrans/Rag.NET/releases/download/graphrag-cache-2026-09-14/ragnet-graphrag-cache.tar.gz
+tar -xzf ragnet-graphrag-cache.tar.gz -C "$RAGNET_BEIR_CACHE"
+```
+
+93 MB compressed, 143 MB unpacked: `graph-extractions`, `graph-reports` and `graph-answers`, which
+is every cache the graph cells replay from. With those in place `BeirGraphRagAnswerTests` and the
+extraction-backed cells run with **no `OPENROUTER_API_KEY` at all**, because refuse-on-miss is the
+default and a populated cache never misses.
+
+**It carries only MultiHop-RAG, and that is structural rather than a filter.**
+`BeirProtocol.GraphRag` is declared by that dataset alone, so nothing else can have written to those
+directories. MultiHop-RAG is **ODC-By 1.0** by its own authors' declaration, which permits
+redistributing a derived database provided the attribution travels with it — so `NOTICE.md` is
+inside the archive and belongs there if you pass the bundle on.
+
+**The `hypotheticals`, `metadata-extraction` and `self-query` caches are deliberately absent.** They
+span FiQA and TREC-COVID, whose upstream terms permit no redistribution — see the licence fields on
+`BeirDatasetDescriptor`, which follow upstream rather than the Hugging Face mirrors' blanket tag —
+and every cache here is hash-sharded with no dataset separation, so they cannot be split by corpus
+without re-deriving them. Filling those still needs a key, and the sections above still apply.
 
 ### Self-query, `RAGNET_SELF_QUERY_GENERATE`
 
