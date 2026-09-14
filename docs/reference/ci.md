@@ -139,13 +139,25 @@ mistake.** The key also rotates on `run_id`, because a cache entry is immutable 
 fixed key would freeze whatever the first night embedded.
 
 `MINILM_REVISION` appears on both the key and the fallback prefix, and it is load-bearing.
-`BeirHarness.ModelIdentity` names the model but **not its revision**, so bumping the pin changes no
-cache key at all — without the revision here, `restore-keys` would hand a bumped run the previous
-model's vectors and every one would read as a hit. `BeirEmbeddingCacheTests` asserts it on each line
-separately, after a whole-step search passed a mutation that removed it from the key while the
-prefix line still mentioned it. The underlying gap in `ModelIdentity` is
-[#607](https://github.com/MarcelRoozekrans/Rag.NET/issues/607); CI is covered by this key, a
-developer machine is not.
+`BeirEmbeddingCacheTests` asserts it on each line separately, after a whole-step search passed a
+mutation that removed it from the key while the prefix line still mentioned it.
+
+**`BeirHarness.ModelIdentity` now carries the revision too, and until
+[#607](https://github.com/MarcelRoozekrans/Rag.NET/issues/607) it did not.** It named
+`all-MiniLM-L6-v2/onnx` — a repository, not an export — so bumping the pin changed no cache key at
+all, and every vector the previous export produced read as a hit. That made CI's protection the only
+protection: a developer machine had nothing between a bumped model and the old export's vectors.
+Both halves are now keyed on the revision, and `ModelRevisionAgreementTests` asserts that the
+workflow's pin and the harness constant are the same string **and** that the identity is actually
+built from it — because two constants that agree while nothing consumes them is not the property
+worth having.
+
+**Bumping the model now goes cold on purpose, everywhere.** An entry stores `RAGNETE1`, the 32-byte
+key digest, the dimension and the floats — **never the text** — so no entry can be re-keyed in
+place: computing the new digest needs the input, which was never kept. The old entries become
+unreachable rather than wrong. Nothing is re-embedded until something asks for it, so the bill is
+whatever cells are actually run: the nightly's two cost minutes, a full ablation sweep costs hours,
+and it costs those hours only if somebody sweeps.
 
 **`RAGNET_TESSDATA` reaches nothing in CI, and that is now a decision with a runnable procedure
 rather than an open defect.** Its only reader, the real-Tesseract OCR test, is inside

@@ -78,30 +78,43 @@ public static class BeirHarness
     /// every key, so the two separators are different entries rather than a collision.
     /// </para>
     /// <para>
-    /// <b>It does NOT carry the model's revision, and this sentence used to claim it carried
-    /// everything.</b> <c>all-MiniLM-L6-v2/onnx</c> names a repository, not an export:
-    /// <c>nightly.yml</c> pins <c>MINILM_REVISION</c> and checks a SHA-256 against it precisely
-    /// because, in its own words, a silently different model would move the parity number by an
-    /// amount nobody could attribute. Bump that pin and not one key here changes, so every vector
-    /// the previous export produced reads as a hit.
+    /// <b>It carries the model's revision, and until
+    /// <see href="https://github.com/MarcelRoozekrans/Rag.NET/issues/607">#607</see> it did not.</b>
+    /// <c>all-MiniLM-L6-v2/onnx</c> names a repository, not an export. <c>nightly.yml</c> pins
+    /// <c>MINILM_REVISION</c> and verifies a SHA-256 against it precisely because, in its own words,
+    /// a silently different model would move the parity number by an amount nobody could attribute
+    /// — while the key that decides whether a vector is reused did not distinguish one export from
+    /// another at all. Bumping the pin changed no key, so every vector the previous export produced
+    /// read as a hit.
     /// </para>
     /// <para>
-    /// <b>The nightly is covered; a developer machine is not.</b> The Actions cache key carries the
-    /// revision — <c>BeirEmbeddingCacheTests</c> pins that on both the key and the prefix it falls
-    /// back on — so a bumped CI run starts cold. Locally there is nothing between a bumped model
-    /// and 2.6 GB of the old one's vectors except remembering to delete them.
+    /// <b>The re-key discards every existing entry, and that was the point of doing it
+    /// deliberately.</b> An entry stores the digest and the floats — <c>RAGNETE1</c>, the 32-byte
+    /// key digest, the dimension, then the vector — and <b>not the text</b>. So no entry can be
+    /// re-keyed in place: computing the new digest needs the input, which was never kept. The old
+    /// entries are unreachable rather than wrong, and cost nothing beyond the disk they sit on.
     /// </para>
     /// <para>
-    /// <b>Putting the revision in this string is the real fix and was deliberately not taken
-    /// here.</b> It would re-key every entry, discarding every local cache in the repository —
-    /// 1,761,084 entries and 2,653.6 MB on the machine this was measured on — and costing hours of
-    /// re-embedding on each. That is a bill worth paying deliberately rather than as a side effect
-    /// of adding a CI cache, so it is filed with its options on
-    /// <see href="https://github.com/MarcelRoozekrans/Rag.NET/issues/607">#607</see> instead.
+    /// <b>Nothing is re-embedded until something asks for it.</b> The cache fills lazily, one text
+    /// at a time, so the bill is whatever cells are actually run rather than the 1,761,084 entries
+    /// a machine may have accumulated. The nightly's two cells cost minutes. Sweeping every
+    /// ablation costs hours — but it costs those hours only if somebody sweeps.
     /// </para>
     /// </remarks>
     public const string ModelIdentity =
-        "all-MiniLM-L6-v2/onnx maxTokens=256 mean-pooled-excluding-padding l2-normalised";
+        "all-MiniLM-L6-v2/onnx@" + PinnedModelRevision +
+        " maxTokens=256 mean-pooled-excluding-padding l2-normalised";
+
+    /// <summary>
+    /// The <c>all-MiniLM-L6-v2</c> revision the vectors were produced by.
+    /// </summary>
+    /// <remarks>
+    /// <b>Must equal <c>MINILM_REVISION</c> in <c>nightly.yml</c></b>, which fetches the export and
+    /// verifies a SHA-256 against it. <c>ModelRevisionAgreementTests</c> asserts the two are the same
+    /// string, so bumping one without the other fails rather than silently re-using the previous
+    /// export’s vectors under the new pin.
+    /// </remarks>
+    public const string PinnedModelRevision = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41";
 
     /// <summary>
     /// Documents embedded per <see cref="OnnxEmbeddingGenerator.GenerateAsync"/> call. Only a
