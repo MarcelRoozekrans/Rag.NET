@@ -1,6 +1,38 @@
 # Session State
 
-**Last updated:** 2026-09-14 — **at the merge.** #613 and #612 merged, **#607 closed: the embedding
+**Last updated:** 2026-09-14 — **#614 merged. #153 closed on a measurement that overturned its own
+reasoning, and #615 filed on the better question it surfaced.**
+
+**EVERY ISSUE THAT WAS "OPEN AND NOT MINE TO CHOOSE" IS NOW CLOSED** — #184, #175, #153. What
+remains open is #246, #283, #607's successor work in #615, and the two account-blocked phases.
+
+**#153 SAID NO, AND ITS OWN REASON FOR SAYING NO WAS WRONG.** It argued the saving lands on the
+smallest prompt path because "retrieved chunk text dominates". Measured over 400 real chunks and 400
+real extraction payloads with `cl100k_base`: in the **gleaning** prompt the serialised state is
+**196 tokens against the chunk's 114** — the larger half, 50.8%. That claim is true of the **answer**
+prompt and was carried across to a different one. **If TOON is ever revisited, revisit it knowing
+this call site is state-dominated, not text-dominated.**
+
+**THE NUMBERS, AND THE DENOMINATOR THAT MATTERS.** At TOON's own claimed 42.6% the saving is 21.6% of
+the gleaning prompt but only **14.5% of the 578 tokens ingestion spends per chunk**, because
+`GleaningPasses = 1` sends **two** prompts and the first carries no state. Judging against the
+gleaning prompt alone flatters it by half. `GleaningPasses = 0` saves **66.8%** — **4.6x** — for a
+config change. **Not dominance and not presented as such**: dropping gleaning changes what gets
+extracted, while a format change does not.
+
+**WHICH IS #615: GLEANING IS TWO-THIRDS OF INGESTION'S PROMPT TOKENS AND NOBODY HAS MEASURED WHAT IT
+ADDS.** No test or run separates entities found by the initial extraction from those the second call
+adds. The default doubles ingestion spend on an unquantified benefit. **#121 is why that needs care
+rather than a quick check** — this path once produced zero entities for the package's entire life
+without a test failing, and "does the graph still have entities" is exactly the assertion that missed
+it. Most of it is replayable from the extraction cache without new spend.
+
+**MEASURE THE CEILING BEFORE BUILDING THE THING.** The whole of #153 was settled without writing a
+TOON encoder, by asking what fraction of the prompt could even shrink. A throwaway `dotnet run`
+file-based app, the repo's own tokenizer, real corpus and real cache. **Not committed** — the issue
+comment carries everything needed to re-run it.
+
+**Previously, 2026-09-14 — at the merge.** #613 and #612 merged, **#607 closed: the embedding
 cache is re-keyed on the model revision.**
 
 **THE RE-KEY WAS THE OPERATOR'S CALL, AND THE COST TURNED OUT SMALLER THAN THE DECISION IMPLIED.**
