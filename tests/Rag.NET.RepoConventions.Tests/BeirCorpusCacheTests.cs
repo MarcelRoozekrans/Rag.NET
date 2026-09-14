@@ -104,46 +104,24 @@ public sealed class BeirCorpusCacheTests
             "or does not; a stale corpus measures.");
     }
 
-    /// <summary>Reads the cache step's body, comments removed.</summary>
-    /// <returns>The step's lines, joined by newlines.</returns>
+    /// <summary>Reads the cache step's body.</summary>
+    /// <returns>The step's lines, newline-joined.</returns>
     /// <remarks>
-    /// Comments are dropped because prose cannot satisfy an assertion about what runs — the same
-    /// measured failure <see cref="TestProject.ReadWorkflowCommands"/> exists for. That helper is
-    /// not reused here because it flattens the whole file to one line, and these assertions have to
-    /// be confined to one step.
+    /// The walk lives on <see cref="TestProject.ReadWorkflowStep"/> so this guard and
+    /// <see cref="BeirEmbeddingCacheTests"/> cannot disagree about where a step ends — they assert
+    /// opposite things about <c>restore-keys</c>, and two readers drifting apart would let both
+    /// pass while the workflow satisfied neither.
     /// </remarks>
     private static string ReadStep()
     {
-        var lines = File.ReadAllLines(TestProject.WorkflowPath("nightly.yml"));
-        var collected = new List<string>();
-        var inside = false;
-
-        foreach (var line in lines)
-        {
-            var trimmed = line.Trim();
-
-            if (trimmed.StartsWith("- name:", StringComparison.Ordinal))
-            {
-                if (inside)
-                {
-                    break;
-                }
-
-                inside = trimmed.Contains(StepName, StringComparison.Ordinal);
-            }
-
-            if (inside && !trimmed.StartsWith('#'))
-            {
-                collected.Add(trimmed);
-            }
-        }
+        var step = TestProject.ReadWorkflowStep(TestProject.WorkflowPath("nightly.yml"), StepName);
 
         Assert.True(
-            collected.Count > 0,
+            step.Length > 0,
             $"nightly.yml has no step named \"{StepName}\". Either the BEIR corpus cache was " +
             "removed — putting five corpus downloads back on every nightly run — or it was " +
             "renamed, which disarms this guard. Renaming is fine; update the name here with it.");
 
-        return string.Join(Environment.NewLine, collected);
+        return step;
     }
 }

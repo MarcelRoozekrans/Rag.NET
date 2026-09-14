@@ -72,10 +72,33 @@ public static class BeirHarness
     /// What the embedding cache's keys are salted with.
     /// </summary>
     /// <remarks>
-    /// Everything that changes a vector for a fixed input text: the model, the export, the sequence
-    /// length, the pooling and the normalisation. Not the title/text separator — that changes the
-    /// text itself, which is already the other half of every key, so the two separators are
-    /// different entries rather than a collision.
+    /// <para>
+    /// The model, the export, the sequence length, the pooling and the normalisation. Not the
+    /// title/text separator — that changes the text itself, which is already the other half of
+    /// every key, so the two separators are different entries rather than a collision.
+    /// </para>
+    /// <para>
+    /// <b>It does NOT carry the model's revision, and this sentence used to claim it carried
+    /// everything.</b> <c>all-MiniLM-L6-v2/onnx</c> names a repository, not an export:
+    /// <c>nightly.yml</c> pins <c>MINILM_REVISION</c> and checks a SHA-256 against it precisely
+    /// because, in its own words, a silently different model would move the parity number by an
+    /// amount nobody could attribute. Bump that pin and not one key here changes, so every vector
+    /// the previous export produced reads as a hit.
+    /// </para>
+    /// <para>
+    /// <b>The nightly is covered; a developer machine is not.</b> The Actions cache key carries the
+    /// revision — <c>BeirEmbeddingCacheTests</c> pins that on both the key and the prefix it falls
+    /// back on — so a bumped CI run starts cold. Locally there is nothing between a bumped model
+    /// and 2.6 GB of the old one's vectors except remembering to delete them.
+    /// </para>
+    /// <para>
+    /// <b>Putting the revision in this string is the real fix and was deliberately not taken
+    /// here.</b> It would re-key every entry, discarding every local cache in the repository —
+    /// 1,761,084 entries and 2,653.6 MB on the machine this was measured on — and costing hours of
+    /// re-embedding on each. That is a bill worth paying deliberately rather than as a side effect
+    /// of adding a CI cache, so it is filed with its options on
+    /// <see href="https://github.com/MarcelRoozekrans/Rag.NET/issues/607">#607</see> instead.
+    /// </para>
     /// </remarks>
     public const string ModelIdentity =
         "all-MiniLM-L6-v2/onnx maxTokens=256 mean-pooled-excluding-padding l2-normalised";
