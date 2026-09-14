@@ -47,13 +47,20 @@ Do that before any upload.
 both save and restore; 2.6 GB against a 10 GB whole-repo Actions quota; and most of it is ablations
 the nightly never runs. It fills its own now.
 
-**AN E2E FAILURE WHOSE EVIDENCE I DESTROYED MYSELF.** `Rag.NET.E2ETests` failed 1 of 11 in a full
-sweep, having passed 11/11 before and after — roughly 1 in 3 across the day. **The test cannot be
-named**, because the sweep loop piped every project through `grep "Total:"` and discarded the rest,
-and MTP writes its log only on failure so the passing re-run left nothing. This is the truncation
-mistake already recorded twice in this file, made *in the harness written to check my own work*, two
-commits after shipping a guard whose whole purpose is preserving that evidence in CI. **A sweep must
-tee full output.**
+**AN E2E FAILURE WHOSE EVIDENCE I DESTROYED MYSELF.** `Rag.NET.E2ETests` failed 1 of 11 cases in a
+full sweep. **The test cannot be named**, because the sweep loop piped every project through
+`grep "Total:"` and discarded the rest, and MTP writes its log only on failure — so the passing
+re-run left no log at all. This is the truncation mistake already recorded twice in this file, made
+*in the harness written to check my own work*, two commits after shipping a guard whose whole purpose
+is preserving exactly that evidence in CI. **A sweep must tee full output.**
+
+**Measured rather than guessed at, after an early estimate of "1 in 3" from three runs:** six local
+runs on 2026-09-14, **one failure — about 1 in 6**. Three dedicated captured runs afterwards all
+passed 11/11. **The failing run was the fastest of the six** — 264.4 s against 288-424 s for the
+passes — which is the same early-bail shape as the nightly's 4.3 s mass failures, and is a signal
+rather than a diagnosis. Both sweeps ran E2E after forty-odd other projects, and only one failed, so
+container contention is a candidate and not a conclusion. **Not filed**: an unnamed, unreproduced
+flake with no captured output is not an actionable issue. The next sweep keeps its output.
 
 **Open and not mine to choose:** **#153**, and **#607**'s three options. Publishing the LLM caches
 waits on the licence trace. **#283** is unblocked as to instructions, blocked as to accounts. **#246**
