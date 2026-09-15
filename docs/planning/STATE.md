@@ -2683,8 +2683,11 @@ by five phases.
 **Issues from the 6.2.3 work:** #331, #332, #333 fixed and auto-closed on merge. **#336 and #338 are
 CLOSED as of 2026-09-07; #337 is partly fixed.** They stood deferred "by decision" for two weeks, and
 the decision was reversed once pre-1.0 was recognised as the moment to take the breaking changes they
-needed. **`docs/guide/raptor.md`'s Known Limitations still describes the pre-fix state — check it
-against this list before quoting it.**
+needed. **`docs/guide/raptor.md`'s Known Limitations was brought up to date and this warning outlived it.**
+That page now opens with "Most of what this section once listed is now fixed" and marks #338, #336
+and #487 resolved with what each fix could *not* do. Corrected 2026-09-15 during a documentation
+audit. It does not mention #337, whose near-duplicate facet is still open — the one thing here
+still worth checking against.
 
 - **#338 — CLOSED** in #486. `DeleteAsync` ignored the leaf store, so a deleted document's text could
   be re-read, summarised and stored as searchable content under `raptor://corpus-tree` —
