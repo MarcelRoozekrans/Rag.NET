@@ -8,28 +8,40 @@ name: Release Please
 # tagged commit it returns the tag's version, and publish-nuget packs and pushes exactly
 # that. The user merges the release PR, as every PR here — this workflow only proposes.
 #
-# THE GATE, recorded to the standard TestGateTests holds every other gate in this repository
-# to — named, condition stated, satisfiable by a documented procedure:
-#   NAME: release-please.
-#   CONDITION: a manual workflow_dispatch on main. No push trigger, deliberately: Phase 6.3
-#     decides the release version, and a workflow that opened a release PR on every push to
-#     main would be proposing a release nobody asked for, months early.
-#   SATISFIED BY: the fenced procedure in docs/reference/ci.md ("The gated release"),
-#     runnable by any maintainer; Phase 6.3 executes it.
+# THE GATE IS GONE, and that is a deliberate change rather than an erosion. Until v1.0.0 this
+# workflow was dispatch-only, because a push trigger would have proposed a release nobody had
+# asked for, months before Phase 6.3 chose the first version. **6.3 executed on 2026-09-15**:
+# v1.0.0 is tagged and 73 packages are on nuget.org. The condition the gate existed to protect —
+# "nothing proposes a release before someone decides the first version" — cannot be violated
+# again, because the first version is decided and released.
 #
-# NEVER EXECUTED, stated rather than hidden: unlike the nuget.org push — whose pack and push
-# commands run against a local feed on every push to main — nothing in this workflow can run
-# before 6.3, because its only observable effects (a release PR, a tag, a GitHub release)
-# are the release itself. It is the one genuinely unexercised path this phase ships, and it
-# is pinned instead of rehearsed: WorkflowWiringTests fails a gating push the moment this
-# file's trigger, its ref condition, its action, or its documented procedure drifts. The
-# residual — the action's first real execution is release day — is recorded in
-# docs/reference/ci.md alongside the push residual it shares a date with.
+# From 1.0.0 onward the release PR tracks main continuously: every merge updates its changelog
+# and its proposed version, so the next release is always one merge away rather than a procedure
+# somebody has to remember. The two properties that actually matter are unchanged:
+#
+#   1. THE USER STILL MERGES THE RELEASE PR. This workflow only ever proposes. A release PR
+#      sitting open is not a release, and nothing here can make it one.
+#   2. PUBLISHING IS STILL SEPARATELY GATED. The tag this workflow creates does not publish
+#      anything — `publish-nuget` in ci.yml needs its own workflow_dispatch with
+#      publish_to_nuget=true. Two independent human decisions still stand between a merge and
+#      a package on nuget.org.
+#
+# workflow_dispatch is kept alongside the push trigger, for re-running after a flake and for
+# the case a push event was never delivered.
+#
+# ONE GITHUB BEHAVIOUR WORTH KNOWING: events raised by the built-in GITHUB_TOKEN do not start
+# workflow runs, which is the rule that stops workflows triggering themselves forever. It does
+# not affect the flow here, because a human merges the release PR and a human's merge is a real
+# push. It IS why the release PR itself arrives with no CI on it — see docs/reference/ci.md.
 on:
+  # Keeps the release PR current with main. Merging that PR is itself a push to main, so the
+  # same trigger then creates the tag and the GitHub release — no second dispatch needed.
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # release-please writes: the release PR (contents for the branch, pull-requests for the PR)
-# and, on the dispatch after that PR merges, the tag and the GitHub release.
+# and, on the run triggered by that PR's merge, the tag and the GitHub release.
 permissions:
   contents: write
   pull-requests: write
