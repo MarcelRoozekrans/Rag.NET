@@ -1,6 +1,43 @@
 # Session State
 
-**Last updated:** 2026-09-15 — **Milestone 6 audited: 6 of 8 criteria. The recordings gate is
+**Last updated:** 2026-09-15 — **v1.0.0 IS RELEASED.** Tagged `v1.0.0` at `a658cd6e`, 73 packages
+and 73 symbol packages live on nuget.org via Trusted Publishing, verified against nuget.org's own
+flat-container index rather than the workflow's green check. Milestone 6 criterion 8 is discharged.
+
+**THE LAST FIX BEFORE THE RELEASE WAS DIAGNOSED WRONG BY ME, AND CAUGHT BY MEASURING PROPERLY.**
+#640 — concurrent SQLite writers threw `database is locked` after 31.5 seconds on `windows-latest`
+against a five-minute `LockDuration`. The root cause is that **`busy_timeout` defaults to 0**: SQLite
+returned `SQLITE_BUSY` instantly and `Microsoft.Data.Sqlite`'s command-level retry loop spun above it
+for 30 seconds. The writers were never queueing. That is why "the lock expired" never fit the
+evidence and why the issue was misdiagnosed twice before.
+
+**I then reached for WAL, measured a 53% improvement, and was one commit from shipping it.** That
+measurement timed wall clock **including the rebuild** and changed **two pragmas on one line**, so it
+credited WAL with a gain that came entirely from the `busy_timeout` bundled beside it. Isolating
+them, five runs each with the build outside the timing, median:
+
+| configuration | median |
+|---|---|
+| neither | 2.77s |
+| `busy_timeout` only | **1.03s** |
+| WAL only | 3.30s |
+| WAL + `busy_timeout` | 1.70s |
+
+**WAL alone is worse than changing nothing here, and it degrades the real fix.** Every store in
+`Rag.NET.Storage.Sqlite` opens a fresh unpooled connection per operation, so WAL pays per-connection
+setup on every call and never holds a connection long enough to collect its benefit. Shipped in #641
+as the one-line pragma, with three mutation-verified guards — one of which **asserts WAL's absence**,
+so the next person who reaches for the obvious fix meets the measurement first.
+
+**Carry the method, not just the result.** Two separate false conclusions this session came from the
+same shape: a wall-clock number that included build time, and two changes measured as one. The
+memory note *performance numbers need two runs* was written for a page-cache artefact and did not
+fire here, because the confound was bundling, not caching. Change one thing; put the build outside
+the timing; state the median of five.
+
+---
+
+**Previously:** **Milestone 6 audited: 6 of 8 criteria. The recordings gate is
 discharged, and v1.0 no longer waits on accounts.**
 
 **THE GATE THAT HELD SINCE 2026-08-20 IS GONE, AND THE DoD ALWAYS ALLOWED IT.** Criterion 5 asks for

@@ -44,62 +44,30 @@ is the counter-example: every defect ever found in it was found by that calibrat
 Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifiable style.
 
 - [x] **Milestone 5 complete** — closed 2026-08-15 by audit, verdict PASS.
-- [ ] **All planned phases complete** — what remains is **three**: 6.1 Recorded Responses
-      (blocked on accounts, still gating the tag), **6.2.43 the fluent entry point (pending, added
-      2026-09-12 from #184 — and scoping found its premise had drifted: the builder is already
-      fluent, so the phase closes one seam rather than redesigning an entry point)**, and 6.3
-      Release v1.0. **6.2.42 the mechanical guards closed 2026-09-12 in #572.** **6.2.41 the MTP migration closed 2026-09-12 in #567** — though not for the reason it was scoped: #314 stays open, now
-      correctly attributed to SDK support rather than to this repository. **6.2.40 the prompt-injection documentation (#552) closed
-      2026-09-11 in #561.** 6.2.41 is the first item in a while that came from a red CI check rather
-      than from a phase finding it — #314 had been failing since 2026-08-18, diagnosed only when
-      someone asked why. **6.2.39 the model boundary closed
-      2026-09-11 in #556** — and produced 6.2.40 twice over: its posture section surfaced #552, and
-      its own cross-reference turned out to point at a design proposal marked Done. **6.2.38 the security posture closed 2026-09-11 in #553**, and produced
-      6.2.39 by making an omission visible — which is the posture earning its keep rather than the
-      count drifting. **6.2.37 the decorator that hid a capability (#544) closed 2026-09-10 in
-      #549**, filed, scoped, built and merged inside a day. **This count has now moved four times in
-      two days, and 6.2.38 is the one that should not have needed moving**: it was recorded as open
-      on 2026-09-07 and simply never scheduled, so every "what remains" written since has been
-      undercounting work that was written down in the same directory. **This line said "two" for about an
-      hour** on 2026-09-10 — written when 6.2.36 closed and true only until #544, which 6.2.36 had
-      itself filed hours earlier, was scoped into a phase. **That is the record-then-schedule rule
-      working, not drifting**: the count went up because a recorded finding became scheduled work,
-      which is the whole point of recording it. It has now read two, three, two and three inside one
-      day. **6.2.36 the semantic ranker's move to the hybrid path (#539) closed 2026-09-10 in
-      #545**, filed and fixed the same day. **This line said "two" for four hours** on 2026-09-10,
-      between 6.2.35 closing and #539 arriving, then said "three" for eight more; the shortest any
-      version of it has been true, and a fair reminder that "what remains" counts planned work, not
-      defects not yet found. It is back to two by closing the defect, not by discounting it. **6.2.35 the benchmark filter
-      guard (#529) closed 2026-09-10 in #540**, the first phase since 6.2.30 with nothing
-      account-blocked. **Both survivors are now blocked on the same thing**, and neither is blocked
-      on effort: the tag waits on 6.1's cassettes, and 6.1 waits on accounts. **6.2.34 the Azure semantic
-      ranker (#328) closed 2026-09-10 in #536** — it shipped *with* its account constraint rather
-      than waiting for one, by guarding the unverifiable path with a throw instead of a claim; the
-      remaining gap is recorded in `<VerifiedByReason>`, not left implicit. **Corrected 2026-09-09 — the fourth drift of this line.** It said "6.2.1
-      Retrieval & Answer Sweep (active)" for three days after that phase closed on 2026-09-06, and
-      it listed none of 6.2.13–6.2.30, which is nineteen phases. The Phases table below stayed
-      correct throughout: it is edited by `complete-phase`, and this prose line is not, so the two
-      drift by construction rather than by neglect. **Read the table, not this line.**
-      Complete: ~~6.0 Inventory~~ (2026-08-15), ~~6.2 Raise the Floor~~
-      (substantially, 2026-08-17), ~~6.2.2 Requested Features~~ (2026-08-16), ~~6.2.3 Corpus-Level
-      RAPTOR~~ (2026-08-21), ~~6.2.4 RAPTOR Retrieval Over-Fetch~~ (2026-08-21), ~~6.2.5 Contract
-      Defects~~, ~~6.2.6 Package Boundaries~~, ~~6.2.7 Named Pipelines~~, ~~6.2.8 Requested DX and
-      Chunking Quality~~, ~~6.2.9 `Umap.Fit` at Corpus Scale~~, ~~6.2.10 Vector-Store
-      Initialisation~~, ~~6.2.11 HTML Structure and a Guid Seam~~ (all 2026-08-25), ~~6.2.12
-      Dogfooding Defects~~ (2026-08-26).
-      *(This line listed 6.2.5–6.2.10 as outstanding until 2026-08-27, five days after their
-      code was on `main`, and never listed 6.2.11 or 6.2.12 at all — the third time this file
-      has drifted from the ROADMAP. A status is written when a phase is planned, and nobody is
-      editing this file at the moment its PR merges.)*
-      *(6.2.5–6.2.9 added 2026-08-25 from the GitHub backlog, pre-tag on the operator's
-      decision. Consistent with 6.2.2's charter: this is the terminal milestone, so a
-      request filed against a published package has nowhere later to land.)*
-- [ ] **Every `✅ Done` row in `features.md` names what exercises it** — an *Exercised by* column,
+- [x] **All planned phases complete** — **ticked 2026-09-15 with 6.3's release.** The three this
+      line named are all closed, and two of them closed by decision rather than by the work
+      originally imagined: **6.1 Recorded Responses** is complete *by reason*, not by recordings —
+      the DoD's own wording allowed a `<VerifiedByReason>` in place of a recording precisely so the
+      release would not hang on credentials that may never arrive, and #631 wrote seventeen of them;
+      **6.2.43 the fluent entry point** closed as overtaken once scoping found its premise had
+      drifted, the builder already being fluent; **6.3 Release v1.0** shipped. **#283 stays open for
+      anyone with an account** — that is a standing invitation, not an unfinished phase.
+- [x] **Every `✅ Done` row in `features.md` names what exercises it** — an *Exercised by* column,
       pointing at a test or benchmark that runs the real thing, and a conventions test that fails a
-      ✅ row with an empty column. Today: 56 rows, 0 pointers.
-- [ ] **No package remains at bare `VerifiedBy=unit`** — each is `integration`, `container`,
+      ✅ row with an empty column. **Ticked 2026-09-15, on the guard rather than on a count.**
+      `FeatureExerciseTests` is the criterion's definition and it is green in the gating tier, with
+      all 118 `RepoConventions` guards passing. The stale figure this line used to carry — *56 rows,
+      0 pointers* — was replaced in 6.2.44 by #635's 29 pointers, 9 of them real and 20 `declared`.
+      **A hand grep over the file disagrees with the guard** — it counts 68 ✅ rows against 61
+      pointers — and the guard wins: it is what runs on every push and what a change has to satisfy.
+      Recorded because the discrepancy will look like a defect to the next reader, and the answer is
+      that the grep and the parser draw the row boundary differently, not that seven rows are bare.
+- [x] **No package remains at bare `VerifiedBy=unit`** — each is `integration`, `container`,
       `recorded`, `benchmark`, or carries `<VerifiedByReason>` naming the service and the gap; the
-      ledger test fails a bare `unit`. Today: **22 of 73**, down from 57 when 6.0 wrote the list.
+      ledger test fails a bare `unit`. **Ticked 2026-09-15: 0 bare of 74**, and
+      `PackagesAllowedToStayUnit` is empty — #631 wrote seventeen reasons, each for its own position
+      rather than shared. The count below is the 6.0-era history, kept for the trajectory:
+      **22 of 73** at the time of writing, down from 57 when 6.0 wrote the list.
       Of the 73: 29 `integration`, 24 `unit` (22 bare, 2 with a reason), 11 `container`, 5
       `benchmark`, 1 `recorded`, 1 `live`. `recorded` and `live` were both used for the first time
       on 2026-08-17 — `Rag.NET.DataProviders.GitHub` and `Rag.NET.Parsers.Vision`.
@@ -115,9 +83,22 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
       chunking, SPLADE, and the three answer engines; every vector store reproduces the SciFact
       parity figure through itself; a pipeline-parity test holds a real `AddRagNet` pipeline to the
       harness's top-k on every push.
-- [ ] **The release commit is green on both `ci.yml` matrices**, the Docker tier and the latest
-      nightly green on Linux, stated as such.
-- [ ] **Release tagged v1.0.**
+- [x] **The release commit is green on both `ci.yml` matrices**, the Docker tier and the latest
+      nightly green on Linux, stated as such. **Ticked 2026-09-15 on run 35009496614**, the publish
+      dispatch on the release commit `a658cd6e`: `build-test (ubuntu-latest)` success,
+      `build-test (windows-latest)` success, `pack-validate` success, and within the Linux leg
+      `Test (Docker tier): success` — the Docker tier is a step inside `build-test` rather than a
+      job, so it is read off that job's steps, not off a job name. **Stated as such, per the
+      criterion's own wording:** the latest nightly is run **34948033224**, green on Linux, but at
+      sha `70524ae0` — 08:38 that morning, so **it predates the release commit**. The two nightly
+      runs after it are `skipped` and were on a renovate pull request, not on `main`. Nothing has
+      run the nightly tier against `a658cd6e` itself.
+- [x] **Release tagged v1.0.** `v1.0.0` → `a658cd6e`, created by release-please on dispatch
+      35008536214 and marked Latest. 73 packages and 73 symbol packages pushed to nuget.org by
+      `publish-nuget` on run 35009496614 — 146 pushes, zero duplicates, zero failures — with
+      GitVersion deriving `1.0.0` from the tag. **Verified against nuget.org's own
+      flat-container index rather than the workflow's exit code**, because a green publish job and
+      an indexed package are different claims.
 
 ## Phases
 
@@ -171,7 +152,7 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 | 6.2.43 | The Entry Point That Was Already Fluent | #184 | **complete** 2026-09-12, merged as #577 — shipped a documentation correction and the test that earned it. `getting-started.md` told readers to register the AI services before `AddRagNet`; **that constraint does not exist**, proven by `RegistrationOrderTests` registering both orders and asserting each container returns the exact instances registered. Added 2026-09-12, **scope reduced the same day, before any code**: the two builder methods are dropped and the phase ships the ordering test, the documentation correction and a comment on #184. The operator challenged the design as over-engineering and it did not survive — **the methods unify syntax without reducing decisions**: same client constructed, same three things to know, and the verbose part was never the registration. Against a goal of "fewest decisions to something working" the count was identical and only the punctuation moved, while the cost was a `Microsoft.Extensions.AI` reference on core plus two ways to register one service — the trap the design had rejected its own alternative for laying. **Finding kept although it decides nothing now**: `AddChatClient` is a pipeline entry point returning a `ChatClientBuilder`, not a registration helper, so a naive `AddSingleton` would have discarded `UseLogging`/`UseOpenTelemetry`/`UseDistributedCache`/`UseFunctionInvocation` silently. **#184's premise has drifted and the drift is the finding.** The issue asks for "one builder where everything is configured fluently"; the builder exists and the documented quickstart already chains — `services.AddRagNet(rag => rag.UsePgVector(…).AddPdfParser())` — with optional packages attaching through `TBuilder where TBuilder : IRagBuilder` returning `TBuilder`. Two supporting claims no longer hold: **#181 is merged**, killing the "the bump is happening regardless" argument, and **#161 is closed**. **Methodological note that changed the scope**: the extension surface was first counted by grep and two reasonable greps returned **42** and **3** for the same quantity, because C# signatures wrap across lines — the scope came from reading `IRagBuilder`, `RagBuilder` and `ServiceCollectionExtensions` instead, and no work derives from a count. **What remains is one seam**: the model and embedder are registered outside the chain as two `Microsoft.Extensions.AI` calls, and no `UseChatClient`/`UseEmbeddingGenerator` exists on `RagBuilder` — checked directly, absent rather than differently named. **The stated ordering constraint may not exist**: `getting-started.md` says to register them before `AddRagNet`, but every consumption found is `sp.GetService`/`GetRequiredService` inside a factory lambda, so order should be irrelevant — **recorded as a hypothesis and turned into a test**, since a pass deletes a doc sentence and a fail reveals a real constraint. **Two methods on the concrete `RagBuilder`, not `IRagBuilder`** — the latter is a shipped three-member abstraction external packages are generic over, so adding to it breaks implementers and buys nothing. Both take the `Microsoft.Extensions.AI` abstractions already consumed, so the dependency closure is unchanged; chaining composes in both directions and is tested by compilation. **The risk most likely to fail silently**: if `AddChatClient` wraps the client in middleware, a naive `AddSingleton` loses it and a "the client resolves" test passes either way — so the methods delegate and the check compares against what `AddChatClient` produces. **Additive despite the `breaking-change` label: every call site that compiles today still compiles.** Rejected explicitly — provider-specific `UseOpenAI(key)`, touching any existing extension, adding to `IRagBuilder`, and the options-discoverability layer. **Consequence for planning: #184 was the strongest remaining argument for breaking work before v1.0; if it closes additively that argument dissolves** |
 | 6.2.44 | What 29 Features Claim, and What Exercises Them | — | **complete** 2026-09-15 — nine stale entries now point at real evidence; twenty carry `declared` and state what does not exercise them. Work list empty, mutation-verified. Previously: pending — opened 2026-09-15 by the close audit. 29 `✅ Done` sections name nothing that exercises them. The downgrades are the output worth having. `FeatureClaimSymbolTests` enforces an adjacent property — names a symbol that ships — so it passes while the criterion fails |
 | 6.2.45 | The Last Bare Unit | #636 | **complete** 2026-09-15 — the run was preferred over a reason, and the real documents found a shipping defect on first contact (#636): Legal and Book returned one chunk for any plain-text input. Zero packages remain at bare `unit`. Previously: pending — opened 2026-09-15 by the close audit. `Chunking.Templates` is the only package left at bare `unit`. Prefer the real run over a reason: it needs a file of each template's kind, not a credential |
-| 6.3 | Release v1.0 | — | pending — **but its first work is already done**: 71 packages live on nuget.org at 0.1.0 since 2026-08-11 (verified 2026-08-16), so the account, key and every package ID are settled. Only the v1.0 tag remains. ~~Now gated on 6.2.3~~ — cleared 2026-08-21. Still gated on 6.1's recordings (the operator kept that gate) and 6.2.1's sweep |
+| 6.3 | Release v1.0 | — | **complete** 2026-09-15 — `v1.0.0` tagged at `a658cd6e`, **73 packages and 73 symbol packages** on nuget.org via Trusted Publishing (run 35009496614, 146 pushes, zero duplicates), verified against nuget.org's flat-container index. The gates it waited on were cleared rather than bypassed: **6.1 completed by reason** in #631 — the DoD always allowed a `VerifiedByReason` in place of a recording — and 6.2.1's sweep closed. The package count is 73, not the 71 this row predicted: three added since 2026-08-11, one project in `src/` is not packable |
 
 ## Known debt carried into this milestone
 
