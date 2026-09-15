@@ -371,7 +371,26 @@ Quick reference (i9-12900HK, .NET 10, 50-token chunks):
 
 ## Contributing
 
-Working from a clone? Run `git config core.hooksPath .githooks` once to catch an over-length
+See [CONTRIBUTING.md](CONTRIBUTING.md) for building, the test tiers, and commit conventions.
+
+### Help wanted: record one connector cassette
+
+**[#283](https://github.com/MarcelRoozekrans/Rag.NET/issues/283) needs an ordinary account on an
+ordinary SaaS product — not .NET expertise.** One contribution is usually 20–40 minutes, most of it
+getting a token.
+
+Rag.NET ships 19 connectors that talk to real services, and **38 of the 41 cassettes their tests
+replay are hand-written** from reading API docs. That verifies the code against our belief about the
+API rather than against the API — and it has already let a shipped authentication defect through
+with every test green ([#625](https://github.com/MarcelRoozekrans/Rag.NET/issues/625)): the cassette
+matched on path and method, so no test in the repository *could* observe a credential.
+
+Pick a service you already use, record one real exchange, scrub it, open a PR. A recording that
+reveals a connector is broken is the most valuable outcome. Comment on the issue to claim one.
+
+### Working from a clone
+
+Run `git config core.hooksPath .githooks` once to catch an over-length
 commit header before you push — see [Catching a long commit header before you push](docs/reference/ci.md#catching-a-long-commit-header-before-you-push).
 
 ## Requirements
