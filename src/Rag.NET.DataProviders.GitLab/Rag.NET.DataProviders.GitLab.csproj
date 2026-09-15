@@ -5,6 +5,11 @@
     <PackageId>Rag.NET.DataProviders.GitLab</PackageId>
     <Description>GitLab data provider for Rag.NET using NGitLab</Description>
     <VerifiedBy>unit</VerifiedBy>
+    <VerifiedByReason>GitLab API via NGitLab. No account or credential for it exists on this project, so no scrubbed
+      recording can be made; that is the blocker, and it is not effort. Coverage is unit tests over
+      fakes and an SDK boundary; no HTTP exchange with the service is exercised at all. What stays
+      unverified: request shape, authentication, pagination on real data, and error and rate-limit
+      handling — everything the SDK does on the wire.</VerifiedByReason>
   </PropertyGroup>
 
   <ItemGroup>

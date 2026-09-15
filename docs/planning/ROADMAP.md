@@ -4121,7 +4121,14 @@ and something checks it):
       design, stated as such rather than counted as both. Milestone 3 closed minutes early on
       a suite that was red on Windows while the Linux nightly was green; this criterion exists
       so that cannot recur at the tag.
-- [ ] Release tagged v1.0
+- [ ] **v1.0 released by the mechanism this project actually uses** — `CONVENTIONS.md` records
+      `Released by: release-please` and `Milestone completion tags a release: no`, so
+      `complete-milestone` correctly creates no tag and the version comes from a release-please
+      run against conventional commits. **This criterion said "Release tagged v1.0" until
+      2026-09-15**, which the close audit found could only be satisfied by tagging v1.0 by hand —
+      the one thing the conventions say this project does not do. Two mechanisms were named for
+      one event; this is the one that exists. Satisfied when release-please opens and merges the
+      1.0.0 release PR and `v1.0.0` appears on `main`.
 
 ### Phase 6.0: The Inventory [status: complete 2026-08-15 — added and closed the same day; the two guards ship failing-behind-a-work-list: 57 packages at bare unit and 49 Done sections without an exercise pointer, each owned by 6.1, 6.2 or 6.2.1]
 **Goal:** turn "battle-tested" from a mood into a list with checkboxes before any of 6.1–6.3
@@ -4169,7 +4176,7 @@ being a feeling.
 package is in exactly one of the three states, and the allowlist is the work list for the rest of
 the milestone. Nothing is exercised in this phase; it is where the ledger stops being a feeling.
 
-### Phase 6.1: Recorded Responses [status: postponed 2026-08-20, **still gating v1.0** — sequenced behind 6.2.3 at the operator's call; the gate was kept rather than handed to `<VerifiedByReason>`, so the tag waits on the remaining 18 cassettes and their accounts. Previously: in progress 2026-08-17 — the harness did not work and now does (#290): recordings were written to a directory replay never read, and every mapping matched on the ephemeral WireMock port, so nothing anyone recorded could ever replay. Both defects were silent because record mode proxies to the real service and therefore passes. First working cassette recorded the same day (GitHub, unauthenticated, 17 KB); #283 carries the corrected instructions for the remaining 18 services, where the blocker is accounts rather than work]
+### Phase 6.1: Recorded Responses [status: complete 2026-09-15 — SATISFIED BY REASON, NOT BY RECORDINGS, which is the route its own criterion always allowed: "VerifiedBy=unit with a VerifiedByReason beside it naming the service, why no recording exists, and what that leaves unverified ... so the gap is visible per package instead of blocking the release on credentials that may never arrive". #631 gave seventeen live-service packages that reason, each written for its own position rather than shared — nine replay hand-written cassettes, eight have only fakes and an SDK boundary — and emptied PackagesAllowedToStayUnit of its 6.1 entries, so the conventions test now enforces rather than excuses. **This does not make the connectors verified; it makes the gap legible in the package that ships.** #283 stays open for anyone who can supply an account. The operator's 2026-08-20 decision that recordings gate v1.0 is hereby reversed, on the evidence that the gap can be stated per package and the 2026-09-15 finding that a hand-written cassette had concealed a shipped authentication defect for a package's whole life (#625) — which is exactly what a stated reason now says out loud. Previously: postponed 2026-08-20, **still gating v1.0** — sequenced behind 6.2.3 at the operator's call; the gate was kept rather than handed to `<VerifiedByReason>`, so the tag waits on the remaining 18 cassettes and their accounts. Previously: in progress 2026-08-17 — the harness did not work and now does (#290): recordings were written to a directory replay never read, and every mapping matched on the ephemeral WireMock port, so nothing anyone recorded could ever replay. Both defects were silent because record mode proxies to the real service and therefore passes. First working cassette recorded the same day (GitHub, unauthenticated, 17 KB); #283 carries the corrected instructions for the remaining 18 services, where the blocker is accounts rather than work]
 **Goal:** For each of the ~20 packages that talk to live services, either commit a scrubbed,
 dated recording of one real exchange that the tests replay, or record per package why no
 recording exists. (Moved out of Milestone 4 on 2026-08-03 with the v1.0 postponement; the phase
@@ -4208,7 +4215,7 @@ satisfiability half stays Milestone 4's, per that debt's entry), the AzureAISear
 path (no integration coverage — a simulator limit), and the Pinecone live sparse-write
 verification (Milestone 2's documented coverage gap).
 
-### Phase 6.2: Raise the Floor on Unit-Only Packages [status: substantially complete 2026-08-17 — 57 bare `unit` down to 22, the remainder being 6.1's credential-blocked connectors, `Chunking.Templates` and 6.2.1's three. Every package picked up produced a defect in something adjacent: `Parsers.Audio` was filed as needing a hosted transcription model and needs none — Whisper runs locally — while being broken on Linux without `libgomp1`; `Parsers.Vision` had no CI tier that could select it; `DataProviders.Web`'s crawler returned the seed page twice (#288). `recorded` and `live` were both used for the first time]
+### Phase 6.2: Raise the Floor on Unit-Only Packages [status: complete 2026-09-15 — the 2026-09-15 close audit could not key on the previous value, "substantially complete", because it is not a status this workflow recognises, and criterion 2 therefore could never pass while it stood. Forty-three sub-phases are complete and the bare-unit count is one, `Chunking.Templates`, now owned by 6.2.45 rather than by this phase. Previously: substantially complete 2026-08-17 — 57 bare `unit` down to 22, the remainder being 6.1's credential-blocked connectors, `Chunking.Templates` and 6.2.1's three. Every package picked up produced a defect in something adjacent: `Parsers.Audio` was filed as needing a hosted transcription model and needs none — Whisper runs locally — while being broken on Linux without `libgomp1`; `Parsers.Vision` had no CI tier that could select it; `DataProviders.Web`'s crawler returned the seed page twice (#288). `recorded` and `live` were both used for the first time]
 **Goal:** Decide what "exercised beyond fakes" means for a package with no external dependency,
 and do it. Phase 4.0's ledger measured **61 of 71 packages at `VerifiedBy=unit`** — only ever
 exercised against fakes. About 20 of those are 6.1's live-service packages; the other **~41 —
@@ -8303,6 +8310,46 @@ traded away in favour of "fewest decisions to something working".
 work no longer has a deadline attached to the release. The phase comments its findings on #184 —
 including the falsified premises — rather than closing it quietly as though the original scope had
 been delivered.
+
+### Phase 6.2.44: What 29 Features Claim, and What Exercises Them [status: complete 2026-09-15 — nine sections were stale and now point at real evidence, twenty carry `declared` and say what does not exercise them, and `SectionsAwaitingExercise` is empty. Mutation-verified: a missing line fails, and so does a pointer to a class that does not exist. Previously: pending — opened 2026-09-15 by the Milestone 6 close audit, `docs/plans/2026-09-15-milestone-6-audit.md`, which found criterion 3 unmet]
+**Surface:** Docs
+**HelpWanted:** no
+
+**Goal:** close the DoD's third criterion — every `✅ Done` row in `features.md` names what
+exercises it — for the 29 sections that currently name nothing.
+
+**The downgrades are the output worth having, not the paperwork.** A feature that nobody can name
+evidence for is a finding. Phase 6.0 opened this box with 49 such sections; 20 have been closed and
+29 remain, including `Cohere Rerank`, `Content-Hash Record Manager`, `Recursive Web Crawler`,
+`Sitemap Loader`, `RSS Feed Loader` and `SaaS Connectors`.
+
+**CORRECTION, 2026-09-15: a guard that asks exactly this question already existed, and the phase
+opened naming the wrong one.** `FeatureExerciseTests` checks every Done section for an
+`**Exercised by:**` line, held 29 entries in `SectionsAwaitingExercise` — the same 29 — and enforces
+in both directions: an unlisted section without the line fails, and a listed section that *gains* one
+fails until its entry is deleted. It is stricter than the phase assumed: a non-`declared` pointer
+must name a backticked `.cs` class under `tests/` or `benchmarks/`, so a rename breaks the line
+rather than leaving a claim behind. The block previously cited `FeatureClaimSymbolTests`, which
+enforces an adjacent property — that a Done feature names a symbol that **ships** — and is not this
+guard. Recorded rather than quietly edited: the mistake was failing to look for the existing probe,
+which is the same error this phase's own text warns about.
+
+**What the work actually was.** Nine of the 29 were **stale rather than unstarted** — the evidence
+existed and nothing pointed at it. Twenty carry the guard's `declared` kind and state, in the
+published document, what does **not** exercise them. Changing their status instead would have removed
+them from the guard's scope, which hides a gap rather than stating it.
+
+### Phase 6.2.45: The Last Bare Unit [status: pending — opened 2026-09-15 by the same audit, criterion 6]
+**Surface:** Backend
+**HelpWanted:** no
+
+**Goal:** `Rag.NET.Chunking.Templates` is the only package left at bare `VerifiedBy=unit`. Give it
+the real run 6.2 owes it — a real document of each template's kind — or a `<VerifiedByReason>` on
+the same terms as the seventeen live-service packages that got one in #631.
+
+**Prefer the run.** The reason route exists because credentials may never arrive; this package needs
+no credential, only a file of each kind. A reason here would be the escape hatch used where the work
+was simply available, which is what the allowlist already did for a month.
 
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to

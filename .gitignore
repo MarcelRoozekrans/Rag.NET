@@ -50,3 +50,8 @@ artifacts/
 # fetched its content as "the first file".
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+
+# Pre-push review reports are per-session artefacts, not documentation. Two were committed
+# into docs/, which is the Docusaurus content root with routeBasePath "/" — so they would have
+# been published as pages alongside the guide. Ignored here so the next one cannot repeat it.
+docs/pre-push-review-*.md

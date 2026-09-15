@@ -82,6 +82,7 @@ Metadata values carry their type end to end: `MetadataValue` (string, number, bo
 **Why:** `page eq 3` and `page gt 3` need a real number in the index; `IDictionary<string, string>` guaranteed everything arrived as text (#91). Typing only one link of the chain would just move the stringification, so the whole chain changed at once, before anything ships on nuget.org.
 
 **Status:** ✅ Done
+**Exercised by:** declared — a filter through every store's container suite. The stores are container-verified individually; the claim that metadata filters work across all of them is not.
 
 ---
 
@@ -106,6 +107,7 @@ Language-specific separator hierarchies for Python, JS/TS, Java, Go, Ruby, Rust,
 **Why:** Generic character splitting ignores code structure. Heuristic splitters work for all languages without per-language compiler dependencies.
 
 **Status:** ✅ Done — `CodeChunkingStrategy`, registered with `UseCodeChunking`.
+**Exercised by:** declared — real source files in each supported language. `Rag.NET.Chunking` is benchmark-verified overall; the per-language heuristic is covered by unit fixtures only.
 
 ---
 
@@ -277,6 +279,7 @@ After initial retrieval, use an LLM to judge whether the retrieved information i
 
 ### Cohere Rerank
 **Status:** ✅ Done
+**Exercised by:** declared — `Rag.NET.Reranking.Cohere` carries a `<VerifiedByReason>` naming the Cohere Rerank API. Coverage is unit tests over fakes; no HTTP exchange with the service is exercised at all.
 
 **Package:** `Rag.NET.Reranking.Cohere`
 
@@ -385,6 +388,7 @@ Run an LLM over each ingested document to generate representative Q&A pairs or s
 
 ### Content-Hash Record Manager
 **Status:** ✅ Done
+**Exercised by:** declared — a real re-ingestion with the records observed. Core is container-verified; that a second ingest skips unchanged content is not separately exercised.
 **Package:** `Rag.NET` (core)
 
 Track which document content hashes have been written to which vector store namespace, persisted to a SQL/file store. On re-ingestion: skip truly unchanged documents, re-index modified ones, optionally delete documents whose sources have disappeared (`CleanupMode.Full`). Goes beyond `IngestionOptions.Overwrite` — that flag re-ingests unconditionally; this skips unchanged content.
@@ -435,6 +439,7 @@ Implement `IVectorStore` backed by Pinecone's serverless index via the official 
 
 ### Data Provider Abstraction
 **Status:** ✅ Done
+**Exercised by:** declared — a real provider driven through the queue and processor. `DataProviders.GitHub` is recorded and core is container-verified; the abstraction across providers is not exercised as such.
 **Package:** `Rag.NET` (core) + `Rag.NET.DataProviders.GitHub`
 
 Decouple "where files come from" from "how to ingest them" via an `IFileContentProvider` abstraction.
@@ -452,6 +457,7 @@ await pipeline.IngestFromProviderAsync(provider, source, metadata, options);
 
 ### Recursive Web Crawler
 **Status:** ✅ Done — `WebCrawlerDataProvider`, with depth bounded by `WebCrawlerOptions.MaxDepth`.
+**Exercised by:** test — `WebCrawlerDataProviderTests` crawls a five-page site over real sockets with a cycle, a robots-excluded path and a second host. That crawl found a real defect: a trailing slash on the seed yields the seed page twice under two ids.
 **Package:** `Rag.NET.DataProviders.Web`
 
 Fetch a seed URL and follow links up to a configurable depth, loading all discovered pages as documents.
@@ -462,6 +468,7 @@ Fetch a seed URL and follow links up to a configurable depth, loading all discov
 
 ### Sitemap Loader
 **Status:** ✅ Done
+**Exercised by:** test — `SitemapDataProviderTests` reads a real sitemap from a local HTTP server over real sockets, six cases.
 **Package:** `Rag.NET.DataProviders.Web`
 
 Read a `sitemap.xml` and load all listed URLs. A structured, polite alternative to recursive crawling for sites that publish sitemaps.
@@ -477,6 +484,7 @@ partitioned by something unrelated to the URLs inside it.
 
 ### RSS Feed Loader
 **Status:** ✅ Done — `RssDataProvider`.
+**Exercised by:** test — `RssDataProviderTests` reads Atom and RSS 2.0 from a local HTTP server over real sockets.
 **Package:** `Rag.NET.DataProviders.Web`
 
 Ingest documents from RSS/Atom feeds, enabling near-real-time ingestion of news, blog posts, and update streams.
@@ -495,6 +503,7 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 #### Group 1 — Cloud Storage
 
 **Status:** ✅ Done
+**Exercised by:** declared — each connector carries a `<VerifiedByReason>` in its csproj naming the service, why no recording exists, and what that leaves unverified (#631). Seventeen packages; nine replay hand-written cassettes, eight have only fakes and an SDK boundary. Not verified — stated.
 
 | Package | SDK | Delta sync |
 |---|---|---|
@@ -550,6 +559,7 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 **Packages:** `Rag.NET.DataProviders` (queue, processor, polling), `Rag.NET.Api` (webhook endpoint), `Rag.NET.Ingestion.AzureServiceBus` (Service Bus trigger)
 
 **Status:** ✅ Done — all three triggers delivered (webhook, polling, Azure Service Bus). Provider-specific payload parsers (GitHub/Notion/Slack) remain deferred; the pluggable `IWebhookPayloadParser` is the seam for those.
+**Exercised by:** declared — the webhook endpoint through the E2E suite. `Ingestion.AzureServiceBus` is container-verified against the emulator; the HTTP webhook half is not exercised.
 
 Producers push `IngestionJob`s (byte payload + metadata) onto a bounded `IIngestionJobQueue` (`ChannelIngestionJobQueue`, `BoundedChannelFullMode.Wait` backpressure, capacity via `EventDrivenIngestionOptions.QueueCapacity`); the `IngestionJobProcessor` `BackgroundService` drains it into `IIngestor.IngestAsync` with per-job failure isolation. Registered via `UseEventDrivenIngestion`. Triggers:
 
@@ -569,6 +579,7 @@ Ingest emails and attachments from Outlook/Exchange via Microsoft Graph (`/users
 **Why:** Exchange/Outlook is the dominant enterprise email system. Enterprise RAG over internal communications requires both Gmail and Exchange coverage.
 
 **Status:** ✅ Done
+**Exercised by:** declared — `Rag.NET.DataProviders.Microsoft365` carries a `<VerifiedByReason>` naming Microsoft Graph and what stays unverified (#631). Its cassettes are hand-written, not recorded.
 
 ---
 
@@ -580,6 +591,7 @@ Ingest issues and comments from Linear via the GraphQL API (`POST /graphql`, the
 **Why:** Linear is the issue tracker of choice for many engineering teams. Ingesting it alongside GitHub and Jira gives complete engineering knowledge coverage.
 
 **Status:** ✅ Done
+**Exercised by:** declared — `Rag.NET.DataProviders.Linear` carries a `<VerifiedByReason>` naming the Linear GraphQL API and what stays unverified (#631). Its cassette is hand-written, not recorded.
 
 ---
 
@@ -588,6 +600,7 @@ Ingest issues and comments from Linear via the GraphQL API (`POST /graphql`, the
 ### Image Description via Vision LLM
 **Package:** `Rag.NET.Parsers.Vision`
 **Status:** ✅ Done — `ImageChunkingStrategy` and `ImageDescriptionOptions`, registered with `UseImageDescription`.
+**Exercised by:** declared — a hosted vision model. `Rag.NET.Parsers.Vision` is declared live-verified, meaning it is run by hand against a real model rather than by any suite here.
 
 For image files (PNG, JPG, etc.) and embedded figures in PDFs/DOCX: if OCR yields too little text, call a vision LLM (e.g., GPT-4o) to generate a natural-language description. Inject the description as a chunk adjacent to surrounding document text with position metadata. A context-aware variant passes surrounding paragraph text to ground the description.
 
@@ -598,6 +611,7 @@ For image files (PNG, JPG, etc.) and embedded figures in PDFs/DOCX: if OCR yield
 ### Video Description via Vision LLM
 **Package:** `Rag.NET.Parsers.Vision`
 **Status:** ✅ Done — `VideoChunkingStrategy` and `VideoDescriptionOptions`, registered with `UseVideoDescription`.
+**Exercised by:** declared — a hosted vision model and FFMpeg. Same position as the image half: run by hand, not by a suite.
 
 Pass video files (MP4, MOV, MKV) to a vision LLM that generates a textual description of the content, stored as chunks for retrieval.
 
@@ -613,6 +627,7 @@ Transcribe WAV, MP3, FLAC, OGG, and other audio files using [Whisper.net](https:
 **Why:** Meeting recordings, podcasts, and voice notes are a growing source of enterprise knowledge that text-only pipelines cannot reach.
 
 **Status:** ✅ Done — `AudioDocumentParser` and `AudioParserOptions`, registered with `AddAudioParser`.
+**Exercised by:** test — `RealTranscriptionTests` transcribes real audio through Whisper.net with a real ggml model, provisioned by `nightly.yml` and gated on `RAGNET_WHISPER_MODEL_DIR`. No hosted service: the model runs in-process.
 
 ---
 
@@ -633,6 +648,7 @@ Detect and extract tables from PDFs as structured text rather than flowing prose
 ### OCR for Scanned PDFs
 **Package:** `Rag.NET.Parsers.Pdf`, `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence`
 **Status:** ✅ Done — two engines, both triggered when a page's extracted text falls below `OcrMinCharacters` and both losslessly degrading to the plain-text path on failure. **Tesseract**: per-image, local, and **source-build only — the published `Rag.NET.Parsers.Pdf` package compiles the engine out**. `EnableOcr` is an MSBuild property of this repository's own build (`dotnet build -p:EnableOcr=true` on a source checkout; mirrors `Rag.NET.Parsers.Vision`), deliberately, so package consumers do not carry Tesseract's native payload; setting `UseOcrFallback = true` against the published package throws an instructive error at parser construction that points at Azure Document Intelligence instead. In a gate-on source build it OCRs embedded images largest-first into `Heading = "ocr"` sections; vector-only scanned pages degrade to plain text — no rasterizer dependency. **Azure Document Intelligence**: whole-document, ungated, registered with `UseAzureDocumentIntelligenceOcr(endpoint, credential)` (`AzureKeyCredential` or `TokenCredential`); one call per document, server-side rasterization, `prebuilt-read` by default. Configuring both is a registration-time error. Azure bills every page of the submitted document, so spend is capped by `MaxOcrPages` (default 200) and recorded to `ICostLedger` as a `CostKind.Ocr` entry with `Pages` and zero tokens — which counts toward `UseCostBudgeting`'s window but emits no `ragnet.llm.*` telemetry (`CostAccounting` is internal to `Rag.NET`).
+**Exercised by:** recorded — `AzureDocumentIntelligenceOcrEngineTests` replays cassettes recorded against a real Document Intelligence resource, contributed in #354, and `AzureDocumentIntelligenceLiveTests` runs against the live service when credentials are present. The local Tesseract half is compiled out of the shipped package and run by the fenced procedure in `docs/reference/ci.md`.
 
 Add an OCR pass for PDFs where `PdfPig` extracts no text (scanned documents). Integrate `Tesseract` (via `Tesseract.Net`) or delegate to `Azure Document Intelligence` for higher accuracy. Falls back automatically when text extraction yields fewer than a configurable minimum character count per page.
 
@@ -781,6 +797,7 @@ services.AddRagNet(rag => rag
 ### Prompt Injection Fortification
 
 **Status:** ✅ Done
+**Exercised by:** declared — a real injection corpus through the real pipeline. `Rag.NET.Security` is container-verified; the defence is covered by crafted unit inputs rather than a corpus.
 **Package:** `Rag.NET.Security`
 
 
@@ -836,6 +853,7 @@ Enrich all existing `[LoggerMessage]` log entries with structured properties (`d
 
 ### Data Management API
 **Status:** ✅ Done
+**Exercised by:** declared — the E2E suite run against a live host. Core is container-verified; the management endpoints are not separately exercised.
 **Package:** `Rag.NET` (core)
 
 A read/delete surface for browsing and managing ingested data via `IRagDataManager`.
@@ -882,6 +900,7 @@ The suite runs the registered metrics concurrently per sample and returns a `Rag
 **Why:** LLM-as-judge grades answer quality holistically. RAGAS metrics decompose quality into retrieval and generation components — essential for pinpointing whether failures are retrieval misses or generation errors.
 
 **Status:** ✅ Done — verified against the published RAGAS definitions, pinned by tests, and documented in [the evaluation guide](../guide/evaluation.md#ragas-style-metrics) in Phase 3.1. Scores changed in that phase (rank-aware precision, the evasion penalty, and no fabricated `1.0` on a parse failure); re-baseline before comparing against older runs. Chat and embedding spend are both recorded to the cost ledger, priced from `RagasOptions`.
+**Exercised by:** declared — one real metric run against a model. `Evaluation.Ragas` is integration-verified for its plumbing; no metric has been computed end to end here.
 
 ---
 
@@ -893,12 +912,14 @@ Generate synthetic question-answer pairs from an existing document corpus for of
 **Why:** Bootstrapping an evaluation dataset from scratch requires manual annotation. Synthetic generation is imperfect but enables rapid iteration — run a bulk eval before/after a retrieval change to detect regressions.
 
 **Status:** ✅ Done — verified, pinned by tests and documented in [the evaluation guide](../guide/evaluation.md#evaluationdatasetbuilder) in Phase 3.2. Four behaviours changed in that phase: sampling is seeded and reproducible (`Seed`, whose limits the guide states — the same seed and the *same corpus* draw the same chunks, and neither the model's text nor a changed corpus is fixed by it); the corpus is streamed through a reservoir instead of being materialised to sort it; a generation the model returned nothing for is dropped and counted in `EvaluationDataset.Skipped` instead of being emitted as an empty-question sample; and the build runs under `MaxConcurrentCalls` and records its chat spend to an optional `ICostLedger`. `BuildAsync` returns `EvaluationDataset` rather than `IReadOnlyList<EvaluationSample>` — a source-breaking change, taken cleanly because nothing is published yet. **Datasets built before this phase are not reproducible and may contain empty-question samples; rebuild rather than trust them.**
+**Exercised by:** declared — one real generation run. `Rag.NET.Evaluation` is integration-verified; the builder has not produced a dataset from a real model in a test.
 
 ---
 
 ### LLM-as-Judge Evaluation
 **Package:** `Rag.NET.Evaluation`
 **Status:** ✅ Done
+**Exercised by:** declared — one real judge run. Covered by fakes; no judgement from a real model is pinned.
 
 Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (correctness, faithfulness, relevance) using any `IChatClient`. One LLM call per sample, all evaluated concurrently. Results carry per-criterion scores (0–1) and reasoning strings. `LlmJudgeResult.MeanScore(criterion)` and `AllPass(criterion, threshold)` support CI gate patterns. When `SourceChunks` is null or empty, faithfulness is automatically excluded. Custom criteria can be passed to the constructor.
 
@@ -942,6 +963,7 @@ Fixed-size chunks with configurable token overlap between adjacent chunks. The s
 **Why:** Despite being the oldest technique, sliding window is still the default in many frameworks and serves as an important performance baseline.
 
 **Status:** ✅ Done — delivered by `TokenAwareChunkingStrategy` in `Rag.NET.Chunking`, upgraded with `TokenAwareChunkingOptions` (`WindowSizeTokens` / `OverlapTokens` with fallback to `ChunkingOptions`).
+**Exercised by:** declared — a real document through `TokenAwareChunkingStrategy` at a window and overlap a user would set. `Rag.NET.Chunking` is benchmark-verified; this strategy's own settings are covered by unit fixtures.
 
 ---
 
@@ -1023,6 +1045,7 @@ A `FederatedVectorStore` that wraps multiple `IVectorStore` instances and merges
 **Why:** Enterprise deployments often have multiple vector stores for different data domains (HR docs in one, engineering docs in another). Federation enables unified search without data migration.
 
 **Status:** ✅ Done. `FederatedVectorStore` (register with `UseFederatedSearch(f => f.AddStore(...).AddStore(...))`) fans searches out to all stores concurrently and merges the per-store rankings with N-way RRF (`FederatedStoreOptions.RrfK`, default 60); each merged result is tagged with a `source.store` metadata entry (store name or index). Writes and deletes go to the primary store only (`WithPrimary(...)`, default the first). Degraded-never-broken: a failing store is skipped with a warning; the search throws only when every store failed. Limitation: federation is dense-only — hybrid (`IHybridSearchable`), sparse, and collection-management capabilities of the underlying stores are not federated.
+**Exercised by:** declared — two real stores federated and queried. Nothing exercises this today.
 
 ---
 
@@ -1065,6 +1088,7 @@ A `FallbackChatClient` (implements `IChatClient`) that tries a primary client, c
 **Why:** Production RAG systems cannot tolerate a single LLM provider as a hard dependency. A fallback chain from OpenAI → Anthropic → local Ollama gives resilience without changing pipeline code.
 
 **Status:** ✅ Done — `FallbackChatClient` with per-client timeout, DI registration via `UseFallbackChain`, documented in the [resilience guide](../guide/resilience.md)
+**Exercised by:** declared — a real failure injected in front of a real client. Covered by fakes that return errors on demand, which is not the same as a provider failing.
 
 ---
 
@@ -1076,6 +1100,7 @@ A `FallbackChatClient` (implements `IChatClient`) that tries a primary client, c
 **Why:** Switching embedding models (a common upgrade path) previously required wiping and re-ingesting the entire corpus. Version tracking makes incremental re-indexing possible.
 
 **Status:** ✅ Done (library API in Phase 1.3; the `ragnet reindex --stale` CLI command lands with the CLI tool in Milestone 3)
+**Exercised by:** declared — a real re-index observed end to end. Core is container-verified; the version bump and rebuild path is not exercised.
 
 ---
 
@@ -1087,6 +1112,7 @@ An `IRateLimiter` abstraction with a token-bucket implementation (`System.Thread
 **Why:** Uncontrolled LLM API usage in production can produce surprise invoices. Rate limiting prevents 429 cascades; budgeting provides a hard guardrail for cost-sensitive deployments.
 
 **Status:** ✅ Done — `UseRateLimiting` + `UseCostBudgeting` with stacking support over the fallback chain, documented in the [resilience guide](../guide/resilience.md)
+**Exercised by:** declared — a real client under a real budget. Covered by unit tests over the limiter itself, not by a run that hits the limit in a pipeline.
 
 ---
 
@@ -1098,6 +1124,7 @@ Chunk-batch embedding inside a single document: `EmbeddingBehavior` slices pendi
 **Why:** A large document embedded as one giant generator call serialises the slowest step of ingestion and can exceed embedding-API request limits. Document-level parallelism only helps across documents; chunk batching with bounded concurrency speeds up large individual documents without overwhelming embedding-service rate limits.
 
 **Status:** ✅ Done (chunk-batch embedding added in Phase 1.3; document-level parallelism and bulk upsert pre-existed)
+**Exercised by:** declared — a real batch through a real store, with the batching observed rather than inferred from call counts.
 
 ---
 
@@ -1139,6 +1166,7 @@ A lightweight `RagDebugMiddleware` for ASP.NET Core that exposes a `/ragnet/trac
 **Why:** Diagnosing why a RAG pipeline gave a bad answer currently requires adding debug logging and re-running. A persistent in-memory trace ring buffer with a JSON viewer endpoint lets developers inspect production traces without code changes.
 
 **Status:** ✅ Done — shipped in Phase 3.4 and documented in [the pipeline debugger guide](../guide/diagnostics.md). `AddRagDiagnostics()` keeps a bounded ring buffer of the last `Capacity` (default 50) query executions, readable in-process through `ITraceStore` or over `MapRagNetTrace()`. A `RagTrace` carries the retrieved chunks with their `DocumentId`, `ChunkIndex` and `Score`, the latency of each `ragnet.*` stage, and a `TraceGuardAction` per guard and sanitiser that ran — component name, counts in and out, and whether it changed anything. That last part is the diagnostic hole this row existed to close: nothing anywhere recorded that `RbacRetrievalGuard` had dropped a chunk or `PiiChunkSanitiser` had rewritten one, so *"why is that chunk missing from the answer"* was unanswerable.
+**Exercised by:** declared — a real pipeline traced, and the E2E suite for the AspNetCore half. Both packages are integration-verified for their plumbing; the trace of a real query is not pinned.
 
 It is assembled from what already existed rather than from new instrumentation: an `ActivityListener` over the `ragnet.*` spans supplies the timings **and** decides when a trace is complete, a retrieval behavior and an answer decorator mirror `AuditRetrievalBehavior` and `AuditAnswerEngineDecorator`, and every part joins on `Activity.Current.TraceId`. Only two seams are new — `IPromptObserver`, which `ChatAnswerEngine` calls on both the streamed and non-streamed paths, and the three tracing decorators over `IRetrievalGuard`, `IQuerySanitiser` and `IChunkSanitiser`.
 
@@ -1172,6 +1200,7 @@ The composition root sits in `Rag.NET.Evaluation.Ragas` rather than `Rag.NET.Eva
 **Why:** Changing retrieval strategy, chunking size, or reranking has unpredictable quality effects. A/B testing with automatic evaluation scores makes it safe to iterate on pipeline configuration in production.
 
 **Status:** ✅ Done — the **offline harness with paired statistics**, shipped in Phase 3.3 and documented in [the evaluation guide](../guide/evaluation.md#ab-testing). Read against the original specification above, three things differ and all three are deliberate:
+**Exercised by:** declared — one real A/B run comparing two arms. The evaluation packages are integration-verified; no comparison has been run.
 
 - **Not "simultaneously".** Sequential with alternating order, for the fairness reason above.
 - **Exactly two variants, not N.** `PairedDeltas` and the tally are strictly pairwise, and N-way needs a multiple-comparisons correction; a third variant is rejected before anything runs rather than executed at full LLM cost and dropped.
