@@ -4,6 +4,13 @@
     <PackageId>Rag.NET.DataProviders.Notion</PackageId>
     <Description>Notion data provider for Rag.NET</Description>
     <VerifiedBy>unit</VerifiedBy>
+    <VerifiedByReason>Notion REST API. No account or credential for it exists on this project, so no scrubbed recording
+      can be made; that is the blocker, and it is not effort. Its integration coverage replays a
+      HAND-WRITTEN WireMock cassette rather than a recording, so it verifies the parser against fixtures
+      written alongside the parser itself. What stays unverified: that the real service's response shape
+      matches those fixtures, that authentication is accepted, that pagination terminates on real data,
+      and that error and rate-limit responses are handled. The request matchers key on path and method,
+      so a credential is never examined by any assertion.</VerifiedByReason>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
