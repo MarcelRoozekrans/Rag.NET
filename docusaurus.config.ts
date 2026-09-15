@@ -7,10 +7,19 @@ const config: Config = {
   tagline: 'A modular RAG pipeline library for .NET built on Microsoft.Extensions.AI',
   favicon: 'img/favicon.ico',
 
-  url: 'https://rag-net.github.io',
+  // Points at the account that actually owns the repository. It read `rag-net` until the site was
+  // deployed: the RAG-Net organisation exists but owns no repositories, so nothing could publish
+  // from it, and the 2026-08-08 design left the value alone rather than half-correct it —
+  // "changing it without knowing the answer would replace an obviously wrong value with a plausibly
+  // wrong one". The answer is now chosen, so these match where the code is.
+  //
+  // organizationName and projectName decide the deployment target; url and baseUrl decide the
+  // absolute links the built site emits. All four have to agree or the site builds clean and links
+  // off-site.
+  url: 'https://marcelroozekrans.github.io',
   baseUrl: '/Rag.NET/',
 
-  organizationName: 'rag-net',
+  organizationName: 'MarcelRoozekrans',
   projectName: 'Rag.NET',
 
   onBrokenLinks: 'throw',
@@ -29,8 +38,22 @@ const config: Config = {
         docs: {
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/rag-net/Rag.NET/edit/main/docs/',
-          exclude: ['plans/**'],
+          // Was github.com/rag-net/... — the same stale organisation the url and organizationName
+          // carried. It is worth calling out separately because it fails differently: those two
+          // break the site's own absolute links, which is loud, while this one renders an "Edit
+          // this page" control on EVERY page that 404s, which nobody notices until a contributor
+          // clicks it.
+          editUrl: 'https://github.com/MarcelRoozekrans/Rag.NET/edit/main/docs/',
+
+          // `plans/**` was already excluded; `planning/**` was not, and the two are the same kind
+          // of thing. Without it the site publishes ROADMAP, STATE, CONVENTIONS, MILESTONE and the
+          // five milestone backlogs as pages beside the guide — internal working state presented as
+          // product documentation. They stay readable in the repository, where they belong.
+          //
+          // The pre-push-review pattern is belt and braces: those artefacts are removed and
+          // git-ignored, but a local build still sees any that are sitting untracked in the working
+          // tree, and `npm run build` should agree with what CI publishes.
+          exclude: ['plans/**', 'planning/**', 'pre-push-review-*.md'],
         },
         blog: false,
         theme: {
@@ -51,7 +74,7 @@ const config: Config = {
           label: 'Docs',
         },
         {
-          href: 'https://github.com/rag-net/Rag.NET',
+          href: 'https://github.com/MarcelRoozekrans/Rag.NET',
           label: 'GitHub',
           position: 'right',
         },
@@ -72,7 +95,7 @@ const config: Config = {
           items: [
             {
               label: 'GitHub',
-              href: 'https://github.com/rag-net/Rag.NET',
+              href: 'https://github.com/MarcelRoozekrans/Rag.NET',
             },
           ],
         },

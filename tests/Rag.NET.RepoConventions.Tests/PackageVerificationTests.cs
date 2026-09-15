@@ -148,24 +148,20 @@ public sealed class PackageVerificationTests
     /// </remarks>
     private static readonly Dictionary<string, string> PackagesAllowedToStayUnit = new(StringComparer.Ordinal)
     {
-        // ── 6.1 Recorded Responses: talks to a live service ─────────────────────────────────
-        ["Rag.NET.DataProviders.Airtable"] = "6.1 — Airtable API",
-        ["Rag.NET.DataProviders.Asana"] = "6.1 — Asana API",
-        ["Rag.NET.DataProviders.Bitbucket"] = "6.1 — Bitbucket API",
-        ["Rag.NET.DataProviders.Box"] = "6.1 — Box API",
-        ["Rag.NET.DataProviders.Confluence"] = "6.1 — Confluence API",
-        ["Rag.NET.DataProviders.Dropbox"] = "6.1 — Dropbox API",
-        ["Rag.NET.DataProviders.GitLab"] = "6.1 — GitLab API",
-        ["Rag.NET.DataProviders.Gmail"] = "6.1 — Gmail API",
-        ["Rag.NET.DataProviders.GoogleDrive"] = "6.1 — Google Drive API",
-        ["Rag.NET.DataProviders.Jira"] = "6.1 — Jira API",
-        ["Rag.NET.DataProviders.Linear"] = "6.1 — Linear API",
-        ["Rag.NET.DataProviders.Microsoft365"] = "6.1 — Microsoft Graph",
-        ["Rag.NET.DataProviders.Notion"] = "6.1 — Notion API",
-        ["Rag.NET.DataProviders.Slack"] = "6.1 — Slack API",
-        ["Rag.NET.DataProviders.Zendesk"] = "6.1 — Zendesk API",
-        ["Rag.NET.Reranking.Cohere"] = "6.1 — Cohere Rerank API",
-        ["Rag.NET.WebSearch.Tavily"] = "6.1 — Tavily API",
+        // 6.1's seventeen live-service packages used to be parked here, each with an IOU naming
+        // the phase that owed it a real run. They now carry a <VerifiedByReason> instead, which is
+        // what Milestone 6's Definition of Done actually asks for: "VerifiedBy=unit with a
+        // <VerifiedByReason> beside it naming the service, why no recording exists, and what that
+        // leaves unverified ... so the gap is visible per package instead of blocking the release
+        // on credentials that may never arrive."
+        //
+        // An entry here and a stated reason are not the same thing, and the difference is the whole
+        // point. An entry says someone owes work and keeps the suite green while nobody does it. A
+        // reason says, in the package that ships, what a consumer is and is not getting. #625 is why
+        // that distinction stopped being academic: Tavily sat on this list while shipping an
+        // authentication defect its own hand-written cassette could not see.
+        //
+        // Do not re-add a live-service package here to quiet a failure. Write the reason.
 
         // ── 6.2 Raise the Floor: no external dependency; one real file / store / run ─────────
         ["Rag.NET.Chunking.Templates"] = "6.2 — a real document of each template's kind",

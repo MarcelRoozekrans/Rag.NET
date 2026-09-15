@@ -257,7 +257,16 @@ services.AddRagNet(rag => rag
 
 Model I/O contract: the model must declare an **`input_ids`** input; **`attention_mask`** and **`token_type_ids`** are optional and fed only when the model declares them, so exports without them work. The token-level output is resolved by name — `OnnxTokenEmbeddingOptions.OutputName` (default `"last_hidden_state"`), falling back to the model's single output — and its shape is validated on every pass, so a pooled `[1, dimension]` export fails with a clear error instead of producing garbage embeddings.
 
-Inputs longer than `OnnxTokenEmbeddingOptions.MaxTokens` (default 8192, including the two `[CLS]`/`[SEP]` positions per pass) are windowed internally with `WindowOverlapTokens` (default 64) overlap and stitched back together, so any input length is accepted. The integration smoke test picks up the model via the `RAGNET_ONNX_EMBED_MODEL` and `RAGNET_ONNX_EMBED_VOCAB` environment variables.
+Inputs longer than `OnnxTokenEmbeddingOptions.MaxTokens` (default **256**, including the two `[CLS]`/`[SEP]` positions per pass) are windowed internally with `WindowOverlapTokens` (default 64) overlap and stitched back together, so any input length is accepted.
+
+> **This defaulted to 8192 until 2026-09-03, and that was a defect rather than a generous ceiling.**
+> At 8192 the windowing described above never happened: `all-MiniLM-L6-v2` was handed sequences it
+> cannot embed and threw at the position-embedding node. Because `LateChunkingStrategy` catches
+> generator failures and `EmbeddingBehavior` backfills them with ordinary embeddings, nothing
+> surfaced an error — late chunking simply stopped applying to any document long enough to need it.
+> Measured on SciFact before the fix: **1,401 of 9,506 units carried no late-chunked embedding**.
+> Raise it deliberately for a longer-context model, and lower `WindowOverlapTokens` with it if the
+> windows get small. The integration smoke test picks up the model via the `RAGNET_ONNX_EMBED_MODEL` and `RAGNET_ONNX_EMBED_VOCAB` environment variables.
 
 **Text the generator refuses (CJK and NFD).** `OnnxTokenEmbeddingGenerator` promises that its token offsets are spans into the text you passed in, but the BERT tokenizer reports offsets into its own *normalized* text. When normalization changes the length, those offsets cannot be mapped back, so the generator rejects the input rather than returning offsets that silently point at the wrong characters. Two kinds of text still change the length, and neither has a length-preserving rewrite:
 

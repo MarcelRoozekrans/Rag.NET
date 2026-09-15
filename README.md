@@ -2,6 +2,9 @@
 
 A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built on [Microsoft.Extensions.AI](https://devblogs.microsoft.com/dotnet/introducing-microsoft-extensions-ai-preview/) abstractions, it provides document ingestion, chunking, vector storage, retrieval, and chat with streaming support.
 
+**[Documentation site](https://marcelroozekrans.github.io/Rag.NET/)** — the guide and reference,
+rendered and searchable. The same pages live under [`docs/`](docs/) if you prefer Markdown.
+
 ## Features
 
 A selection. The library ships **73 packages**; the full, per-feature inventory with its
