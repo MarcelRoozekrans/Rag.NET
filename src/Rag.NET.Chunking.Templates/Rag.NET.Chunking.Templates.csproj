@@ -4,7 +4,19 @@
     <RootNamespace>Rag.NET.Chunking.Templates</RootNamespace>
     <PackageId>Rag.NET.Chunking.Templates</PackageId>
     <Description>Domain-specific chunking templates for Rag.NET (Legal, Book, Academic Paper, Q&amp;A Pairs, Email, Resume)</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <VerifiedBy>integration</VerifiedBy>
+    <VerifiedByReason>Three of the six templates now run over a real document through the real
+      parser: the Academic Paper template over a real markdown paper
+      (RealPaperExerciseTests), the Legal template over the Apache License 2.0 verbatim
+      (RealContractExerciseTests), and the Book template over three verbatim chapters of a
+      public-domain novel (RealBookExerciseTests). Those two new documents found #636 on
+      first contact: Legal and Book returned a single chunk for any plain-text input,
+      because the merger they delegate to classifies sections and never splits one, and the
+      54 unit tests hand-build their section lists and so stood in for the parser rather
+      than disagreeing with it. What stays unverified: the Q&amp;A Pairs, Email and Resume
+      templates have no real document. A real Q&amp;A dataset was not available locally with
+      its answers, and a real email thread or resume is personal data this project will not
+      commit to a public repository.</VerifiedByReason>
   </PropertyGroup>
 
   <ItemGroup>

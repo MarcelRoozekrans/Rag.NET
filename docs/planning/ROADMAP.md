@@ -8339,7 +8339,7 @@ existed and nothing pointed at it. Twenty carry the guard's `declared` kind and 
 published document, what does **not** exercise them. Changing their status instead would have removed
 them from the guard's scope, which hides a gap rather than stating it.
 
-### Phase 6.2.45: The Last Bare Unit [status: pending — opened 2026-09-15 by the same audit, criterion 6]
+### Phase 6.2.45: The Last Bare Unit [status: complete 2026-09-15 — the run was preferred over a reason and the real documents found a shipping defect on first contact, #636: Legal and Book returned a single chunk for ANY plain-text input, because the merger they delegate to classifies sections and never splits one, and the 54 unit tests hand-build their section lists and so stood in for the parser rather than disagreeing with it. Fixed by splitting in the templates, which own the claim about clauses and chapters, rather than in the merger, whose contract is merging. Three of six templates now run over a real document; Q&A, Email and Resume carry a stated reason instead, because a real Q&A dataset was not available with its answers and a real email or resume is personal data this project will not commit. Zero packages remain at bare `unit`. Previously: pending — opened 2026-09-15 by the same audit, criterion 6]
 **Surface:** Backend
 **HelpWanted:** no
 
