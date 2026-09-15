@@ -4,25 +4,53 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 
 ## Features
 
+A selection. The library ships **73 packages**; the full, per-feature inventory with its
+verification status is [docs/reference/features.md](docs/reference/features.md), and
+[the guide](docs/guide/) covers each subsystem in depth.
+
+**The pipeline**
+
 - **Document ingestion** - Parse, chunk, embed, and store documents in a single pipeline call
-- **Multiple parsers** - Text, Markdown, PDF, HTML, Word, Excel, PowerPoint, CSV, JSON
-- **Vector stores** - PostgreSQL/pgvector, Qdrant, Azure AI Search
+- **Multiple parsers** - Text, Markdown, CSV, JSON, PDF, HTML, Word, Excel, PowerPoint, EPUB, EML/MSG email, ZIP archives, audio transcription via Whisper, and image/video description via a vision LLM
+- **Vector stores** - PostgreSQL/pgvector, Qdrant, Azure AI Search, Pinecone, Chroma, Weaviate, Redis
+- **Data providers** - 18 connectors, including Confluence, Jira, Notion, Slack, Microsoft 365, GitHub, GitLab and Zendesk
 - **Retrieval** - Semantic search with configurable top-K and minimum score filtering
 - **Chat** - Ask questions with RAG context via `AskAsync` and streaming via `AskStreamingAsync`
+
+**Retrieval quality**
+
+- **GraphRAG** - Entity extraction, community detection, and local + global search
+- **RAPTOR** - Recursive abstractive processing for tree-organized retrieval
 - **Token-aware chunking** - Split by token count (not characters) to respect embedding model limits
 - **Lost-in-the-Middle reordering** - Place highest-scoring chunks at context extremes for better LLM attention
 - **Redundancy filter** - Drop near-duplicate retrieved chunks by cosine similarity before passing to the LLM
 - **Cross-encoder reranking** - Rescore search results with ONNX cross-encoder models for higher precision
 - **Header-aware metadata** - Propagate Markdown/HTML heading hierarchy into chunk metadata as breadcrumbs
+- **Corrective RAG** - Fall back to web search via Tavily when retrieval comes up short
+
+**Running it in production**
+
+- **Security** - Prompt injection defence-in-depth: chunk and query sanitisation, retrieval guards, prompt hardening
+- **Resilience** - Polly retry over embedders and stores, token-bucket rate limiting, and a multi-provider chat fallback chain
+- **Caching** - `HybridCache`-backed embedding and retrieval result caching
+- **Telemetry** - OpenTelemetry wiring that registers both meters, including the one a hand-wired `AddMeter("Rag.NET")` silently misses
+- **Diagnostics** - In-memory traces of the last N query executions, with chunk scores, stage latencies and guard actions
+- **Memory** - Persistent SQLite-backed conversation memory
 - **Progress reporting** - Track ingestion stages in real time via `IProgress<IngestionProgress>`
 - **Evaluation** - Score answer quality with `Rag.NET.Evaluation` using embedding cosine similarity
+
+**Surfaces**
+
+- **MCP server** - Expose pipelines as Model Context Protocol tools
+- **REST API** - ASP.NET Core endpoints over a configured pipeline
+- **CLI** - `ragnet` ingests a file or directory and retrieves chunks from a configured pipeline
 - **DI-first** - Fluent builder API with `Microsoft.Extensions.DependencyInjection`
 - **Extensible** - Implement `IDocumentParser`, `IVectorStore`, or `IChunkingStrategy` to plug in your own
 
 ## Packages
 
 Not sure what to install? [Choosing packages](docs/guide/choosing-packages.md) walks
-through the two or three decisions and what arrives transitively. A selection:
+through the two or three decisions and what arrives transitively. A selection of the 73:
 
 | Package | Description |
 |---------|-------------|
@@ -39,6 +67,17 @@ through the two or three decisions and what arrives transitively. A selection:
 | `Rag.NET.Parsers.Office` | Word, Excel and PowerPoint document parsers (OpenXml) |
 | `Rag.NET.Evaluation` | Answer quality evaluation via embedding cosine similarity |
 | `Rag.NET.Reranking.Onnx` | ONNX Runtime cross-encoder reranking |
+| `Rag.NET.GraphRag` | GraphRAG — entity extraction, community detection, local + global search |
+| `Rag.NET.Raptor` | RAPTOR — recursive abstractive processing for tree-organized retrieval |
+| `Rag.NET.Security` | Prompt injection defence-in-depth: chunk and query sanitisation, retrieval guards, prompt hardening |
+| `Rag.NET.Resilience` | Polly retry, token-bucket rate limiting, and a multi-provider chat fallback chain |
+| `Rag.NET.Caching` | `HybridCache`-backed embedding and retrieval result caching |
+| `Rag.NET.Telemetry` | OpenTelemetry SDK wiring — `ActivitySource`, both meters, and distro resource attributes |
+| `Rag.NET.Diagnostics` | In-memory traces of the last N query executions |
+| `Rag.NET.Memory` | Persistent SQLite-backed conversation memory |
+| `Rag.NET.Mcp` | Model Context Protocol server exposing pipelines as MCP tools |
+| `Rag.NET.Api` | ASP.NET Core REST API over a configured pipeline |
+| `Rag.NET.Cli` | `ragnet` — ingest and retrieve from the command line |
 | `Rag.NET.Mediator` | ZeroAlloc.Mediator integration — dispatch ingest/retrieve/delete via `IMediator` |
 | [Rag.NET.DataProviders.Confluence](src/Rag.NET.DataProviders.Confluence) | Confluence pages via REST API |
 | [Rag.NET.DataProviders.Jira](src/Rag.NET.DataProviders.Jira) | Jira issues via REST API |
@@ -314,7 +353,7 @@ OPENAI_API_KEY=sk-... RAG_PROVIDER=openai dotnet run --project samples/Rag.NET.S
 
 ## Benchmarks
 
-Full results with methodology and analysis: [docs/benchmarks.md](docs/benchmarks.md)
+Full results with methodology and analysis: [docs/reference/benchmarks.md](docs/reference/benchmarks.md)
 
 Quick reference (i9-12900HK, .NET 10, 50-token chunks):
 
@@ -336,7 +375,7 @@ commit header before you push — see [Catching a long commit header before you 
 
 - .NET 10+
 - A compatible embedding provider (OpenAI, Ollama, Azure OpenAI, etc.)
-- A vector store (PostgreSQL+pgvector, Qdrant, or Azure AI Search)
+- A vector store — PostgreSQL+pgvector, Qdrant, Azure AI Search, Pinecone, Chroma, Weaviate or Redis
 
 ## License
 
