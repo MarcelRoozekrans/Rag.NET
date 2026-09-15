@@ -1,0 +1,40 @@
+name: Bug report
+description: Something in Rag.NET behaves differently from what it documents
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Security vulnerabilities do not go here.** Use
+        [private vulnerability reporting](https://github.com/MarcelRoozekrans/Rag.NET/security)
+        instead — a public issue discloses the problem before there is anything to upgrade to.
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected instead
+      description: If there is an exception, paste the full message and stack trace rather than summarising it.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Smallest reproduction you can manage
+      description: >
+        Configuration plus the call that misbehaves is usually enough. If you cannot reduce it,
+        say what you tried — that is information too.
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      placeholder: ".NET 10.0.x, Windows 11 / Ubuntu 24.04, vector store, embedding provider"
+    validations:
+      required: false
