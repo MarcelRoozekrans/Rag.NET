@@ -16,10 +16,26 @@ public sealed class LegalChunkingOptions
     /// your documents omit the trailing space.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The leading <c>\s*</c> is load-bearing, and was missing until #636.</b> These patterns
+    /// were anchored flush-left, and real legal documents indent their clauses — contracts,
+    /// licences and statutes routinely do. Measured against the Apache License 2.0 verbatim, the
+    /// old <c>^\d+\.\s</c> matched <b>nothing</b> while <c>^\s*\d+\.\s</c> matches all nine
+    /// clauses. On a real licence the template therefore found no boundary at all and returned the
+    /// whole document as a single chunk: it did not fail, it silently did nothing.
+    /// </para>
+    /// <para>
+    /// Fifty-four unit tests did not catch it, because they hand-build their
+    /// <c>DocumentSection</c> inputs and a fixture author writes <c>1. Definitions</c> flush-left —
+    /// the pattern's own assumption, written into the input meant to test it.
+    /// <c>RealContractExerciseTests</c> runs a real licence instead.
+    /// </para>
+    /// </remarks>
     public string[] HeadingPatterns { get; set; } =
     [
-        @"^\d+\.\s",
-        @"^\d+\.\d+\s",
-        @"^\d+\.\d+\.\d+\s",
+        @"^\s*\d+\.\s",
+        @"^\s*\d+\.\d+\s",
+        @"^\s*\d+\.\d+\.\d+\s",
     ];
 }
