@@ -1,6 +1,60 @@
 # Session State
 
-**Last updated:** 2026-09-14 — **#618 and #617 merged. #615 closed: gleaning earns its call.**
+**Last updated:** 2026-09-15 — **Milestone 6 audited: 6 of 8 criteria. The recordings gate is
+discharged, and v1.0 no longer waits on accounts.**
+
+**THE GATE THAT HELD SINCE 2026-08-20 IS GONE, AND THE DoD ALWAYS ALLOWED IT.** Criterion 5 asks for
+a recording **or** a `VerifiedByReason` — *"so the gap is visible per package instead of blocking the
+release on credentials that may never arrive."* Seventeen live-service packages had **neither**: they
+sat on `PackagesAllowedToStayUnit` holding an IOU naming the phase that owed them a real run. **An
+allowlist entry and a stated reason are not the same thing** — the entry says someone owes work and
+keeps the suite green while nobody does it; the reason says, in the package that ships, what a
+consumer is and is not getting. #631 wrote seventeen reasons, each for its own position rather than
+shared, and emptied the list. 6.1 is complete by reason; **#283 stays open for anyone with an
+account.**
+
+**A SHIPPED AUTH DEFECT, FOUND BY ASKING WHETHER CRAG WAS EVER TESTED.** `WebSearch.Tavily` sent the
+key as an `api_key` body field Tavily deprecated, with **no Authorization header at all**, and every
+test passed. The cassette was **hand-written by whoever wrote the parser** and its matcher keyed on
+path and method, so **no test in the repository could observe a credential**. A unit test actively
+*pinned* the defect — asserting `r.ApiKey == "my-api-key"` — so a correct fix would have gone red
+and read as a regression. #625, fixed in #626, cassette now refuses a request without the Bearer
+header, mutation-verified.
+
+**THE CASSETTE AUDIT: 38 OF 41 ARE HAND-WRITTEN.** Only GitHub's three are recordings — real GUIDs,
+WireMock's own proxy-recorder naming, and **the only three whose matcher examines `Headers`**. The
+other 38, across 13 providers, key on path and method alone. Tavily was not unlucky; it was where the
+defect happened to land in a blind spot every cassette shares. Every other provider's auth was
+checked and is correct — Notion does send `Notion-Version`, Linear's schemeless header is right for
+its personal keys.
+
+**MILESTONE 6 AUDIT — FAIL ON FOUR, NONE BLOCKED ON AN ACCOUNT.** `docs/plans/2026-09-15-milestone-6-audit.md`.
+Two resolved by decision: 6.1 complete by reason, 6.2 complete because `substantially complete` is
+not a status any audit can key on. Two opened as phases — **6.2.44** for the 29 features claiming
+Done while naming nothing that exercises them, **6.2.45** for the last bare `unit`. Numbered as
+sub-phases so 6.3 keeps the number release notes point at.
+
+**AND THE DoD CONTRADICTED THE CONVENTIONS.** Criterion 8 said *"Release tagged v1.0"* while
+`CONVENTIONS.md` says `Released by: release-please` and `Milestone completion tags a release: no` —
+so `complete-milestone` correctly tags nothing and the criterion could only be met by hand-tagging,
+the one thing the conventions forbid. Restated against the release-please run.
+
+**THE DOCS SITE IS LIVE** at https://marcelroozekrans.github.io/Rag.NET/ (#628). Retargeting it found
+**four** links pointing at the empty `rag-net` org, not two: `editUrl` and the navbar/footer GitHub
+buttons rendered a 404 on **every page**, silently. It would also have published nine internal
+planning pages — ROADMAP, STATE, CONVENTIONS and five milestone backlogs — as product documentation;
+`plans/**` was excluded and `planning/**` was not.
+
+**A GUARD THAT PASSES IS NOT EVIDENCE THE PROPERTY HOLDS — THREE TIMES IN ONE DAY.** Cassette matchers
+that could not see a credential. An allowlist emptied into a test that had to be mutation-checked
+before it could be trusted. And `FeatureClaimSymbolTests`, which enforces that a Done feature names a
+**symbol that ships** — adjacent to criterion 3, not the same, so it passes while the criterion
+fails. 6.2.44 extends it rather than just filling in 29 lines.
+
+**Open:** #283 account-blocked, #246 reopened, #615's successor work, and phases 6.2.44 / 6.2.45.
+Milestone 6 stands at **6 of 8**.
+
+**Previously, 2026-09-14 — #618 and #617 merged. #615 closed: gleaning earns its call.**
 
 **GLEANING WAS MEASURED AND THE DEFAULT STANDS.** #153 priced the second model call per chunk at
 **66.8% of ingestion's input tokens**; nothing had ever measured the other side. Replayed from the
@@ -2683,8 +2737,11 @@ by five phases.
 **Issues from the 6.2.3 work:** #331, #332, #333 fixed and auto-closed on merge. **#336 and #338 are
 CLOSED as of 2026-09-07; #337 is partly fixed.** They stood deferred "by decision" for two weeks, and
 the decision was reversed once pre-1.0 was recognised as the moment to take the breaking changes they
-needed. **`docs/guide/raptor.md`'s Known Limitations still describes the pre-fix state — check it
-against this list before quoting it.**
+needed. **`docs/guide/raptor.md`'s Known Limitations was brought up to date and this warning outlived it.**
+That page now opens with "Most of what this section once listed is now fixed" and marks #338, #336
+and #487 resolved with what each fix could *not* do. Corrected 2026-09-15 during a documentation
+audit. It does not mention #337, whose near-duplicate facet is still open — the one thing here
+still worth checking against.
 
 - **#338 — CLOSED** in #486. `DeleteAsync` ignored the leaf store, so a deleted document's text could
   be re-read, summarised and stored as searchable content under `raptor://corpus-tree` —

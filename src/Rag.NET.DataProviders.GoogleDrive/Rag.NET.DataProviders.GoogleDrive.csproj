@@ -4,6 +4,11 @@
     <PackageId>Rag.NET.DataProviders.GoogleDrive</PackageId>
     <Description>Google Drive data provider for Rag.NET</Description>
     <VerifiedBy>unit</VerifiedBy>
+    <VerifiedByReason>Google Drive API via Google.Apis. No account or credential for it exists on this project, so no
+      scrubbed recording can be made; that is the blocker, and it is not effort. Coverage is unit tests
+      over fakes and an SDK boundary; no HTTP exchange with the service is exercised at all. What stays
+      unverified: request shape, authentication, pagination on real data, and error and rate-limit
+      handling — everything the SDK does on the wire.</VerifiedByReason>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
