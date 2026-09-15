@@ -164,7 +164,7 @@ public sealed class PackageVerificationTests
         // Do not re-add a live-service package here to quiet a failure. Write the reason.
 
         // ── 6.2 Raise the Floor: no external dependency; one real file / store / run ─────────
-        ["Rag.NET.Chunking.Templates"] = "6.2 — a real document of each template's kind",
+
 
         // ── 6.2.1 Retrieval & Answer Sweep: a pinned figure with a control ───────────────────
     };
