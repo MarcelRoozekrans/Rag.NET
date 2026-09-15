@@ -10,7 +10,22 @@
         }
       ]
     },
-    "Methods": [ "POST" ]
+    "Methods": [
+      "POST"
+    ],
+    "Headers": [
+      {
+        "Name": "Authorization",
+        "Matchers": [
+          {
+            "Name": "WildcardMatcher",
+            "Pattern": "Bearer test-key",
+            "IgnoreCase": false
+          }
+        ],
+        "IgnoreCase": false
+      }
+    ]
   },
   "Response": {
     "StatusCode": 200,
@@ -18,5 +33,6 @@
       "Content-Type": "application/json; charset=utf-8"
     },
     "Body": "{\"results\":[{\"title\":\"What is RAG?\",\"url\":\"https://example.com/rag\",\"content\":\"Retrieval-Augmented Generation (RAG) combines retrieval and generation for better answers.\",\"score\":0.95},{\"title\":\"RAG vs Fine-Tuning\",\"url\":\"https://example.com/rag-vs-finetuning\",\"content\":\"RAG retrieves relevant documents at inference time, while fine-tuning bakes knowledge into model weights.\",\"score\":0.82}]}"
-  }
+  },
+  "Description": "Hand-written, not recorded. The Authorization matcher below is the load-bearing part: until #625 this client sent the key as an api_key body field, and no cassette in the repository matched on headers, so nothing could observe a credential at all. This mapping now refuses to serve a request that does not carry the Bearer header, which is what makes TavilyWebSearchIntegrationTests able to fail if the credential moves back into the body."
 }

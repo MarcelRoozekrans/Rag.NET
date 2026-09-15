@@ -33,7 +33,7 @@ public class TavilyWebSearchTests
             ]
         };
         var api = MakeApiReturning(response);
-        var sut = new TavilyWebSearch(api, "test-key");
+        var sut = new TavilyWebSearch(api);
 
         var results = await sut.SearchAsync("test query", topK: 2, TestContext.Current.CancellationToken);
 
@@ -44,23 +44,41 @@ public class TavilyWebSearchTests
         Assert.Equal<MetadataValue>("tavily", results[0].Chunk.Metadata["source"]);
     }
 
+    /// <summary>The body carries the query and the cutoff, and no credential.</summary>
+    /// <remarks>
+    /// <b>This test used to assert the defect.</b> Before
+    /// <see href="https://github.com/MarcelRoozekrans/Rag.NET/issues/625">#625</see> it was named
+    /// <c>SearchAsync_PassesApiKeyAndTopK</c> and checked <c>r.ApiKey == "my-api-key"</c> — pinning
+    /// the key into the request body, which is the form Tavily deprecated and dev-tier keys reject.
+    /// The suite did not merely fail to catch the bug; it held it in place, so any attempt to move
+    /// the credential to the header would have gone red and looked like a regression.
+    /// </remarks>
     [Fact]
-    public async Task SearchAsync_PassesApiKeyAndTopK()
+    public async Task SearchAsync_SendsQueryAndTopK_AndNoCredentialInTheBody()
     {
         var api = Substitute.For<ITavilyApi>();
         Result<TavilySearchResponse, ZeroAlloc.Rest.HttpError> ok = new TavilySearchResponse { Results = [] };
         api.SearchAsync(Arg.Any<TavilySearchRequest>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(ok));
 
-        var sut = new TavilyWebSearch(api, "my-api-key");
+        var sut = new TavilyWebSearch(api);
         _ = await sut.SearchAsync("hello", topK: 3, TestContext.Current.CancellationToken);
 
         _ = await api.Received(1).SearchAsync(
             Arg.Is<TavilySearchRequest>(r =>
-                string.Equals(r!.ApiKey, "my-api-key", StringComparison.Ordinal) &&
-                string.Equals(r.Query, "hello", StringComparison.Ordinal) &&
+                string.Equals(r!.Query, "hello", StringComparison.Ordinal) &&
                 r.MaxResults == 3),
             Arg.Any<CancellationToken>());
+
+        // The credential cannot be in the body because the body has nowhere to put it: the type
+        // carries Query and MaxResults and nothing else. Asserted on the serialised form rather
+        // than on the type, so adding a credential property back fails here rather than silently
+        // shipping.
+        var serialised = System.Text.Json.JsonSerializer.Serialize(
+            new TavilySearchRequest { Query = "hello", MaxResults = 3 });
+
+        Assert.DoesNotContain("api_key", serialised, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("key", serialised, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── Error handling ────────────────────────────────────────────────────────
@@ -77,7 +95,7 @@ public class TavilyWebSearchTests
         api.SearchAsync(Arg.Any<TavilySearchRequest>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(fail));
 
-        var sut = new TavilyWebSearch(api, "bad-key");
+        var sut = new TavilyWebSearch(api);
 
         await Assert.ThrowsAsync<HttpRequestException>(
             () => sut.SearchAsync("query", topK: 5, TestContext.Current.CancellationToken));
