@@ -1,0 +1,59 @@
+name: Claim a connector cassette to record
+description: Claim one service from #283 so two people do not record the same thing
+title: "Recording: <service>"
+labels: ["help wanted", "cassette"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks — this is the help the project most needs.
+
+        **Read [#283](https://github.com/MarcelRoozekrans/Rag.NET/issues/283) first.** It has the
+        full procedure: how to record, what to scrub, and how to verify the replay. This form only
+        claims the service so nobody duplicates your work.
+
+        You need an ordinary account on the service and about 20–40 minutes. You do **not** need
+        .NET expertise beyond running one build command and one test command.
+  - type: input
+    id: service
+    attributes:
+      label: Which service
+      description: One per issue. Copy the package name from the list in #283.
+      placeholder: DataProviders.Notion
+    validations:
+      required: true
+  - type: dropdown
+    id: account
+    attributes:
+      label: What kind of account will you use
+      description: This affects what the cassette can cover, and it is useful for us to know.
+      options:
+        - Free personal account
+        - Free tier / trial
+        - Work account (check your employer is fine with this)
+        - Existing paid account
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: What do you expect to cover, and what will stay unverified
+      description: >
+        A rough answer is fine and you can revise it in the PR. Read-only is a perfectly good
+        scope — say so rather than reaching for the write path.
+      placeholder: "Read path only: list pages and fetch one page's content. Not touching writes or deletes."
+    validations:
+      required: true
+  - type: checkboxes
+    id: understands
+    attributes:
+      label: Two things worth confirming
+      options:
+        - label: >
+            I understand that a recording which reveals the connector is **broken** is the most
+            valuable outcome — I will open an issue rather than editing the cassette to match the code.
+          required: true
+        - label: >
+            I will pick the smallest real account/project that still has the shape the tests need,
+            and check the response body for personal data before committing.
+          required: true

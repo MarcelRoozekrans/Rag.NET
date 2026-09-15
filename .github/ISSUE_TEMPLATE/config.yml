@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Help wanted — record a connector cassette
+    url: https://github.com/MarcelRoozekrans/Rag.NET/issues/283
+    about: The help this project most needs. Ordinary SaaS account, 20-40 minutes, no .NET expertise required.
+  - name: Report a security vulnerability privately
+    url: https://github.com/MarcelRoozekrans/Rag.NET/security
+    about: Never open a public issue for a vulnerability.
+  - name: Contributing guide
+    url: https://github.com/MarcelRoozekrans/Rag.NET/blob/main/CONTRIBUTING.md
+    about: Building, the test tiers, commit conventions, and the traps worth knowing about.
