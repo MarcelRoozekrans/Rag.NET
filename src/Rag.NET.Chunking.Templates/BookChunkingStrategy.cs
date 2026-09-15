@@ -34,12 +34,31 @@ public sealed class BookChunkingStrategy : IDocumentChunkingStrategy, IChunkingS
     private readonly HierarchicalMergerChunkingStrategy _inner;
     private readonly BookChunkingOptions _options;
 
+    /// <summary>The same patterns, compiled, used to split text the parser left whole (#636).</summary>
+    private readonly System.Text.RegularExpressions.Regex[] _splitPatterns;
+
     public BookChunkingStrategy(BookChunkingOptions options)
     {
         _options = options;
+        // HeadingPatterns is passed through for the reason #636 records: without it this strategy
+        // relied entirely on structure the parser had already found, and TextDocumentParser yields
+        // one section for a whole file — so a plain-text book produced exactly one chunk. An empty
+        // array restores that behaviour deliberately, for documents whose parser already knows
+        // where the chapters are. HierarchicalMergerOptions.HeadingPatterns is string[][], one
+        // string[] per level, so each per-level pattern is wrapped — the same shape
+        // LegalChunkingStrategy uses.
+        _splitPatterns = [.. options.HeadingPatterns.Select(pattern =>
+            new System.Text.RegularExpressions.Regex(
+                pattern,
+                System.Text.RegularExpressions.RegexOptions.None,
+                TimeSpan.FromSeconds(1)))];
+
         _inner = new HierarchicalMergerChunkingStrategy(new HierarchicalMergerOptions
         {
             MaxDepth = options.MaxDepth,
+            HeadingPatterns = options.HeadingPatterns.Length == 0
+                ? null
+                : options.HeadingPatterns.Select(p => new[] { p }).ToArray(),
         });
     }
 
@@ -48,7 +67,13 @@ public sealed class BookChunkingStrategy : IDocumentChunkingStrategy, IChunkingS
         ChunkingOptions chunkingOptions,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var filtered = Filter(sections, cancellationToken);
+        // Split before filtering, not after. The merger classifies sections and never cuts one, so
+        // a parser that yielded the whole book as a single section left this template inert (#636).
+        // Filtering a monolith is also actively wrong: IsToc drops a section when more than half
+        // its lines end in a page number, and applied to a whole book that heuristic can discard
+        // the document rather than its table of contents.
+        var structured = HeadingTextSplitter.SplitAsync(sections, _splitPatterns, cancellationToken);
+        var filtered = Filter(structured, cancellationToken);
         var currentChapter = string.Empty;
         await foreach (var chunk in _inner.ChunkDocumentAsync(filtered, chunkingOptions, cancellationToken).ConfigureAwait(false))
         {

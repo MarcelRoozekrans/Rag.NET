@@ -20,6 +20,9 @@ public sealed class LegalChunkingStrategy : IDocumentChunkingStrategy, IChunking
 {
     private readonly HierarchicalMergerChunkingStrategy _inner;
 
+    /// <summary>The same patterns, compiled, used to split text the parser left whole (#636).</summary>
+    private readonly System.Text.RegularExpressions.Regex[] _splitPatterns;
+
     public LegalChunkingStrategy(LegalChunkingOptions options)
     {
         // HierarchicalMergerOptions.HeadingPatterns is string[][] (one string[] per level),
@@ -27,6 +30,12 @@ public sealed class LegalChunkingStrategy : IDocumentChunkingStrategy, IChunking
         var headingPatterns = options.HeadingPatterns
             .Select(p => new[] { p })
             .ToArray();
+
+        _splitPatterns = [.. options.HeadingPatterns.Select(pattern =>
+            new System.Text.RegularExpressions.Regex(
+                pattern,
+                System.Text.RegularExpressions.RegexOptions.None,
+                TimeSpan.FromSeconds(1)))];
 
         _inner = new HierarchicalMergerChunkingStrategy(new HierarchicalMergerOptions
         {
@@ -40,7 +49,11 @@ public sealed class LegalChunkingStrategy : IDocumentChunkingStrategy, IChunking
         ChunkingOptions chunkingOptions,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var chunk in _inner.ChunkDocumentAsync(sections, chunkingOptions, cancellationToken).ConfigureAwait(false))
+        // Split first: the merger classifies sections and never cuts one, so a parser that
+        // yielded the whole document as a single section left this template inert (#636).
+        var structured = HeadingTextSplitter.SplitAsync(sections, _splitPatterns, cancellationToken);
+
+        await foreach (var chunk in _inner.ChunkDocumentAsync(structured, chunkingOptions, cancellationToken).ConfigureAwait(false))
         {
             chunk.Metadata["template"] = "legal";
             chunk.Metadata["clause"] = chunk.Metadata.TryGetValue("heading", out var h) ? h : string.Empty;
