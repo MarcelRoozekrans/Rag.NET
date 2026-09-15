@@ -5,10 +5,14 @@ name: Docs
 # later. No CI job did this before Phase 4.5 — see docs/plans/2026-08-08-docs-site-and-samples-design.md
 # §0 for the two independent ways the site was broken while every other check stayed green.
 #
-# Deployment is deliberately not wired here: the site is configured for `rag-net.github.io/Rag.NET/`
-# (docusaurus.config.ts's organizationName: rag-net), the repository is MarcelRoozekrans/Rag.NET,
-# and GitHub Pages is not enabled anywhere. That is a decision this workflow does not make; §2 of
-# the design records the evidence.
+# Deployment IS wired now, and was not for a recorded reason rather than an oversight. §2 of
+# docs/plans/2026-08-08-docs-site-and-samples-design.md deferred it because the site named an
+# organisation — `rag-net` — that owns no repositories, so there was no target: "build now, deploy
+# when the target is chosen". The target is chosen. docusaurus.config.ts now names the account that
+# owns this repository, and the site publishes to https://marcelroozekrans.github.io/Rag.NET/.
+#
+# Publishing happens only on a push to main. A pull request still gets the build as a check, and
+# neither uploads an artifact nor deploys — otherwise any PR could stage what gets published.
 #
 # Path-filtered on purpose, the same way ci.yml is not: ci.yml builds and tests .NET on every push
 # and pull request unconditionally, because nothing in this repository is safely "code-only" against
@@ -73,6 +77,10 @@ concurrency:
 permissions:
   contents: read
 
+# The deploy job needs more than that, and takes it at the job level rather than here: `pages:
+# write` to publish and `id-token: write` for the OIDC exchange actions/deploy-pages uses. Granting
+# them workflow-wide would hand them to the build job too, which runs on pull requests from forks.
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -108,3 +116,34 @@ jobs:
       # defect this phase exists to remove.
       - name: Build
         run: npm run build
+
+      # Only on a push to main. A pull request build is a check, not a publication — uploading its
+      # output would let any PR stage what the deploy job then publishes.
+      - name: Upload the built site
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: build
+
+  # Publishes what the build job produced. Separate job rather than more steps, because that is
+  # what lets the permissions above stay narrow and what gives GitHub the deployment record.
+  #
+  # The site went unpublished from Phase 4.5 until now, and the reason was recorded rather than
+  # guessed: docusaurus.config.ts named an organisation that owns no repositories, so there was no
+  # target to deploy to. That is settled — organizationName and url now name the account that owns
+  # this repository — and the site publishes to https://marcelroozekrans.github.io/Rag.NET/.
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
