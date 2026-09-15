@@ -8311,7 +8311,7 @@ work no longer has a deadline attached to the release. The phase comments its fi
 including the falsified premises — rather than closing it quietly as though the original scope had
 been delivered.
 
-### Phase 6.2.44: What 29 Features Claim, and What Exercises Them [status: pending — opened 2026-09-15 by the Milestone 6 close audit, `docs/plans/2026-09-15-milestone-6-audit.md`, which found criterion 3 unmet]
+### Phase 6.2.44: What 29 Features Claim, and What Exercises Them [status: complete 2026-09-15 — nine sections were stale and now point at real evidence, twenty carry `declared` and say what does not exercise them, and `SectionsAwaitingExercise` is empty. Mutation-verified: a missing line fails, and so does a pointer to a class that does not exist. Previously: pending — opened 2026-09-15 by the Milestone 6 close audit, `docs/plans/2026-09-15-milestone-6-audit.md`, which found criterion 3 unmet]
 **Surface:** Docs
 **HelpWanted:** no
 
@@ -8323,14 +8323,21 @@ evidence for is a finding. Phase 6.0 opened this box with 49 such sections; 20 h
 29 remain, including `Cohere Rerank`, `Content-Hash Record Manager`, `Recursive Web Crawler`,
 `Sitemap Loader`, `RSS Feed Loader` and `SaaS Connectors`.
 
-**The guard that looks like it covers this does not.**
-`FeatureClaimSymbolTests.EveryDoneFeatureNamesASymbolThatShips` enforces that a Done feature names a
-**symbol that ships**, resolved against the produced packages. A feature can satisfy that and still
-name nothing that exercises it — the two questions are adjacent, not the same. This is the same
-shape as the cassette matchers that keyed on path and method and therefore could never observe a
-credential (#625): a guard that passes is not evidence the property holds unless the guard asks the
-question. Extending it to the exercise pointer is part of this phase, or the next 29 arrive the same
-way.
+**CORRECTION, 2026-09-15: a guard that asks exactly this question already existed, and the phase
+opened naming the wrong one.** `FeatureExerciseTests` checks every Done section for an
+`**Exercised by:**` line, held 29 entries in `SectionsAwaitingExercise` — the same 29 — and enforces
+in both directions: an unlisted section without the line fails, and a listed section that *gains* one
+fails until its entry is deleted. It is stricter than the phase assumed: a non-`declared` pointer
+must name a backticked `.cs` class under `tests/` or `benchmarks/`, so a rename breaks the line
+rather than leaving a claim behind. The block previously cited `FeatureClaimSymbolTests`, which
+enforces an adjacent property — that a Done feature names a symbol that **ships** — and is not this
+guard. Recorded rather than quietly edited: the mistake was failing to look for the existing probe,
+which is the same error this phase's own text warns about.
+
+**What the work actually was.** Nine of the 29 were **stale rather than unstarted** — the evidence
+existed and nothing pointed at it. Twenty carry the guard's `declared` kind and state, in the
+published document, what does **not** exercise them. Changing their status instead would have removed
+them from the guard's scope, which hides a gap rather than stating it.
 
 ### Phase 6.2.45: The Last Bare Unit [status: pending — opened 2026-09-15 by the same audit, criterion 6]
 **Surface:** Backend

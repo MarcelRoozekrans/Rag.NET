@@ -55,40 +55,23 @@ public sealed partial class FeatureExerciseTests
     /// </summary>
     private static readonly Dictionary<string, string> SectionsAwaitingExercise = new(StringComparer.Ordinal)
     {
-        // ── 6.2.1 Retrieval & Answer Sweep ──────────────────────────────────────────────────
-        ["Sliding Window Chunking with Overlap"] = "6.2 — a real document through TokenAwareChunkingStrategy at a window and overlap a user would set; delivered and normalised from `Delivered` on 2026-09-03, which is when it first became visible to this guard",
-        ["Multi-Index Federation"] = "6.2 — two real stores federated and queried, which nothing exercises today; delivered and normalised from `Delivered` on 2026-09-03",
-        ["LLM Fallback Chain"] = "6.2 — a real failure injected in front of a real client",
-        ["Rate Limiting & Cost Budgeting"] = "6.2 — a real client under a real budget",
+        // Empty, and that is criterion 3 of Milestone 6's Definition of Done met: "every `✅ Done`
+        // row in features.md names what exercises it". Twenty-nine sections were listed here until
+        // 2026-09-15, each with the phase that owed it a real run.
+        //
+        // Nine were STALE rather than unstarted — the evidence existed and nothing pointed at it.
+        // The web trio run against real sockets, audio transcribes through a real Whisper model,
+        // OCR replays a cassette recorded against a real resource, and the connectors were declared
+        // per package by #631.
+        //
+        // Twenty carry `declared` and say, in the published document, what does NOT exercise them.
+        // That is the honest outcome rather than the flattering one, and the `declared` kind exists
+        // for it. Changing their status instead would have removed them from this guard's scope,
+        // which hides a gap rather than stating it.
+        //
+        // Do not re-add a section here to quiet a failure. Write the line — `declared` is available
+        // and says more than an entry on a work list ever did.
 
-        // ── 6.2 Raise the Floor: a real file / store / run ──────────────────────────────────
-        ["Typed Chunk Metadata (Filterable Everywhere, No Per-Key Schema)"] = "6.2 — a filter through every store's container suite; the stores are container-verified, the claim across them is not",
-        ["Multi-Language Code Splitting (Heuristic)"] = "6.2 — real source files in each language",
-        ["Content-Hash Record Manager"] = "6.2 — a real re-ingestion, records observed",
-        ["Data Provider Abstraction"] = "6.2 — a real provider through the queue and processor",
-        ["Prompt Injection Fortification"] = "6.2 — a real injection corpus through the real pipeline",
-        ["Data Management API"] = "6.2 — the E2E suite against a host",
-        ["RAGAS-Style Metrics"] = "6.2 — one real metric run",
-        ["Evaluation Dataset Builder"] = "6.2 — one real generation run",
-        ["LLM-as-Judge Evaluation"] = "6.2 — one real judge run",
-        ["Embedding Versioning & Re-indexing"] = "6.2 — a real re-index observed",
-        ["Batch Ingestion Optimiser"] = "6.2 — a real batch through a real store",
-        ["Pipeline Debugger / Trace Viewer"] = "6.2 — a real pipeline traced; the E2E suite for the AspNetCore half",
-        ["A/B Testing Framework"] = "6.2 — one real A/B run",
-
-        // ── 6.1 Recorded Responses: talks to a live service ─────────────────────────────────
-        ["Cohere Rerank"] = "6.1 — Cohere Rerank API",
-        ["Recursive Web Crawler"] = "6.1 — a live crawl, or a local server in 6.2",
-        ["Sitemap Loader"] = "6.1 — a live sitemap, or a local server in 6.2",
-        ["RSS Feed Loader"] = "6.1 — a live feed, or a local server in 6.2",
-        ["SaaS Connectors"] = "6.1 — one recording per connector, or declared per connector",
-        ["Webhook / Event-Driven Ingestion"] = "6.1 — Service Bus is container-verified; the webhook endpoint through the E2E suite",
-        ["Email Connectors (Outlook / Exchange)"] = "6.1 — Microsoft Graph",
-        ["Linear Issue Tracker"] = "6.1 — Linear API",
-        ["Image Description via Vision LLM"] = "6.1 — a hosted vision model",
-        ["Video Description via Vision LLM"] = "6.1 — a hosted vision model",
-        ["Audio Transcription"] = "6.1 — a hosted transcription model",
-        ["OCR for Scanned PDFs"] = "6.1 — Azure Document Intelligence's live half; a real scanned PDF for the local half in 6.2",
     };
 
     [Fact]
