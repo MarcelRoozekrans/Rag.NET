@@ -193,6 +193,7 @@ rag.UseRaptor(
         options.TargetClusterSize = 100;         // Floor on cluster count — bounds the average cluster size, not each cluster's max; must be greater than 1
         options.MaxTreeDepth = null;             // null = recurse until a level can no longer be usefully split; when set, must be greater than 0
         options.StoreLeafChunks = true;          // Keep originals alongside summaries — must stay true under Corpus scope
+        options.SummaryPrompt = "...{chunks}..."; // The summarisation prompt — see below
         options.SummaryChatClient = cheapModel;  // Optional: cheaper model for summaries
         options.SummaryEmbedder = fastEmbedder;  // Optional: separate embedder
         options.TreeScope = RaptorTreeScope.Corpus;  // Corpus (default) or PerDocument — see Tree Scope
@@ -202,6 +203,37 @@ rag.UseRaptor(
 ```
 
 `UseRaptor` validates the configured options at registration and throws `ArgumentException` from the configuring line. The bounds are not pedantry: `MaxClusters = 1` or `MaxTreeDepth = 0` would build no summary levels at all — RAPTOR silently disabled while `Enabled` still reads `true` — and a non-positive `ReducedDimensionality` would leave clustering nothing to work on or crash mid-ingestion.
+
+#### `SummaryPrompt`
+
+Every node above the leaves is whatever this prompt produced, so it is the single largest lever
+over what the tree retrieves. The default asks for a comprehensive summary of the cluster:
+
+```text
+You are a summarization assistant. Below are several related text passages from the same document cluster.
+Write a concise, comprehensive summary that captures all key information.
+
+Passages:
+{chunks}
+
+Summary:
+```
+
+`{chunks}` is replaced with the cluster's concatenated text. A template without it summarises
+nothing — the model receives the instructions and no passages — so keep the placeholder whatever
+else you change.
+
+Rewriting it is how you aim the tree at your corpus. A summary that names the entities it covers
+retrieves differently from one that paraphrases the argument, and for a corpus where questions are
+mostly "which document discusses X", a prompt that asks for topics and named entities matches
+those queries better than a prose précis does. It is also the natural place to fix the language: a
+non-English corpus summarised by the default prompt often comes back in English, and the
+embeddings then sit in a different part of the space from the leaves they summarise.
+
+Two constraints bound how ambitious the prompt can be. The whole cluster's text goes into it, so
+the length is governed by [`TargetClusterSize`](#cluster-size) and not by anything written here;
+and the prompt runs once per cluster per level, so a longer instruction is a cost multiplied by
+the node count in [the ingestion figures below](#ingestion-cost).
 
 ### Retrieval Options
 

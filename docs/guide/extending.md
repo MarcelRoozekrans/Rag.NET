@@ -535,3 +535,85 @@ services.AddRagNet(rag =>
     rag.UsePgVector(connectionString);
 });
 ```
+
+## Implementing `IDocumentOcrEngine` (whole-document OCR)
+
+`Rag.NET.Parsers.Pdf` ships Tesseract as a per-image fallback, and
+`Rag.NET.Parsers.Pdf.AzureDocumentIntelligence` plugs in Azure as a whole-document engine. The
+seam between them is public, so a third engine — AWS Textract, Google Document AI, an on-premise
+service — is an interface away rather than a fork.
+
+```csharp
+public interface IDocumentOcrEngine
+{
+    ValueTask<DocumentOcrResult> RecognizeAsync(Stream pdf, CancellationToken cancellationToken);
+}
+```
+
+One call receives the complete PDF and returns the text of every page. Two contract points the
+compiler cannot enforce:
+
+- **The stream is borrowed.** The parser owns it and disposes it after the call returns. Do not
+  dispose it, and do not retain it past the call.
+- **Cancellation must be honoured throughout**, including while polling a long-running operation
+  on a remote service. An engine that ignores the token makes ingestion uncancellable.
+
+```csharp
+public sealed class MyOcrEngine(HttpClient http) : IDocumentOcrEngine
+{
+    public async ValueTask<DocumentOcrResult> RecognizeAsync(
+        Stream pdf, CancellationToken cancellationToken)
+    {
+        // `pdf` is borrowed — read it, do not dispose it, do not keep it.
+        using var content = new StreamContent(pdf);
+        using var response = await http
+            .PostAsync("recognize", content, cancellationToken)
+            .ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        var pages = await response.Content
+            .ReadFromJsonAsync<Dictionary<int, string>>(cancellationToken)
+            .ConfigureAwait(false) ?? [];
+
+        // PageText is keyed by 1-based page number, matching PdfPig's Page.Number, so the parser
+        // pairs a recognised page with the page it parsed without translating. Pages the engine
+        // produced no text for may simply be omitted — the parser keeps its own extraction there.
+        // BilledPages is the page count the provider charged for, which is the whole submitted
+        // document, not the pages that needed OCR; the cost ledger reports what this returns.
+        return new DocumentOcrResult(pages, BilledPages: pages.Count);
+    }
+}
+```
+
+Register it with an instance or a factory:
+
+```csharp
+services.AddRagNet(rag => rag
+    .AddPdfParser()
+    .UseDocumentOcrEngine(new MyOcrEngine(httpClient)));
+
+services.AddRagNet(rag => rag
+    .AddPdfParser()
+    .UseDocumentOcrEngine(sp => new MyOcrEngine(sp.GetRequiredService<HttpClient>())));
+```
+
+Registration throws if the Tesseract per-image fallback is already configured. The two are
+alternatives, not layers, and silently preferring one would make the other's cost invisible — see
+[the OCR section of the ingestion guide](ingestion.md#ocr-for-scanned-pdfs) for which to pick and
+what each bills for.
+
+## Writing a connector package
+
+`Rag.NET.DataProviders` is the base any connector sits on — OAuth, polling and watermark handling
+— and `AddDataProviderHttpClient(name)` is the one piece of plumbing worth knowing about:
+
+```csharp
+services.AddDataProviderHttpClient("my-connector");
+```
+
+It registers a named `HttpClient` already wrapped in the standard resilience handler, and returns
+the resilience builder so a connector with unusual needs can adjust it. Using it means a new
+connector inherits the same retry, timeout and circuit-breaker behaviour as the built-in ones
+rather than restating them, and the [connector reference](data-providers.md) describes the auth
+and delta-sync shapes each existing one settled on.
