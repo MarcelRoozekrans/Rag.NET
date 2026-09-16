@@ -1,5 +1,16 @@
 # Rag.NET.Chunking.Templates
 
+[![NuGet](https://img.shields.io/nuget/v/Rag.NET.Chunking.Templates.svg?logo=nuget&label=Rag.NET.Chunking.Templates)](https://www.nuget.org/packages/Rag.NET.Chunking.Templates)
+[![Downloads](https://img.shields.io/nuget/dt/Rag.NET.Chunking.Templates.svg?logo=nuget&label=downloads)](https://www.nuget.org/packages/Rag.NET.Chunking.Templates)
+[![Docs](https://img.shields.io/badge/docs-website-blue)](https://marcelroozekrans.github.io/Rag.NET/)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet/10.0)
+[![License](https://img.shields.io/github/license/MarcelRoozekrans/Rag.NET)](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/LICENSE)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/MarcelRoozekrans?logo=githubsponsors&color=ea4aaa&label=Sponsor)](https://github.com/sponsors/MarcelRoozekrans)
+
+> Part of **[Rag.NET](https://github.com/MarcelRoozekrans/Rag.NET)** — a modular RAG pipeline for .NET built on
+> Microsoft.Extensions.AI. Ships as **73 packages**; install only what you call.
+> **[Documentation](https://marcelroozekrans.github.io/Rag.NET/)** · **[Choosing packages](https://marcelroozekrans.github.io/Rag.NET/guide/choosing-packages)**
+
 Domain-specific chunking templates for Rag.NET: legal documents, books, academic papers,
 Q&A pairs (CSV/XLSX), email threads and resumes — each template knows its domain's
 structure (clauses, chapters, sections, rows, turns) and chunks along it.

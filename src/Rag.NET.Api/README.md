@@ -1,5 +1,16 @@
 # Rag.NET.Api
 
+[![NuGet](https://img.shields.io/nuget/v/Rag.NET.Api.svg?logo=nuget&label=Rag.NET.Api)](https://www.nuget.org/packages/Rag.NET.Api)
+[![Downloads](https://img.shields.io/nuget/dt/Rag.NET.Api.svg?logo=nuget&label=downloads)](https://www.nuget.org/packages/Rag.NET.Api)
+[![Docs](https://img.shields.io/badge/docs-website-blue)](https://marcelroozekrans.github.io/Rag.NET/)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet/10.0)
+[![License](https://img.shields.io/github/license/MarcelRoozekrans/Rag.NET)](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/LICENSE)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/MarcelRoozekrans?logo=githubsponsors&color=ea4aaa&label=Sponsor)](https://github.com/sponsors/MarcelRoozekrans)
+
+> Part of **[Rag.NET](https://github.com/MarcelRoozekrans/Rag.NET)** — a modular RAG pipeline for .NET built on
+> Microsoft.Extensions.AI. Ships as **73 packages**; install only what you call.
+> **[Documentation](https://marcelroozekrans.github.io/Rag.NET/)** · **[Choosing packages](https://marcelroozekrans.github.io/Rag.NET/guide/choosing-packages)**
+
 ASP.NET Core REST endpoints for a Rag.NET pipeline: `MapRagNetApi()` exposes ingest,
 retrieve, ask and delete over HTTP with API-key authentication, and `MapRagNetWebhooks()`
 adds an HMAC-verified ingestion webhook.

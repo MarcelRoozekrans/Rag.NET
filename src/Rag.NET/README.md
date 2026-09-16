@@ -1,5 +1,16 @@
 # Rag.NET
 
+[![NuGet](https://img.shields.io/nuget/v/Rag.NET.svg?logo=nuget&label=Rag.NET)](https://www.nuget.org/packages/Rag.NET)
+[![Downloads](https://img.shields.io/nuget/dt/Rag.NET.svg?logo=nuget&label=downloads)](https://www.nuget.org/packages/Rag.NET)
+[![Docs](https://img.shields.io/badge/docs-website-blue)](https://marcelroozekrans.github.io/Rag.NET/)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet/10.0)
+[![License](https://img.shields.io/github/license/MarcelRoozekrans/Rag.NET)](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/LICENSE)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/MarcelRoozekrans?logo=githubsponsors&color=ea4aaa&label=Sponsor)](https://github.com/sponsors/MarcelRoozekrans)
+
+> A modular RAG pipeline for .NET, built on Microsoft.Extensions.AI. Ships as **73 packages**
+> so a pipeline downloads only what it calls.
+> **[Documentation](https://marcelroozekrans.github.io/Rag.NET/)** · **[Repository](https://github.com/MarcelRoozekrans/Rag.NET)**
+
 The core Retrieval-Augmented Generation pipeline for .NET: `AddRagNet()` wires ingestion
 (parse → chunk → embed → store) and retrieval (query → search → rerank → answer) into any
 `IServiceCollection`, exposed to your code as one `IRagPipeline`.
