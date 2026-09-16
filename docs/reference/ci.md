@@ -839,24 +839,45 @@ only retry-safe shape against an append-only feed.
 
 ### The gated nuget.org push
 
-The `publish-nuget` job in `ci.yml` is fully wired and runs nowhere before Phase 6.3. The gate,
-recorded to the standard `TestGateTests` holds every other gate in this repository to:
+**Publishing is automatic from a tag.** Merging a release-please pull request creates the tag
+*and* a published GitHub release, and that release event triggers `publish-nuget`. No second
+human action is required, and none is waited for.
+
+It was a manual dispatch until 2026-09-16, and the failure mode that changed it is worth stating:
+a gate whose cost is paid when somebody *forgets* protects nothing. **v1.0.1 was tagged, written
+into the CHANGELOG and published as a GitHub release, and never reached nuget.org** — for a full
+day, while every check was green and the release page said it had shipped. The only thing that
+surfaced it was a version badge still reading `v1.0.0`.
+
+What guards the push now is the thing that can actually go wrong — the **version**:
 
 | | |
 |---|---|
 | **Name** | `publish-nuget`, a job in `ci.yml` |
-| **Condition** | a manual `workflow_dispatch` on `main` with `publish_to_nuget=true`, plus a Trusted Publishing policy on nuget.org and the `NUGET_USER` repository variable — the job fails loudly when no key is minted rather than 401ing |
-| **Satisfied by** | the procedure below, runnable by any maintainer with admin on the repository; Phase 6.3 executes it |
+| **Triggered by** | a published GitHub release (the automatic path), or a manual `workflow_dispatch` with `publish_to_nuget=true` (the escape hatch) |
+| **Refuses** | any prerelease version. `Refuse to publish a prerelease` runs after the version is derived and before anything is packed or any key is minted |
+| **Gated on** | `needs: [build-test, pack-validate]` — the full matrix and the pack rehearsal, green on that exact commit |
+| **Also needs** | a Trusted Publishing policy on nuget.org and the `NUGET_USER` repository variable — the job fails loudly when no key is minted rather than 401ing |
 
 ```bash
 # Once: the nuget.org account name the Trusted Publishing policy belongs to. Not a secret —
 # it is a username, and holding it as a variable keeps it visible and editable.
 gh variable set NUGET_USER
-# The release: dispatch CI on main with the publish input. The full test matrix and
-# pack-validate run first on that same commit, and publish-nuget refuses to start until
-# both are green.
-gh workflow run ci.yml --ref main -f publish_to_nuget=true
 ```
+
+**Dispatch against the TAG, never against main.** GitVersion returns a stable version only on a
+tagged commit; on `main` it derives a prerelease from the commits since the last tag — three
+commits past `v1.0.1` it returns `1.0.2-preview.3`. That is why the old procedure's
+`--ref main` is gone:
+
+```bash
+# Escape hatch: a push that died partway (--skip-duplicate makes the retry safe), or a tag
+# whose release event was missed. Name the tag.
+gh workflow run ci.yml --ref v1.2.3 -f publish_to_nuget=true
+```
+
+Running it against `main` no longer publishes a prerelease by accident — it fails at the refusal
+step with the command above in the error message.
 
 **One step in this procedure is not a command, and it is the one that fails last.** Trusted
 Publishing needs a policy created on nuget.org itself — under *Account → Trusted Publishing* —
@@ -1008,13 +1029,18 @@ in place as ceremony.
 |---|---|
 | **Name** | `release-please`, the workflow in `.github/workflows/release-please.yml` |
 | **Trigger** | `push` to `main`, plus `workflow_dispatch` for re-runs. Never `pull_request`, and the job still refuses any ref but `main` |
-| **What it can do** | propose. It opens and updates a release pull request, and creates the tag once that PR is merged |
-| **What it cannot do** | publish. The tag is inert until `publish-nuget` is dispatched separately with `publish_to_nuget=true` |
+| **What it can do** | propose. It opens and updates a release pull request, and creates the tag and the GitHub release once that PR is merged |
+| **What it cannot do** | push to nuget.org itself. It has no `nuget push`, no `publish_to_nuget` and no credential — `WorkflowWiringTests` asserts all three absences. The release it publishes is what triggers `publish-nuget` in `ci.yml`; the two workflows stay separate |
 
 From 1.0.0 the release pull request tracks `main` continuously: every merge updates its changelog
 and its proposed version, so the next release is one merge away rather than a procedure somebody
-has to remember. **Two independent human decisions still stand between a merge and a package on
-nuget.org** — merging the release PR, and dispatching the publish.
+has to remember.
+
+**One human decision stands between a merge and a package on nuget.org: merging the release pull
+request.** It used to be two — merging, and then remembering to dispatch the publish — and the
+second one is what failed. `v1.0.1` was tagged, changelogged and released on 2026-09-16 and never
+shipped, because nothing and nobody prompted the dispatch. The decision that mattered was already
+made when the release PR was merged; the second step only added a way to not notice.
 
 `WorkflowWiringTests` pins both halves, in two separate tests: that the push trigger is present and
 the ref check intact, and that no `nuget push`, `publish_to_nuget` or `NUGET_API_KEY` ever appears
