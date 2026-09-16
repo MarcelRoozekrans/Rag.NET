@@ -1,3 +1,10 @@
+---
+id: graphrag
+title: GraphRAG — Entity Extraction and Community Summarization
+sidebar_label: GraphRAG
+sidebar_position: 12
+---
+
 # GraphRAG — Entity Extraction + Community Summarization
 
 GraphRAG builds a knowledge graph from your documents at ingestion time — extracting entities, relationships, and detecting communities — then uses this graph structure for retrieval. Unlike pure vector search, GraphRAG can answer multi-hop questions ("How is X related to Y?") and broad thematic queries ("What are the main themes across this corpus?").

@@ -1,3 +1,10 @@
+---
+id: raptor
+title: RAPTOR — Recursive Abstractive Processing for Tree-Organized Retrieval
+sidebar_label: RAPTOR
+sidebar_position: 11
+---
+
 # RAPTOR — Recursive Abstractive Processing for Tree-Organized Retrieval
 
 RAPTOR builds a hierarchical tree of summaries — by default over the whole corpus, not one document at a time — so that retrieval can match at both fine-grained (leaf chunk) and abstract (summary) levels simultaneously. This addresses a core limitation of flat chunking: questions about a broad theme that spans several documents may not match any individual chunk well, and may not even be answerable from any single document's own summary.
