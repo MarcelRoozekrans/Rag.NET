@@ -1,3 +1,10 @@
+---
+id: opentelemetry
+title: OpenTelemetry Integration
+sidebar_label: OpenTelemetry
+sidebar_position: 5
+---
+
 # OpenTelemetry Integration
 
 Rag.NET emits traces and metrics using the in-box `System.Diagnostics.ActivitySource` and `System.Diagnostics.Metrics` APIs. Core and every instrumented satellite package take no OpenTelemetry SDK dependency themselves — instrumentation is always active and is zero-overhead when no listener is attached. No opt-in call inside `AddRagNet(...)` is needed either; spans and metrics simply exist, waiting for a listener.

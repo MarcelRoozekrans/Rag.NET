@@ -1,3 +1,10 @@
+---
+id: library-comparison-defaults
+title: Library Comparison — the Defaults Every Entrant Is Measured At
+sidebar_label: Comparison Defaults
+sidebar_position: 7
+---
+
 # Library Comparison — the Defaults Every Entrant Is Measured At
 
 > **The measured results this page underpins are published:**
