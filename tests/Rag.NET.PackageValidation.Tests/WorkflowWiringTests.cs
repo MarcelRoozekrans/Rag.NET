@@ -283,6 +283,56 @@ public sealed class WorkflowWiringTests
             StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// What decides which version reaches nuget.org, and what stops the wrong one.
+    /// </summary>
+    [Fact]
+    public void TheNugetOrgPushShipsTagsAndRefusesPrereleases()
+    {
+        var root = ProducedPackageTests.FindRepositoryRoot();
+        var commands = ReadWorkflowCommands(Path.Combine(root, ".github", "workflows", "ci.yml"));
+
+        // The trigger that makes a tag ship. `release: types: [published]` and not `push: tags:`:
+        // release-please creates the tag with a GITHUB_TOKEN-authenticated action, and GitHub does
+        // not fire tag-push workflows for those — the obvious trigger would be inert.
+        Assert.Contains("release: types: [published]", commands, StringComparison.Ordinal);
+
+        // THIS ASSERTION CHANGED ON 2026-09-16, deliberately, and is recorded rather than
+        // silently updated — the same reason the release-workflow pin above states its own
+        // inversion. It used to require dispatch-only: manual event, explicit input, and main.
+        //
+        // That gate worked and shipped nothing. Merging a release pull request tagged the commit,
+        // wrote the CHANGELOG and published a GitHub release, and the packages stayed where they
+        // were, because publishing needed a second human action nobody was reminded to take.
+        // v1.0.1 sat tagged-and-unpublished for a day; the only thing that surfaced it was a
+        // version badge still reading v1.0.0. A gate whose failure mode is "the release silently
+        // does not happen" is not protecting anything worth the cost.
+        //
+        // What replaces it is not weaker, it is differently placed. A published release is now a
+        // publish trigger, and the thing being guarded moved to where it can actually go wrong:
+        // the VERSION. `needs: [build-test, pack-validate]` still holds — nothing reaches
+        // nuget.org until the full matrix and the pack rehearsal are green on that exact commit —
+        // and the prerelease refusal below is now the gate proper.
+        //
+        // The ref check is gone because it was checking the wrong thing. `refs/heads/main` is
+        // precisely where a publish must NOT be derived from: main carries commits after the last
+        // tag, so GitVersion returns a prerelease there. The publish belongs on the tag.
+        Assert.Contains(
+            "if: >- github.event_name == 'release' || "
+            + "(github.event_name == 'workflow_dispatch' && inputs.publish_to_nuget)",
+            commands,
+            StringComparison.Ordinal);
+
+        // The gate proper. Without this, dispatching against main — one wrong `--ref` — publishes
+        // something like 1.0.2-preview.3, and nuget.org neither forgets nor stops listing it.
+        Assert.Contains("Refuse to publish a prerelease", commands, StringComparison.Ordinal);
+        Assert.Contains(
+            "if [[ \"$PACKAGE_VERSION\" == *-* ]]; then",
+            commands,
+            StringComparison.Ordinal);
+
+    }
+
     [Fact]
     public void TheNugetOrgPushIsGatedAndItsGateIsWrittenDown()
     {
@@ -296,14 +346,6 @@ public sealed class WorkflowWiringTests
         // procedure is deleted.
         var root = ProducedPackageTests.FindRepositoryRoot();
         var commands = ReadWorkflowCommands(Path.Combine(root, ".github", "workflows", "ci.yml"));
-
-        // The condition: manual dispatch, the explicit input, and main. Anything weaker and the
-        // push stops being gated; anything the repository cannot satisfy and it stops being a
-        // gate — "satisfiable nowhere" is exactly what TestGateTests fails other gates on.
-        Assert.Contains(
-            "if: github.event_name == 'workflow_dispatch' && inputs.publish_to_nuget && github.ref == 'refs/heads/main'",
-            commands,
-            StringComparison.Ordinal);
 
         // The real push: same glob and same duplicate policy the local-feed rehearsal executes
         // on every run, plus the two things nothing can exercise before 6.3 — the endpoint and
@@ -337,8 +379,11 @@ public sealed class WorkflowWiringTests
         var documented = ReadFencedCommands(Path.Combine(root, "docs", "reference", "ci.md"));
 
         Assert.Contains("gh variable set NUGET_USER", documented, StringComparison.Ordinal);
+        // `--ref v1.2.3`, not `--ref main`. Pinned in that shape because the difference is the
+        // whole point: main derives a prerelease, and a procedure that documented the wrong ref
+        // would send a maintainer straight into the refusal step.
         Assert.Contains(
-            "gh workflow run ci.yml --ref main -f publish_to_nuget=true",
+            "gh workflow run ci.yml --ref v1.2.3 -f publish_to_nuget=true",
             documented,
             StringComparison.Ordinal);
     }
