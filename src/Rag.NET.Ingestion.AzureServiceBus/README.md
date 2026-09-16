@@ -1,5 +1,16 @@
 # Rag.NET.Ingestion.AzureServiceBus
 
+[![NuGet](https://img.shields.io/nuget/v/Rag.NET.Ingestion.AzureServiceBus.svg?logo=nuget&label=Rag.NET.Ingestion.AzureServiceBus)](https://www.nuget.org/packages/Rag.NET.Ingestion.AzureServiceBus)
+[![Downloads](https://img.shields.io/nuget/dt/Rag.NET.Ingestion.AzureServiceBus.svg?logo=nuget&label=downloads)](https://www.nuget.org/packages/Rag.NET.Ingestion.AzureServiceBus)
+[![Docs](https://img.shields.io/badge/docs-website-blue)](https://marcelroozekrans.github.io/Rag.NET/)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet/10.0)
+[![License](https://img.shields.io/github/license/MarcelRoozekrans/Rag.NET)](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/LICENSE)
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/MarcelRoozekrans?logo=githubsponsors&color=ea4aaa&label=Sponsor)](https://github.com/sponsors/MarcelRoozekrans)
+
+> Part of **[Rag.NET](https://github.com/MarcelRoozekrans/Rag.NET)** — a modular RAG pipeline for .NET built on
+> Microsoft.Extensions.AI. Ships as **73 packages**; install only what you call.
+> **[Documentation](https://marcelroozekrans.github.io/Rag.NET/)** · **[Choosing packages](https://marcelroozekrans.github.io/Rag.NET/guide/choosing-packages)**
+
 Azure Service Bus ingestion trigger for Rag.NET: consumes messages from a queue or
 subscription, ingests each one end-to-end, and settles it on the outcome — complete on
 success, abandon for retry, dead-letter when poisonous — so a crash mid-ingest means
