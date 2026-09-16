@@ -414,9 +414,29 @@ future reader can tell the difference between "never existed" and "dealt with".
   **The five-members half closed 2026-08-04 in Phase 4.9** (which was already editing this file
   for the time-weighting fallback keys): all five re-verified against the actual option classes
   before writing, not copied from this entry's own table — it was accurate, but the phase checked
-  rather than trusted it. **Only the package-id-naming half remains open** →
-  **Phase 4.5** (the docs-read-end-to-end pass that already owns the sidebar sweep and
-  `docs.yml` — this is the same "nobody has read these pages against reality" work).
+  rather than trusted it.
+  **The package-id-naming half closed 2026-09-16 in the documentation sweep** (#648), thirteen
+  months after it was opened and after every one of its eight ids had shipped in a released
+  package list. All eight were still there: `docs/index.md`'s catalogue carried them as rows, and
+  `ingestion.md`, `data-providers.md` and `oss-libraries.md` each carried their own copy. The same
+  pass found the catalogue was **also missing 39 of the 73 packages** — RAPTOR, GraphRAG, every
+  security package, both API servers, the CLI — which nothing had ever counted, because nothing
+  had ever compared that table against `src/`.
+  **The guard is the part worth keeping.** `DocumentationPackageReferenceTests` keys on *position*
+  — an install command, a package-column table cell, an oss-libraries `**Used in:**` line — and not
+  on whether the token resolves, because **the obvious check catches none of the eight.** The
+  namespaces outlived the packages: the type inside `Rag.NET.Parsers.Office` is still declared in
+  `namespace Rag.NET.Parsers.Word`, so every retired id is still a real namespace and a
+  does-this-resolve check waves all eight through. That was measured before the design was chosen,
+  not after it failed.
+  **Two further defects of the same family surfaced in the same sweep and are closed with it.**
+  Thirteen published pages were in no sidebar (#647) — 4,751 of the site's 17,500 lines, RAPTOR and
+  GraphRAG among them with no inbound link from any listed page, so browsing could not reach them
+  at all — and `docs/index.md`'s own Pages table named 18 of 36 (#652). Eleven builder calls had
+  prose nowhere but this file (#649). Each now has a guard, all three riding `ci.yml` rather than
+  the path-filtered `docs.yml`, **because the thing none of them could ever be caught by is a green
+  docs build**: Docusaurus routes a page the sidebar does not name, resolves nothing about a
+  package id in prose, and has no opinion about a table of contents.
 - **`Rag.NET.Mcp.Tool`'s package shape needs one deliberate look before it publishes**
   (opened by the Phase 4.7 design as "19 MB, unexplained"; the phase's close explained it by
   measurement and shrank the question): a `PackAsTool` package ships its entire dependency

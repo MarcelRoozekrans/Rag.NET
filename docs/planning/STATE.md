@@ -1,6 +1,70 @@
 # Session State
 
-**Last updated:** 2026-09-15 — **v1.0.0 IS RELEASED.** Tagged `v1.0.0` at `a658cd6e`, 73 packages
+**Last updated:** 2026-09-16 — **the documentation site was publishing half of itself, and the
+half it published pointed at packages that do not exist.** Four PRs (#647, #648, #649, #652), all
+merged or green, each carrying a guard on `ci.yml`.
+
+**THE COMMON CAUSE: a green docs build is not evidence of anything the sweep found.** Docusaurus
+routes a page whether or not a sidebar names it, resolves nothing about a package id sitting in
+prose, and has no opinion about a hand-maintained table of contents. `docs.yml` is also
+path-filtered, so a rename from a `src/`-only branch never runs it at all. Every defect below was
+therefore invisible to the one check that runs on documentation changes, and stayed invisible
+across a released 1.0.0.
+
+| What was wrong | Size | Guard |
+|---|---|---|
+| Pages in no sidebar — published, live, unbrowsable | 13 of 34 pages, 4,751 of 17,500 lines | `DocumentationSidebarTests` |
+| Landing-page catalogue naming retired packages | 8 ids `dotnet add package` cannot resolve | `DocumentationPackageReferenceTests` |
+| …and omitting real ones | 39 of 73 packages | same |
+| Front-page Pages table | 18 of 36 pages listed | `DocumentationIndexTests` |
+| Builder calls with prose only in the backlog | 11 of 112 | — (read, not guarded) |
+
+`guide/raptor` and `guide/graphrag` had **no inbound link from any listed page**, so browsing
+could not reach them by any route. The RAPTOR guide is 461 lines covering tree scope, all three
+retrieval modes and the corpus-store limitations, and nothing on the site pointed at it.
+
+**THE GUARD DESIGN THAT ALMOST WENT WRONG, AND THE MEASUREMENT THAT STOPPED IT.** The obvious
+check for a stale package reference is "does this `Rag.NET.*` token resolve to something under
+`src/`". **It catches none of the eight.** The decomposition retired the package ids and kept the
+namespaces: the type inside `Rag.NET.Parsers.Office` is still declared in `namespace
+Rag.NET.Parsers.Word`, so every retired id is still a real namespace. Checked before choosing the
+design rather than after it shipped green and useless. The guard keys on *position* instead — an
+install command, a table cell under a package column, an oss-libraries `**Used in:**` line — and
+leaves prose alone, where the same token usually does mean the namespace.
+
+**ONE LIVE BUG FELL OUT OF READING THE PAGES.** `retrieval.md` told readers to reach Cohere
+reranking through `UseReranking<CohereReranker>()`. That throws at resolve time: the generic
+overload registers the type and not its options, and `CohereReranker`'s constructor requires a
+`CohereRerankerOptions` with a non-empty `ApiKey`. `UseCohereReranking` registers the options and
+then makes the same generic call itself.
+
+**`docs/reference/features.md` stopped publishing** (#652). It is titled "Feature Backlog" and
+reads like one, and it sat in Reference beside the guide — the only page a newcomer could mistake
+for a feature list was the one written for maintainers. Excluded from the build, **not moved**:
+three test files and this file's own history name the path, and a log is not text to rewrite
+because a file moved.
+
+**The exclusion list is now read, never restated.** The first package guard carried its own copy
+of the excluded directories with a comment arguing the set was "small and stable enough" to
+duplicate. That held for one week. All three guards now read `docusaurus.config.ts` through
+`PublishedDocumentation`.
+
+**Carry the method:** every guard here was exercised against the defect it exists for *before*
+being relied on — a page dropped from the sidebar, an id misspelled, all five package-citation
+shapes, a row removed from the Pages table, and a page excluded from the site to confirm the guard
+stops demanding a row rather than demanding one for an unreachable page. A guard that has never
+been seen to fail is a guard nobody has tested.
+
+**`pack-validate` caught what local runs did not.** `DocsCodeExamplesTests` resolves every C#
+fence under `docs/` against the produced `.nupkg` files, and it is unreachable from `dotnet build`.
+It failed #649 on three placeholder types the new examples named but never declared. Declaring
+them surfaced a fourth error — an invented `DocumentOcrResult` constructor. Run it before pushing
+docs that add a code fence, after a clean `dotnet pack`; stale packages in `artifacts/packages`
+also break `ExactlyTheShippableSetIsPacked`, which expects exactly 73.
+
+---
+
+**Previously:** **v1.0.0 IS RELEASED.** Tagged `v1.0.0` at `a658cd6e`, 73 packages
 and 73 symbol packages live on nuget.org via Trusted Publishing, verified against nuget.org's own
 flat-container index rather than the workflow's green check. Milestone 6 criterion 8 is discharged.
 
@@ -37,7 +101,7 @@ the timing; state the median of five.
 
 ---
 
-**Previously:** **Milestone 6 audited: 6 of 8 criteria. The recordings gate is
+**Before that:** **Milestone 6 audited: 6 of 8 criteria. The recordings gate is
 discharged, and v1.0 no longer waits on accounts.**
 
 **THE GATE THAT HELD SINCE 2026-08-20 IS GONE, AND THE DoD ALWAYS ALLOWED IT.** Criterion 5 asks for
