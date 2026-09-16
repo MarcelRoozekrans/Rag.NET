@@ -51,10 +51,6 @@ public sealed partial class DocumentationPackageReferenceTests
     /// </summary>
     private const int FewestPlausibleCitations = 60;
 
-    private static readonly string[] ExcludedDirectories = ["plans", "planning"];
-
-    private const string ExcludedFilePrefix = "pre-push-review-";
-
     [GeneratedRegex(
         @"dotnet\s+(?:add\s+package|tool\s+install)\s+(?<package>Rag\.NET[A-Za-z0-9.]*)",
         RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking)]
@@ -129,6 +125,7 @@ public sealed partial class DocumentationPackageReferenceTests
     {
         var repositoryRoot = TestProject.FindRepositoryRoot();
         var documentationRoot = Path.Combine(repositoryRoot, "docs");
+        var excluded = PublishedDocumentation.ExcludedGlobs(repositoryRoot);
         var citations = new List<Citation>();
 
         foreach (var path in Directory.EnumerateFiles(documentationRoot, "*.*", SearchOption.AllDirectories))
@@ -142,7 +139,7 @@ public sealed partial class DocumentationPackageReferenceTests
 
             var relative = Path.GetRelativePath(documentationRoot, path).Replace('\\', '/');
 
-            if (IsExcludedFromPublication(relative))
+            if (PublishedDocumentation.IsExcluded(relative, excluded))
             {
                 continue;
             }
@@ -151,27 +148,6 @@ public sealed partial class DocumentationPackageReferenceTests
         }
 
         return citations;
-    }
-
-    /// <summary>
-    /// Mirrors <c>docusaurus.config.ts</c>'s <c>exclude</c>: the internal planning trees and the
-    /// pre-push-review artefacts are not published, so a stale name in one is not a reader-facing
-    /// defect. <see cref="DocumentationSidebarTests"/> reads the config directly; here the set is
-    /// small and stable enough that naming it is clearer than parsing TypeScript twice.
-    /// </summary>
-    /// <param name="relativePath">The page's path relative to <c>docs/</c>.</param>
-    /// <returns>Whether the page is kept out of the built site.</returns>
-    private static bool IsExcludedFromPublication(string relativePath)
-    {
-        foreach (var directory in ExcludedDirectories)
-        {
-            if (relativePath.StartsWith($"{directory}/", StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-
-        return Path.GetFileName(relativePath).StartsWith(ExcludedFilePrefix, StringComparison.Ordinal);
     }
 
     private static void CollectFromFile(string[] lines, string relativePath, List<Citation> citations)

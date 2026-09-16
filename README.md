@@ -15,9 +15,11 @@ rendered and searchable. The same pages live under [`docs/`](docs/) if you prefe
 
 ## Features
 
-A selection. The library ships **73 packages**; the full, per-feature inventory with its
-verification status is [docs/reference/features.md](docs/reference/features.md), and
-[the guide](docs/guide/) covers each subsystem in depth.
+A selection. The library ships **73 packages**, and [the guide](docs/guide/) covers each
+subsystem in depth. [docs/reference/features.md](docs/reference/features.md) is the maintainers'
+per-feature ledger — what is done, what exercises it, which phase owns the rest. It is kept in
+the repository rather than published to the documentation site, because it answers "where does
+this project stand" and not "what does this library do".
 
 **The pipeline**
 

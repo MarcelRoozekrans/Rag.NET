@@ -292,8 +292,8 @@ A name (or type) that matches nothing currently registered removes nothing and i
 error — replacing a parser from a package you never installed is a no-op, which is exactly what an
 optional dependency needs. `Rag.NET.Chunking.Templates`'s `UseQAPairsChunking()` uses this to
 declare `QAPairsDocumentParser` as a deliberate override of core's `CsvDocumentParser` and, when
-`Rag.NET.Parsers.Office` is installed, its `ExcelDocumentParser` — see [Domain-Specific Chunking
-Templates](../reference/features.md#domain-specific-chunking-templates) for the resulting
+`Rag.NET.Parsers.Office` is installed, its `ExcelDocumentParser` — see [domain-specific chunking
+templates](chunking.md#domain-specific-templates-ragnetchunkingtemplates) for the resulting
 behaviour change.
 
 **One current limit, worth knowing before you reach for it:** `replaces`/`replacesTypeNames` can

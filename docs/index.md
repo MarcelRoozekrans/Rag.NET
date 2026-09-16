@@ -12,26 +12,77 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 
 ## Pages
 
+Grouped the way [the sidebar](https://marcelroozekrans.github.io/Rag.NET/) is.
+
+**Start here**
+
 | Page | What it covers |
 |------|---------------|
 | [Why RAG?](why-rag.md) | What RAG is, the problem it solves, and when Rag.NET is the right tool |
 | [Getting Started](getting-started.md) | Dependency injection setup, ingesting a document, and running a Q&A loop |
 | [Positioning](positioning.md) | Where Rag.NET sits against Semantic Kernel, LangChain, LlamaIndex and Haystack — and where it loses |
-| [Architecture](guide/architecture.md) | Pipeline internals, data-flow diagram, all interfaces and core models |
-| [Ingestion](guide/ingestion.md) | Parsers, `DocumentMetadata`, `IngestionOptions`, progress reporting |
-| [Data Providers](guide/data-providers.md) | Cloud storage and web connectors; OAuth token management; delta ingestion |
-| [Chunking](guide/chunking.md) | `FixedSize`, `Recursive`, and `TokenAware` strategies with trade-off table |
-| [Retrieval](guide/retrieval.md) | `RetrievalOptions`, semantic search, hybrid BM25+RRF search, metadata filtering |
-| [Post-Retrieval](guide/post-retrieval.md) | Lost-in-the-Middle reordering and redundancy filtering |
-| [Conversational Memory](guide/memory.md) | In-session history trimming, token-budget management, and persistent cross-session recall |
-| [Vector Stores](guide/vector-stores.md) | pgvector, Qdrant, Azure AI Search; hybrid search support matrix |
-| [Evaluation](guide/evaluation.md) | `EmbeddingDistanceEvaluator`, `EvaluationSample`, score interpretation |
-| [Observability](guide/observability.md) | `ILogger` structured logging, OpenTelemetry `ActivitySource`, Polly resilience |
-| [Extending](guide/extending.md) | Implementing `IDocumentParser`, `IVectorStore`, `IChunkingStrategy` |
-| [Mediator](guide/mediator.md) | Dispatching ingest/retrieve/delete commands via `Rag.NET.Mediator` and ZeroAlloc.Mediator |
-| [OSS Libraries](reference/oss-libraries.md) | Every open-source dependency used, where it is used, and why |
-| [Answer Engines](answer-engines.md) | MapReduce, Refine, and Dispatching answer engine strategies |
-| [Query Techniques](query-techniques.md) | HyDE and Multi-Query retrieval expansion |
+
+**The pipeline**
+
+| Page | What it covers |
+|------|---------------|
+| [Choosing Packages](guide/choosing-packages.md) | Which two or three of the 73 packages a given pipeline actually needs |
+| [Architecture](guide/architecture.md) | Pipeline internals, data-flow diagram, the core interfaces and models |
+| [Ingestion](guide/ingestion.md) | Parsers, `DocumentMetadata`, `IngestionOptions`, OCR, progress reporting |
+| [Chunking](guide/chunking.md) | Eight strategies with a trade-off table, plus the domain-specific templates |
+| [Retrieval](guide/retrieval.md) | `RetrievalOptions`, semantic and hybrid BM25+RRF search, metadata filtering, CRAG |
+| [Post-Retrieval](guide/post-retrieval.md) | Lost-in-the-Middle reordering, redundancy filtering, MMR |
+| [Vector Stores](guide/vector-stores.md) | All seven stores, with the hybrid-search support matrix |
+
+**Advanced retrieval**
+
+| Page | What it covers |
+|------|---------------|
+| [RAPTOR](guide/raptor.md) | Recursive abstractive tree summarisation: tree scope, retrieval modes, cluster sizing |
+| [GraphRAG](guide/graphrag.md) | Entity extraction, community detection, local and global search, mind-map extraction |
+| [Query Techniques](query-techniques.md) | HyDE, multi-query expansion, contextual compression |
+| [Answer Engines](answer-engines.md) | MapReduce, Refine, FLARE and Dispatching answer strategies |
+| [Conversational Memory](guide/memory.md) | In-session history trimming, token budgets, persistent cross-session recall |
+
+**Sources**
+
+| Page | What it covers |
+|------|---------------|
+| [Data Providers](guide/data-providers.md) | All 18 connectors: auth, delta-sync shape and options for each |
+
+**Production**
+
+| Page | What it covers |
+|------|---------------|
+| [Security](guide/security.md) | Prompt-injection defence in depth, PII detection, RBAC, audit logging |
+| [Resilience](guide/resilience.md) | Retry and circuit-breaking, rate limiting, cost budgeting, fallback chains |
+| [Observability](guide/observability.md) | `ILogger` structured logging and the `ActivitySource` the pipeline emits on |
+| [Pipeline Debugger](guide/diagnostics.md) | Per-query traces: chunk scores, stage latencies, guard actions |
+| [Evaluation](guide/evaluation.md) | Embedding-distance and LLM-judge evaluators, RAGAS metrics, A/B comparison |
+| [A/B Shadow Mode](guide/shadow-mode.md) | Running a second pipeline against production traffic without touching the response |
+
+**Integration**
+
+| Page | What it covers |
+|------|---------------|
+| [MCP Server](guide/mcp.mdx) | Exposing a pipeline to an LLM agent as MCP tools, and the four deployment patterns |
+| [REST and gRPC](guide/api.md) | Serving a pipeline over HTTP or gRPC, with clients that implement `IRagPipeline` |
+| [CLI (`ragnet`)](guide/cli.md) | Ingesting and querying a configured pipeline from the shell |
+| [Mediator](guide/mediator.md) | Dispatching ingest/retrieve/delete commands via `IMediator` |
+| [Extending](guide/extending.md) | Implementing `IDocumentParser`, `IVectorStore`, `IChunkingStrategy`, `IDocumentOcrEngine` |
+
+**Reference**
+
+| Page | What it covers |
+|------|---------------|
+| [Benchmarks](reference/benchmarks.md) | Measured throughput for chunking, embedding and retrieval |
+| [Retrieval Quality](reference/retrieval-quality.md) | BEIR results per technique, and the ablation table behind them |
+| [Library Comparison](reference/library-comparison.md) | Measured quality and cost against other RAG libraries |
+| [Comparison Scope](reference/library-comparison-scope.md) | What each entrant was read for, cited per claim |
+| [Comparison Defaults](reference/library-comparison-defaults.md) | The defaults every entrant was measured at |
+| [OpenTelemetry](reference/opentelemetry.md) | Every span and metric the pipeline emits, and how to export them |
+| [OSS Libraries](reference/oss-libraries.md) | Every open-source dependency, where it is used, and why |
+| [CI and Test Tiers](reference/ci.md) | Which suites run where, and what each tier needs to run at all |
 
 ## Quick links
 

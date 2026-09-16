@@ -53,7 +53,25 @@ const config: Config = {
           // The pre-push-review pattern is belt and braces: those artefacts are removed and
           // git-ignored, but a local build still sees any that are sitting untracked in the working
           // tree, and `npm run build` should agree with what CI publishes.
-          exclude: ['plans/**', 'planning/**', 'pre-push-review-*.md'],
+          //
+          // `reference/features.md` joins them for the same reason, and it is the one entry that
+          // is a single file rather than a tree. It is titled "Feature Backlog" and reads like
+          // one: rows carry phase numbers, issue ids and verification status, and its preamble
+          // states what a `✅ Done` row must carry "since Milestone 6.0". That is a working
+          // ledger the project keeps against itself, not an answer to a reader asking what the
+          // library does — and it was published beside the guide, where the only page a newcomer
+          // could mistake for a feature list was the one written for maintainers.
+          //
+          // It stays exactly where it is on disk. Moving it would invalidate the path named in
+          // three test files, the ROADMAP's historical entries and STATE — and those entries are
+          // a log of what happened, not text to be rewritten when a file moves. The README still
+          // links it as a repository document, which is what it now is.
+          exclude: [
+            'plans/**',
+            'planning/**',
+            'pre-push-review-*.md',
+            'reference/features.md',
+          ],
         },
         blog: false,
         theme: {
