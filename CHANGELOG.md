@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.1...v1.0.2) (2026-09-16)
+
+
+### Bug Fixes
+
+* **docs:** the front page listed 18 of 36 pages, and published the backlog ([#652](https://github.com/MarcelRoozekrans/Rag.NET/issues/652)) ([b0dcdd3](https://github.com/MarcelRoozekrans/Rag.NET/commit/b0dcdd3e70fe4859ca20800b125c6d61c6828027))
+
 ## [1.0.1](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.0...v1.0.1) (2026-09-16)
 
 
