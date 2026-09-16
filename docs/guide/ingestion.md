@@ -168,11 +168,22 @@ Parsers implement `IDocumentParser`. The pipeline selects the first registered p
 |-------------|---------|-------|
 | `application/pdf` | `Rag.NET.Parsers.Pdf` | Table extraction (default on) + OCR for scanned pages via Tesseract or Azure Document Intelligence — see [below](#pdf-table-extraction-and-ocr) |
 | `text/html` | `Rag.NET.Parsers.Html` | Heading-aware (AngleSharp) |
-| `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `Rag.NET.Parsers.Word` | OpenXml |
-| `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | `Rag.NET.Parsers.Excel` | OpenXml |
-| `application/vnd.openxmlformats-officedocument.presentationml.presentation` | `Rag.NET.Parsers.PowerPoint` | OpenXml |
+| `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `Rag.NET.Parsers.Office` | Word `.docx` (OpenXml) |
+| `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | `Rag.NET.Parsers.Office` | Excel `.xlsx` (OpenXml) |
+| `application/vnd.openxmlformats-officedocument.presentationml.presentation` | `Rag.NET.Parsers.Office` | PowerPoint `.pptx` (OpenXml) |
+| `message/rfc822`, `application/vnd.ms-outlook` | `Rag.NET.Parsers.Email` | `.eml` and `.msg` (MimeKit); attachments are traversed and flattened |
+| `application/epub+zip` | `Rag.NET.Parsers.Epub` | Chapter-aware, emits a `DocumentSection` per chapter |
+| `application/zip`, `application/x-zip-compressed` | `Rag.NET.Parsers.Archive` | Container: each entry is parsed by whichever parser claims its content type, under read and entry-count budgets |
+| `audio/wav`, `audio/mpeg`, `audio/flac`, `audio/mp4`, `audio/ogg` | `Rag.NET.Parsers.Audio` | Transcription via Whisper.net (local, no API key) |
+| `image/png`, `image/jpeg`, `image/webp`, `image/gif`, `image/bmp` | `Rag.NET.Parsers.Vision` | Description via a vision LLM — `UseImageDescription()` |
+| `video/mp4`, `video/webm`, `video/quicktime`, `video/x-matroska`, `video/x-msvideo` | `Rag.NET.Parsers.Vision` | Keyframe description via FFMpeg + a vision LLM — `UseVideoDescription()` |
 | `text/csv` | (core) `CsvDocumentParser` | |
 | `application/json` | (core) `JsonDocumentParser` | |
+
+Three packages register under a different name from the parser class, because one package claims
+several types: `Rag.NET.Parsers.Office` is Word, Excel and PowerPoint in one (it was three packages
+before the decomposition — `Rag.NET.Parsers.Word`, `.Excel` and `.PowerPoint` no longer exist), and
+`Rag.NET.Parsers.Vision` carries both the image and the video parser.
 
 Register additional parsers via `AddParser<T>()` or by calling the package-specific extension method:
 
@@ -180,10 +191,28 @@ Register additional parsers via `AddParser<T>()` or by calling the package-speci
 services.AddRagNet(rag => rag
     .AddPdfParser()
     .AddHtmlParser()
+    // All three live in Rag.NET.Parsers.Office — one package, three registrations.
     .AddWordParser()
     .AddExcelParser()
-    .AddPowerPointParser());
+    .AddPowerPointParser()
+    .AddEmailParser()
+    .AddEpubParser()
+    .AddArchiveParser()
+    .AddAudioParser());
 ```
+
+The two vision parsers are registered by the feature call rather than an `Add…Parser()` method,
+because each needs a chat client to describe with:
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseImageDescription(o => o.ChatClient = visionChatClient)
+    .UseVideoDescription(o => o.ChatClient = visionChatClient));
+```
+
+Both sanitise the model's output before it reaches a chunk (`SanitiseOutput`, on by default): a
+described image is untrusted text arriving from outside the corpus, and the
+[security guide](security.md) covers why that matters.
 
 Some parsers take options. `AddHtmlParser` accepts a callback for how links are handled — by
 default a link's URL is appended to its text, which for site-internal paths is noise in the
