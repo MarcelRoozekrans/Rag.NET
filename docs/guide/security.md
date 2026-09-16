@@ -29,8 +29,7 @@ to you, and where its current dependency advisories stand — read it before the
 | Audit log | having no record of what was retrieved or answered | [below](#audit-log) |
 | Prompt-injection defences — chunk and query sanitisation, retrieval guards, prompt hardening | attacker-controlled content hijacking the model at query time | [below](#prompt-injection-defences) |
 
-All four families are documented on this page. The feature reference carries the shorter
-[Prompt Injection Fortification](../reference/features.md) entry for the same subject.
+All four families are documented on this page.
 
 ### Defaults that fail open
 

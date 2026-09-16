@@ -80,7 +80,6 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Reference',
       items: [
-        'reference/features',
         'reference/benchmarks',
         'reference/retrieval-quality',
         'reference/library-comparison',

@@ -45,11 +45,6 @@ public sealed partial class DocumentationSidebarTests
     /// </summary>
     private const int FewestPlausiblePublishedPages = 25;
 
-    [GeneratedRegex(
-        @"exclude:\s*\[(?<entries>[^\]]*)\]",
-        RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking)]
-    private static partial Regex ExcludeArray();
-
     [GeneratedRegex(@"'(?<value>[^']*)'", RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking)]
     private static partial Regex SingleQuotedString();
 
@@ -79,7 +74,7 @@ public sealed partial class DocumentationSidebarTests
     [Fact]
     public void TheScanFindsPlausiblyManyPublishedPages()
     {
-        var pages = PublishedPageIds();
+        var pages = PublishedDocumentation.PageIds();
 
         Assert.True(
             pages.Count >= FewestPlausiblePublishedPages,
@@ -93,7 +88,7 @@ public sealed partial class DocumentationSidebarTests
     {
         var listed = SidebarDocumentIds();
 
-        var unreachable = PublishedPageIds()
+        var unreachable = PublishedDocumentation.PageIds()
             .Where(id => !listed.Contains(id))
             .Order(StringComparer.Ordinal)
             .ToList();
@@ -112,7 +107,7 @@ public sealed partial class DocumentationSidebarTests
     [Fact]
     public void EverySidebarEntryNamesAPageThatExists()
     {
-        var published = PublishedPageIds();
+        var published = PublishedDocumentation.PageIds();
 
         var dangling = SidebarDocumentIds()
             .Where(id => !published.Contains(id))
@@ -125,51 +120,6 @@ public sealed partial class DocumentationSidebarTests
             "docs build:" +
             Environment.NewLine +
             string.Join(Environment.NewLine, dangling.Select(id => $"  '{id}'")));
-    }
-
-    /// <summary>
-    /// Document ids as Docusaurus derives them: the path under <c>docs/</c> without its extension,
-    /// with forward slashes on every platform.
-    /// </summary>
-    /// <returns>The id of every page the site publishes.</returns>
-    private static HashSet<string> PublishedPageIds()
-    {
-        var repositoryRoot = TestProject.FindRepositoryRoot();
-        var documentationRoot = Path.Combine(repositoryRoot, "docs");
-        var excluded = ExcludedPathPrefixes(repositoryRoot);
-
-        var ids = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var path in Directory.EnumerateFiles(documentationRoot, "*.*", SearchOption.AllDirectories))
-        {
-            var extension = Path.GetExtension(path);
-            if (!extension.Equals(".md", StringComparison.OrdinalIgnoreCase)
-                && !extension.Equals(".mdx", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var relative = Path.GetRelativePath(documentationRoot, path).Replace('\\', '/');
-
-            var isExcluded = false;
-            foreach (var glob in excluded)
-            {
-                if (IsExcluded(relative, glob))
-                {
-                    isExcluded = true;
-                    break;
-                }
-            }
-
-            if (isExcluded)
-            {
-                continue;
-            }
-
-            ids.Add(relative[..^extension.Length]);
-        }
-
-        return ids;
     }
 
     /// <summary>
@@ -202,56 +152,5 @@ public sealed partial class DocumentationSidebarTests
             .Where(value => !structural.Contains(value))
             .Where(value => value.Length > 0)
             .ToHashSet(StringComparer.Ordinal);
-    }
-
-    /// <summary>
-    /// Reads the <c>exclude</c> array out of the Docusaurus config so this guard and the site agree
-    /// on what publishes, rather than keeping a second copy of the list.
-    /// </summary>
-    /// <param name="repositoryRoot">The repository root.</param>
-    /// <returns>Each excluded glob, as written in the config.</returns>
-    private static IReadOnlyList<string> ExcludedPathPrefixes(string repositoryRoot)
-    {
-        var path = Path.Combine(repositoryRoot, "docusaurus.config.ts");
-        var match = ExcludeArray().Match(File.ReadAllText(path));
-
-        Assert.True(
-            match.Success,
-            $"Could not find an `exclude:` array in {path}. This guard reads the site's own " +
-            "exclusion list rather than duplicating it; if the option moved or was renamed, this " +
-            "fails rather than scanning every plan document and demanding it be added to the nav.");
-
-        return SingleQuotedString().Matches(match.Groups["entries"].Value)
-            .Select(entry => entry.Groups["value"].Value)
-            .Where(entry => entry.Length > 0)
-            .ToList();
-    }
-
-    /// <summary>
-    /// Matches the two glob shapes the config actually uses — a directory prefix
-    /// (<c>plans/**</c>) and a filename prefix (<c>pre-push-review-*.md</c>) — rather than
-    /// implementing globbing.
-    /// </summary>
-    /// <param name="relativePath">The page's path relative to <c>docs/</c>.</param>
-    /// <param name="glob">One entry from the config's <c>exclude</c> array.</param>
-    /// <returns>Whether the config excludes this page.</returns>
-    private static bool IsExcluded(string relativePath, string glob)
-    {
-        if (glob.EndsWith("/**", StringComparison.Ordinal))
-        {
-            return relativePath.StartsWith(glob[..^2], StringComparison.Ordinal);
-        }
-
-        var star = glob.IndexOf('*', StringComparison.Ordinal);
-        if (star < 0)
-        {
-            return relativePath.Equals(glob, StringComparison.Ordinal);
-        }
-
-        var prefix = glob[..star];
-        var suffix = glob[(star + 1)..];
-
-        return relativePath.StartsWith(prefix, StringComparison.Ordinal)
-            && relativePath.EndsWith(suffix, StringComparison.Ordinal);
     }
 }
