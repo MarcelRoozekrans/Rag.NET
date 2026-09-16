@@ -163,8 +163,8 @@ var tokenProvider = new OAuthClientCredentialsTokenProvider(
 | Connector | Package | Auth | Delta support | Notes |
 |-----------|---------|------|---------------|-------|
 | Azure Blob Storage | `Rag.NET.DataProviders.AzureBlob` | Connection string or `TokenCredential` | ETag-based | Resilience via Azure SDK built-in retry; do not add an external retry policy |
-| SharePoint | `Rag.NET.DataProviders.SharePoint` | `ClientSecretCredential` (tenant/client/secret) | Graph deltaLink | Enumerates root drive children recursively |
-| OneDrive | `Rag.NET.DataProviders.OneDrive` | `ClientSecretCredential` (tenant/client/secret) | Graph deltaLink | Requires a `UserId` or `"me"` for delegated auth |
+| SharePoint | `Rag.NET.DataProviders.Microsoft365` | `ClientSecretCredential` (tenant/client/secret) | Graph deltaLink | Enumerates root drive children recursively |
+| OneDrive | `Rag.NET.DataProviders.Microsoft365` | `ClientSecretCredential` (tenant/client/secret) | Graph deltaLink | Requires a `UserId` or `"me"` for delegated auth |
 | Google Drive | `Rag.NET.DataProviders.GoogleDrive` | Service account JSON key file or `DriveService` | Changes.List pageToken | Whole-drive or folder-scoped via `FolderId`; recursive |
 | Dropbox | `Rag.NET.DataProviders.Dropbox` | Access token or `ITokenProvider` | ListFolder cursor | Cursors do not expire |
 | Box | `Rag.NET.DataProviders.Box` | JWT config JSON or `BoxClient` | Events stream position | Root folder configurable via `RootFolderId` |
@@ -174,9 +174,9 @@ var tokenProvider = new OAuthClientCredentialsTokenProvider(
 | Notion | `Rag.NET.DataProviders.Notion` | Bearer integration token | Client-side `last_edited_time` | Exports pages as Markdown |
 | Asana | `Rag.NET.DataProviders.Asana` | Bearer PAT or OAuth2 | `modified_since` parameter | Requires `workspaceGid`; tasks exported as HTML |
 | Slack | `Rag.NET.DataProviders.Slack` | Bearer bot token | `oldest` Unix timestamp | Channel messages exported as plain text |
-| Microsoft Teams | `Rag.NET.DataProviders.MicrosoftTeams` | OAuth2 client credentials | Not yet supported | Graph SDK; messages exported as HTML |
+| Microsoft Teams | `Rag.NET.DataProviders.Microsoft365` | OAuth2 client credentials | Not yet supported | Graph SDK; messages exported as HTML |
 | Gmail | `Rag.NET.DataProviders.Gmail` | OAuth2 (`SaslMechanismOAuth2`) | IMAP UniqueId watermark | MailKit IMAP; emails exported as plain text |
-| Exchange / Outlook | `Rag.NET.DataProviders.Exchange` | `ClientSecretCredential` (tenant/client/secret) | `receivedDateTime` watermark | Graph SDK; emits raw RFC 822 `.eml` — requires `AddEmailParser()` |
+| Exchange / Outlook | `Rag.NET.DataProviders.Microsoft365` | `ClientSecretCredential` (tenant/client/secret) | `receivedDateTime` watermark | Graph SDK; emits raw RFC 822 `.eml` — requires `AddEmailParser()` |
 | Linear | `Rag.NET.DataProviders.Linear` | Personal API key (bare `Authorization` header) | `updatedAt` watermark | GraphQL API; issues + comments exported as Markdown |
 | GitLab | `Rag.NET.DataProviders.GitLab` | PAT (`PRIVATE-TOKEN` header) | Commit SHA compare | Repository files; same delta pattern as GitHub |
 | Bitbucket | `Rag.NET.DataProviders.Bitbucket` | App Password (Basic Auth) | Commit hash diffstat | Repository files via REST API |

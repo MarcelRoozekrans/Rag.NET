@@ -6,7 +6,7 @@ sidebar_position: 4
 
 # Choosing Packages
 
-Rag.NET ships as 69 packages, and a working pipeline needs two or three of them. This page
+Rag.NET ships as 73 packages, and a working pipeline needs two or three of them. This page
 exists because the catalogue does not say which — the packages compose transitively, so most
 of what a pipeline uses arrives on its own, and the only decisions you actually make are the
 ones this page walks through.
@@ -71,6 +71,29 @@ and installing the package is how you get the builder method:
 | Spend limits that survive restarts | `UseSqliteCostLedger()` | `Rag.NET.Storage.Sqlite` |
 | Retry/circuit-breaker, rate limiting, model fallback | `ConfigureResilience()`, `UseRateLimiting()`, `UseFallbackChain()` | `Rag.NET.Resilience` |
 | Result and embedding caching | `UseCaching()` | `Rag.NET.Caching` |
+| [A tree of summaries over the corpus](raptor.md) | `UseRaptor()` | `Rag.NET.Raptor` (+ `.Store` for corpus scope) |
+| [A knowledge graph and community summaries](graphrag.md) | `UseGraphRag()`, `UseMindMapExtraction()` | `Rag.NET.GraphRag` |
+| [Prompt-injection defence, PII redaction, RBAC](security.md) | `UseChunkSanitiser()`, `UseQuerySanitiser()`, `UseRetrievalGuard()`, `UsePromptHardening()`, `UsePiiDetection()`, `UseRbac()` | `Rag.NET.Security` |
+| An audit log that survives restarts | `UseSqliteAuditLog()` | `Rag.NET.Security.Audit.Sqlite` |
+| [Cross-session conversation memory](memory.md) | `UsePersistentMemory()` | `Rag.NET.Memory` |
+| Cross-encoder reranking | `UseCohereReranking()` / `UseOnnxReranking()` | `Rag.NET.Reranking.Cohere` / `.Onnx` |
+| [MapReduce, Refine or FLARE answers](../answer-engines.md) | `UseMapReduceAnswerEngine()`, `UseRefineAnswerEngine()`, `UseFlare()`, `UseDispatchingAnswerEngine()` | `Rag.NET.AnswerEngines` |
+| Non-default chunking strategies | `UseTokenAwareChunking()`, `UseSemanticChunking()`, `UseLateChunking()`, … | `Rag.NET.Chunking` |
+| Domain chunking templates (legal, book, résumé, …) | `UseLegalChunking()`, `UseBookChunking()`, … | `Rag.NET.Chunking.Templates` |
+| Roslyn-aware C# chunking | `UseCSharpChunking()` | `Rag.NET.Chunking.CSharp` |
+| [Answer-quality evaluation and A/B shadow mode](evaluation.md) | `UseShadow()`, the evaluators and `RagComparison` | `Rag.NET.Evaluation` (+ `.Ragas` for RAGAS metrics) |
+| [OpenTelemetry export](../reference/opentelemetry.md) | `AddRagNetInstrumentation()` | `Rag.NET.Telemetry` |
+| [Per-query pipeline traces](diagnostics.md) | `AddRagDiagnostics()` | `Rag.NET.Diagnostics` (+ `.AspNetCore` for the endpoint) |
+| Web-search fallback for corrective RAG | `AddTavilyWebSearch()` | `Rag.NET.WebSearch.Tavily` |
+| Ingestion driven by a Service Bus queue | `UseServiceBusIngestion()` | `Rag.NET.Ingestion.AzureServiceBus` |
+
+Serving the pipeline to something other than your own process is the same rule — install the
+package whose method you call: `Rag.NET.Api` (`AddRagNetApi()`) and `Rag.NET.Api.Grpc`
+(`AddRagNetGrpcApi()`) for REST and gRPC, each with a matching client package that implements
+`IRagPipeline` against it; [`Rag.NET.Mcp`](mcp.mdx) (`AddRagNetMcpServer()`) for MCP; and
+`Rag.NET.Hosting` (`AddRagNetPipelineFromConfiguration()`) to bind a whole pipeline from
+`appsettings.json`. `Rag.NET.Cli` and `Rag.NET.Mcp.Tool` are dotnet global tools rather than
+libraries — `dotnet tool install`, not `dotnet add package`.
 
 `UseCostBudgeting()` itself stays in core with an in-memory ledger — its recorded spend
 resets when the process restarts, and it logs a warning saying so. Add
