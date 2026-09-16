@@ -5,6 +5,18 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+
+  # What makes a tag reach nuget.org. release-please creates the tag AND a GitHub release when its
+  # pull request merges, and this fires on the release rather than on the tag push because
+  # `push: tags:` does not fire for a tag created by a GITHUB_TOKEN-authenticated action — which is
+  # exactly how release-please creates it, so the obvious trigger would be silently inert.
+  #
+  # Before this existed, merging a release pull request tagged the commit, wrote the CHANGELOG and
+  # published a GitHub release while shipping nothing: publishing needed a separate manual dispatch
+  # that nobody was reminded to run. v1.0.1 spent a day in that state — tagged, released, absent
+  # from nuget.org — and the only reason anyone noticed was a version badge still reading v1.0.0.
+  release:
+    types: [published]
   # nightly.yml has had this since 3.5; ci.yml did not, and the gap showed the first time it
   # mattered. GitHub does not trigger workflows for a push carrying more than 1,000 commits, and
   # this repository's initial push carried 1,321 — so the first CI run this project ever had could
@@ -462,7 +474,21 @@ jobs:
   # service's own validation, the real 409-skip and .snupkg symbol delivery are exercised for
   # real exactly once, at 6.3.
   publish-nuget:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_to_nuget && github.ref == 'refs/heads/main'
+    # Two ways in, and the difference between them is who decided, not what is checked:
+    #
+    #   - a published release — the automatic path. release-please tagged a version, so that
+    #     version ships without anyone remembering to do anything.
+    #   - a manual dispatch with the input set — the escape hatch, for re-running a push that died
+    #     partway (`--skip-duplicate` makes that safe) or for shipping a tag whose release event
+    #     was missed. Dispatch it against the TAG, not against main: `--ref v1.2.3`. On main,
+    #     GitVersion derives a prerelease from the commits since the tag, and the guard below
+    #     stops it — deliberately, and this is the mistake it exists to catch.
+    #
+    # Both paths run the full matrix and pack-validate on that exact commit first (`needs:`), and
+    # both refuse a prerelease.
+    if: >-
+      github.event_name == 'release' ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish_to_nuget)
     # Both gating jobs must be green on this exact commit before anything reaches nuget.org: the
     # full test matrix, and the validation that packs and rehearses the push. A dispatch with the
     # input set runs them all; this job refuses to start until they pass.
@@ -492,8 +518,8 @@ jobs:
       # Character-identical to pack-validate's derive step, for the same reason as the pack
       # step below: the version 6.3 publishes must be derived by a command that has run green
       # on every push since Phase 4.1. On the release commit — tagged vX.Y.Z by release-please,
-      # see release-please.yml — GitVersion returns the tag's stable version; on every dispatch
-      # before that it returns a prerelease, which nuget.org would list as such.
+      # see release-please.yml — GitVersion returns the tag's stable version; anywhere else it
+      # returns a prerelease, which the guard below refuses rather than ships.
       - name: Derive the package version
         shell: bash
         run: |
@@ -505,6 +531,24 @@ jobs:
           fi
           echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
           echo "packing as $version"
+
+      # nuget.org never forgets a published version, and it never stops listing one either: an
+      # accidental 1.0.2-preview.3 is permanent, shows up in every "include prerelease" search for
+      # this package forever, and cannot be corrected — only unlisted. This repository publishes
+      # stable versions only, so the run stops here rather than at the push.
+      #
+      # The mistake this catches is one command away at all times: dispatching against `main`
+      # instead of against the tag. main carries commits after the last tag, so GitVersion
+      # correctly derives a prerelease from it — 1.0.2-preview.3 three commits past v1.0.1 — and
+      # every step up to the push would have succeeded.
+      - name: Refuse to publish a prerelease
+        shell: bash
+        run: |
+          if [[ "$PACKAGE_VERSION" == *-* ]]; then
+            echo "::error::Refusing to publish '$PACKAGE_VERSION': it is a prerelease, and this repository ships stable versions only. GitVersion returns a stable version only on a tagged commit, so dispatch this workflow against the tag — gh workflow run ci.yml --ref v1.2.3 -f publish_to_nuget=true — not against main. See docs/reference/ci.md."
+            exit 1
+          fi
+          echo "$PACKAGE_VERSION is stable; continuing to pack and push."
 
       # Character-identical to pack-validate's pack step, so the packages pushed are packed by a
       # command that has run green on every push since Phase 4.1.
