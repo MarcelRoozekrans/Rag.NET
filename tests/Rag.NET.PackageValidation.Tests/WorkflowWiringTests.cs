@@ -148,15 +148,19 @@ public sealed class WorkflowWiringTests
     }
 
     [Fact]
-    public void TheReleaseWorkflowIsGatedAndItsGateIsWrittenDown()
+    public void TheReleaseWorkflowTracksMainAndOnlyEverProposes()
     {
-        // release-please is the one genuinely unexercised path Phase 4.1 ships: its only
-        // observable effects — a release PR, a tag, a GitHub release — ARE the release, so
-        // unlike the push there is no local-feed rehearsal to run on every push. What this
-        // repository's history demands for such a path (nightly.yml failing on its first-ever
-        // run; the OCR test that is not skipped but not compiled) is that the gate be named,
-        // its condition stated, its procedure documented — and pinned, so it cannot drift or
-        // be deleted while looking wired.
+        // release-please WAS the one genuinely unexercised path this repository shipped: its only
+        // observable effects — a release PR, a tag, a GitHub release — ARE the release, so unlike
+        // the nuget.org push there was no local-feed rehearsal to run. **It executed for real on
+        // 2026-09-15**, producing PR #639, the v1.0.0 tag and the GitHub release, so that residual
+        // is discharged.
+        //
+        // The pinning stays, for the reason it was written: what this repository's history demands
+        // of a release path (nightly.yml failing on its first-ever run; the OCR test that is not
+        // skipped but not compiled) is that its wiring cannot drift or be deleted while still
+        // looking wired. Having run once does not make it self-checking — it runs a handful of
+        // times a year, so drift has months to go unnoticed between executions.
         var root = ProducedPackageTests.FindRepositoryRoot();
         var workflow = Path.Combine(root, ".github", "workflows", "release-please.yml");
 
@@ -168,10 +172,22 @@ public sealed class WorkflowWiringTests
 
         var commands = ReadWorkflowCommands(workflow);
 
-        // The condition: manual dispatch only, on main. A push trigger would open a release PR
-        // on every merge, months before 6.3 decides the version.
-        Assert.Contains("on: workflow_dispatch:", commands, StringComparison.Ordinal);
-        Assert.DoesNotContain("push:", commands, StringComparison.Ordinal);
+        // THIS ASSERTION WAS INVERTED ON 2026-09-15, deliberately. It used to require
+        // `DoesNotContain("push:")`, because before v1.0.0 a push trigger would have proposed a
+        // release nobody had asked for, months before Phase 6.3 chose the first version. 6.3 has
+        // now executed: v1.0.0 is tagged and published, so that condition cannot be violated
+        // again and the restriction protecting it has expired. From 1.0.0 the release PR tracks
+        // main continuously. Recorded here rather than silently flipped, because a guard that
+        // reverses without explanation is indistinguishable from one somebody disabled.
+        Assert.Contains("push:", commands, StringComparison.Ordinal);
+        Assert.Contains("branches: [main]", commands, StringComparison.Ordinal);
+
+        // Dispatch is KEPT alongside the push trigger — for re-running after a flake, and for
+        // the case a push event was never delivered. The documented procedure still names it.
+        Assert.Contains("workflow_dispatch:", commands, StringComparison.Ordinal);
+
+        // Still never runs off main, and still never runs from a pull request: a release
+        // proposed from a fork's branch is the shape this ref check exists to refuse.
         Assert.DoesNotContain("pull_request:", commands, StringComparison.Ordinal);
         Assert.DoesNotContain("schedule:", commands, StringComparison.Ordinal);
         Assert.Contains(
@@ -192,6 +208,28 @@ public sealed class WorkflowWiringTests
             "gh workflow run release-please.yml --ref main",
             documented,
             StringComparison.Ordinal);
+    }
+
+    /// <summary>Proposing a release and publishing one stay two separate human decisions.</summary>
+    [Fact]
+    public void TheReleaseWorkflowCannotPublish()
+    {
+        // This is the assertion that makes the push trigger safe. release-please now runs on
+        // every merge to main, so if it could publish, a single merge would put packages on
+        // nuget.org with nobody deciding. It cannot: the tag it creates is inert until
+        // publish-nuget in ci.yml is dispatched with publish_to_nuget=true.
+        //
+        // Pinned separately from the trigger test because it answers a different question.
+        // The trigger test asks "does it still only ever propose"; this asks "and is proposing
+        // still incapable of shipping". Enabling the push trigger changed the first answer and
+        // must never change the second.
+        var root = ProducedPackageTests.FindRepositoryRoot();
+        var commands = ReadWorkflowCommands(
+            Path.Combine(root, ".github", "workflows", "release-please.yml"));
+
+        Assert.DoesNotContain("nuget push", commands, StringComparison.Ordinal);
+        Assert.DoesNotContain("publish_to_nuget", commands, StringComparison.Ordinal);
+        Assert.DoesNotContain("NUGET_API_KEY", commands, StringComparison.Ordinal);
     }
 
     [Fact]

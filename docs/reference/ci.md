@@ -996,33 +996,49 @@ succeeded: a bare `git commit` may have no UTF-8-aware locale set at all, and `b
 characters such as em dashes. If the probe comes back wrong, the hook **refuses to run at all**
 rather than risk a false rejection that would look like the guard working correctly.
 
-### The gated release
+### The release, and the gate that was removed on purpose
 
-The `release-please.yml` workflow is fully wired and, unlike the push, **cannot be rehearsed**:
-its only observable effects — a release pull request, a `vX.Y.Z` tag, a GitHub release — are
-the release itself. It is the one genuinely unexercised path Phase 4.1 ships, recorded to the
-same standard as the push gate rather than left unstated:
+**Until v1.0.0 this workflow was `workflow_dispatch`-only, and that restriction is gone.** It
+existed so that nothing would propose a release before Phase 6.3 chose the first version.
+**6.3 executed on 2026-09-15** — `v1.0.0` is tagged and 73 packages are on nuget.org — so the
+condition the gate protected cannot be violated again, and the gate was removed rather than left
+in place as ceremony.
 
 | | |
 |---|---|
 | **Name** | `release-please`, the workflow in `.github/workflows/release-please.yml` |
-| **Condition** | a manual `workflow_dispatch` on `main` — no push trigger, so nothing proposes a release before 6.3 asks for one |
-| **Satisfied by** | the procedure below, runnable by any maintainer; Phase 6.3 executes it |
+| **Trigger** | `push` to `main`, plus `workflow_dispatch` for re-runs. Never `pull_request`, and the job still refuses any ref but `main` |
+| **What it can do** | propose. It opens and updates a release pull request, and creates the tag once that PR is merged |
+| **What it cannot do** | publish. The tag is inert until `publish-nuget` is dispatched separately with `publish_to_nuget=true` |
+
+From 1.0.0 the release pull request tracks `main` continuously: every merge updates its changelog
+and its proposed version, so the next release is one merge away rather than a procedure somebody
+has to remember. **Two independent human decisions still stand between a merge and a package on
+nuget.org** — merging the release PR, and dispatching the publish.
+
+`WorkflowWiringTests` pins both halves, in two separate tests: that the push trigger is present and
+the ref check intact, and that no `nuget push`, `publish_to_nuget` or `NUGET_API_KEY` ever appears
+in this workflow. The second is what makes the first safe — release-please now runs on every merge,
+so if it could publish, one merge would ship packages with nobody deciding.
 
 ```bash
-# The release PR: release-please reads the conventional commits since the last release and
-# opens a PR proposing the version they imply. The user merges it, like every PR here.
+# Normally nothing needs running: a merge to main updates the release PR by itself, and merging
+# that PR creates the tag. Dispatch is for re-running after a flake, or when a push event was
+# never delivered.
 gh workflow run release-please.yml --ref main
-# After that PR merges, dispatch again: release-please sees the merged release PR and creates
-# the GitHub release and the vX.Y.Z tag — the tag GitVersion derives the stable version from.
-gh workflow run release-please.yml --ref main
-# First release ever: release-please proposes 1.0.0 by default. If 6.3 decides otherwise,
-# override before the first dispatch with an empty commit carrying a Release-As footer:
-git commit --allow-empty -m "chore: set the release version" -m "Release-As: 0.9.0"
+# Overriding the version release-please infers — an empty commit carrying a Release-As footer,
+# merged before the release PR:
+git commit --allow-empty -m "chore: set the release version" -m "Release-As: 1.1.0"
 ```
 
-Then the release itself is the publish procedure above, dispatched on the tagged commit — where
-GitVersion returns the tag's stable version and `publish-nuget` packs and pushes exactly that.
+Publishing is the separate procedure above, dispatched on the tagged commit — where GitVersion
+returns the tag's stable version and `publish-nuget` packs and pushes exactly that.
+
+> **Historical note, kept because the reasoning still applies to the next gate.** This one was
+> recorded to the same standard as the push gate — named, condition stated, satisfiable by a
+> documented procedure — precisely so that removing it would be a decision somebody had to make
+> and justify, rather than something that drifted. That is what happened: the gate came off on the
+> day its condition expired, with the guard inverted in the same change rather than deleted.
 
 **The release pull request arrives with no checks on it, and that is a property of GitHub rather
 than a misconfiguration.** Events triggered by the built-in `GITHUB_TOKEN` do not start workflow
