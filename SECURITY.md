@@ -4,12 +4,15 @@
 
 | Version | Supported |
 |---|---|
-| 0.1.0 | ✅ the only published release |
-| < 0.1.0 | ❌ never published |
+| 1.0.0 | ✅ current release |
+| 0.1.0 | ❌ superseded by 1.0.0 |
 
-Rag.NET is **pre-1.0**. There is one published version, `0.1.0`, across 71 packages on nuget.org.
-Fixes ship in the next release rather than as backports — there is no branch to backport to, and
-saying so is more useful than implying a support matrix that does not exist yet.
+**Rag.NET reached 1.0.0 on 2026-09-15**, across 73 packages on nuget.org. `0.1.0` was the only
+earlier release and is not supported.
+
+Fixes ship in the next release rather than as backports — there is no maintenance branch, and saying
+so is more useful than implying a support matrix that does not exist. If that changes, this table
+changes with it.
 
 ## Reporting a vulnerability
 
