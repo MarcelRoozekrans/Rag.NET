@@ -136,7 +136,7 @@ HTML parsing and DOM traversal for `HtmlDocumentParser`. Produces a typed DOM fr
 
 ### DocumentFormat.OpenXml
 
-**Used in:** `Rag.NET.Parsers.Word`, `Rag.NET.Parsers.Excel`, `Rag.NET.Parsers.PowerPoint`
+**Used in:** `Rag.NET.Parsers.Office`
 
 Microsoft's official Open XML SDK for reading `.docx`, `.xlsx`, and `.pptx` files without requiring Office to be installed. Used to extract text, heading levels, and page/sheet structure from Office documents.
 
