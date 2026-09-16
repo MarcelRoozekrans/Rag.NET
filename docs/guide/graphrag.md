@@ -489,6 +489,52 @@ GraphRAG is the most expensive ingestion strategy — LLM calls per chunk:
 
 Entities, relationships, and community reports are stored as additional embedded chunks. Typical overhead: 20-50% more vectors depending on entity density.
 
+## Mind-Map Extraction
+
+Mind-map extraction is the other thing `Rag.NET.GraphRag` does. Where entity extraction builds a
+flat graph of who-relates-to-what across the corpus, `UseMindMapExtraction()` builds a
+*hierarchical* concept tree for one document in a single LLM call — the shape you would draw on a
+whiteboard to explain what the document is about.
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseMindMapExtraction(o =>
+    {
+        o.ExtractAtIngestion = true;    // default is false — see below
+        o.MaxDepth = 3;
+        o.ChatClient = cheapModel;      // optional; falls back to the registered IChatClient
+    }));
+```
+
+The result is a `MindMapNode` — `(Title, Summary, Children)`, recursive. When an `IGraphStore` is
+registered, nodes are persisted as `GraphEntity` rows with `Type = "mind_map_node"`, so they sit
+alongside the entity graph rather than in a store of their own.
+
+The behaviour is placed into ingestion directly after `ChunkSanitiserBehavior`, which is
+deliberate: extraction reads the same sanitised text that gets embedded and stored, so a
+[prompt-injection payload](security.md) stripped from a chunk cannot reach the extraction call
+either.
+
+### `ExtractAtIngestion` defaults to `false`
+
+Calling `UseMindMapExtraction()` alone changes nothing observable. The behaviour is placed in the
+pipeline, but it passes documents straight through until `ExtractAtIngestion` is set — because
+`MindMapExtractor` is also registered for callers who want to extract on demand rather than on
+every ingest, and an extra LLM call per document is not something to turn on by implication.
+
+That property is now the only thing between the call and a working extraction. It used to be worse:
+the behaviour was registered and placed in no pipeline at all, so the call was a silent no-op with
+no property to find (#191). Mind-map extraction was the worst of the three cases that issue
+covered, because `UseRaptor` and `UseGraphRag` at least had guide pages where the missing step
+could have been described, and this had none.
+
+### Cost
+
+One LLM call per document, on top of whatever entity extraction costs. `MaxDepth` bounds the tree
+but not the call — the model is asked for the whole tree at once — so the spend is roughly
+document count × one completion, and `ChatClient` is there so that completion can come from a
+cheaper model than the one answering queries.
+
 ## Standalone Graph Library
 
 `Rag.NET.Graph` is usable independently — no Rag.NET dependency required:

@@ -64,6 +64,55 @@ var result = await pipeline.RetrieveAsync(query, new RetrievalOptions { UseMulti
 services.AddRagNet(rag => rag.UseMultiQueryRetrieval(o => o.VariantCount = 5));
 ```
 
+## Contextual Compression
+
+HyDE and MultiQuery change *which* chunks come back. Contextual compression changes *what is in
+them*: each retrieved chunk is reduced to the part that bears on the question, before it reaches
+the model. A 2,000-character chunk that answers the question in one sentence costs the same
+context as one that answers it throughout, and compression is how you stop paying for the
+difference.
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseContextualCompression(o =>
+    {
+        o.Strategy = ContextualCompressionStrategy.Extractive;   // default
+        o.KeepTopSentences = 3;
+    }));
+```
+
+| Strategy | How | Cost |
+|---|---|---|
+| `Extractive` (default) | Ranks the chunk's sentences by embedding similarity to the query and keeps the best | Embedding calls only, no LLM |
+| `Abstractive` | Rewrites each chunk against the query, in parallel | One LLM call per chunk per query |
+
+Exactly one stopping criterion must be set — `KeepTopSentences` or `MaxTokensPerChunk` — and
+`UseContextualCompression` validates that at registration rather than letting an unbounded
+compressor through. If both are set, `KeepTopSentences` wins.
+
+### It only affects `AskAsync` unless you ask for more
+
+`UseContextualCompression` compresses what the answer engine sees. A caller using `RetrieveAsync`
+directly still gets full chunks, which is the right default — a retrieval API that silently
+returned truncated text would be surprising.
+
+To compress there too:
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseContextualCompression(o => o.KeepTopSentences = 3)
+    .UseContextualCompressionInRetrieval());
+```
+
+This inserts `ContextualCompressionRetrievalBehavior` after reranking and before any retrieval
+guard, so compression sees the final ranked set but nothing downstream filters on text that has
+already been cut. It requires `UseContextualCompression` to have been called first.
+
+Compression is lossy by construction. `RagResponse.Sources` reflects the post-compression text,
+so if an answer is missing a detail you expected, compare `CompressedText` against `Chunk.Text`
+before assuming retrieval missed it — [the retrieval guide](guide/retrieval.md#when-the-answer-says-it-cannot-find-something)
+covers that diagnosis.
+
 ## Using Both Together
 
 HyDE and MultiQuery can be combined:

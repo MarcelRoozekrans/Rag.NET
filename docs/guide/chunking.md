@@ -406,3 +406,57 @@ Unknown extensions fall back to generic code separators (`\n\n` → `\n` → spa
 - Uses heuristic string matching — it is not a parser. A `\ndef ` separator will split at any string starting with that pattern, including comments or strings containing `def `.
 - Overlap is typically 0 for code. Set `ChunkingOptions.Overlap = 0` explicitly (default is 50 characters).
 - For C# specifically, the Roslyn-based chunker (`Rag.NET.Chunking.CSharp`) produces semantically richer chunks with namespace, type, and member metadata.
+
+## Domain-specific templates (`Rag.NET.Chunking.Templates`)
+
+Everything above splits text by shape — characters, tokens, headings, embedding distance. A
+template splits it by *what the document is*. A contract has clauses, a book has chapters and
+front matter you do not want to retrieve, an academic paper has an abstract worth keeping and a
+reference list that is noise. The templates encode that.
+
+```bash
+dotnet add package Rag.NET.Chunking.Templates
+```
+
+| Call | Shape it assumes | What it does beyond the base strategy |
+|---|---|---|
+| `UseLegalChunking()` | Numbered clauses and sub-clauses | Clause-pattern heading detection; `clause` metadata per chunk; `MaxDepth` 3 |
+| `UseBookChunking()` | Chapters, with front and back matter | Drops the table of contents and index, keeps the foreword by default; `chapter` metadata; `MaxDepth` 2 |
+| `UseAcademicPaperChunking()` | Abstract, sections, references | Keeps the abstract, drops the reference list, both switchable; `section` metadata |
+| `UseQAPairsChunking()` | A CSV or spreadsheet of question/answer rows | One chunk per pair, via its own parser; `QuestionColumn` / `AnswerColumn` / `SkipHeader` |
+| `UseEmailChunking()` | Headers, body, attachments | One chunk per part, with `part=headers\|body\|attachment:<name>`; headers and attachments each switchable |
+| `UseResumeChunking()` | A CV | Section extraction via an `IChatClient`, so it costs an LLM call per document |
+
+Every template stamps `template` metadata on each chunk alongside its own keys, so a filter can
+narrow to one template's output without knowing how the corpus was ingested.
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseLegalChunking(o => o.MaxDepth = 4));
+
+services.AddRagNet(rag => rag
+    .UseAcademicPaperChunking(o =>
+    {
+        o.IncludeAbstract   = true;   // default
+        o.IncludeReferences = true;   // default is false
+    }));
+```
+
+### Three things that catch people out
+
+**Four of the six ignore `ChunkingOptions`.** Legal, Book and Academic Paper delegate to
+`HierarchicalMergerChunkingStrategy`, where a chunk is one heading subtree and is unbounded above
+— `MaxChunkSize` and `Overlap` have no effect. Q&A Pairs is a pass-through that emits one chunk
+per row. If a clause runs to eight pages, you get an eight-page chunk, and
+[the context budget](retrieval.md#bounding-the-context-by-length-not-just-by-count) is what stops
+it reaching the model.
+
+**`UseEmailChunking()` registers no parser.** It consumes `DocumentSection`s and does not care
+what produced them. For `.eml` and `.msg` ingestion, add `Rag.NET.Parsers.Email` and call
+`AddEmailParser()` alongside it. An earlier version bundled its own email parser, which collided
+with the real one over `message/rfc822`; the duplicate was retired rather than the collision
+worked around, so this is a breaking change from that behaviour.
+
+**`UseResumeChunking()` needs a chat client.** It resolves `IChatClient` from the container unless
+`ResumeChunkingOptions.ChatClient` is set, and `Prompt` is the extraction prompt if you want to
+change what it pulls out. It is the only template with a per-document LLM cost.

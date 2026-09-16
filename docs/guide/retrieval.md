@@ -788,10 +788,11 @@ Cross-encoder reranking rescores search results by running each (query, passage)
 
 ### Enabling
 
-Register a reranker on the builder. The core package provides `UseReranking<T>()` for custom implementations. The `Rag.NET.Reranking.Onnx` package provides a local ONNX model implementation:
+Register a reranker on the builder. Each reranking package has its own call, and the core package
+provides `UseReranking<T>()` for implementations you write yourself:
 
 ```csharp
-// Option 1: ONNX cross-encoder (local model)
+// Option 1: ONNX cross-encoder — Rag.NET.Reranking.Onnx, local model, no API key
 services.AddRagNet(b => b
     .UseOnnxReranking(o =>
     {
@@ -799,11 +800,22 @@ services.AddRagNet(b => b
         o.MaxLength = 512;
     }));
 
-// Option 2: A custom IReranker implementation — Rag.NET.Reranking.Cohere's CohereReranker
-// shown here; write your own IReranker for other providers (e.g. Jina)
+// Option 2: Cohere Rerank — Rag.NET.Reranking.Cohere, hosted, billed per search
 services.AddRagNet(b => b
-    .UseReranking<CohereReranker>());
+    .UseCohereReranking(o =>
+    {
+        o.ApiKey = configuration["CohereApiKey"]!;
+    }));
+
+// Option 3: your own IReranker — for a provider neither package covers (e.g. Jina)
+services.AddRagNet(b => b
+    .UseReranking<MyReranker>());
 ```
+
+Use each package's own call rather than `UseReranking<CohereReranker>()`: the generic overload
+registers the type but not its options, and `CohereReranker`'s constructor requires a
+`CohereRerankerOptions` with a non-empty `ApiKey`, so the reranker fails to resolve.
+`UseCohereReranking` registers the options and then makes the same generic call itself.
 
 ### How it works
 

@@ -68,7 +68,13 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Integration',
-      items: ['guide/mcp', 'guide/mediator', 'guide/extending'],
+      items: [
+        'guide/mcp',
+        'guide/api',
+        'guide/cli',
+        'guide/mediator',
+        'guide/extending',
+      ],
     },
     {
       type: 'category',
