@@ -812,6 +812,35 @@ services.AddRagNet(b => b
     .UseReranking<MyReranker>());
 ```
 
+An `IReranker` scores each `(query, passage)` pair and hands back the results with their new
+scores; `RelevanceScore` is on the reranker's own scale and is not comparable with
+`SearchResult.Score`, because reranking replaces the vector store's ordering rather than refining
+it:
+
+```csharp
+public sealed class MyReranker : IReranker
+{
+    public Task<IReadOnlyList<RerankResult>> RerankAsync(
+        string query,
+        IReadOnlyList<SearchResult> results,
+        CancellationToken cancellationToken = default)
+    {
+        IReadOnlyList<RerankResult> reranked = results
+            .Select(r => new RerankResult
+            {
+                SearchResult  = r,
+                RelevanceScore = ScorePair(query, r.Chunk.Text),
+            })
+            .OrderByDescending(r => r.RelevanceScore)
+            .ToList();
+
+        return Task.FromResult(reranked);
+    }
+
+    private static double ScorePair(string query, string passage) => 0.0;
+}
+```
+
 Use each package's own call rather than `UseReranking<CohereReranker>()`: the generic overload
 registers the type but not its options, and `CohereReranker`'s constructor requires a
 `CohereRerankerOptions` with a non-empty `ApiKey`, so the reranker fails to resolve.

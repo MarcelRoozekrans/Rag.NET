@@ -558,16 +558,44 @@ compiler cannot enforce:
 - **Cancellation must be honoured throughout**, including while polling a long-running operation
   on a remote service. An engine that ignores the token makes ingestion uncancellable.
 
+```csharp
+public sealed class MyOcrEngine(HttpClient http) : IDocumentOcrEngine
+{
+    public async ValueTask<DocumentOcrResult> RecognizeAsync(
+        Stream pdf, CancellationToken cancellationToken)
+    {
+        // `pdf` is borrowed — read it, do not dispose it, do not keep it.
+        using var content = new StreamContent(pdf);
+        using var response = await http
+            .PostAsync("recognize", content, cancellationToken)
+            .ConfigureAwait(false);
+
+        response.EnsureSuccessStatusCode();
+
+        var pages = await response.Content
+            .ReadFromJsonAsync<Dictionary<int, string>>(cancellationToken)
+            .ConfigureAwait(false) ?? [];
+
+        // PageText is keyed by 1-based page number, matching PdfPig's Page.Number, so the parser
+        // pairs a recognised page with the page it parsed without translating. Pages the engine
+        // produced no text for may simply be omitted — the parser keeps its own extraction there.
+        // BilledPages is the page count the provider charged for, which is the whole submitted
+        // document, not the pages that needed OCR; the cost ledger reports what this returns.
+        return new DocumentOcrResult(pages, BilledPages: pages.Count);
+    }
+}
+```
+
 Register it with an instance or a factory:
 
 ```csharp
 services.AddRagNet(rag => rag
     .AddPdfParser()
-    .UseDocumentOcrEngine(new TextractOcrEngine(client)));
+    .UseDocumentOcrEngine(new MyOcrEngine(httpClient)));
 
 services.AddRagNet(rag => rag
     .AddPdfParser()
-    .UseDocumentOcrEngine(sp => new TextractOcrEngine(sp.GetRequiredService<IAmazonTextract>())));
+    .UseDocumentOcrEngine(sp => new MyOcrEngine(sp.GetRequiredService<HttpClient>())));
 ```
 
 Registration throws if the Tesseract per-image fallback is already configured. The two are
