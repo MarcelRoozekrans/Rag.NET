@@ -65,6 +65,7 @@ Grouped the way [the sidebar](https://marcelroozekrans.github.io/Rag.NET/) is.
 
 | Page | What it covers |
 |------|---------------|
+| [Microsoft Foundry](guide/foundry.md) | Wiring the cloud endpoint, Foundry Local and the catalogue models, and what each one pins |
 | [MCP Server](guide/mcp.mdx) | Exposing a pipeline to an LLM agent as MCP tools, and the four deployment patterns |
 | [REST and gRPC](guide/api.md) | Serving a pipeline over HTTP or gRPC, with clients that implement `IRagPipeline` |
 | [CLI (`ragnet`)](guide/cli.md) | Ingesting and querying a configured pipeline from the shell |
