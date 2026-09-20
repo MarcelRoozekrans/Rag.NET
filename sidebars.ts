@@ -69,6 +69,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Integration',
       items: [
+        'guide/foundry',
         'guide/mcp',
         'guide/api',
         'guide/cli',

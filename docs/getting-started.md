@@ -53,7 +53,7 @@ services.AddEmbeddingGenerator(
     new OpenAIClient("sk-...").GetEmbeddingClient("text-embedding-3-small").AsIEmbeddingGenerator());
 ```
 
-Any provider that implements `IChatClient` and `IEmbeddingGenerator<string, Embedding<float>>` works — Ollama, Azure OpenAI, and others are drop-in replacements.
+Any provider that implements `IChatClient` and `IEmbeddingGenerator<string, Embedding<float>>` works — Ollama, Azure OpenAI, and others are drop-in replacements. For Microsoft Foundry — the cloud endpoint, Foundry Local, or the non-OpenAI catalogue models — this step is written out in full in [Microsoft Foundry](guide/foundry.md).
 
 ## 3. Configure Rag.NET
 
