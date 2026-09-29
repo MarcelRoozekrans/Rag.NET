@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.3](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.2...v1.0.3) (2026-09-29)
+
+
+### Bug Fixes
+
+* **deps:** update dependency haystack-ai to v3.2.0 ([#718](https://github.com/MarcelRoozekrans/Rag.NET/issues/718)) ([573f839](https://github.com/MarcelRoozekrans/Rag.NET/commit/573f839a171bbe17a3524715ec0a42ff9ad38b78))
+* **deps:** update dependency llama-index-core to v0.14.25 ([#701](https://github.com/MarcelRoozekrans/Rag.NET/issues/701)) ([b679d64](https://github.com/MarcelRoozekrans/Rag.NET/commit/b679d642383a5142e1af3d66200c2ef1e2551568))
+
 ## [1.0.2](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.1...v1.0.2) (2026-09-16)
 
 
