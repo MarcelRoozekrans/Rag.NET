@@ -421,7 +421,7 @@ wheels = [
 
 [[package]]
 name = "haystack-ai"
-version = "3.1.1"
+version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "docstring-parser" },
@@ -443,9 +443,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b7/de/a50c3a6661711cd5970e68074855cf0555e5b253ba49947a7b77f882beb2/haystack_ai-3.1.1.tar.gz", hash = "sha256:24620964a2c62befb1cbe3eebf16438ab9877ac8bad3831cd20391e9a44b1cf2", size = 513768, upload-time = "2026-09-03T09:27:45.121Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2f/98/8170941cc940a8419ad4aa60545659ae04862150591e6943b8f710b9389d/haystack_ai-3.2.0.tar.gz", hash = "sha256:e4e9297616c5d398b3180c5e63baa0181c9a60924afc9752fbe4d8f667ce02be", size = 530295, upload-time = "2026-09-24T10:49:25.35Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a7/b3/c6a85235472c562183cd005636bbb75fb7e6bccd03b08ca735aaab684623/haystack_ai-3.1.1-py3-none-any.whl", hash = "sha256:b52802f01d431a2c1c945a8c564fcc84ff9a364e697e6be5b9079db729e4b076", size = 713760, upload-time = "2026-09-03T09:27:43.312Z" },
+    { url = "https://files.pythonhosted.org/packages/62/5e/b6e8bec88ecc1cbdd1b818c69fcd5b00fcee56179833ba31da8023b37bef/haystack_ai-3.2.0-py3-none-any.whl", hash = "sha256:072c7e5e06b20d2287db43525335804f457840b5277b301b7e7d4c7469266b2b", size = 734273, upload-time = "2026-09-24T10:49:23.742Z" },
 ]
 
 [[package]]
@@ -729,7 +729,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "haystack-ai", specifier = "==3.1.1" },
+    { name = "haystack-ai", specifier = "==3.2.0" },
     { name = "langchain-core", specifier = "==1.6.3" },
     { name = "langchain-text-splitters", specifier = "==1.1.2" },
     { name = "llama-index-core", specifier = "==0.14.25" },
