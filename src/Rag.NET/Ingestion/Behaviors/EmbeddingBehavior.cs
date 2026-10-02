@@ -7,7 +7,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Ingestion.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(EmbeddingBehavior))]
 public sealed class EmbeddingBehavior : IIngestionBehavior
 {
     /// <summary>Fallback when the caller supplied no <see cref="IngestionContext.Options"/>.</summary>

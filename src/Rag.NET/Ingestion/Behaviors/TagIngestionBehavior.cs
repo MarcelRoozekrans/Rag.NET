@@ -12,7 +12,7 @@ namespace Rag.NET.Ingestion.Behaviors;
 /// them in <see cref="ITagIndex"/> for use by <see cref="Rag.NET.Retrieval.TagRetriever"/>.
 /// No-op when <see cref="ITagIndex"/> is not registered.
 /// </summary>
-[Singleton]
+[Singleton(As = typeof(TagIngestionBehavior))]
 public sealed class TagIngestionBehavior : IIngestionBehavior
 {
     [Inject(Required = false)] public ITagIndex? TagIndex { get; set; }

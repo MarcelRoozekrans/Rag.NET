@@ -6,7 +6,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(MmrBehavior))]
 public sealed class MmrBehavior : IRetrievalBehavior
 {
     [Inject] public IEmbeddingGenerator<string, Embedding<float>> Embedder { get; set; } = null!;

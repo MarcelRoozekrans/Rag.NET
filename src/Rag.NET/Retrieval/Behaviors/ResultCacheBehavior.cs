@@ -7,7 +7,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(ResultCacheBehavior))]
 public sealed class ResultCacheBehavior : IRetrievalBehavior
 {
     [Inject(Required = false)] public HybridCache? Cache { get; set; }

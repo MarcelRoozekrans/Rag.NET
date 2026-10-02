@@ -6,7 +6,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(ParentDocumentRetrievalBehavior))]
 public sealed class ParentDocumentRetrievalBehavior : IRetrievalBehavior
 {
     private const int OverFetchMultiplier = 3;

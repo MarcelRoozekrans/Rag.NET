@@ -6,7 +6,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Ingestion.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(ParseBehavior))]
 public sealed class ParseBehavior : IIngestionBehavior
 {
     [Inject] public IEnumerable<IDocumentParser> Parsers { get; set; } = null!;

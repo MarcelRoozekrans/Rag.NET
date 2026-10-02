@@ -7,7 +7,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(HydeBehavior))]
 public sealed class HydeBehavior : IRetrievalBehavior
 {
     [Inject(Required = false)] public IHypotheticalDocumentGenerator? HydeGenerator { get; set; }

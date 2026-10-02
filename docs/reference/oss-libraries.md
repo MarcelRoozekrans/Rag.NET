@@ -21,7 +21,7 @@ All ZeroAlloc packages are authored and maintained by the same team as Rag.NET. 
 Property injection for singleton pipeline behaviors. Annotate a property with `[Inject]` and the source generator wires it to the DI container at build time — no reflection, no constructor parameter lists that grow with every new dependency.
 
 ```csharp
-[Singleton]
+[Singleton(As = typeof(EmbeddingBehavior))]
 public sealed class EmbeddingBehavior : IIngestionBehavior
 {
     [Inject] public IEmbeddingGenerator<string, Embedding<float>> EmbeddingGenerator { get; set; } = null!;
@@ -31,6 +31,8 @@ public sealed class EmbeddingBehavior : IIngestionBehavior
 ```
 
 **Why not constructor injection?** Behavior classes are singletons assembled by a pipeline builder. Optional services (loggers, feature-specific clients) would require nullable constructor parameters for every behavior. Property injection with `Required = false` expresses optionality at the declaration site without cluttering constructors.
+
+**Why `As` the class itself?** The pipeline builders resolve each behavior by its concrete type, in their own order. A bare `[Singleton]` would also register the behavior under `IIngestionBehavior`, an entry nothing resolves, and ZeroAlloc.Inject reports ZAI021 for the second behavior that does so.
 
 ---
 
