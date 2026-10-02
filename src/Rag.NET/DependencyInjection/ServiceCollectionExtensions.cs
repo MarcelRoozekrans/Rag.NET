@@ -25,7 +25,7 @@ public static class ServiceCollectionExtensions
         Action<RetrievalPipelineBuilder>? retrieval = null)
     {
         // ZeroAlloc.Inject-generated: registers IDocumentParser (Text, Markdown),
-        // IChunkingStrategy (Recursive), all [Singleton] behaviors,
+        // IChunkingStrategy (Recursive), all [Singleton] behaviors by their concrete type,
         // PipelineIngestor (as IIngestor), PipelineRetriever (as IRetriever).
         services.AddRagNETServices();
         DeclareBuiltInParserClaims(services);

@@ -14,7 +14,7 @@ namespace Rag.NET.Ingestion.Behaviors;
 /// store is not <see cref="ISparseSearchable"/>. Degraded, never broken: generation failure
 /// is logged and ingestion proceeds dense-only.
 /// </summary>
-[Singleton]
+[Singleton(As = typeof(SparseEmbeddingBehavior))]
 public sealed class SparseEmbeddingBehavior : IIngestionBehavior
 {
     [Inject] public IVectorStore VectorStore { get; set; } = null!;

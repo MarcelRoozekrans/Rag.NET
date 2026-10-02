@@ -38,7 +38,7 @@ namespace Rag.NET.Retrieval.Behaviors;
 /// <c>RagResponse.Sources</c> by someone already suspicious.
 /// </para>
 /// </summary>
-[Singleton]
+[Singleton(As = typeof(ContextBudgetBehavior))]
 public sealed class ContextBudgetBehavior : IRetrievalBehavior
 {
     /// <summary>

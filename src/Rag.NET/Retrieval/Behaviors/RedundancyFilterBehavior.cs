@@ -6,7 +6,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(RedundancyFilterBehavior))]
 public sealed class RedundancyFilterBehavior : IRetrievalBehavior
 {
     [Inject] public IEmbeddingGenerator<string, Embedding<float>> Embedder { get; set; } = null!;

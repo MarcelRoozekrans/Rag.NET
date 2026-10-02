@@ -4,7 +4,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(RetrievalGuardBehavior))]
 public sealed class RetrievalGuardBehavior : IRetrievalBehavior
 {
     // Note: [Inject] rather than [Inject(Required = false)] — ZeroAlloc.Inject does not

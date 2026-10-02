@@ -6,7 +6,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(MultiQueryBehavior))]
 public sealed class MultiQueryBehavior : IRetrievalBehavior
 {
     [Inject(Required = false)] public IQueryExpander? QueryExpander { get; set; }

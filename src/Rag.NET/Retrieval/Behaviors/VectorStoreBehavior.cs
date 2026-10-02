@@ -6,7 +6,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(VectorStoreBehavior))]
 public sealed class VectorStoreBehavior : IRetrievalBehavior
 {
     [Inject] public IVectorStore VectorStore { get; set; } = null!;

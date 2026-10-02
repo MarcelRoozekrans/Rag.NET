@@ -23,7 +23,7 @@ namespace Rag.NET.Retrieval.Behaviors;
 /// remaining arms are fused; dense-only results are returned when both fail. The native path
 /// has no fallback — a failed native hybrid call throws, like a failed dense search.
 /// </summary>
-[Singleton]
+[Singleton(As = typeof(EnsembleBehavior))]
 public sealed class EnsembleBehavior : IRetrievalBehavior
 {
     [Inject] public IVectorStore VectorStore { get; set; } = null!;

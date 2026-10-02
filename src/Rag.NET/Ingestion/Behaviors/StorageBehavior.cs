@@ -12,7 +12,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Ingestion.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(StorageBehavior))]
 public sealed class StorageBehavior : IIngestionBehavior
 {
     [Inject] public IVectorStore VectorStore { get; set; } = null!;

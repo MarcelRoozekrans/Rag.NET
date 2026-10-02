@@ -17,7 +17,7 @@ namespace Rag.NET.Retrieval.Behaviors;
 /// first will throw at <c>[Inject]</c>-resolution time because <see cref="IContextualCompressor"/>
 /// is not registered.
 /// </remarks>
-[Singleton]
+[Singleton(As = typeof(ContextualCompressionRetrievalBehavior))]
 public sealed class ContextualCompressionRetrievalBehavior : IRetrievalBehavior
 {
     [Inject] public IContextualCompressor Compressor { get; set; } = null!;
