@@ -5,7 +5,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(RerankingBehavior))]
 public sealed class RerankingBehavior : IRetrievalBehavior
 {
     [Inject(Required = false)] public IReranker? Reranker { get; set; }

@@ -4,7 +4,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Ingestion.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(MetadataBehavior))]
 public sealed class MetadataBehavior : IIngestionBehavior
 {
     public async ValueTask<IngestionResult> HandleAsync(

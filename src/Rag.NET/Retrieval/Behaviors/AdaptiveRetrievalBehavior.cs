@@ -5,7 +5,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(AdaptiveRetrievalBehavior))]
 public sealed class AdaptiveRetrievalBehavior : IRetrievalBehavior
 {
     [Inject(Required = false)] public IChatClient? ChatClient { get; set; }

@@ -4,7 +4,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(LostInTheMiddleBehavior))]
 public sealed class LostInTheMiddleBehavior : IRetrievalBehavior
 {
     public async ValueTask<IReadOnlyList<SearchResult>> HandleAsync(

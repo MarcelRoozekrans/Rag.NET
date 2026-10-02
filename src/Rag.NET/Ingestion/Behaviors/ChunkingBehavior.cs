@@ -4,7 +4,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Ingestion.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(ChunkingBehavior))]
 public sealed class ChunkingBehavior : IIngestionBehavior
 {
     public async ValueTask<IngestionResult> HandleAsync(

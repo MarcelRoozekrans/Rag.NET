@@ -14,7 +14,7 @@ using ZeroAlloc.Specification;
 
 namespace Rag.NET.SelfQuery;
 
-[Singleton]
+[Singleton(As = typeof(SelfQueryBehavior))]
 public sealed class SelfQueryBehavior : IRetrievalBehavior
 {
     [Inject(Required = false)] public IChatClient? ChatClient { get; set; }

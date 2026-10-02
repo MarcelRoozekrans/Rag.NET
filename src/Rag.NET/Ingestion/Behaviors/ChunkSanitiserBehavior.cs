@@ -4,7 +4,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Ingestion.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(ChunkSanitiserBehavior))]
 public sealed class ChunkSanitiserBehavior : IIngestionBehavior
 {
     // Note: [Inject] rather than [Inject(Required = false)] — ZeroAlloc.Inject does not

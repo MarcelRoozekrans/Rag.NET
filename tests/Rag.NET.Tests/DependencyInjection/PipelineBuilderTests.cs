@@ -178,6 +178,44 @@ public class PipelineBuilderTests
         Assert.Same(fromDelegate, provider.GetRequiredService<IngestionPipelineBuilder>());
     }
 
+    /// <summary>
+    /// The builders resolve each behaviour by its concrete type, so that is the only service type
+    /// a built-in behaviour is registered under. Registering them under the pipeline interface as
+    /// well created a second, unused singleton of whichever behaviour came first, and ZeroAlloc.Inject
+    /// 1.10 rejects the remaining same-interface registrations with ZAI021.
+    /// </summary>
+    [Fact]
+    public void AddRagNet_RegistersBuiltInBehavioursByConcreteTypeOnly()
+    {
+        var services = new ServiceCollection();
+        services.AddRagNet();
+
+        var registered = services.Select(static d => d.ServiceType).ToHashSet();
+        var defaults = new IngestionPipelineBuilder().GetBehaviorTypes()
+            .Concat(new RetrievalPipelineBuilder().GetBehaviorTypes());
+
+        Assert.All(defaults, type => Assert.Contains(type, registered));
+        Assert.DoesNotContain(typeof(IIngestionBehavior), registered);
+        Assert.DoesNotContain(typeof(IRetrievalBehavior), registered);
+    }
+
+    /// <summary>
+    /// A behaviour the caller registered before <c>AddRagNet</c> is the one the pipeline uses:
+    /// the generated registration only adds the concrete type when it is absent.
+    /// </summary>
+    [Fact]
+    public void AddRagNet_KeepsABehaviourTheCallerRegisteredFirst()
+    {
+        var mine = new FilterBehavior();
+        var services = new ServiceCollection();
+        services.AddSingleton(mine);
+        services.AddRagNet();
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Same(mine, provider.GetRequiredService<FilterBehavior>());
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private sealed class NoOpIngestionBehavior : IIngestionBehavior

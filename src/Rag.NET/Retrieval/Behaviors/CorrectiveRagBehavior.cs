@@ -7,7 +7,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(CorrectiveRagBehavior))]
 public sealed class CorrectiveRagBehavior : IRetrievalBehavior
 {
     [Inject(Required = false)] public IChatClient? ChatClient { get; set; }

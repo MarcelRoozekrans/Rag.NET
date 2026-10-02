@@ -3,7 +3,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Retrieval.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(FilterBehavior))]
 public sealed class FilterBehavior : IRetrievalBehavior
 {
     public async ValueTask<IReadOnlyList<SearchResult>> HandleAsync(

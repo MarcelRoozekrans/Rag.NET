@@ -6,7 +6,7 @@ using ZeroAlloc.Inject;
 
 namespace Rag.NET.Ingestion.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(ParentDocumentIngestionBehavior))]
 public sealed class ParentDocumentIngestionBehavior : IIngestionBehavior
 {
     [Inject(Required = false)] public IParentChunkStore? ParentStore { get; set; }

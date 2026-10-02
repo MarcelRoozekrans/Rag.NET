@@ -31,7 +31,7 @@ namespace Rag.NET.Ingestion.Behaviors;
 /// See <c>docs/plans/2026-07-27-service-bus-ingestion-design.md</c> §1.
 /// </para>
 /// </summary>
-[Singleton]
+[Singleton(As = typeof(OverwriteBehavior))]
 public sealed class OverwriteBehavior : IIngestionBehavior
 {
     [Inject] public IVectorStore VectorStore { get; set; } = null!;

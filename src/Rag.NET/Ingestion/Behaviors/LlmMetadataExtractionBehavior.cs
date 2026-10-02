@@ -10,7 +10,7 @@ using ZeroAlloc.Results;
 
 namespace Rag.NET.Ingestion.Behaviors;
 
-[Singleton]
+[Singleton(As = typeof(LlmMetadataExtractionBehavior))]
 public sealed class LlmMetadataExtractionBehavior : IIngestionBehavior
 {
     [Inject(Required = false)] public IChatClient? ChatClient { get; set; }
