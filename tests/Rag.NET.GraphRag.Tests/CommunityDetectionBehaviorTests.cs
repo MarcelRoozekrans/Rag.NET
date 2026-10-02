@@ -464,12 +464,13 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
             {
                 await _gate.Task.WaitAsync(GateTimeout, cancellationToken);
             }
-            catch (TimeoutException)
+            catch (TimeoutException ex)
             {
                 throw new TimeoutException(
                     $"Only {now} report request(s) were ever in flight together; the behavior " +
                     $"was configured for {expectedInFlight} and this stub waits for that many " +
-                    "before answering any. A sequential loop deadlocks here by design.");
+                    "before answering any. A sequential loop deadlocks here by design.",
+                    ex);
             }
             finally
             {
