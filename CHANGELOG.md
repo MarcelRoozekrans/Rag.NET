@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.6](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.5...v1.0.6) (2026-10-04)
+
+
+### Bug Fixes
+
+* **deps:** update dependency haystack-ai to v3.3.0 ([#736](https://github.com/MarcelRoozekrans/Rag.NET/issues/736)) ([0399fb1](https://github.com/MarcelRoozekrans/Rag.NET/commit/0399fb1806f90b7ceb9ccbe5bab35737ff964ce8))
+
 ## [1.0.5](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.4...v1.0.5) (2026-10-02)
 
 
