@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.7](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.6...v1.0.7) (2026-10-07)
+
+
+### Bug Fixes
+
+* **deps:** update dependency langchain-text-splitters to v1.1.3 ([#740](https://github.com/MarcelRoozekrans/Rag.NET/issues/740)) ([a3e022a](https://github.com/MarcelRoozekrans/Rag.NET/commit/a3e022a76f9f8a310e39351355e9538a6100b7a8))
+
 ## [1.0.6](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.5...v1.0.6) (2026-10-04)
 
 
