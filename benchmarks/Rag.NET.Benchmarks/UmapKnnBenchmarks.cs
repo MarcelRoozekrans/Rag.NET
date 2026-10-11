@@ -24,7 +24,6 @@ namespace Rag.NET.Benchmarks;
 /// </para>
 /// </remarks>
 [MemoryDiagnoser]
-[System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "HLQ013:Use foreach loop", Justification = "Index-based access required for array initialization")]
 [SimpleJob(RunStrategy.Monitoring, launchCount: 1, warmupCount: 1, iterationCount: 3)]
 public class UmapKnnBenchmarks
 {

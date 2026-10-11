@@ -98,8 +98,7 @@ internal static class AbStatistics
         if (deltas.IsEmpty)
             return null;
 
-        // `ref readonly` rather than a copy: the span enumerator hands out references, and HLQ004
-        // objects to silently copying each element out of one.
+        // `ref readonly` rather than a copy: the span enumerator hands out references.
         var sum = 0.0;
         foreach (ref readonly var delta in deltas)
             sum += delta;
@@ -187,7 +186,7 @@ internal static class AbStatistics
             return null;
 
         // One buffer for the whole run, filled in place through a `ref` enumerator so the outer
-        // loop writes without indexing (HLQ013). The inner draw stays indexed: it is random access,
+        // loop writes without indexing. The inner draw stays indexed: it is random access,
         // which no enumerator expresses, and ZA0601 rules out a LINQ mean.
         var means = new double[resamples];
         foreach (ref var mean in means.AsSpan())

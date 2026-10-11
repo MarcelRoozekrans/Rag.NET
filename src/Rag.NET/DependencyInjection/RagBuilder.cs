@@ -91,7 +91,7 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
 
         // Projected by index into an array, the shape PipelineIngestor.MapFailures uses:
         // ValidationFailure is a non-readonly struct, so enumerating it by value trips EPS06
-        // on the hidden copy, while a bare indexed loop over the span trips HLQ013.
+        // on the hidden copy.
         var failures = result.Failures;
         var described = new string[failures.Length];
         for (var i = 0; i < failures.Length; i++)

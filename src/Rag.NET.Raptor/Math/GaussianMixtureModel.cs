@@ -1,8 +1,5 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Rag.NET.Raptor.Math;
 
-[SuppressMessage("Performance", "HLQ013:Use foreach loop", Justification = "Index-based access required for matrix operations")]
 internal static class GaussianMixtureModel
 {
     /// <summary>

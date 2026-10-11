@@ -17,10 +17,8 @@ namespace Rag.NET.Parsers.Email;
 /// </summary>
 internal sealed class LazyDocumentParsers(IServiceProvider provider) : IEnumerable<IDocumentParser>
 {
-#pragma warning disable HLQ006 // interface implementation must return IEnumerator<T>; enumeration is rare (attachment dispatch only)
     public IEnumerator<IDocumentParser> GetEnumerator() =>
         provider.GetServices<IDocumentParser>().GetEnumerator();
-#pragma warning restore HLQ006
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

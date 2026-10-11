@@ -76,13 +76,11 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         var allRelationships = new List<GraphRelationship>();
         var weights = new RelationshipWeightAudit();
 
-#pragma warning disable HLQ012 // CollectionsMarshal.AsSpan cannot cross await boundaries
         for (var i = 0; i < ctx.Chunks.Count; i++)
         {
             await ExtractFromChunkAsync(
                 client, ctx.Chunks[i], documentId, allEntities, allRelationships, weights, ct).ConfigureAwait(false);
         }
-#pragma warning restore HLQ012
 
         activity?.SetTag("graphrag.entity.count", allEntities.Count);
         activity?.SetTag("graphrag.relationship.count", allRelationships.Count);

@@ -9,8 +9,7 @@ internal static partial class OnnxEmbeddingsLog
         ILogger logger, int modelVocabularySize, int tokenizerVocabularySize, string vocabPath);
 
     // Parameters stay in the same order as the placeholders: when they diverge, the LoggerMessage
-    // generator emits a state type whose GetEnumerator returns a reference type, which HLQ006
-    // rejects — and warnings are errors here.
+    // generator emits a state type instead of a LoggerMessage.Define call.
     [LoggerMessage(EventId = 1698418795, EventName = "batching_disabled_without_attention_mask", Level = LogLevel.Warning, Message = "The configured BatchSize ({ConfiguredBatchSize}) is reduced to 1 because the ONNX embedding model '{ModelPath}' declares no attention_mask input: without it the model would attend to the padding a batch requires, which no pooling choice can repair. Throughput will be lower; use an export that declares attention_mask to batch.")]
     internal static partial void BatchingDisabledWithoutAttentionMask(
         ILogger logger, int configuredBatchSize, string modelPath);

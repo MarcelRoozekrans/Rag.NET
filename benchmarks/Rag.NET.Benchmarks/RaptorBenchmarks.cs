@@ -15,7 +15,6 @@ namespace Rag.NET.Benchmarks;
 /// tree construction, and retrieval score adjustments.
 /// </summary>
 [MemoryDiagnoser]
-[System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "HLQ013:Use foreach loop", Justification = "Index-based access required for array initialization")]
 public class RaptorBenchmarks
 {
     private const int EmbeddingDimensions = 384;

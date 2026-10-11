@@ -234,9 +234,7 @@ public sealed class CommunityDetectionCostTests : IAsyncDisposable
             new GraphEntity("B3", "Org", "Company B3"), new GraphEntity("B4", "Org", "Company B4"),
         ]);
 
-        // Fixed bounds rather than group.Length, matching CommunityDetectionBehaviorTests: the
-        // Hyperlinq analyser (HLQ013) rejects indexed iteration expressed against an array's Length,
-        // and a pairwise clique needs the indices.
+        // A pairwise clique needs the indices.
         var relationships = new List<GraphRelationship>();
         string[] groupA = ["A1", "A2", "A3", "A4"];
         string[] groupB = ["B1", "B2", "B3", "B4"];

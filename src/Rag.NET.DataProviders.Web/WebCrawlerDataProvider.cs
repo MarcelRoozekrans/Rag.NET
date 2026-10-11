@@ -88,7 +88,7 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
     /// <summary>
     /// Tags for a crawled page. <c>depth</c> is the BFS distance from the seed (the seed itself
     /// is <c>"0"</c>), which lets a caller keep only shallow pages at query time. Built
-    /// synchronously — assembling the dictionary inside the async iterator would trip HLQ012.
+    /// synchronously, outside the async iterator.
     /// </summary>
     private static Dictionary<string, MetadataValue> BuildMetadata(string url, int depth)
     {

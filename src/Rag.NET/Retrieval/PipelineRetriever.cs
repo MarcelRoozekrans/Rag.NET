@@ -94,7 +94,7 @@ public sealed class PipelineRetriever : IRetriever
     /// <see cref="Models.ValidationFailure"/> the same way <c>PipelineIngestor.MapFailures</c>
     /// does: the span hoisted into a local, then an indexed loop into an array —
     /// <c>ValidationFailure</c> is a non-readonly struct, so enumerating the span by value
-    /// trips EPS06 and indexing the property result directly trips HLQ013.
+    /// trips EPS06.
     /// </summary>
     private static RagError? Validate(RetrievalOptions options)
     {

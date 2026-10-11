@@ -136,8 +136,7 @@ public sealed class SlackDataProvider : FileContentProviderBase
             (long)(double.Parse(ts, CultureInfo.InvariantCulture) * 1000)).UtcDateTime;
 
     /// <summary>
-    /// The day document's filterable fields. Built synchronously — a dictionary assembled inside
-    /// the async iterator above would trip HLQ012.
+    /// The day document's filterable fields. Built synchronously, outside the async iterator above.
     /// <para>
     /// Channel and date are <i>also</i> rendered into the Markdown heading: the body drives
     /// semantic recall, the tags drive filtering.

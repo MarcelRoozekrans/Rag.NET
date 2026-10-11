@@ -202,7 +202,7 @@ public sealed class TracingGuardAndSanitiserTests
     /// <summary>Chunk metadata the sanitisers under test do not read.</summary>
     /// <remarks>
     /// <see cref="ReadOnlyDictionary{TKey,TValue}"/> rather than a <see cref="Dictionary{TKey,TValue}"/>
-    /// assigned to the interface: the latter boxes its struct enumerator, which HLQ001 rejects.
+    /// assigned to the interface: the latter boxes its struct enumerator.
     /// </remarks>
     private static readonly IReadOnlyDictionary<string, MetadataValue> EmptyMetadata =
         ReadOnlyDictionary<string, MetadataValue>.Empty;
