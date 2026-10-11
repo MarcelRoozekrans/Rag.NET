@@ -37,9 +37,7 @@ public sealed class EpubDocumentParser(HtmlDocumentParser htmlParser) : IDocumen
 
         int sectionIndex = 0;
 
-#pragma warning disable HLQ012 // CollectionsMarshal.AsSpan cannot cross yield/await boundaries in async iterators
         foreach (var item in book.ReadingOrder ?? [])
-#pragma warning restore HLQ012
         {
             cancellationToken.ThrowIfCancellationRequested();
 

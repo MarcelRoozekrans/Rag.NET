@@ -61,12 +61,9 @@ internal static class HeadingTextSplitter
                 continue;
             }
 
-            // Indexed rather than foreach: HLQ012 forbids enumerating a List<T> here, and
-            // CollectionsMarshal.AsSpan cannot be used in an iterator because a ref struct may not
-            // live across a yield.
-            for (var i = 0; i < split.Count; i++)
+            foreach (var part in split)
             {
-                yield return split[i];
+                yield return part;
             }
         }
     }

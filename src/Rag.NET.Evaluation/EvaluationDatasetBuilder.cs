@@ -73,9 +73,6 @@ public sealed class EvaluationDatasetBuilder(
         // Every generation is started at once and the ceiling — not this loop — decides how many
         // are in flight. Starting only MaxConcurrentCalls of them here would leave the semaphore
         // with nothing to do and put the bound in two places.
-        //
-        // Indexed rather than foreach: HLQ012 objects to enumerating a List<T> directly, and the
-        // sampling loop below is written the same way.
         var tasks = new List<Task<GenerationResult>>(sampled.Count);
         for (var i = 0; i < sampled.Count; i++)
             tasks.Add(GenerateSampleAsync(caller, sampled[i], options.Mode, cancellationToken));

@@ -144,8 +144,6 @@ public sealed class SynonymMap : IDisposable
         return count;
     }
 
-#pragma warning disable HLQ001 // IReadOnlySet<T> is the correct abstraction here; boxing the empty sentinel is a one-time, non-hot-path cost
     private static readonly IReadOnlySet<string> EmptySet =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-#pragma warning restore HLQ001
 }

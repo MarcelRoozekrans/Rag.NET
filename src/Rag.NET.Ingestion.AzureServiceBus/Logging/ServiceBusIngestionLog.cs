@@ -9,8 +9,7 @@ namespace Rag.NET.Ingestion.AzureServiceBus.Logging;
 /// Every message lists its placeholders in the same order as the method's parameters, and must
 /// keep doing so. When the two orders agree the generator emits a
 /// <c>LoggerMessage.Define&lt;…&gt;</c> call; when they disagree it emits a private state struct
-/// whose <c>GetEnumerator</c> returns a reference type, which trips HLQ006 — an error in this
-/// repo. Reordering the words is free; a pragma would not be.
+/// instead, which is slower and allocates. Reordering the words is free.
 /// </remarks>
 internal static partial class ServiceBusIngestionLog
 {

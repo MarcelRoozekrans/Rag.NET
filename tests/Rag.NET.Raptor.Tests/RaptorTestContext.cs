@@ -103,7 +103,6 @@ internal sealed class RaptorTestContext
         }
     }
 
-#pragma warning disable HLQ013 // Use foreach — need index-based assignment
     // Offset per topic rather than uniform over [0,1): the chunk text already claims to be
     // "about topic {i % 3}", and an embedding that ignores the topic contradicts the text it is
     // supposed to embed. It also carries no cluster structure whatsoever, so once SelectK stopped
@@ -117,7 +116,6 @@ internal sealed class RaptorTestContext
             embedding[j] = topic + (float)(rng.NextDouble() * 0.1);
         return embedding;
     }
-#pragma warning restore HLQ013
 
     internal void SetupEmbedder(int dims)
     {

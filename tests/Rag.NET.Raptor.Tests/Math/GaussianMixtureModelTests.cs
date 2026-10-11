@@ -1,10 +1,8 @@
-using System.Diagnostics.CodeAnalysis;
 using Rag.NET.Raptor.Math;
 using Xunit;
 
 namespace Rag.NET.Raptor.Tests.Math;
 
-[SuppressMessage("Performance", "HLQ013:Use foreach loop", Justification = "Index-based access required to populate jagged test fixtures")]
 public class GaussianMixtureModelTests
 {
     [Fact]

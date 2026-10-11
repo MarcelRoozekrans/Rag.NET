@@ -183,7 +183,7 @@ internal static class Umap
         }
 
         // Span, and foreach by ref: Span's enumerator yields ref float, so the in-place rewrite is
-        // expressible as a foreach — which is what HLQ013 asks for over an index loop.
+        // expressible as a foreach.
         foreach (ref float distance in heapDistances.AsSpan(0, count))
         {
             distance = MathF.Sqrt(distance);

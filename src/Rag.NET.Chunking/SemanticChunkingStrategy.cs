@@ -138,10 +138,8 @@ public sealed partial class SemanticChunkingStrategy(
 
         var documentId = sectionList[0].DocumentId;
         int chunkIndex = 0;
-#pragma warning disable HLQ012 // Plain foreach is clearer here; no perf-critical path
         foreach (var group in groups)
         {
-#pragma warning restore HLQ012
             cancellationToken.ThrowIfCancellationRequested();
             var text = string.Join("\n\n", group.ConvertAll(static s => s.Text));
             // GroupCharLength uses " " as separator (1 char) but we join with "\n\n" (2 chars).
@@ -298,9 +296,7 @@ public sealed partial class SemanticChunkingStrategy(
             var current = new List<T>();
             int currentLen = 0;
 
-#pragma warning disable HLQ012 // Plain foreach is clearer here; no perf-critical path
             foreach (var sentence in groups[i])
-#pragma warning restore HLQ012
             {
                 var sentenceLength = lengthOf(sentence);
                 var addedLen = currentLen == 0 ? sentenceLength : sentenceLength + 1; // +1 for space join
