@@ -7,8 +7,7 @@ namespace Rag.NET.Benchmarks.Quality;
 /// </summary>
 /// <remarks>
 /// Parameters stay in the same order as their placeholders: when the two diverge, the
-/// <c>LoggerMessage</c> generator emits a state type whose <c>GetEnumerator</c> returns a reference
-/// type, HLQ006 rejects it, and warnings are errors here.
+/// <c>LoggerMessage</c> generator emits a state type instead of a <c>LoggerMessage.Define</c> call.
 /// </remarks>
 internal static partial class BeirLog
 {

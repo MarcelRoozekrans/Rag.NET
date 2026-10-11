@@ -79,7 +79,6 @@ public class RaptorTreeRebuilderTests
         Assert.Equal(callsAfterRebuild, _helpers.ChatClient.ReceivedCalls().Count());
     }
 
-#pragma warning disable HLQ013 // Use foreach — need index-based assignment
     // Four tight, well-separated blobs rather than twenty uniform random vectors. Uniform noise
     // has no cluster structure, so once SelectK stopped isolating every point into its own
     // component (#333) BIC read all twenty as a single Gaussian and the rebuild produced no
@@ -100,7 +99,6 @@ public class RaptorTreeRebuilderTests
 
         return leaves;
     }
-#pragma warning restore HLQ013
 
     /// <summary>
     /// A rebuild replaces the tree's BM25 postings as well as its vectors.

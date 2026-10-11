@@ -59,9 +59,7 @@ public sealed class SharePointDataProvider : FileContentProviderBase
             if (page is null)
                 yield break;
 
-#pragma warning disable HLQ012 // CollectionsMarshal.AsSpan cannot cross yield/await boundaries in async iterators
             foreach (var item in page.Value ?? [])
-#pragma warning restore HLQ012
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (item.File is null) continue;
@@ -96,9 +94,7 @@ public sealed class SharePointDataProvider : FileContentProviderBase
         var page = firstResult.Value;
         while (page is not null)
         {
-#pragma warning disable HLQ012 // CollectionsMarshal.AsSpan cannot cross yield/await boundaries in async iterators
             foreach (var item in page.Value ?? [])
-#pragma warning restore HLQ012
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (item.File is null || item.Deleted is not null) continue;

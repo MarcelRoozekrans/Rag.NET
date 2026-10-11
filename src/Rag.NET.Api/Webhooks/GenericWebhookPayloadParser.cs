@@ -52,9 +52,7 @@ public sealed class GenericWebhookPayloadParser : IWebhookPayloadParser
             parsed.Add(job);
         }
 
-#pragma warning disable HLQ001 // IReadOnlyList<T> is the contract; boxing the enumerator is a per-request, non-hot-path cost
         jobs = parsed;
-#pragma warning restore HLQ001
         return true;
     }
 

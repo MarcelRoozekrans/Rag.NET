@@ -51,8 +51,8 @@ public sealed class LocalSearchContextBuilder
         if (!result.IsValid)
         {
             // Projected by index into an array: ValidationFailure is a non-readonly struct, so
-            // enumerating the span by value trips EPS06 and indexing the property result directly
-            // trips HLQ013 — same shape as RagBuilderExtensions.ThrowIfInvalid.
+            // enumerating the span by value trips EPS06 on the hidden copy — same shape as
+            // RagBuilderExtensions.ThrowIfInvalid.
             var failures = result.Failures;
             var described = new string[failures.Length];
             for (var i = 0; i < failures.Length; i++)
