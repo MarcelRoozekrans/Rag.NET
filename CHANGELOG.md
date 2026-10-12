@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.11](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.10...v1.0.11) (2026-10-12)
+
+
+### Bug Fixes
+
+* **deps:** update dependency tokenizers to v0.23.3 ([#780](https://github.com/MarcelRoozekrans/Rag.NET/issues/780)) ([7bf8073](https://github.com/MarcelRoozekrans/Rag.NET/commit/7bf8073ad07cb5cc772e85d338867c491940320b))
+
 ## [1.0.10](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.9...v1.0.10) (2026-10-12)
 
 
