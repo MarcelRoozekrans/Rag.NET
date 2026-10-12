@@ -112,6 +112,6 @@
     <PackageVersion Include="ZeroAlloc.Specification" Version="1.3.0" />
     <PackageVersion Include="ZeroAlloc.Validation" Version="1.7.8" />
     <PackageVersion Include="ZeroAlloc.Validation.Generator" Version="1.7.8" />
-    <PackageVersion Include="ZeroAlloc.ValueObjects" Version="2.1.1" />
+    <PackageVersion Include="ZeroAlloc.ValueObjects" Version="2.2.0" />
   </ItemGroup>
 </Project>
