@@ -142,6 +142,39 @@ public sealed class ProducedPackageTests
     }
 
     [Fact]
+    public void EveryPackageCarriesTheBrandIcon()
+    {
+        // Same two halves as the readme above — PackageIcon names a file, packing it is a separate
+        // act — plus the bytes: the packed icon must be assets/brand/icon-128.png, the raster
+        // docs/design/LOGO.md records, not some other file that happens to be called icon.png.
+        var expected = File.ReadAllBytes(
+            Path.Combine(FindRepositoryRoot(), "assets", "brand", "icon-128.png"));
+
+        foreach (var package in DiscoverPackages())
+        {
+            var name = Path.GetFileName(package);
+            var icon = ReadNuspecElement(package, "icon");
+            Assert.True(
+                string.Equals(icon, "icon.png", StringComparison.Ordinal),
+                $"{name} names '{icon}' as its icon, expected 'icon.png' from Directory.Build.props.");
+
+            using var archive = ZipFile.OpenRead(package);
+            var entry = archive.GetEntry("icon.png");
+            if (entry is null)
+            {
+                Assert.Fail($"{name} names icon.png but does not contain it.");
+            }
+
+            using var stream = entry.Open();
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            Assert.True(
+                PackageReadmeTests.BytesEqual(buffer.ToArray(), expected),
+                $"{name} packs an icon.png that is not assets/brand/icon-128.png.");
+        }
+    }
+
+    [Fact]
     public void EveryPackageDescribesItself()
     {
         var descriptions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

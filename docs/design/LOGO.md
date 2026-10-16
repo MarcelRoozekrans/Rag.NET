@@ -356,7 +356,7 @@ This paragraph ships with the template and is not edited or removed.
 | Trademark clearance | **not performed** — see above |
 | Declared face installed where the sheet renders | **no** — open `docs/design/logo-contact-sheet.html` (slot C is the wordmark) in Chromium on a Windows machine, where Bahnschrift ships, and fill the seven type rows: the wordmark fit, `φ_ink`, `φ_ctr`, `k`'s type-side cap minimum, both lockup width minimums, and the lockup composition. `k` itself is already recorded. |
 | Icon raster set exported | done — librsvg 2.60, from verdigris-resolved copies; see Raster set |
-| Step 8 — wire into the project | not run — offered separately; see Project files replaced |
+| Step 8 — wire into the project | done at the maintainer's request — see Project files replaced |
 
 ## Asset manifest
 
@@ -402,7 +402,22 @@ This paragraph ships with the template and is not edited or removed.
 
 ### Project files replaced
 
-`n/a — Step 8 was not run`
+Nothing was replaced: the repository had no icon to replace. Every slot below was **added** at the maintainer's explicit request, which goes beyond SKILL.md Step 8's replace-only default; each addition is listed so it can be reverted on its own.
+
+| Path | Change | Source |
+|---|---|---|
+| `Directory.Build.props` | `PackageIcon` = `icon.png`, and an item packing `assets/brand/icon-128.png` as `icon.png` into every package; the comment that said "No PackageIcon: the repository has no icon asset" now names the raster | `icon-128.png` |
+| `tests/Rag.NET.PackageValidation.Tests/ProducedPackageTests.cs` | `EveryPackageCarriesTheBrandIcon`: every produced package names `icon.png` and carries it byte-identical to `assets/brand/icon-128.png` | — |
+| `README.md` | `![Rag.NET](assets/brand/icon-192.png)` under the title — a verdigris raster reads on GitHub light and dark (4.35:1 on both) | `icon-192.png` |
+| `static/img/favicon.ico` | new; `docusaurus.config.ts` already named `img/favicon.ico`, which did not exist | copy of `assets/brand/favicon.ico` |
+| `static/img/logo.svg` | new; the docs navbar logo, wired as `navbar.logo` | verdigris-resolved copy of `logo-mark.svg` (`currentColor` → `#2C8775`), because the navbar shows it in an `<img>` |
+
+| Field | Record |
+|---|---|
+| Files replaced | none — five files changed or added, above |
+| Every replaced path was tracked and clean before the write | n/a — nothing was replaced; `Directory.Build.props`, `README.md`, `docusaurus.config.ts` and `ProducedPackageTests.cs` were tracked and clean at `fb25440a` |
+| Slots found but skipped | none |
+| Verified | `dotnet pack` of the solution produced 73 packages, each with `icon.png` (3384 bytes); `Rag.NET.PackageValidation.Tests` 34 / 34 and `Rag.NET.RepoConventions.Tests` 129 / 129 pass; `npm run build` emits `build/img/favicon.ico` and `build/img/logo.svg` |
 
 ## Structural self-verification (Step 7 item 3)
 

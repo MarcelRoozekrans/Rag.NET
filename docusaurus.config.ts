@@ -89,6 +89,13 @@ const config: Config = {
   themeConfig: {
     navbar: {
       title: 'Rag.NET',
+      // A verdigris-resolved copy of assets/brand/logo-mark.svg: the navbar shows it through an
+      // <img>, where currentColor has no inherited colour and would render black. See
+      // docs/design/LOGO.md § Misuse.
+      logo: {
+        alt: 'Rag.NET',
+        src: 'img/logo.svg',
+      },
       items: [
         {
           type: 'docSidebar',
