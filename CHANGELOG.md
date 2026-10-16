@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.13...v1.1.0) (2026-10-16)
+
+
+### Features
+
+* **brand:** add the Rag.NET brand mark, a sibling of Minos.NET ([#798](https://github.com/MarcelRoozekrans/Rag.NET/issues/798)) ([93c6241](https://github.com/MarcelRoozekrans/Rag.NET/commit/93c62412b1f6e7d8eb3bcbc3ec9078199804d3ac))
+
+
+### Bug Fixes
+
+* **release:** derive the tag's version when the publish checks out the tag ([#801](https://github.com/MarcelRoozekrans/Rag.NET/issues/801)) ([6e55122](https://github.com/MarcelRoozekrans/Rag.NET/commit/6e551226053e0e1ab72d96eee8cdd0b76967744f))
+
 ## [1.0.13](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.12...v1.0.13) (2026-10-16)
 
 
