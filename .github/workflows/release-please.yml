@@ -21,18 +21,20 @@ name: Release Please
 #
 #   1. THE USER STILL MERGES THE RELEASE PR. This workflow only ever proposes. A release PR
 #      sitting open is not a release, and nothing here can make it one.
-#   2. PUBLISHING IS STILL SEPARATELY GATED. The tag this workflow creates does not publish
-#      anything — `publish-nuget` in ci.yml needs its own workflow_dispatch with
-#      publish_to_nuget=true. Two independent human decisions still stand between a merge and
-#      a package on nuget.org.
+#   2. THIS WORKFLOW CANNOT PUBLISH. It creates the tag and the GitHub release; the release's
+#      `published` event starts ci.yml, whose publish-nuget job ships the tag once the full
+#      matrix and the pack rehearsal are green on that commit. Merging the release PR is the
+#      one human decision, and nothing in this file can push a package.
 #
 # workflow_dispatch is kept alongside the push trigger, for re-running after a flake and for
 # the case a push event was never delivered.
 #
 # ONE GITHUB BEHAVIOUR WORTH KNOWING: events raised by the built-in GITHUB_TOKEN do not start
-# workflow runs, which is the rule that stops workflows triggering themselves forever. It does
-# not affect the flow here, because a human merges the release PR and a human's merge is a real
-# push. It IS why the release PR itself arrives with no CI on it — see docs/reference/ci.md.
+# workflow runs, which is the rule that stops workflows triggering themselves forever. With that
+# token the release PR arrived with no CI on it, AND the GitHub release it created raised no
+# `published` event, so ci.yml's publish-nuget never ran: v1.0.1 through v1.0.12 were tagged and
+# released but never reached nuget.org. release-please therefore runs on a token from the release
+# bot GitHub App, whose events start workflows like anyone's — see docs/reference/ci.md.
 on:
   # Keeps the release PR current with main. Merging that PR is itself a push to main, so the
   # same trigger then creates the tag and the GitHub release — no second dispatch needed.
@@ -52,6 +54,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # Pushes and PRs made with GITHUB_TOKEN trigger no workflows, so bot PRs
+      # never got their required checks. A token from the release bot GitHub App
+      # acts as the App, and its pushes trigger CI like anyone else's.
+      - name: Mint a release bot token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.RELEASE_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+
       # release-type simple: the release PR maintains CHANGELOG.md and a version.txt, and
       # nothing in the build consumes either — GitVersion derives the build's version from
       # the tag this workflow creates, not from a file.
@@ -70,4 +85,5 @@ jobs:
       - name: Create or update the release pull request
         uses: googleapis/release-please-action@v5
         with:
+          token: ${{ steps.app-token.outputs.token }}
           release-type: simple
