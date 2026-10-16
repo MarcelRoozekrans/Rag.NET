@@ -221,7 +221,7 @@ public sealed partial class PackageReadmeTests
 
     // ---- Package reading ---------------------------------------------------------------------
 
-    private static bool BytesEqual(byte[] left, byte[] right)
+    internal static bool BytesEqual(byte[] left, byte[] right)
     {
         if (left.Length != right.Length)
         {

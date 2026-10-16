@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 368" role="img" aria-label="Rag.NET">
+  <!-- Stacked lockup, aspect 512:368 = 1.39:1 — the Minos.NET stacked artboard. The mark's artboard at x 128 ... 384
+       (every x coordinate of logo-mark.svg + 128, baked in; no transform), y 0 ... 256. Type: Bahnschrift 600, cap height 64
+       (font-size 89.04), letter-spacing 4.45 (t = 0.05), cap 272 ... 336: 32 below the mark's ink bottom 240.
+       text-anchor middle at x 256; the trailing tracking step puts the ink 2.23 left of centre — unmeasured, see LOGO.md.
+       k = 256 / 64 = 4. Not converted to outlines. -->
+  <!-- OPTICAL: slot edges · derived · the 40-wide slots are lines 20 either side of each diagonal; their meeting points (x + 128) with r 96 / r 72 fall off the grid -->
+  <!-- OPTICAL: inner ry 72.96 on the ring and the chunk · horizontal strokes read heavier · 24 x 0.96 = 23.04 at the top and bottom tangents; outer edges held -->
+  <path fill="currentColor"
+        d="M308.25 31.47A96 96 0 0 0 203.75 31.47L220.7 48.41A72 72.96 0 0 1 291.3 48.41Z
+           M336.53 91.75A96 96 0 1 1 175.47 91.75L192.79 109.07A72 72.96 0 1 0 319.21 109.07Z"/>
+  <text x="256" y="336" text-anchor="middle" font-family="Bahnschrift, 'DIN Alternate', 'Segoe UI', sans-serif" font-size="89.04"
+        font-weight="600" letter-spacing="4.45" fill="currentColor">Rag.NET</text>
+</svg>
