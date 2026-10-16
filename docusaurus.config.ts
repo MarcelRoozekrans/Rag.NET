@@ -66,9 +66,14 @@ const config: Config = {
           // three test files, the ROADMAP's historical entries and STATE — and those entries are
           // a log of what happened, not text to be rewritten when a file moves. The README still
           // links it as a repository document, which is what it now is.
+          //
+          // `design/**` holds the brand mark's working record — LOGO.md and its contact sheet, the
+          // measurements and critique the mark was signed off against. Same kind of thing as
+          // `plans/`: a record the project keeps against itself, not an answer to a reader.
           exclude: [
             'plans/**',
             'planning/**',
+            'design/**',
             'pre-push-review-*.md',
             'reference/features.md',
           ],

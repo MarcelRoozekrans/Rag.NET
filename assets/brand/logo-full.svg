@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 864 256" role="img" aria-label="Rag.NET">
+  <!-- Horizontal lockup, aspect 864:256 = 3.375:1. The mark at its own artboard, x 0 ... 256, geometry identical to logo-mark.svg.
+       Type: Bahnschrift 600, cap height 96 (font-size 133.57 = 96 / 0.71875), letter-spacing 6.68 (t = 0.05),
+       baseline 176 so the cap height 80 ... 176 is centred on 128. Anchor x 288. k = 256 / 96 = 2.67 — the Minos.NET lockup's numbers.
+       viewBox width 864 is from an estimated run width (~540); the composition check is UNRUN until rendered in Bahnschrift.
+       Not converted to outlines — see LOGO.md § Production handoff. -->
+  <!-- OPTICAL: slot edges · derived · the 40-wide slots are lines 20 either side of each diagonal; their meeting points with r 96 / r 72 fall off the grid -->
+  <!-- OPTICAL: inner ry 72.96 on the ring and the chunk · horizontal strokes read heavier · 24 x 0.96 = 23.04 at the top and bottom tangents; outer edges held -->
+  <path fill="currentColor"
+        d="M180.25 31.47A96 96 0 0 0 75.75 31.47L92.7 48.41A72 72.96 0 0 1 163.3 48.41Z
+           M208.53 91.75A96 96 0 1 1 47.47 91.75L64.79 109.07A72 72.96 0 1 0 191.21 109.07Z"/>
+  <text x="288" y="176" text-anchor="start" font-family="Bahnschrift, 'DIN Alternate', 'Segoe UI', sans-serif" font-size="133.57"
+        font-weight="600" letter-spacing="6.68" fill="currentColor">Rag.NET</text>
+</svg>
