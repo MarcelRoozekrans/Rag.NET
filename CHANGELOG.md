@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.13](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.12...v1.0.13) (2026-10-16)
+
+
+### Bug Fixes
+
+* **deps:** lift System.Security.Cryptography.Pkcs to the patched 10.0.13 ([#796](https://github.com/MarcelRoozekrans/Rag.NET/issues/796)) ([b823092](https://github.com/MarcelRoozekrans/Rag.NET/commit/b823092d7f37d86696edbfea83e55857ee3a293d))
+* **deps:** update dependency langchain-core to v1.6.10 ([#787](https://github.com/MarcelRoozekrans/Rag.NET/issues/787)) ([0519e9a](https://github.com/MarcelRoozekrans/Rag.NET/commit/0519e9af16476284845362bf4a060d6fae158aaa))
+
 ## [1.0.12](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.11...v1.0.12) (2026-10-15)
 
 

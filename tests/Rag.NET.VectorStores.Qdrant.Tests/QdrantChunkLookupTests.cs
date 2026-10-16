@@ -30,7 +30,10 @@ public class QdrantChunkLookupTests : IAsyncLifetime
 {
     private readonly IContainer _qdrant = new ContainerBuilder("qdrant/qdrant:latest")
         .WithPortBinding(6334, true)
-        .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Actix runtime found"))
+        // Wait for the gRPC listener, not "Actix runtime found": that line is the REST server on 6333
+        // and is logged 1-2 ms before gRPC on 6334 starts listening. A test that connected in the gap
+        // got "server did not complete the HTTP/2 handshake" on CI.
+        .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Qdrant gRPC listening on 6334"))
         .Build();
 
     private const string CollectionName = "lookup-collection";

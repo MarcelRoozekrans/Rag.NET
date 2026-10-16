@@ -1,5 +1,7 @@
 # Rag.NET
 
+![Rag.NET](assets/brand/icon-192.png)
+
 [![NuGet](https://img.shields.io/nuget/v/Rag.NET.svg?logo=nuget&label=Rag.NET)](https://www.nuget.org/packages/Rag.NET)
 [![Downloads](https://img.shields.io/nuget/dt/Rag.NET.svg?logo=nuget&label=downloads)](https://www.nuget.org/packages/Rag.NET)
 [![CI](https://img.shields.io/github/actions/workflow/status/MarcelRoozekrans/Rag.NET/ci.yml?branch=main&logo=github&label=build)](https://github.com/MarcelRoozekrans/Rag.NET/actions/workflows/ci.yml)

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Rag.NET">
+  <!-- Wordmark. Webfont: Bahnschrift 600, letter-spacing t = 0.05 — the Minos.NET wordmark's face, weight and tracking.
+       NOT converted to outlines — recorded as an un-performed step in LOGO.md's Production handoff; not a finished asset
+       anywhere the face is absent. Single text run; text-anchor start, x 32 and baseline y 144 on the grid (chosen, not measured).
+       font-size 47.5, letter-spacing 2.38: an ESTIMATE from Bahnschrift's advance widths, aiming the ink edge at 224.
+       The fit is UNRUN — Bahnschrift did not resolve on the machine that drew this; the contact sheet's fit row on a machine
+       where it does is the measurement. See LOGO.md § Type-specific records. -->
+  <text x="32" y="144" text-anchor="start" font-family="Bahnschrift, 'DIN Alternate', 'Segoe UI', sans-serif" font-size="47.5"
+        font-weight="600" letter-spacing="2.38" fill="currentColor">Rag.NET</text>
+</svg>
