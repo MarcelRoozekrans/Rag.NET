@@ -7,9 +7,10 @@ on:
     branches: [main]
 
   # What makes a tag reach nuget.org. release-please creates the tag AND a GitHub release when its
-  # pull request merges, and this fires on the release rather than on the tag push because
-  # `push: tags:` does not fire for a tag created by a GITHUB_TOKEN-authenticated action — which is
-  # exactly how release-please creates it, so the obvious trigger would be silently inert.
+  # pull request merges, and this fires on the release. That only works because release-please
+  # runs on the release bot GitHub App's token: an event created with the built-in GITHUB_TOKEN
+  # starts no workflow — a release as much as a tag push — and until the App token this trigger
+  # never fired once, so v1.0.1 through v1.0.12 were released on GitHub and never published.
   #
   # Before this existed, merging a release pull request tagged the commit, wrote the CHANGELOG and
   # published a GitHub release while shipping nothing: publishing needed a separate manual dispatch

@@ -292,9 +292,10 @@ public sealed class WorkflowWiringTests
         var root = ProducedPackageTests.FindRepositoryRoot();
         var commands = ReadWorkflowCommands(Path.Combine(root, ".github", "workflows", "ci.yml"));
 
-        // The trigger that makes a tag ship. `release: types: [published]` and not `push: tags:`:
-        // release-please creates the tag with a GITHUB_TOKEN-authenticated action, and GitHub does
-        // not fire tag-push workflows for those — the obvious trigger would be inert.
+        // The trigger that makes a tag ship: `release: types: [published]`. It fires because
+        // release-please runs on the release bot GitHub App's token. With the built-in
+        // GITHUB_TOKEN neither a tag push nor a release starts a workflow, which is why this
+        // trigger never fired from v1.0.1 to v1.0.12 and none of those versions reached nuget.org.
         Assert.Contains("release: types: [published]", commands, StringComparison.Ordinal);
 
         // THIS ASSERTION CHANGED ON 2026-09-16, deliberately, and is recorded rather than
