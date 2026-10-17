@@ -60,6 +60,12 @@
       "description": "Microsoft.Graph and Microsoft.Kiota.Abstractions must move together: Graph pins a Kiota major internally, so bumping Graph alone produces a PR that cannot restore. Renovate's first Graph v6 PR (#26) failed exactly this way with NU1605 on every project — Graph 6.2.0 wants Kiota >= 2.0.0 while the repository pinned 1.22.0.",
       "matchPackageNames": ["Microsoft.Graph", "Microsoft.Kiota.Abstractions"],
       "groupName": "microsoft-graph"
+    },
+    {
+      "description": "Microsoft.Testing.Extensions.CodeCoverage must move together with xunit.v3. CodeCoverage 18.1.0 and later need version 2 of Microsoft.Testing.Platform, while xunit.v3 3.x runs on version 1; CI coverage therefore pins CodeCoverage 18.0.6 next to xunit.v3 3.2.2 (2026-10-17, the Codecov rollout). Bumping CodeCoverage alone produces a PR whose test run cannot load the extension. separateMajorMinor is off so that the xunit.v3 4.x major and the matching CodeCoverage minor arrive in the same PR; being a major, that PR is not automerged.",
+      "matchPackageNames": ["xunit.v3", "xunit.v3.extensibility.core", "Microsoft.Testing.Extensions.CodeCoverage"],
+      "groupName": "xunit-v3-test-platform",
+      "separateMajorMinor": false
     }
   ]
 }
