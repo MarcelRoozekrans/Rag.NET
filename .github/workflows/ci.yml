@@ -273,7 +273,7 @@ jobs:
       # Both legs upload; Codecov merges them. The Docker tier adds its reports on Linux only.
       - name: Upload coverage to Codecov
         if: '!cancelled()'
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           use_oidc: true
           files: "tests/*/bin/Release/**/TestResults/*.cobertura.xml"
