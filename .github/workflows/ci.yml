@@ -80,6 +80,9 @@ jobs:
     # Generous for a run measured in minutes, and far below the 360-minute default. A Testcontainers
     # image pull that hangs otherwise burns six hours of runner time before anyone is told.
     timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write   # Codecov upload via OIDC, no token secret
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -168,6 +171,11 @@ jobs:
       # and was rejected: it pays a rebuild per project across 64 of them, and it repairs the
       # symptom by making the missing build happen silently instead of reporting it.
       - name: Test (fast tier)
+        # MSBuild reads the variable as the TestingPlatformCommandLineArguments property, which
+        # dotnet test hands to every test app: one Cobertura file per project lands next to its
+        # failure log under bin/Release, and Codecov merges them.
+        env:
+          TestingPlatformCommandLineArguments: --coverage --coverage-output-format cobertura --coverage-settings ${{ github.workspace }}/coverage.config.xml
         shell: bash
         run: |
           projects=$(grep -l 'Microsoft.NET.Test.Sdk' tests/*/*.csproj \
@@ -216,6 +224,11 @@ jobs:
       - name: Test (Docker tier)
         # Linux-only: Testcontainers uses Linux images. See the job-level comment.
         if: matrix.os == 'ubuntu-latest'
+        # MSBuild reads the variable as the TestingPlatformCommandLineArguments property, which
+        # dotnet test hands to every test app: one Cobertura file per project lands next to its
+        # failure log under bin/Release, and Codecov merges them.
+        env:
+          TestingPlatformCommandLineArguments: --coverage --coverage-output-format cobertura --coverage-settings ${{ github.workspace }}/coverage.config.xml
         shell: bash
         run: |
           projects=$(grep -l '<RequiresDocker>true</RequiresDocker>' tests/*/*.csproj \
@@ -256,6 +269,16 @@ jobs:
             echo "::error::Failed test projects:$failed"
             exit 1
           fi
+
+      # Both legs upload; Codecov merges them. The Docker tier adds its reports on Linux only.
+      - name: Upload coverage to Codecov
+        if: '!cancelled()'
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          files: "tests/*/bin/Release/**/TestResults/*.cobertura.xml"
+          disable_search: true   # only the files above, not every *.xml the search finds
+          fail_ci_if_error: false
 
   # Conventional commits, enforced mechanically — release-please derives release versions from
   # commit messages (see release-please.yml), so a malformed type is a commit the release

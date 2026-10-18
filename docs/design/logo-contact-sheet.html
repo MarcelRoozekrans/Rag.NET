@@ -1,0 +1,1221 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Logo contact sheet — Rag.NET</title>
+
+<!--
+  ============================================================================
+  CONTACT SHEET — the render harness for logo-design / logo-concept
+  ============================================================================
+
+  WHAT THIS IS
+  A fixed instrument, not generated markup. logo-concept writes this file out
+  with candidate marks substituted in, opens it from a file:// URL, screenshots
+  it with Playwright, and reads the PNG back to critique its own marks. It is
+  fixed precisely so two screenshots are comparable — between iterations of one
+  brief, and between projects.
+
+  It measures. It does not grade. Every threshold printed beside a number is
+  quoted from a reference file so the reader can see what the number is being
+  held against; the verdict lives in SKILL.md, not here.
+
+  ---------------------------------------------------------------------------
+  PLACEHOLDERS
+  ---------------------------------------------------------------------------
+  Every placeholder is a NAME below wrapped in double curly braces. The tokens
+  are deliberately NOT written out in this comment: they occur only in the
+  markup, at the counts stated, so a plain global find-and-replace is safe and
+  cannot accidentally rewrite this documentation. (Writing them here is how the
+  first draft of this file broke: a first-match replace hit the comment and
+  left the real slot empty.)
+
+    PRODUCT_NAME     2 occurrences — <title> and <h1>.
+                     Plain text. HTML-escape &, < and >.
+
+    CANDIDATE_A      1 occurrence, inside #pool.
+    CANDIDATE_B      1 occurrence, inside #pool.
+    CANDIDATE_C      1 occurrence, inside #pool.
+                     Each is one complete inline <svg> … </svg> element — the
+                     candidate master exactly as it will ship, with its
+                     construction comments intact. Do NOT add width/height;
+                     this sheet sizes every instance itself.
+                     To run with fewer than three candidates, replace the unused
+                     token with the empty string. The sheet renders that slot as
+                     "not supplied" and says so on the page.
+
+                     KNOWN BLIND SPOT — this sheet cannot decide xmlns.
+                     Candidates are substituted INLINE into this HTML document,
+                     and the HTML parser assigns the SVG namespace whether or not
+                     the markup declares xmlns. So a candidate missing
+                     xmlns="http://www.w3.org/2000/svg" renders here perfectly,
+                     measures correctly in the readout, and passes the vision
+                     critique -- and then does not open as a standalone .svg file
+                     at all. The first dogfood run shipped all seven variants that
+                     way. Nothing render-based can catch it, including anything
+                     added to this file: by the time the DOM exists the namespace
+                     is already supplied. The check is a STRING check on the file,
+                     and it lives in logo-concept's structural self-verification
+                     and in reproduction.md's artboard hygiene. Do not move it
+                     here, and do not assume a clean sheet means clean files.
+
+  Each candidate token appears ONCE because the sheet clones it into every cell
+  at run time. Substituting a candidate into all twenty-eight of its own
+  renderings by hand is how a sheet ends up comparing a mark against an older
+  copy of itself.
+
+  An unsubstituted token is detected at run time and reported as an alert rather
+  than rendered as a blank cell.
+
+  ---------------------------------------------------------------------------
+  HOW TO SCREENSHOT IT — take TWO shots, not one
+  ---------------------------------------------------------------------------
+  Viewport width 1360 px. The body is fixed at that width; there is no
+  responsive reflow, so a narrower viewport does not rearrange anything.
+
+  IF file:// IS BLOCKED, SERVE IT OVER LOOPBACK. Some Playwright MCP builds --
+  notably containerised ones -- refuse the file: protocol outright and allow
+  only http:, https:, about: and data:. That is a property of the harness the
+  browser runs under, not of this sheet. The fallback is a static server on
+  loopback pointed at the directory this file was written to; the sheet makes
+  no network requests of any kind, so serving it changes nothing it measures
+  and nothing it renders. Where the browser runs in a container, the host is
+  usually reachable at host.docker.internal rather than localhost.
+  Do NOT reach for a data: URL instead -- Chrome blocks top-level navigation to
+  data: URLs, so it fails in a way that looks like the sheet is broken.
+
+  WAIT FOR data-sheet-ready FIRST. The sheet rasterises each candidate to a
+  canvas before it draws anything (see M3 below), and image decoding is
+  asynchronous, so the document is EMPTY until that pass finishes. When it
+  does, every section is built in one synchronous burst and the attribute
+  data-sheet-ready="1" is set on <html>. Poll for it:
+
+      await page.waitForFunction(
+        () => document.documentElement.hasAttribute('data-sheet-ready'));
+
+  A shot taken before that is a blank page — deliberately, so an early
+  screenshot cannot be mistaken for a populated one with a few fields missing.
+
+  1. FULL PAGE — for the marks. Everything is on one page; nothing needs
+     scrolling to be seen. This is the image the visual critique reads.
+
+  2. ELEMENT-SCOPED on #readout — for the numbers. The sheet is ~3000 px tall
+     because 84 renderings and a readout is what it takes, and a full-page PNG
+     of that gets downscaled far enough that a measurement can become a smudge.
+     A number too small to read in the PNG does not exist as far as the reading
+     agent is concerned, so do not rely on the full-page shot for the numbers.
+     #readout is a self-contained panel for exactly this reason.
+
+  ---------------------------------------------------------------------------
+  M3 — THE INVERSION-IDENTITY DIFF, computed here
+  ---------------------------------------------------------------------------
+  reproduction.md's mono-collapse item M3 asks for two renders and a per-pixel
+  comparison. This file is the instrument: it is the only place in the plugin
+  that rasterises, so it is the only place the diff can happen.
+
+  Per candidate the sheet serialises the pool <svg>, sets `color` on the root
+  copy to #000 and then to #fff, loads each as a data: URL image, draws it over
+  white and over black on a 256 x 256 canvas, inverts the second and takes the
+  maximum per-channel difference. The gate is reproduction.md's, quoted not
+  restated; the readout prints the number, the pixel count above the gate, and
+  the ink pixel count, so a Δ of 0 over an empty raster can never read as a pass.
+
+  Three things about it that are load-bearing:
+
+  * IT DOES NOT TAINT. A data: URL is same-origin, so getImageData succeeds from
+    file://. If a future engine tightens that, the SecurityError is caught and
+    printed verbatim — the row says NOT COMPUTED and why. It never reports a
+    number it did not compute.
+
+  * TYPE IS A SEPARATE CASE, and it is measured, not assumed. Path antialiasing
+    in this rasteriser is exactly symmetric under inversion — a circle, a
+    diagonal and a curve-heavy annulus all return Δ 0, not Δ "small". Glyph
+    rasterisation is not: it carries a gamma the engine does not apply
+    symmetrically, worth Δ up to ~80/255 on the glyph edge pixels and removable
+    by no flag or text-rendering value. That is a property of the rasteriser
+    with no analogue in one-colour print, so a candidate carrying <text> is
+    diffed TWICE — whole, and again with the text elements removed. The drawn
+    geometry gets the graded number; the type's contribution is recorded unrun,
+    which is the posture reproduction.md already takes for a text element's
+    extents. Convert the type to outlines and the whole file becomes decidable.
+
+  * IT IS NOT THE MONO FILTER. The mono columns below are a CSS viewing aid.
+    M3 is an actual two-render pixel diff and shares nothing with them.
+
+  Like every other render-based check here it is blind to xmlns: XMLSerializer
+  supplies the namespace on the way out, exactly as the HTML parser supplied it
+  on the way in. See the blind-spot note above.
+
+  ---------------------------------------------------------------------------
+  DETERMINISM — two runs on the same input must be pixel-identical
+  ---------------------------------------------------------------------------
+  No network requests of any kind (this is opened from file://, offline).
+  No animation, no transition, no @media query, no prefers-color-scheme —
+  the sheet does NOT follow the viewer's theme, because that would make the
+  screenshot depend on the machine. No Date, no random, no timestamp printed
+  anywhere. Fixed pixel dimensions throughout.
+
+  The M3 pass is asynchronous and is held to the same standard. Its rasters run
+  strictly one after another in KEYS order, never as a parallel batch, so no
+  result depends on which decode finishes first; and NOTHING is appended to the
+  document until every one of them has settled, so the DOM is built in a single
+  fixed order with all the numbers already in hand. The only clock in the file
+  is a deadlock guard on image load, which a data: URL reaches only if the
+  decoder has hung — and the message it produces is fixed text, not a duration.
+
+  ---------------------------------------------------------------------------
+  MONO PREVIEW — VIEWING AID ONLY
+  ---------------------------------------------------------------------------
+  The "mono" columns apply a CSS filter (grayscale + extreme contrast) to
+  preview reproduction.md's mono collapse. NEVER copy that filter into a
+  shipped asset. construction.md binds every paint to currentColor precisely so
+  the mono variants fall out of the master with no filter and no second
+  drawing; a filter in an SVG is a forbidden construct and would not survive a
+  print RIP, an embroidery digitiser, or a renderer with no CSS engine.
+  What the filter models: a mark carried by colour flattening to one value.
+  What it cannot model: alpha. It leaves the alpha channel alone, so a
+  translucent mark previews only partly here — reproduction.md's M1 catches
+  that from source, which is the correct place for it.
+
+  ---------------------------------------------------------------------------
+  REQUIRES JAVASCRIPT
+  ---------------------------------------------------------------------------
+  The grids are cloned and the readout is computed on load. There is no server
+  and no build step; everything is inline in this file.
+  ============================================================================
+-->
+
+<style>
+  /* No @media, no prefers-color-scheme: the sheet must look the same on every
+     machine or the iteration comparison is worthless. */
+  *, *::before, *::after {
+    box-sizing: border-box;
+    animation: none !important;
+    transition: none !important;
+  }
+
+  :root {
+    /* The two grounds. Pure values, not greys — reproduction.md's dark
+       inversion section is about light-on-black reading optically heavier,
+       and a grey ground does not test that. */
+    --paper: #ffffff;
+    --ink: #000000;
+
+    /* Sheet chrome. Never inherited by a candidate: candidates take their
+       colour from the ground they sit on. */
+    --chrome-bg: #f4f4f5;
+    --chrome-ink: #18181b;
+    --chrome-dim: #52525b;
+    --chrome-line: #c5c5cb;
+    --warn-bg: #ffeec2;
+    --warn-ink: #573600;
+    --bad-bg: #ffdada;
+    --bad-ink: #7a0c0c;
+  }
+
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    width: 1360px;                 /* fixed: no reflow, no responsive layout */
+    background: var(--chrome-bg);
+    color: var(--chrome-ink);
+    font: 400 16px/1.45 ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  #sheet { padding: 16px; }
+
+  /* ---------------------------------------------------------------- header */
+  .head {
+    background: #fff;
+    border: 1px solid var(--chrome-line);
+    padding: 14px 18px;
+  }
+  .head h1 { margin: 0; font-size: 27px; font-weight: 700; letter-spacing: -0.01em; }
+  .head p  { margin: 5px 0 0; font-size: 15px; color: var(--chrome-dim); }
+
+  /* ---------------------------------------------------------------- alerts */
+  #alerts:empty { display: none; }
+  #alerts { margin-top: 14px; }
+  .alert {
+    border: 1px solid var(--chrome-line);
+    padding: 9px 14px;
+    font: 700 18px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    margin-bottom: 6px;
+  }
+  .alert.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: #d9a93a; }
+  .alert.bad  { background: var(--bad-bg);  color: var(--bad-ink);  border-color: #c0392b; }
+
+  /* --------------------------------------------------------------- readout */
+  #readout { margin-top: 14px; background: #fff; border: 1px solid var(--chrome-line); }
+  #readout > h2 {
+    margin: 0; padding: 10px 16px; font-size: 19px; font-weight: 700;
+    border-bottom: 1px solid var(--chrome-line);
+  }
+  .ro {
+    padding: 12px 16px 14px;
+    border-bottom: 1px solid var(--chrome-line);
+  }
+  .ro:last-child { border-bottom: 0; }
+  .ro-head { margin: 0 0 9px; font-size: 22px; font-weight: 700; }
+  .ro-head .tag {
+    font: 700 15px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--chrome-dim); margin-left: 12px;
+  }
+  .ro-grid {
+    display: grid;
+    grid-template-columns: 156px 1fr 156px 1fr;
+    gap: 5px 14px;
+    align-items: baseline;
+  }
+  .ro-k { font-size: 16px; font-weight: 700; color: var(--chrome-dim); }
+  .ro-v {
+    font: 700 21px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    word-break: break-word;
+  }
+  .ro-v.span { grid-column: 2 / 5; }
+  .ro-v .note { font-weight: 400; font-size: 16px; color: var(--chrome-dim); }
+  .ro-v.warn { background: var(--warn-bg); color: var(--warn-ink); padding: 1px 5px; }
+  .ro-v.bad  { background: var(--bad-bg);  color: var(--bad-ink);  padding: 1px 5px; }
+
+  /* ---------------------------------------------------------------- matrix */
+  .band { margin-top: 16px; background: #fff; border: 1px solid var(--chrome-line); }
+  .band > h2 {
+    margin: 0; padding: 10px 16px; font-size: 19px; font-weight: 700;
+    border-bottom: 1px solid var(--chrome-line);
+  }
+  .band > .note {
+    margin: 0; padding: 7px 16px; font-size: 14px; color: var(--chrome-dim);
+    border-bottom: 1px solid var(--chrome-line);
+  }
+  .matrix { display: grid; grid-template-columns: 74px repeat(4, 316px); }
+  .mh {
+    padding: 8px 4px; text-align: center;
+    font: 700 16px/1.2 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+    border-left: 1px solid var(--chrome-line);
+    border-bottom: 1px solid var(--chrome-line);
+  }
+  .mh:first-child { border-left: 0; }
+  .rl {
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px; font-weight: 700;
+    border-top: 1px solid var(--chrome-line);
+  }
+  .cell {
+    border-left: 1px solid var(--chrome-line);
+    border-top: 1px solid var(--chrome-line);
+    padding: 14px 16px;
+  }
+  .ground-light { background: var(--paper); color: var(--ink);   --frame: rgba(0,0,0,0.22); }
+  .ground-dark  { background: var(--ink);   color: var(--paper); --frame: rgba(255,255,255,0.34); }
+
+  .strip { display: flex; align-items: flex-end; gap: 12px; }
+  .slot  { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .mark  { flex: none; }
+  .mark svg { display: block; width: 100%; height: 100%; }
+  /* The size ruler: a numeric label under every rendering, plus a faint frame
+     on the small ones so 32 px is distinguishable from 48 px in the PNG
+     without anyone counting pixels.
+     The label in the small band is the bare number — a slot is only as wide as
+     its widest child, so "16 px" under a 16 px mark makes the slot 42 px wide
+     and pushes the 64 px column out of the cell. The band heading carries the
+     unit instead. */
+  .px { font: 700 15px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; opacity: 0.8; }
+  .band-small .mark { outline: 1px solid var(--frame); outline-offset: 3px; }
+
+  .cell.big { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 16px 8px; }
+  .empty {
+    font: 700 15px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    opacity: 0.7;
+  }
+
+  /* MONO PREVIEW — VIEWING AID ONLY. See the header comment.
+     Never copy this filter into a shipped SVG; construction.md forbids
+     <filter> and binds every paint to currentColor so the mono variants are
+     derived from the master rather than post-processed. */
+  .mono .mark { filter: grayscale(1) contrast(1000%); }
+
+  /* ---------------------------------------------------------------- legend */
+  .legend { margin-top: 16px; background: #fff; border: 1px solid var(--chrome-line); padding: 12px 16px 14px; }
+  .legend h2 { margin: 0 0 8px; font-size: 19px; }
+  .legend dl { margin: 0; display: grid; grid-template-columns: 190px 1fr; gap: 5px 14px; }
+  .legend dt { font-weight: 700; font-size: 16px; }
+  .legend dd { margin: 0; font-size: 16px; color: #3f3f46; }
+
+  /* The candidate source pool. Laid out (so getBBox works) but not visible and
+     not contributing to page height. Never display:none — getBBox returns
+     zeroes for an element that is not in the render tree. */
+  #pool {
+    position: absolute; top: 0; left: 0;
+    width: 0; height: 0; overflow: hidden; opacity: 0;
+    pointer-events: none;
+  }
+  #pool svg { width: 256px; height: 256px; }
+</style>
+
+<body>
+<div id="sheet">
+
+  <div class="head">
+    <h1>Rag.NET — logo contact sheet</h1>
+    <p>Three candidates &middot; 16 / 20 / 24 / 32 / 48 / 64 / 256&nbsp;px &middot; light and dark ground &middot; full colour and forced mono.
+       Sizes are reproduction.md's: 16&nbsp;px is the target-conformant minimum, 32&nbsp;px is what the counter floor costs,
+       and 20 / 24&nbsp;px are what a nominal 16&nbsp;px favicon actually rasterises to at a device pixel ratio of 1.25 and 1.5,
+       where grid alignment stops reaching the raster. 64&nbsp;px is construction.md's threshold: below it the 4% horizontal
+       thinning is invisible, so 64 and 256 are the only sizes here where correction&nbsp;4 can be judged at all.</p>
+  </div>
+
+  <noscript>
+    <div class="alert bad">This sheet computes its grids and its measurements on load. JavaScript is disabled, so nothing below is populated.</div>
+  </noscript>
+
+  <div id="alerts"></div>
+
+  <section id="readout">
+    <h2>Measurement readout — computed from the rendered marks, in artboard units</h2>
+  </section>
+
+  <section class="band band-small" id="band-small">
+    <h2>Small sizes — 16 / 20 / 24 / 32 / 48 / 64&nbsp;px</h2>
+    <p class="note">Bottom-aligned so the size progression is visible; each rendering carries its pixel size beneath it and a faint frame at its own box.</p>
+  </section>
+
+  <section class="band band-big" id="band-big">
+    <h2>256&nbsp;px — the artboard at 1:1</h2>
+    <p class="note">One grid unit is 16&nbsp;px here. This is the size construction.md's correction&nbsp;3 says to check apex centring at, and the size reproduction.md's M3 inversion-identity and M4 structure tests are run at. These four cells are for looking at; M3's own two renders are made off-screen on a canvas and its number is in the readout above.</p>
+  </section>
+
+  <section class="legend">
+    <h2>What the readout measures</h2>
+    <dl>
+      <dt>ink bbox</dt>
+      <dd>Union of <code>getBBox()</code> over every painted element, widened by half the stroke width wherever a stroke is actually painted. In the candidate's own user units — check the <code>viewBox</code> line before reading it as artboard units. On a stroked mark a second, geometry-only box is printed beside it: the widening is exact at a round or square cap and up to <code>w/2</code> too long at a butt-capped open end, so the true ink lies between the two. A filled mark has no gap between them.</dd>
+      <dt>live area</dt>
+      <dd>construction.md: geometry occupies 16&nbsp;…&nbsp;240 on both axes. Overshoot is allowed to spill outward by its own amount; nothing else is.</dd>
+      <dt>nodes</dt>
+      <dd>Every <code>M</code>, <code>L</code>, <code>H</code>, <code>V</code>, <code>A</code> endpoint and every cubic/quadratic endpoint. Bézier control points are not nodes. An endpoint coincident with its subpath start is counted once. Ceilings from reproduction.md: 28 per contour, 56 per file, 24 is the redraw signal.</dd>
+      <dt>coord reuse</dt>
+      <dd>Distinct ÷ total coordinate values, per <code>path</code>, computed only at 12 or more values. Coordinates are endpoint and control-point coordinates, <strong>plus an arc's <code>rx</code> and <code>ry</code></strong> — reproduction.md counts the radii because a shared radius is the clearest evidence of derivation there is. An arc's x-axis-rotation and its two flags are not coordinates and are excluded. Above 0.75 is reproduction.md's tracing signal.</dd>
+      <dt>text</dt>
+      <dd><em>advance edge</em> is the right edge of <code>getBBox()</code>. <em>ink edge</em> is that edge with the trailing letter-spacing step removed — whether this renderer applies one is <strong>measured</strong>, by re-measuring the same run at zero tracking and counting the steps in the difference, not assumed. <em>fit ×</em> is the multiplier on <code>font-size</code> that lands the ink edge on 224; it assumes <code>text-anchor="start"</code> and <code>letter-spacing</code> scaled with the size, per mark-types.md's wordmark recipe.
+      <br>A <code>text</code> element's <code>getBBox()</code> is its <em>layout</em> box — vertically it runs from the font's ascent to its descent, not from cap height to baseline. Read the vertical extents of a wordmark accordingly; they are not tight ink.</dd>
+      <dt>M3 inversion</dt>
+      <dd>reproduction.md's mono-collapse M3, computed here — this sheet is the only instrument in the plugin that rasterises, so it is the only place the diff can happen. The candidate is serialised twice with <code>color</code> resolved to <code>#000</code> and <code>#fff</code>, drawn over white and over black on a 256&nbsp;px canvas, the second inverted, and the maximum per-channel difference taken. The gate is quoted from reproduction.md beside the number, never restated. Printed with it: the count of pixels above the gate, the count of ink pixels, and the raster's own ink box — so a difference of zero taken over a raster that drew nothing reads as zero-of-nothing rather than as a pass.
+      <br>A candidate carrying <code>text</code> is diffed twice, whole and again with the text removed. Path antialiasing here is exactly symmetric under inversion; glyph rasterisation is not, and the second run is what <em>measures</em> that rather than assuming it. The drawn geometry is graded; the type's share is recorded <strong>unrun</strong>, the same posture reproduction.md takes for a <code>text</code> element's extents. Outline the type and the whole file becomes decidable.
+      <br>Nothing to do with the mono columns below: those are a CSS filter for looking at, this is two renders and a pixel comparison.</dd>
+      <dt>paint</dt>
+      <dd>The literal <code>fill</code> / <code>stroke</code> attribute values present on painted elements. <code>⟨absent⟩</code> matters: construction.md notes that omitting <code>fill</code> does not inherit — SVG's initial fill is black, which silently defeats the <code>currentColor</code> binding.</dd>
+      <dt>mono columns</dt>
+      <dd>A CSS filter previewing collapse to one value. A viewing aid on this sheet only — never something to copy into a shipped asset, and it cannot model alpha.</dd>
+    </dl>
+  </section>
+
+</div>
+
+<!-- Candidate source pool. One occurrence of each placeholder; every cell above
+     is a clone made at run time. -->
+<div id="pool" aria-hidden="true">
+  <div data-key="A"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Rag.NET">
+  <!-- Rag.NET — the retrieved chunk. Seed: a ring, outer r 96 / inner r 72 (declared weight 24) about (128,144): the corpus.
+       Two straight slots 40 wide (target 32.72 at w 24 + dark), centred on the upper diagonals, free its top quarter: one chunk.
+       That chunk is lifted 32 (two grid units) clear of the ring: the one that was retrieved. The gap it leaves is centred on 90 degrees
+       and its width is the chunk's own, so it is derived rather than placed (anti-slop.md pattern 1, Test A).
+       Ink y 16 ... 240, x 32 ... 224; centred on 128 vertically because cy = 128 + 32 / 2. -->
+  <!-- OPTICAL: slot edges · derived · the 40-wide slots are lines 20 either side of each diagonal; their meeting points with r 96 / r 72 fall off the grid -->
+  <!-- OPTICAL: inner ry 72.96 on the ring and the chunk · horizontal strokes read heavier · 24 x 0.96 = 23.04 at the top and bottom tangents; outer edges held -->
+  <path fill="currentColor"
+        d="M180.25 31.47A96 96 0 0 0 75.75 31.47L92.7 48.41A72 72.96 0 0 1 163.3 48.41Z
+           M208.53 91.75A96 96 0 1 1 47.47 91.75L64.79 109.07A72 72.96 0 1 0 191.21 109.07Z"/>
+</svg></div>
+  <div data-key="B"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Rag.NET">
+  <!-- Favicon — a redraw, not a scale. reproduction.md § The favicon's own spec: weight 32 (2 px at 16 px), at most one counter.
+       The same idea as the master, in fewer nodes: an open ring (the corpus) and, above its opening, the retrieved chunk.
+       Ring: outer r 96 / inner r 64 about (128,144), its ends cut on the radii at 30 degrees above horizontal, where r 96 meets the grid line y 96.
+       Radial ends make every ink join 90 degrees (a flat cut at y 96 met the inner circle at 41 degrees, under correction 7's floor).
+       Chunk: a circular segment of r 64 (the ring's inner radius) about (128,80) — top y 16, chord y 48, so it is 32 deep, the weight.
+       Its cusps meet the chord at 60 degrees, construction.md correction 7's floor. The ring's inner ends fall at x 72.57 / 183.43 —
+       exactly the chunk's chord ends, so the opening is the chunk's own width (110.85): the lid that came out of the gap.
+       Ink y 16 ... 240 (fills the live area on the longer axis), x 32 ... 224. 6 nodes against the master's 8.
+       Uniform weight: correction 4 declined — 32 -> 30.72 is 2.00 px against 1.92 px at the only sizes this variant renders at. -->
+  <!-- OPTICAL: x 44.86 / 211.14 at y 96, x 72.57 / 183.43 at y 112 and at y 48 · derived · r 96 and r 64 on the 30-degree radii, and the chunk's r 64 cut by the grid line y 48 -->
+  <path fill="currentColor"
+        d="M72.57 48A64 64 0 0 1 183.43 48Z
+           M211.14 96A96 96 0 1 1 44.86 96L72.57 112A64 64 0 1 0 183.43 112Z"/>
+</svg></div>
+  <div data-key="C"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Rag.NET">
+  <!-- Wordmark. Webfont: Bahnschrift 600, letter-spacing t = 0.05 — the Minos.NET wordmark's face, weight and tracking.
+       NOT converted to outlines — recorded as an un-performed step in LOGO.md's Production handoff; not a finished asset
+       anywhere the face is absent. Single text run; text-anchor start, x 32 and baseline y 144 on the grid (chosen, not measured).
+       font-size 47.5, letter-spacing 2.38: an ESTIMATE from Bahnschrift's advance widths, aiming the ink edge at 224.
+       The fit is UNRUN — Bahnschrift did not resolve on the machine that drew this; the contact sheet's fit row on a machine
+       where it does is the measurement. See LOGO.md § Type-specific records. -->
+  <text x="32" y="144" text-anchor="start" font-family="Bahnschrift, 'DIN Alternate', 'Segoe UI', sans-serif" font-size="47.5"
+        font-weight="600" letter-spacing="2.38" fill="currentColor">Rag.NET</text>
+</svg></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ------------------------------------------------------------------ config
+     Sizes and ceilings are quoted, not invented. See the legend for sources. */
+  var KEYS         = ['A', 'B', 'C'];
+  var SMALL_SIZES  = [16, 20, 24, 32, 48, 64];
+  var BIG_SIZE     = 256;
+  var MODES = [
+    { id: 'lc', ground: 'light', mono: false, label: 'light · colour' },
+    { id: 'dc', ground: 'dark',  mono: false, label: 'dark · colour' },
+    { id: 'lm', ground: 'light', mono: true,  label: 'light · mono' },
+    { id: 'dm', ground: 'dark',  mono: true,  label: 'dark · mono' }
+  ];
+  var LIVE_MIN = 16, LIVE_MAX = 240;
+  var NODE_CEIL_CONTOUR = 28, NODE_CEIL_FILE = 56, NODE_REDRAW = 24;
+  var REUSE_MIN_VALUES = 12, REUSE_SIGNAL = 0.75;
+  var TEXT_TARGET_EDGE = 224;
+  var EXPECTED_VIEWBOX = '0 0 256 256';
+  var PAINTED = 'path,circle,ellipse,rect,line,polyline,polygon,text,use,image';
+
+  var alerts = [];
+  function alert_(level, msg) { alerts.push({ level: level, msg: msg }); }
+
+  /* -------------------------------------------------------------- utilities */
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+  function n2(v) { return (Math.round(v * 100) / 100).toFixed(2); }
+  function key(v) { return String(Math.round(v * 10000) / 10000); }
+
+  /* ------------------------------------------------------------ path parsing
+     Arg counts, and which of those args are coordinate values. An arc's rx and
+     ry ARE counted, per reproduction.md's reuse-ratio rule -- "Count arc rx and
+     ry. They are the construction: a shared radius is the clearest evidence of
+     derivation on the page." Its x-axis-rotation and two flags are NOT: they are
+     not coordinates, they take three values between them, and including them
+     dilutes the ratio toward pass on every arc-heavy mark.
+     An earlier revision of this file excluded the radii, which put the harness
+     and reproduction.md in disagreement about an input to a threshold -- on a
+     two-arc knockout it was the difference between 12 counted values (computable)
+     and 8 ("under 12, not computed"), so the sheet silently declined to grade the
+     ratio on exactly the construction the rule was written to reward.
+     Cubic and quadratic control points ARE coordinates (they are points in user
+     space) but are NOT nodes. */
+  var ARGS  = { M:2, L:2, H:1, V:1, C:6, S:4, Q:4, T:2, A:7, Z:0 };
+  var COORD = { M:[0,1], L:[0,1], H:[0], V:[0], C:[0,1,2,3,4,5], S:[0,1,2,3],
+                Q:[0,1,2,3], T:[0,1], A:[0,1,5,6], Z:[] };
+
+  /* Assumes whitespace- or comma-separated arc flags, which is how
+     construction.md's own fragments are written. A path packing its flags
+     (`a1 1 0 011 1`) will be reported as a parse warning rather than measured
+     wrongly and reported as right. */
+  function tokenise(d) {
+    var re = /([MmZzLlHhVvCcSsQqTtAa])|([+-]?(?:\d*\.\d+|\d+\.?)(?:[eE][+-]?\d+)?)/g;
+    var out = [], m;
+    while ((m = re.exec(d)) !== null) {
+      if (m[1]) out.push({ t: 'c', v: m[1] });
+      else out.push({ t: 'n', v: parseFloat(m[2]) });
+    }
+    return out;
+  }
+
+  function analysePath(d) {
+    var res = { contours: [], nodes: 0, coords: [], warn: [] };
+    if (!d || !d.trim()) { res.warn.push('empty path data'); return res; }
+
+    var tk = tokenise(d), i = 0, cmd = null;
+    var cx = 0, cy = 0, sx = 0, sy = 0, lx = 0, ly = 0;
+    var cur = null;
+
+    function closeContour() {
+      if (!cur) return;
+      /* A final endpoint landing back on the subpath start is one node, not
+         two — this is what makes the monogram's O read as 2 nodes per ring and
+         the whole two-letter monogram as 16. */
+      if (cur.n >= 2 && Math.abs(lx - sx) < 1e-6 && Math.abs(ly - sy) < 1e-6) cur.n -= 1;
+      res.contours.push(cur.n);
+      res.nodes += cur.n;
+      cur = null;
+    }
+
+    while (i < tk.length) {
+      if (tk[i].t === 'c') { cmd = tk[i].v; i++; }
+      if (cmd === null) { res.warn.push('path data begins with a number'); break; }
+
+      var up = cmd.toUpperCase(), rel = (cmd !== up), na = ARGS[up];
+      if (na === undefined) { res.warn.push('unknown command "' + cmd + '"'); break; }
+
+      if (na === 0) {                       /* Z */
+        /* Z moves the current point back to the subpath start but draws no
+           node, so lx/ly — the last DRAWN endpoint — must not be touched.
+           Updating them here makes every closed contour look as though its
+           final endpoint landed on its start, and silently loses one node
+           from every rectilinear outline in the file. */
+        cx = sx; cy = sy;
+        cmd = null;
+        continue;
+      }
+      if (i + na > tk.length) { res.warn.push('truncated "' + cmd + '" command'); break; }
+      var a = [], ok = true;
+      for (var k = 0; k < na; k++) {
+        if (tk[i + k].t !== 'n') { ok = false; break; }
+        a.push(tk[i + k].v);
+      }
+      if (!ok) { res.warn.push('malformed arguments to "' + cmd + '"'); break; }
+      i += na;
+
+      var ci = COORD[up];
+      for (var j = 0; j < ci.length; j++) res.coords.push(a[ci[j]]);
+
+      var ex, ey;
+      if (up === 'H')      { ex = rel ? cx + a[0] : a[0]; ey = cy; }
+      else if (up === 'V') { ex = cx; ey = rel ? cy + a[0] : a[0]; }
+      else                 { ex = a[na - 2]; ey = a[na - 1]; if (rel) { ex += cx; ey += cy; } }
+
+      if (up === 'M') {
+        closeContour();
+        cur = { n: 1 };
+        sx = ex; sy = ey;
+        cmd = rel ? 'l' : 'L';            /* subsequent M arg groups are lineto */
+      } else {
+        if (!cur) { cur = { n: 1 }; sx = cx; sy = cy; res.warn.push('path data draws before its first M'); }
+        cur.n += 1;
+      }
+      cx = ex; cy = ey; lx = ex; ly = ey;
+    }
+    closeContour();
+    return res;
+  }
+
+  /* ------------------------------------------------------------- svg analysis */
+  function analyseSvg(svg) {
+    var r = {
+      viewBox: svg.getAttribute('viewBox') || '',
+      bbox: null, bboxGeom: null, bboxErr: null, strokes: 0,
+      paths: [], nodes: 0, contourMax: 0, primitives: 0, transforms: 0,
+      paints: {}, texts: [], warn: []
+    };
+
+    var nodes = svg.querySelectorAll(PAINTED);
+    for (var i = 0; i < nodes.length; i++) {
+      var e = nodes[i];
+      if (e.closest('defs, clipPath, mask, symbol, marker, pattern')) continue;
+      var tag = e.tagName.toLowerCase();
+
+      if (e.getAttribute('transform')) r.transforms++;
+
+      /* --- paint attributes (construction.md's currentColor binding) ------ */
+      ['fill', 'stroke'].forEach(function (p) {
+        var v = e.getAttribute(p);
+        if (p === 'fill' && v === null) v = '⟨absent⟩';
+        if (v === null || v === 'none') return;
+        r.paints[v] = (r.paints[v] || 0) + 1;
+      });
+
+      /* --- ink bounding box ----------------------------------------------
+         getBBox() is geometry only — it excludes the stroke, so a stroked mark
+         would under-report its ink by half a stroke on every side. Two boxes
+         are therefore kept and, where they differ, both are printed:
+
+           bboxGeom  the geometry box, exact, an under-estimate when stroked
+           bbox      that box widened by stroke-width/2 per side
+
+         The widening is exact at a round or square cap, and over-long by w/2 at
+         a BUTT-capped open end, which does not extend past its endpoint.
+
+         It is NOT exact at a miter join — it is an UNDER-estimate there. A miter
+         tip sits (w/2)/sin(theta/2) from the vertex: 0.707w at 90 degrees and a
+         full 1.000w at 60, which is construction.md's own interior-join floor.
+         So at the tightest join a conformant mark may carry, ink reaches w past
+         the vertex, double the w/2 this widening assumes — 8 units per corner at
+         w 16. SVG's default stroke-miterlimit of 4 only bevels below theta 28.96
+         degrees, so it never rescues a conformant mark. Treat `bbox` as an upper
+         bound only for cap geometry; for a mitred path widen by w per side before
+         granting a containment PASS. reproduction.md carries the same rider.
+
+         construction.md's own 16-wide stem on centreline 120 is
+         the case: the true painted box is y 48 … 208 and the widened one says
+         40 … 216. Chrome's getBoundingClientRect uses the same conservative
+         stroke box, so there is nothing more exact to reach for without
+         re-implementing stroke offsetting. The true ink is bracketed between
+         the two boxes, both are shown, and the readout says which is which —
+         reporting one of them alone as "the" answer is the failure mode this
+         plugin exists to avoid. Filled paths, which construction.md calls the
+         safer final form, have no gap between the two. */
+      try {
+        var b = e.getBBox();
+        var gx0 = b.x, gy0 = b.y, gx1 = b.x + b.width, gy1 = b.y + b.height;
+        var x0 = gx0, y0 = gy0, x1 = gx1, y1 = gy1;
+        var cs = window.getComputedStyle(e);
+        if (cs.stroke && cs.stroke !== 'none') {
+          var sw = parseFloat(cs.strokeWidth);
+          if (isFinite(sw) && sw > 0) {
+            r.strokes++;
+            x0 -= sw / 2; y0 -= sw / 2; x1 += sw / 2; y1 += sw / 2;
+          }
+        }
+        if (b.width > 0 || b.height > 0 || tag === 'text') {
+          r.bbox = r.bbox
+            ? { x0: Math.min(r.bbox.x0, x0), y0: Math.min(r.bbox.y0, y0),
+                x1: Math.max(r.bbox.x1, x1), y1: Math.max(r.bbox.y1, y1) }
+            : { x0: x0, y0: y0, x1: x1, y1: y1 };
+          r.bboxGeom = r.bboxGeom
+            ? { x0: Math.min(r.bboxGeom.x0, gx0), y0: Math.min(r.bboxGeom.y0, gy0),
+                x1: Math.max(r.bboxGeom.x1, gx1), y1: Math.max(r.bboxGeom.y1, gy1) }
+            : { x0: gx0, y0: gy0, x1: gx1, y1: gy1 };
+        }
+      } catch (err) { r.bboxErr = String(err && err.message || err); }
+
+      /* --- nodes and coordinate reuse ------------------------------------ */
+      if (tag === 'path') {
+        var p = analysePath(e.getAttribute('d') || '');
+        p.warn.forEach(function (w) { r.warn.push('path: ' + w); });
+        var distinct = {}, nd = 0;
+        p.coords.forEach(function (v) { var kk = key(v); if (!distinct[kk]) { distinct[kk] = 1; nd++; } });
+        r.paths.push({ contours: p.contours, nodes: p.nodes, total: p.coords.length, distinct: nd });
+        r.nodes += p.nodes;
+        p.contours.forEach(function (c) { if (c > r.contourMax) r.contourMax = c; });
+      } else if (tag === 'polygon' || tag === 'polyline') {
+        var pts = (e.getAttribute('points') || '').match(/[+-]?(?:\d*\.\d+|\d+\.?)/g) || [];
+        var nn = Math.floor(pts.length / 2);
+        r.nodes += nn;
+        if (nn > r.contourMax) r.contourMax = nn;
+      } else if (tag !== 'text') {
+        /* circle / ellipse / rect / line / use / image. reproduction.md counts
+           nodes off path data, so these contribute none — reported separately
+           rather than folded into the node total, which would be a number the
+           reference file does not define. */
+        r.primitives++;
+      }
+
+      /* --- text ----------------------------------------------------------- */
+      if (tag === 'text') r.texts.push(measureText(e));
+    }
+    return r;
+  }
+
+  /* -------------------------------------------------------- text measurement */
+  function firstFamily(list) {
+    if (!list) return '';
+    return list.split(',')[0].trim().replace(/^['"]|['"]$/g, '');
+  }
+
+  /* A wrong measurement reported as right is the failure this whole plugin is
+     fighting, so the sheet establishes whether the declared face is actually
+     present before it reports a width taken from it. */
+  function familyAvailable(family, weight, size) {
+    if (!family) return null;
+    var generic = /^(serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-sans-serif|ui-serif|ui-monospace|ui-rounded)$/i;
+    if (generic.test(family)) return true;
+    var checked = null;
+    try { checked = document.fonts.check(weight + ' ' + size + 'px "' + family + '"'); } catch (e) { checked = null; }
+    if (checked === false) return false;
+    /* Confirm by measurement: if the family resolves to nothing, the browser
+       falls through to the generic we appended and the two widths match. */
+    try {
+      var c = document.createElement('canvas').getContext('2d');
+      var probe = 'HAMBURGEFONTSIV mil1lI0O';
+      c.font = weight + ' 96px "' + family + '", monospace';
+      var w1 = c.measureText(probe).width;
+      c.font = weight + ' 96px monospace';
+      var w2 = c.measureText(probe).width;
+      if (Math.abs(w1 - w2) > 0.5) return true;
+      c.font = weight + ' 96px "' + family + '", serif';
+      var w3 = c.measureText(probe).width;
+      c.font = weight + ' 96px serif';
+      var w4 = c.measureText(probe).width;
+      return Math.abs(w3 - w4) > 0.5;
+    } catch (e2) { return checked; }
+  }
+
+  function measureText(t) {
+    var cs = window.getComputedStyle(t);
+    var size = parseFloat(cs.fontSize) || 0;
+    var weight = cs.fontWeight || '400';
+    var ls = parseFloat(cs.letterSpacing);
+    if (!isFinite(ls)) ls = 0;
+    var famList = t.getAttribute('font-family') || cs.fontFamily || '';
+    var fam = firstFamily(famList);
+    var m = {
+      chars: (t.textContent || '').trim(),
+      family: fam, familyList: famList, weight: weight, size: size, letterSpacing: ls,
+      available: familyAvailable(fam, weight, size),
+      left: null, advanceRight: null, inkRight: null, trailing: null, fit: null
+    };
+    try {
+      var b = t.getBBox();
+      m.left = b.x;
+      m.advanceRight = b.x + b.width;
+
+      /* mark-types.md notes that "most renderers apply letter-spacing after the
+         final glyph too", which moves the right-hand ink edge the recipe is
+         fitted against. Whether THIS renderer does is measurable, so measure it
+         rather than assume it: re-measure the same run at zero tracking and
+         count how many steps the difference contains. One step per character
+         means a trailing step was applied; one fewer means it was not.
+         The style override is reverted immediately — the pool element is the
+         source every cell below is cloned from. */
+      var nc = 0;
+      try { nc = t.getNumberOfChars(); } catch (eN) { nc = m.chars.length; }
+      if (ls !== 0 && nc > 0) {
+        var prevStyle = t.style.letterSpacing;
+        t.style.letterSpacing = '0px';
+        var w0 = t.getBBox().width;
+        t.style.letterSpacing = prevStyle;
+        var steps = Math.round((b.width - w0) / ls);
+        m.trailing = (steps >= nc);
+      } else {
+        m.trailing = false;
+      }
+      m.inkRight = m.advanceRight - (m.trailing ? ls : 0);
+
+      /* Scaling font-size by k scales the run's width and its tracking together
+         (the recipe expresses tracking as font-size × t), so the ink edge moves
+         from the fixed start anchor proportionally. */
+      var inkWidth = m.inkRight - b.x;
+      if (inkWidth > 0) m.fit = (TEXT_TARGET_EDGE - b.x) / inkWidth;
+    } catch (e) { /* reported as not measurable below */ }
+    return m;
+  }
+
+  /* ------------------------------------------- M3, the inversion-identity diff
+     reproduction.md's mono-collapse M3: render at 256 px with color #000 on
+     white and with color #fff on black, invert the second, compare per channel.
+     The gate is quoted from that file, not restated here; M3_GATE is the only
+     literal and the readout prints its source alongside every number.
+
+     This is the sheet's second rasteriser and it has nothing to do with the
+     mono CSS filter, which is a viewing aid on the matrix below. */
+  var M3_SIZE    = 256;
+  var M3_GATE    = 2;        /* per channel, of 255 — reproduction.md, Mono collapse, M3 */
+  var M3_LOAD_MS = 10000;    /* deadlock guard, not a race: see the header comment */
+
+  /* Serialise the candidate with `color` resolved. Setting one property on the
+     root of a throwaway copy IS reproduction.md's test — "set color to one
+     literal value for the whole file and render. Nothing else changes." The
+     style attribute beats a `color` presentation attribute on the same element,
+     which is what lets a resolved mono variant be re-resolved the other way. */
+  function m3Serialise(svg, colour, dropText) {
+    var c = svg.cloneNode(true);
+    if (dropText) {
+      var ts = c.querySelectorAll('text');
+      for (var i = 0; i < ts.length; i++) ts[i].parentNode.removeChild(ts[i]);
+    }
+    c.setAttribute('width', String(M3_SIZE));
+    c.setAttribute('height', String(M3_SIZE));
+    var prev = c.getAttribute('style');
+    c.setAttribute('style', (prev ? prev + ';' : '') + 'color:' + colour);
+    return new XMLSerializer().serializeToString(c);
+  }
+
+  /* Ground first, mark over it. Every failure path resolves with an `err`
+     string; none of them resolves with a number. */
+  function m3Raster(svgText, ground) {
+    return new Promise(function (resolve) {
+      var settled = false, timer = null;
+      function done(v) { if (settled) return; settled = true; if (timer) clearTimeout(timer); resolve(v); }
+      timer = setTimeout(function () { done({ err: 'the serialised SVG neither loaded nor errored — the image decode hung' }); }, M3_LOAD_MS);
+      var img = new Image();
+      img.onload = function () {
+        var cv = document.createElement('canvas');
+        cv.width = M3_SIZE; cv.height = M3_SIZE;
+        var ctx = cv.getContext('2d');
+        if (!ctx) return done({ err: 'this engine returned no 2d canvas context' });
+        ctx.fillStyle = ground;
+        ctx.fillRect(0, 0, M3_SIZE, M3_SIZE);
+        try { ctx.drawImage(img, 0, 0, M3_SIZE, M3_SIZE); }
+        catch (e) { return done({ err: 'drawImage threw ' + (e && e.name) + ': ' + (e && e.message) }); }
+        try { done({ data: ctx.getImageData(0, 0, M3_SIZE, M3_SIZE).data }); }
+        catch (e2) { done({ err: 'getImageData threw ' + (e2 && e2.name) + ': ' + (e2 && e2.message)
+                              + ' — the canvas is tainted on this engine and no pixel comparison is possible in-page' }); }
+      };
+      img.onerror = function () { done({ err: 'the serialised SVG did not load as an image' }); };
+      /* encodeURIComponent, not btoa: btoa throws on any non-Latin-1 character
+         and construction comments are full of them. */
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText);
+    });
+  }
+
+  function m3Compare(black, white) {
+    var n = M3_SIZE * M3_SIZE, max = 0, over = 0, ink = 0;
+    var x0 = M3_SIZE, y0 = M3_SIZE, x1 = -1, y1 = -1;
+    for (var p = 0; p < n; p++) {
+      var i = p * 4, pm = 0;
+      for (var ch = 0; ch < 3; ch++) {
+        var d = black[i + ch] - (255 - white[i + ch]);
+        if (d < 0) d = -d;
+        if (d > pm) pm = d;
+      }
+      if (pm > max) max = pm;
+      if (pm > M3_GATE) over++;
+      /* Ink is any pixel the black-on-white render did not leave as paper. It is
+         counted and printed so that a maximum difference of zero taken over a
+         raster that drew nothing is visibly zero-of-nothing rather than a pass. */
+      if (black[i] !== 255 || black[i + 1] !== 255 || black[i + 2] !== 255) {
+        ink++;
+        var px = p % M3_SIZE, py = (p / M3_SIZE) | 0;
+        if (px < x0) x0 = px;
+        if (px > x1) x1 = px;
+        if (py < y0) y0 = py;
+        if (py > y1) y1 = py;
+      }
+    }
+    /* Far edges reported exclusive so the box reads as an extent on the same
+       scale as the ink bbox row above it — a mark filling 16 … 240 prints
+       16 … 240, not 16 … 239. */
+    return { max: max, over: over, ink: ink, box: ink ? [x0, y0, x1 + 1, y1 + 1] : null };
+  }
+
+  function m3Pair(svg, dropText) {
+    return m3Raster(m3Serialise(svg, '#000000', dropText), '#ffffff').then(function (bw) {
+      if (bw.err) return { err: bw.err };
+      return m3Raster(m3Serialise(svg, '#ffffff', dropText), '#000000').then(function (wb) {
+        if (wb.err) return { err: wb.err };
+        return m3Compare(bw.data, wb.data);
+      });
+    });
+  }
+
+  /* A candidate carrying <text> is diffed twice. Path antialiasing here is
+     exactly symmetric under inversion, so the drawn geometry returns a true
+     zero; glyph rasterisation carries an engine gamma that is not, and removing
+     the text elements is what MEASURES that rather than asserting it. */
+  function m3Measure(c) {
+    var hasText = c.analysis.texts.length;
+    var res = { hasText: hasText, whole: null, geom: null, err: null, geomErr: null };
+    return m3Pair(c.svg, false).then(function (w) {
+      if (w.err) { res.err = w.err; return null; }
+      res.whole = w;
+      if (!hasText) return null;
+      return m3Pair(c.svg, true).then(function (gm) {
+        if (gm.err) res.geomErr = gm.err; else res.geom = gm;
+      });
+    }).then(function () { return res; });
+  }
+
+  /* Strictly sequential in KEYS order. Promise.all would settle in whatever
+     order the decoder finished in, and this sheet's screenshots have to match
+     byte for byte across runs. */
+  function m3Run(cands) {
+    var p = Promise.resolve();
+    KEYS.forEach(function (k) {
+      p = p.then(function () {
+        var c = cands[k];
+        if (!c || !c.svg) return null;
+        return m3Measure(c).then(function (m) { c.m3 = m; });
+      });
+    });
+    return p;
+  }
+
+  var M3_SRC = 'gate ≤ ' + M3_GATE + '/255 per channel — reproduction.md, Mono collapse, M3';
+
+  function m3Evidence(d) {
+    return note(d.over + ' px above the gate · ' + d.ink + ' ink px of ' + (M3_SIZE * M3_SIZE)
+      + ' · ' + M3_SIZE + ' px, color #000 on #fff against color #fff on #000 inverted'
+      + (d.box ? ' · raster ink ' + d.box[0] + ' … ' + d.box[2] + ' x, ' + d.box[1] + ' … ' + d.box[3] + ' y, in device px' : ''));
+  }
+  function m3Verdict(d) { return d.max <= M3_GATE ? 'at or under the gate' : 'ABOVE THE GATE'; }
+  function m3Class(d)   { return d.max <= M3_GATE ? '' : 'bad'; }
+
+  function m3Rows(g, m) {
+    if (!m || m.err) {
+      row(g, 'M3 inversion', 'NOT COMPUTED — ' + esc(m && m.err ? m.err : 'the pass did not run')
+        + note('Nothing was compared, so this is not a pass. ' + M3_SRC), 'bad', true);
+      return;
+    }
+    var w = m.whole;
+    if (!w.ink) {
+      row(g, 'M3 inversion', 'NOT COMPUTED — the 256 px raster is empty: 0 ink px'
+        + note('Both renders agree because neither drew anything. ' + M3_SRC), 'bad', true);
+      return;
+    }
+    if (!m.hasText) {
+      row(g, 'M3 inversion', 'Δmax ' + w.max + '/255 — ' + m3Verdict(w)
+        + note(M3_SRC) + m3Evidence(w), m3Class(w), true);
+      return;
+    }
+
+    /* Type present. The graded number is the drawn geometry's. */
+    if (m.geomErr) {
+      row(g, 'M3 inversion', 'Δmax ' + w.max + '/255 whole-file, UNGRADED — the text-free re-run failed: ' + esc(m.geomErr)
+        + note('Without it the type’s share of the difference cannot be separated from the file’s. ' + M3_SRC), 'bad', true);
+      return;
+    }
+    var gm = m.geom;
+    if (!gm || !gm.ink) {
+      row(g, 'M3 inversion', 'UNRUN — this candidate is type only, so there is no drawn geometry to grade'
+        + note('Whole-file Δmax ' + w.max + '/255 on ' + w.over + ' px, which is glyph rasterisation: this engine antialiases '
+             + 'glyphs with a gamma it does not apply symmetrically under inversion, while its path antialiasing is exact. '
+             + 'That is a property of the rasteriser with no analogue in one-colour print. Convert the type to outlines and M3 becomes decidable. '
+             + M3_SRC), 'warn', true);
+      return;
+    }
+    row(g, 'M3 inversion', 'Δmax ' + gm.max + '/255 on the drawn geometry — ' + m3Verdict(gm)
+      + note(M3_SRC) + m3Evidence(gm), m3Class(gm), true);
+    if (gm.max <= M3_GATE && w.max > M3_GATE) {
+      row(g, 'M3 type', 'UNRUN — whole-file Δmax ' + w.max + '/255 on ' + w.over + ' px, all of it in the '
+        + m.hasText + ' text element' + (m.hasText === 1 ? '' : 's')
+        + note('Removing the type removed all of it — the drawn geometry measured Δmax ' + gm.max + '. This engine’s glyph '
+             + 'antialiasing is not symmetric under inversion; its path antialiasing is exact. That is the rasteriser, not the '
+             + 'file, and it has no analogue in one-colour print, so it is recorded unrun rather than failed — the posture '
+             + 'reproduction.md already takes for a text element’s extents. Outline the type and M3 decides the whole file.'), 'warn', true);
+    } else if (w.max > M3_GATE) {
+      row(g, 'M3 type', 'whole-file Δmax ' + w.max + '/255 on ' + w.over + ' px'
+        + note('The drawn geometry is already above the gate at Δmax ' + gm.max
+             + ', so the type is not what this candidate fails on. Fix the geometry first, then re-read this line.'), 'warn', true);
+    }
+  }
+
+  /* ----------------------------------------------------------------- render */
+  function markNode(svg, size) {
+    var w = el('div', 'mark');
+    w.style.width = size + 'px';
+    w.style.height = size + 'px';
+    w.appendChild(svg);
+    return w;
+  }
+
+  function buildMatrix(host, sizes, small, cands) {
+    var grid = el('div', 'matrix');
+    grid.appendChild(el('div', 'mh', ''));
+    MODES.forEach(function (mo) { grid.appendChild(el('div', 'mh', mo.label)); });
+
+    KEYS.forEach(function (k) {
+      grid.appendChild(el('div', 'rl', k));
+      MODES.forEach(function (mo) {
+        var cell = el('div', 'cell ground-' + mo.ground + (mo.mono ? ' mono' : '') + (small ? '' : ' big'));
+        var c = cands[k];
+        if (!c || !c.svg) {
+          cell.appendChild(el('div', 'empty', 'candidate ' + k + ' — not supplied'));
+        } else if (small) {
+          var strip = el('div', 'strip');
+          sizes.forEach(function (s) {
+            var slot = el('div', 'slot');
+            slot.appendChild(markNode(c.svg.cloneNode(true), s));
+            slot.appendChild(el('div', 'px', String(s)));
+            strip.appendChild(slot);
+          });
+          cell.appendChild(strip);
+        } else {
+          cell.appendChild(markNode(c.svg.cloneNode(true), BIG_SIZE));
+          cell.appendChild(el('div', 'px', BIG_SIZE + ' px'));
+        }
+        grid.appendChild(cell);
+      });
+    });
+    host.appendChild(grid);
+  }
+
+  function row(grid, k, v, cls, span) {
+    grid.appendChild(el('div', 'ro-k', k));
+    var d = el('div', 'ro-v' + (cls ? ' ' + cls : '') + (span ? ' span' : ''));
+    d.innerHTML = v;
+    grid.appendChild(d);
+  }
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function note(s) { return ' <span class="note">' + esc(s) + '</span>'; }
+
+  function renderReadout(host, cands) {
+    KEYS.forEach(function (k) {
+      var c = cands[k];
+      var block = el('div', 'ro');
+      var h = el('div', 'ro-head', 'Candidate ' + k);
+      block.appendChild(h);
+      var g = el('div', 'ro-grid');
+
+      if (!c || !c.svg) {
+        row(g, 'status', 'not supplied' + note('placeholder replaced with the empty string, or left unsubstituted'), 'warn', true);
+        block.appendChild(g);
+        host.appendChild(block);
+        return;
+      }
+      var a = c.analysis;
+
+      var vb = a.viewBox || '⟨none⟩';
+      var vbOk = (a.viewBox.replace(/[,\s]+/g, ' ').trim() === EXPECTED_VIEWBOX);
+      var tag = el('span', 'tag', a.paths.length + ' path' + (a.paths.length === 1 ? '' : 's')
+        + ' · ' + a.primitives + ' primitive' + (a.primitives === 1 ? '' : 's')
+        + ' · ' + a.texts.length + ' text');
+      h.appendChild(tag);
+
+      row(g, 'viewBox', esc(vb) + (vbOk ? '' : note('not ' + EXPECTED_VIEWBOX + ' — the numbers below are in this file’s own user units')),
+          vbOk ? '' : 'warn');
+
+      if (a.bbox) {
+        var b = a.bbox;
+        var inside = b.x0 >= LIVE_MIN - 1e-6 && b.y0 >= LIVE_MIN - 1e-6 &&
+                     b.x1 <= LIVE_MAX + 1e-6 && b.y1 <= LIVE_MAX + 1e-6;
+        /* Width and height are derived from the ROUNDED bounds so the three
+           numbers on a line always agree. getBBox finds a curve's extrema
+           numerically, so the raw difference carries a few thousandths of
+           noise — and "80.00 … 176.00  w 96.01" reads as a defect in the mark
+           when it is a defect in the arithmetic on this page. */
+        row(g, 'ink bbox x', n2(b.x0) + ' … ' + n2(b.x1) + '  w ' + n2(n2(b.x1) - n2(b.x0)));
+        row(g, 'ink bbox y', n2(b.y0) + ' … ' + n2(b.y1) + '  h ' + n2(n2(b.y1) - n2(b.y0)));
+        row(g, 'live area', LIVE_MIN + ' … ' + LIVE_MAX + '  —  ' + (inside ? 'inside' : 'OUTSIDE'),
+            inside ? '' : 'warn');
+        if (a.strokes && a.bboxGeom) {
+          var bg = a.bboxGeom;
+          row(g, 'stroke', a.strokes + ' painted stroke(s) — the box above widens each by w/2 per side, which is exact at a round or square cap and up to w/2 too long at a butt-capped open end. Geometry-only box: x '
+              + n2(bg.x0) + ' … ' + n2(bg.x1) + '  y ' + n2(bg.y0) + ' … ' + n2(bg.y1)
+              + '. The true ink lies between the two.', 'warn', true);
+        }
+      } else {
+        row(g, 'ink bbox', 'not measurable' + note(a.bboxErr || 'no painted geometry found'), 'bad', true);
+      }
+
+      var nodeCls = a.nodes > NODE_CEIL_FILE ? 'bad' : (a.nodes > NODE_REDRAW ? 'warn' : '');
+      row(g, 'nodes, file', a.nodes + note('ceiling ' + NODE_CEIL_FILE + ' · redraw signal ' + NODE_REDRAW), nodeCls);
+      var contours = [];
+      a.paths.forEach(function (p) { contours = contours.concat(p.contours); });
+      row(g, 'nodes, contour', (contours.length ? contours.join(' · ') : '—')
+          + note('ceiling ' + NODE_CEIL_CONTOUR + ' each'),
+          a.contourMax > NODE_CEIL_CONTOUR ? 'bad' : '');
+
+      if (a.paths.length) {
+        var parts = [], worst = 0, gated = false;
+        a.paths.forEach(function (p, idx) {
+          if (p.total >= REUSE_MIN_VALUES) {
+            var ratio = p.distinct / p.total;
+            gated = true;
+            if (ratio > worst) worst = ratio;
+            parts.push('p' + (idx + 1) + ' ' + p.distinct + '/' + p.total + ' = ' + (Math.round(ratio * 100) / 100).toFixed(2));
+          } else {
+            parts.push('p' + (idx + 1) + ' ' + p.distinct + '/' + p.total + ' — under ' + REUSE_MIN_VALUES + ', not computed');
+          }
+        });
+        row(g, 'coord reuse', esc(parts.join('  ·  ')) + note('signal > ' + REUSE_SIGNAL),
+            gated && worst > REUSE_SIGNAL ? 'bad' : '', true);
+      }
+
+      var pk = Object.keys(a.paints);
+      var paintBad = pk.some(function (p) { return p !== 'currentColor' && p.indexOf('currentColor') === -1; });
+      row(g, 'paint', pk.length ? esc(pk.map(function (p) { return p + ' ×' + a.paints[p]; }).join('  ·  ')) : '—',
+          paintBad ? 'warn' : '', true);
+
+      /* Mono collapse, continued: `paint` above is M1's evidence, this is M3's. */
+      m3Rows(g, c.m3);
+
+      if (a.transforms) {
+        row(g, 'transform', a.transforms + ' element(s) carry a transform'
+            + note('construction.md forbids transform on final geometry; every measurement above ignores it'), 'bad', true);
+      }
+      a.warn.forEach(function (w) { row(g, 'parse', esc(w), 'bad', true); });
+
+      if (a.texts.length === 0) {
+        row(g, 'text', '— none');
+      } else {
+        a.texts.forEach(function (t, ti) {
+          var lbl = a.texts.length > 1 ? 'text ' + (ti + 1) : 'text';
+          row(g, lbl, '“' + esc(t.chars) + '”  ' + esc(t.family || '⟨no family⟩')
+              + ' ' + esc(t.weight) + ' · ' + n2(t.size) + 'px · ls ' + n2(t.letterSpacing), '', true);
+          if (t.available === false) {
+            row(g, 'font', 'NOT AVAILABLE — "' + esc(t.family) + '" did not resolve; this is the fallback face, and every width below describes the fallback, not the wordmark', 'bad', true);
+          } else if (t.available === null) {
+            row(g, 'font', 'availability could not be determined — treat the widths below as unverified', 'warn', true);
+          } else {
+            row(g, 'font', 'available — "' + esc(t.family) + '" resolved; the widths below are the declared face', '', true);
+          }
+          if (t.advanceRight === null) {
+            row(g, 'ink edge', 'not measurable', 'bad', true);
+          } else {
+            row(g, 'advance edge', n2(t.left) + ' … ' + n2(t.advanceRight)
+                + note('getBBox right edge, tracking included'), '', true);
+            row(g, 'ink edge', n2(t.inkRight)
+                + '  Δ to ' + TEXT_TARGET_EDGE + ' = ' + (t.inkRight > TEXT_TARGET_EDGE ? '+' : '')
+                + n2(t.inkRight - TEXT_TARGET_EDGE)
+                + note(t.trailing
+                    ? 'this renderer applies a trailing letter-spacing step (measured), so ' + n2(t.letterSpacing) + ' was subtracted'
+                    : 'this renderer applies no trailing letter-spacing step (measured)'),
+                '', true);
+            row(g, 'fit ×', t.fit === null ? '—' : (Math.round(t.fit * 10000) / 10000).toFixed(4)
+                + '  →  font-size ' + n2(t.size) + ' → ' + n2(t.size * t.fit)
+                + note('to land the ink edge on ' + TEXT_TARGET_EDGE + '; assumes text-anchor=start and letter-spacing scaled with the size'),
+                '', true);
+          }
+          if (t.available === false) {
+            alert_('bad', 'Candidate ' + k + ': webfont "' + t.family + '" is not available on this machine. The wordmark rendered in a fallback face and its measurements are NOT the declared face’s.');
+          }
+        });
+      }
+
+      block.appendChild(g);
+      host.appendChild(block);
+    });
+  }
+
+  function renderAlerts(host) {
+    alerts.forEach(function (a) { host.appendChild(el('div', 'alert ' + a.level, a.msg)); });
+  }
+
+  /* ------------------------------------------------------------------- main */
+  function collect() {
+    var pool = document.getElementById('pool');
+    var cands = {};
+
+    KEYS.forEach(function (k) {
+      var box = pool.querySelector('[data-key="' + k + '"]');
+      var raw = box ? box.textContent : '';
+      if (raw && raw.indexOf('{{CANDIDATE_' + k + '}}') !== -1) {
+        alert_('bad', 'Placeholder {{CANDIDATE_' + k + '}} was never substituted. Slot ' + k + ' is empty.');
+        cands[k] = null;
+        return;
+      }
+      var svg = box ? box.querySelector('svg') : null;
+      if (!svg) { cands[k] = null; return; }
+      /* The sheet sizes every instance itself; a stray width/height on the root
+         would otherwise pin one cell to the wrong size. construction.md
+         forbids them, so say so rather than silently fixing it. */
+      if (svg.hasAttribute('width') || svg.hasAttribute('height')) {
+        alert_('warn', 'Candidate ' + k + ': the root <svg> carries width/height, which construction.md forbids. This sheet overrides them in CSS.');
+      }
+      cands[k] = { svg: svg, analysis: analyseSvg(svg) };
+    });
+
+    if (!cands.A && !cands.B && !cands.C) {
+      /* Built by concatenation on purpose: a literal token here would be
+         rewritten by the substitution step along with the real slots. */
+      alert_('bad', 'No candidates were supplied. Substitute at least the ' + '{{' + 'CANDIDATE_A' + '}}' + ' token.');
+    }
+    return cands;
+  }
+
+  /* Every append to the document happens here, in one synchronous burst with
+     every number already measured. Nothing is written before the M3 rasters
+     have settled, so an early screenshot catches a blank page rather than a
+     populated one with fields still filling in. */
+  function render(cands) {
+    renderReadout(document.getElementById('readout'), cands);
+    buildMatrix(document.getElementById('band-small'), SMALL_SIZES, true, cands);
+    buildMatrix(document.getElementById('band-big'), null, false, cands);
+    renderAlerts(document.getElementById('alerts'));
+    document.documentElement.setAttribute('data-sheet-ready', '1');
+  }
+
+  function main() {
+    var cands = collect();
+    m3Run(cands).then(function () { render(cands); }, function (e) {
+      /* m3Measure resolves its own failures with an err string, so reaching
+         here means the pass itself threw. Say so and draw the rest. */
+      alert_('bad', 'The M3 inversion pass threw, and every M3 row below is unmeasured: ' + (e && e.message || e));
+      render(cands);
+    });
+  }
+
+  /* Measure after fonts have settled so a wordmark is never measured mid-swap.
+     document.fonts.ready resolves immediately when there is nothing to load,
+     which is the offline case this sheet is built for. */
+  function boot() {
+    if (document.fonts && document.fonts.ready && typeof document.fonts.ready.then === 'function') {
+      document.fonts.ready.then(main, main);
+    } else {
+      main();
+    }
+  }
+  if (document.readyState === 'complete') boot();
+  else window.addEventListener('load', boot);
+})();
+</script>
+</body>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Rag.NET" color="#ffffff">
+  <!-- Rag.NET — the retrieved chunk. Seed: a ring, outer r 96 / inner r 72 (declared weight 24) about (128,144): the corpus.
+       Two straight slots 40 wide (target 32.72 at w 24 + dark), centred on the upper diagonals, free its top quarter: one chunk.
+       That chunk is lifted 32 (two grid units) clear of the ring: the one that was retrieved. The gap it leaves is centred on 90 degrees
+       and its width is the chunk's own, so it is derived rather than placed (anti-slop.md pattern 1, Test A).
+       Ink y 16 ... 240, x 32 ... 224; centred on 128 vertically because cy = 128 + 32 / 2. -->
+  <!-- OPTICAL: slot edges · derived · the 40-wide slots are lines 20 either side of each diagonal; their meeting points with r 96 / r 72 fall off the grid -->
+  <!-- OPTICAL: inner ry 72.96 on the ring and the chunk · horizontal strokes read heavier · 24 x 0.96 = 23.04 at the top and bottom tangents; outer edges held -->
+  <path fill="currentColor"
+        d="M180.25 31.47A96 96 0 0 0 75.75 31.47L92.7 48.41A72 72.96 0 0 1 163.3 48.41Z
+           M208.53 91.75A96 96 0 1 1 47.47 91.75L64.79 109.07A72 72.96 0 1 0 191.21 109.07Z"/>
+</svg>

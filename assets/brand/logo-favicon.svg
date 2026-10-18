@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Rag.NET">
+  <!-- Favicon — a redraw, not a scale. reproduction.md § The favicon's own spec: weight 32 (2 px at 16 px), at most one counter.
+       The same idea as the master, in fewer nodes: an open ring (the corpus) and, above its opening, the retrieved chunk.
+       Ring: outer r 96 / inner r 64 about (128,144), its ends cut on the radii at 30 degrees above horizontal, where r 96 meets the grid line y 96.
+       Radial ends make every ink join 90 degrees (a flat cut at y 96 met the inner circle at 41 degrees, under correction 7's floor).
+       Chunk: a circular segment of r 64 (the ring's inner radius) about (128,80) — top y 16, chord y 48, so it is 32 deep, the weight.
+       Its cusps meet the chord at 60 degrees, construction.md correction 7's floor. The ring's inner ends fall at x 72.57 / 183.43 —
+       exactly the chunk's chord ends, so the opening is the chunk's own width (110.85): the lid that came out of the gap.
+       Ink y 16 ... 240 (fills the live area on the longer axis), x 32 ... 224. 6 nodes against the master's 8.
+       Uniform weight: correction 4 declined — 32 -> 30.72 is 2.00 px against 1.92 px at the only sizes this variant renders at. -->
+  <!-- OPTICAL: x 44.86 / 211.14 at y 96, x 72.57 / 183.43 at y 112 and at y 48 · derived · r 96 and r 64 on the 30-degree radii, and the chunk's r 64 cut by the grid line y 48 -->
+  <path fill="currentColor"
+        d="M72.57 48A64 64 0 0 1 183.43 48Z
+           M211.14 96A96 96 0 1 1 44.86 96L72.57 112A64 64 0 1 0 183.43 112Z"/>
+</svg>

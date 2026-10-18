@@ -26,3 +26,14 @@ branches:
     # therefore STRIPS the label — measured on this repository: main derived a stable 0.1.0,
     # exactly the shape Milestone 4 must not produce.
     mode: ContinuousDelivery
+
+  # The publish runs check out the release TAG, which leaves HEAD detached — GitVersion then
+  # matches no named branch and uses this config, whose GitHubFlow default is
+  # when-current-commit-tagged: false. That bumps the tagged commit to the NEXT patch with a
+  # "-no-branch-" (release event) or "-tags-vX-Y-Z" (dispatch on the tag) label, and
+  # publish-nuget refuses it as a prerelease: v1.0.13's release run derived
+  # 1.0.14--no-branch-.1 and published nothing. With the increment prevented on a tagged
+  # commit, a checkout of vX.Y.Z derives exactly X.Y.Z; untagged commits are unaffected.
+  unknown:
+    prevent-increment:
+      when-current-commit-tagged: true

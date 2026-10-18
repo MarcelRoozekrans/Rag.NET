@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.1.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.13...v1.1.0) (2026-10-16)
+
+
+### Features
+
+* **brand:** add the Rag.NET brand mark, a sibling of Minos.NET ([#798](https://github.com/MarcelRoozekrans/Rag.NET/issues/798)) ([93c6241](https://github.com/MarcelRoozekrans/Rag.NET/commit/93c62412b1f6e7d8eb3bcbc3ec9078199804d3ac))
+
+
+### Bug Fixes
+
+* **release:** derive the tag's version when the publish checks out the tag ([#801](https://github.com/MarcelRoozekrans/Rag.NET/issues/801)) ([6e55122](https://github.com/MarcelRoozekrans/Rag.NET/commit/6e551226053e0e1ab72d96eee8cdd0b76967744f))
+
+## [1.0.13](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.12...v1.0.13) (2026-10-16)
+
+
+### Bug Fixes
+
+* **deps:** lift System.Security.Cryptography.Pkcs to the patched 10.0.13 ([#796](https://github.com/MarcelRoozekrans/Rag.NET/issues/796)) ([b823092](https://github.com/MarcelRoozekrans/Rag.NET/commit/b823092d7f37d86696edbfea83e55857ee3a293d))
+* **deps:** update dependency langchain-core to v1.6.10 ([#787](https://github.com/MarcelRoozekrans/Rag.NET/issues/787)) ([0519e9a](https://github.com/MarcelRoozekrans/Rag.NET/commit/0519e9af16476284845362bf4a060d6fae158aaa))
+
 ## [1.0.12](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.11...v1.0.12) (2026-10-15)
 
 
