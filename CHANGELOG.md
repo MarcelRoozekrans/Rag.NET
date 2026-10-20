@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.1.2](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.1.1...v1.1.2) (2026-10-18)
+
+
+### Bug Fixes
+
+* **deps:** update dependency langchain-core to v1.6.11 ([#822](https://github.com/MarcelRoozekrans/Rag.NET/issues/822)) ([af4dd09](https://github.com/MarcelRoozekrans/Rag.NET/commit/af4dd090b6b56335b90fb105fa17d2a116260c5a))
+
+## [1.1.1](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.1.0...v1.1.1) (2026-10-18)
+
+
+### Bug Fixes
+
+* **deps:** update dependency haystack-ai to v3.4.0 ([#817](https://github.com/MarcelRoozekrans/Rag.NET/issues/817)) ([72600a4](https://github.com/MarcelRoozekrans/Rag.NET/commit/72600a47d1734f3e8eb21b622a6aa74836dd671d))
+
+## [1.1.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.13...v1.1.0) (2026-10-16)
+
+
+### Features
+
+* **brand:** add the Rag.NET brand mark, a sibling of Minos.NET ([#798](https://github.com/MarcelRoozekrans/Rag.NET/issues/798)) ([93c6241](https://github.com/MarcelRoozekrans/Rag.NET/commit/93c62412b1f6e7d8eb3bcbc3ec9078199804d3ac))
+
+
+### Bug Fixes
+
+* **release:** derive the tag's version when the publish checks out the tag ([#801](https://github.com/MarcelRoozekrans/Rag.NET/issues/801)) ([6e55122](https://github.com/MarcelRoozekrans/Rag.NET/commit/6e551226053e0e1ab72d96eee8cdd0b76967744f))
+
+## [1.0.13](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.12...v1.0.13) (2026-10-16)
+
+
+### Bug Fixes
+
+* **deps:** lift System.Security.Cryptography.Pkcs to the patched 10.0.13 ([#796](https://github.com/MarcelRoozekrans/Rag.NET/issues/796)) ([b823092](https://github.com/MarcelRoozekrans/Rag.NET/commit/b823092d7f37d86696edbfea83e55857ee3a293d))
+* **deps:** update dependency langchain-core to v1.6.10 ([#787](https://github.com/MarcelRoozekrans/Rag.NET/issues/787)) ([0519e9a](https://github.com/MarcelRoozekrans/Rag.NET/commit/0519e9af16476284845362bf4a060d6fae158aaa))
+
 ## [1.0.12](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.0.11...v1.0.12) (2026-10-15)
 
 

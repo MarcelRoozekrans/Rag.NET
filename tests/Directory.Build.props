@@ -24,4 +24,10 @@
     -->
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
+
+  <!-- Code coverage for the Microsoft.Testing.Platform runner. ci.yml passes the coverage options
+       to every test app and uploads the Cobertura reports to Codecov. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+  </ItemGroup>
 </Project>
