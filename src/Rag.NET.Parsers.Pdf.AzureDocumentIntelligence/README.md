@@ -22,7 +22,9 @@ dotnet add package Rag.NET.Parsers.Pdf.AzureDocumentIntelligence
 ```
 
 This package extends `Rag.NET.Parsers.Pdf` (installed automatically) and registers into
-the `AddRagNet(...)` builder from the core `Rag.NET` package.
+the `AddRagNet(...)` builder from the core `Rag.NET` package. It also installs
+`Rag.NET.Parsers.AzureDocumentIntelligence`, whose analyzer does the service call, polling and
+cost recording for this engine.
 
 ## Setup
 
