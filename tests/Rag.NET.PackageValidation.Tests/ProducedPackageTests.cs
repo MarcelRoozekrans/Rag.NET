@@ -63,8 +63,15 @@ public sealed class ProducedPackageTests
     /// <b>write</b> surface. Verified by an actual <c>dotnet pack</c> of the solution, which
     /// produced 73.
     /// </para>
+    /// <para>
+    /// <b>73 → 74 on 2026-10-21</b>: <c>Rag.NET.Parsers.AzureDocumentIntelligence</c>, a parser
+    /// for TIFF and HEIF scans and other formats Azure Document Intelligence reads (#824). It is a
+    /// package of its own, not part of <c>Rag.NET.Parsers.Pdf.AzureDocumentIntelligence</c>,
+    /// because a consumer who only wants TIFF scans must not have to install PdfPig; the PDF OCR
+    /// engine references it instead and delegates to its shared analyzer.
+    /// </para>
     /// </summary>
-    private const int ExpectedPackageCount = 73;
+    private const int ExpectedPackageCount = 74;
 
     /// <summary>
     /// What NuGet ships when a project declares no <c>Description</c>. Not a warning, not an

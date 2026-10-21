@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Parsers.AzureDocumentIntelligence</RootNamespace>
+    <PackageId>Rag.NET.Parsers.AzureDocumentIntelligence</PackageId>
+    <Description>Azure Document Intelligence document parser for Rag.NET: TIFF and HEIF scans, with opt-in PDF, image, Office and HTML formats</Description>
+    <VerifiedBy>unit</VerifiedBy>
+    <VerifiedByReason>Azure AI Document Intelligence. Its WireMock cassettes are HAND-WRITTEN from the
+      documented response shape rather than recorded, so they verify the analyzer against fixtures
+      written alongside it. No capture has been taken for this package yet: one owed run with
+      RAGNET_DOCINTEL_CAPTURE set against a real resource, the same capture the PDF OCR engine took in
+      #354, would let these cassettes be replaced by the service's own responses. No env-gated live
+      test exists in this package yet either. What stays unverified: that the real service's response
+      shape for TIFF, HEIF and Office input matches those fixtures, and that its error responses
+      deserialise as the hand-written 401 does.</VerifiedByReason>
+  </PropertyGroup>
+
+  <!-- No reference to Rag.NET.Parsers.Pdf on purpose: a consumer that only wants TIFF scans
+       must not have to install PdfPig. The dependency points the other way — the PDF OCR engine
+       package references this one and delegates to its analyzer. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <PackageReference Include="Azure.AI.DocumentIntelligence" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+</Project>
