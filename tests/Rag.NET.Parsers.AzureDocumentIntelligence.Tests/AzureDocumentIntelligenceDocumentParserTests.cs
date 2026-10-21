@@ -279,18 +279,22 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
     public async Task ParseAsync_CancelledWhilePolling_PropagatesOperationCanceledUnwrapped()
     {
         // The cassette delays the terminal poll by ten seconds; the token fires mid-wait, inside
-        // the analyzer, which is the path the pre-cancelled test above never reaches.
+        // the analyzer, which is the path the pre-cancelled test above never reaches. It fires
+        // only once WireMock has logged the analyze POST: a fixed timer could fire before the
+        // submission on a loaded runner and pass for the wrong reason.
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        cts.CancelAfter(TimeSpan.FromMilliseconds(300));
         var sut = CreateParser("slow-poll");
         using var stream = Content();
 
-        var exception = await Record.ExceptionAsync(async () =>
+        var parse = Record.ExceptionAsync(async () =>
         {
             await foreach (var _ in sut.ParseAsync(stream, Metadata(), cts.Token))
             {
             }
-        });
+        }).AsTask();
+        await WaitForAnalyzeSubmissionAsync("slow-poll", parse);
+        await cts.CancelAsync();
+        var exception = await parse;
 
         Assert.IsAssignableFrom<OperationCanceledException>(exception);
         Assert.IsNotType<AzureDocumentIntelligenceException>(exception);
@@ -312,6 +316,29 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
 
         Assert.True(stream.CanRead);
     }
+
+    /// <summary>
+    /// Polls WireMock's log until the analyze POST for <paramref name="modelId"/> appears, or until
+    /// <paramref name="parse"/> ends first. Fails after five seconds rather than hanging, which is
+    /// well inside the cassette's ten-second poll delay.
+    /// </summary>
+    private async Task WaitForAnalyzeSubmissionAsync(string modelId, Task parse)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (!IsAnalyzeSubmission(modelId))
+        {
+            if (parse.IsCompleted || DateTime.UtcNow > deadline)
+            {
+                Assert.Fail($"The analyze POST for '{modelId}' never reached WireMock, so cancelling now would not test polling.");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10), TestContext.Current.CancellationToken);
+        }
+    }
+
+    private bool IsAnalyzeSubmission(string modelId) =>
+        _fixture.Server.LogEntries.Any(e =>
+            e.RequestMessage?.Path?.EndsWith($"{modelId}:analyze", StringComparison.Ordinal) == true);
 
     private async Task<List<DocumentSection>> ParseAsync(string modelId, FakeCostLedger? ledger = null)
     {
