@@ -75,6 +75,19 @@ public class DocumentContentTypeResolverTests
         Assert.Equal("application/pdf", resolved);
     }
 
+    [Theory]
+    [InlineData("scan.tif", "image/tiff")]
+    [InlineData("scan.TIF", "image/tiff")]
+    [InlineData("photo.heif", "image/heif")]
+    [InlineData("photo.heic", "image/heic")]
+    public void ResolveContentType_ImageScanExtensions_AreNotTreatedAsText(string fileName, string expected)
+    {
+        // An unmapped extension used to fall through to text/plain, so a scan was ingested as text.
+        var resolved = Metadata(fileName, contentType: null).ResolveContentType();
+
+        Assert.Equal(expected, resolved);
+    }
+
     private static DocumentMetadata Metadata(string fileName, string? contentType) => new()
     {
         DocumentId = new DocumentId("doc-1"),

@@ -63,9 +63,14 @@ public static class ContentTypeMap
         [".gif"] = "image/gif",
         [".bmp"] = "image/bmp",
         [".webp"] = "image/webp",
-        // No parser claims image/tiff today; kept for accurate typing — the dispatcher
-        // will warn-and-skip it like any other unclaimed content type.
+        // image/tiff is still unclaimed unless the Azure Document Intelligence parser is registered;
+        // an unclaimed TIFF is warn-and-skipped by the dispatcher instead of being parsed as text.
+        // .tif, .heif and .heic need an entry for the same reason: an unmapped extension resolves
+        // to text/plain, which would ingest a scan as text.
         [".tiff"] = "image/tiff",
+        [".tif"] = "image/tiff",
+        [".heif"] = "image/heif",
+        [".heic"] = "image/heic",
         [".wav"] = "audio/wav",
         [".mp3"] = "audio/mpeg",
         [".flac"] = "audio/flac",
