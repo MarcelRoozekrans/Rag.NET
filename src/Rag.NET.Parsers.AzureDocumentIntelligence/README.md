@@ -74,7 +74,7 @@ for free. Per Microsoft's Read model page for API version `2024-11-30`:
 | TIFF | `Tiff` (default) | OCR text, one page per frame | frame | nothing |
 | HEIF / HEIC | `Heif` (default) | OCR text | image | nothing |
 | PDF | `Pdf` | OCR text, lines, paragraphs | page | the PDF parser, plus the PDF OCR engine for scanned pages |
-| PNG, JPEG, BMP | `Images` | OCR text | image | the vision parser: an LLM description |
+| PNG, JPEG, BMP | `Images` | OCR text | image | the vision parser: an LLM description, optionally Tesseract first |
 | DOCX | `Word` | the embedded text as is; images ignored | 3,000 characters | the Office parser, locally, free |
 | XLSX | `Excel` | the same | worksheet | the Office parser, locally, free |
 | PPTX | `PowerPoint` | the same | slide | the Office parser, locally, free |
@@ -100,7 +100,8 @@ format. An empty `Formats` is a registration error.
 - **Failures throw** `AzureDocumentIntelligenceException`, naming the file; there is no local text
   to fall back to. Cancellation propagates unwrapped.
 - **Headings need a layout model.** `prebuilt-read` assigns no paragraph roles; with
-  `prebuilt-layout`, titles and section headings set the section heading. Office and HTML
+  `prebuilt-layout`, titles and section headings set the section heading. A heading partway
+  down a page applies from the next section, the next page, onwards. Office and HTML
   paragraphs carry no page, so each becomes its own section without a page number.
 
 ## Not the PDF OCR engine

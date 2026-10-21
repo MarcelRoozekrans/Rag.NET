@@ -604,7 +604,7 @@ From Microsoft's Read model page for v4.0, API version `2024-11-30`:
 | TIFF | `Tiff` (default) | OCR text, one page per frame | frame | nothing |
 | HEIF / HEIC | `Heif` (default) | OCR text | image | nothing |
 | PDF | `Pdf` | OCR text, lines, paragraphs | page | `AddPdfParser`, plus the PDF OCR engine for scanned pages |
-| PNG, JPEG, BMP | `Images` | OCR text | image | `UseImageDescription`: a vision LLM's description |
+| PNG, JPEG, BMP | `Images` | OCR text | image | `UseImageDescription`: a vision LLM's description, optionally Tesseract first |
 | DOCX | `Word` | the embedded text as is; images ignored; no lines | 3,000 characters | `AddWordParser`, locally, free |
 | XLSX | `Excel` | the same | worksheet | `AddExcelParser`, locally, free |
 | PPTX | `PowerPoint` | the same | slide | `AddPowerPointParser`, locally, free |
@@ -612,9 +612,9 @@ From Microsoft's Read model page for v4.0, API version `2024-11-30`:
 
 **For Office and HTML, Azure adds cost, not text.** It extracts the same embedded text the local
 parsers do and ignores embedded images. The only reason to route them here is one pipeline for
-every format. **Office and HTML are billed per 3,000 characters** (a worksheet for Excel, a slide
-for PowerPoint), so their cost depends on the amount of text and cannot be known, or capped by a
-page count, before the call.
+every format. **Word and HTML are billed per 3,000 characters, Excel per worksheet and PowerPoint
+per slide**, so their cost depends on the amount of text, sheets or slides and cannot be known, or
+capped by a page count, before the call.
 
 #### Opting in to a format another parser claims
 
@@ -636,8 +636,9 @@ An empty `Formats` is a registration error, not a parser that claims nothing.
   `PageNumber`, in document order.
 - **Headings come only from a layout model.** `prebuilt-read`, the default, assigns no paragraph
   roles, so it yields no headings. With `o.Analyzer.ModelId = "prebuilt-layout"`, title and
-  section-heading paragraphs set `Heading` and `HeadingLevel` (1 and 2), and page headers, footers
-  and page numbers are dropped. Tables, key-value pairs and selection marks are not mapped.
+  section-heading paragraphs set `Heading` and `HeadingLevel` (1 and 2) from the section that
+  starts with them until the next heading. A heading partway down a page applies from the next
+  section, the next page, onwards. Page headers, footers and page numbers are dropped. Tables, key-value pairs and selection marks are not mapped.
 
 #### Limits and spend
 
