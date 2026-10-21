@@ -17,10 +17,14 @@ namespace Rag.NET.Parsers.AzureDocumentIntelligence;
 /// <para>
 /// <b>Sections.</b> Text is built from the result's <c>paragraphs</c>, which every format returns.
 /// Paragraphs with bounding regions are grouped by the page of their <i>first</i> region, so a
-/// paragraph that crosses a page break appears once, on the page it starts on; one section is
-/// emitted per page, in ascending page order, with paragraphs joined by a blank line. Paragraphs
-/// without bounding regions (Office and HTML input) follow as one page-less section each, in
-/// document order. A result without paragraphs falls back to each page's lines, then its words.
+/// paragraph that crosses a page break appears once, on the page it starts on. Paragraphs
+/// without bounding regions, which is how Office and HTML input comes back, are attributed to
+/// the page whose <c>spans</c> contain the offset of the paragraph's first span, Azure's page
+/// unit for those formats, and group with that page in the same way. One section is emitted per
+/// page, in ascending page order, with paragraphs joined by a blank line. A paragraph no page
+/// span contains, or any paragraph in a result without page spans, follows as one page-less
+/// section each, in document order. A result without paragraphs falls back to each page's
+/// lines, then its words.
 /// </para>
 /// <para>
 /// <b>Headings come only from the model.</b> <c>prebuilt-read</c> assigns no paragraph roles, so
@@ -39,6 +43,17 @@ namespace Rag.NET.Parsers.AzureDocumentIntelligence;
 /// <b>Spend is recorded, not enforced.</b> The analyzer records analyzed pages to
 /// <see cref="ICostLedger"/>, as the PDF OCR engine does, but nothing here checks a budget before
 /// submitting a document.
+/// </para>
+/// <para>
+/// <b>Memory: budget for roughly 2.5 to 3.5 times the document per concurrent parse.</b> The
+/// document is buffered whole, because the SDK's <see cref="AnalyzeDocumentOptions"/> takes
+/// <see cref="BinaryData"/> rather than a <see cref="Stream"/>. A seekable stream is buffered at
+/// its exact length; a stream without a length is buffered in a growing array whose capacity
+/// can approach twice the document, and that array is what is submitted. The SDK then posts the
+/// document base64-encoded inside a JSON body, which adds about 1.33 times the document again
+/// while the request is built and sent. Large buffers land on the large object heap.
+/// <see cref="AzureDocumentIntelligenceParserOptions.MaxBytes"/> caps the document, not this
+/// multiple of it.
 /// </para>
 /// </remarks>
 public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
@@ -105,8 +120,9 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
 
     /// <inheritdoc/>
     /// <exception cref="AzureDocumentIntelligenceException">
-    /// The document is larger than <see cref="AzureDocumentIntelligenceParserOptions.MaxBytes"/>, in
-    /// which case nothing was sent, or the service failed to analyze it.
+    /// The document is empty or larger than
+    /// <see cref="AzureDocumentIntelligenceParserOptions.MaxBytes"/>, in which case nothing was
+    /// sent, or the service failed to analyze it.
     /// </exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
@@ -140,7 +156,8 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
     /// larger than the cap. At most <c>_maxBytes + 1</c> bytes are read: the extra byte is what
     /// proves a stream without a length is too large, and it is never written to the buffer, which
     /// therefore holds at most <c>_maxBytes</c>. A seekable stream is also checked by its
-    /// remaining length first, so an oversized one is refused without being read.
+    /// remaining length first, so an oversized one is refused without being read. An empty
+    /// document is refused too: the service would only answer it with a 400 after the round trip.
     /// </summary>
     private async Task<BinaryData> BufferAsync(Stream stream, string fileName, CancellationToken cancellationToken)
     {
@@ -182,6 +199,11 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
             ArrayPool<byte>.Shared.Return(chunk);
         }
 
+        if (buffer.Length == 0)
+        {
+            throw Empty(fileName);
+        }
+
         return new BinaryData(buffer.GetBuffer().AsMemory(0, (int)buffer.Length));
     }
 
@@ -191,6 +213,11 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
             $"{nameof(AzureDocumentIntelligenceParserOptions)}.{nameof(AzureDocumentIntelligenceParserOptions.MaxBytes)} " +
             $"({_maxBytes} bytes). The default cap is Azure's limit of 500 MB (500,000,000 bytes) " +
             "on the S0 tier, so a larger file would only be rejected by the service after uploading.");
+
+    private static AzureDocumentIntelligenceException Empty(string fileName) =>
+        new(fileName,
+            $"'{fileName}' was not sent to Azure Document Intelligence: it is empty, and the " +
+            "service rejects a document with no content.");
 
     /// <summary>
     /// Analyzes the document, translating a service failure into
@@ -218,15 +245,16 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
         var paragraphs = result.Paragraphs;
         return paragraphs is null || paragraphs.Count == 0
             ? MapPageContent(result.Pages)
-            : MapParagraphs(paragraphs);
+            : MapParagraphs(paragraphs, PageSpanIndex.Create(result.Pages));
     }
 
     /// <summary>
-    /// Groups paged paragraphs per page and emits page-less ones after them, carrying the heading
-    /// in effect at each section's first paragraph.
+    /// Groups paragraphs per page and emits page-less ones after them, carrying the heading in
+    /// effect at each section's first paragraph. A paragraph's page is that of its first bounding
+    /// region, else the page whose spans contain its first span's offset.
     /// </summary>
     private static List<(string Text, int? PageNumber, Heading? Heading)> MapParagraphs(
-        IReadOnlyList<DocumentParagraph> paragraphs)
+        IReadOnlyList<DocumentParagraph> paragraphs, PageSpanIndex pageSpans)
     {
         var pages = new SortedDictionary<int, (StringBuilder Text, Heading? Heading)>();
         var pageless = new List<(string Text, int? PageNumber, Heading? Heading)>();
@@ -249,13 +277,21 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
             }
 
             var regions = paragraph.BoundingRegions;
-            if (regions is null || regions.Count == 0)
+            int pageNumber;
+            if (regions is { Count: > 0 })
+            {
+                pageNumber = regions[0].PageNumber;
+            }
+            else if (pageSpans.FindPage(paragraph.Spans) is { } spanned)
+            {
+                pageNumber = spanned;
+            }
+            else
             {
                 pageless.Add((paragraph.Content, null, current));
                 continue;
             }
 
-            var pageNumber = regions[0].PageNumber;
             if (pages.TryGetValue(pageNumber, out var page))
             {
                 page.Text.Append(ParagraphSeparator).Append(paragraph.Content);
@@ -344,6 +380,79 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
     private static bool IsPageFurniture(DocumentParagraph paragraph) =>
         paragraph.Role is { } role
         && (role == ParagraphRole.PageHeader || role == ParagraphRole.PageFooter || role == ParagraphRole.PageNumber);
+
+    /// <summary>
+    /// The result's page spans, sorted by offset, so a paragraph without bounding regions can be
+    /// placed on the page whose content range holds it.
+    /// </summary>
+    private sealed class PageSpanIndex
+    {
+        private readonly (int Offset, int End, int PageNumber)[] _spans;
+
+        private PageSpanIndex((int Offset, int End, int PageNumber)[] spans) => _spans = spans;
+
+        public static PageSpanIndex Create(IReadOnlyList<DocumentPage>? pages)
+        {
+            var spans = new List<(int Offset, int End, int PageNumber)>();
+            if (pages is not null)
+            {
+                foreach (var page in pages)
+                {
+                    if (page.Spans is null)
+                    {
+                        continue;
+                    }
+
+                    foreach (var span in page.Spans)
+                    {
+                        if (span.Length > 0)
+                        {
+                            spans.Add((span.Offset, span.Offset + span.Length, page.PageNumber));
+                        }
+                    }
+                }
+            }
+
+            spans.Sort(static (a, b) => a.Offset.CompareTo(b.Offset));
+            return new PageSpanIndex([.. spans]);
+        }
+
+        /// <summary>
+        /// The page whose span range <c>[offset, offset + length)</c> contains the offset of
+        /// <paramref name="paragraphSpans"/>' first span, or <see langword="null"/> when the
+        /// paragraph has no span or no page span contains it.
+        /// </summary>
+        public int? FindPage(IReadOnlyList<DocumentSpan>? paragraphSpans)
+        {
+            if (paragraphSpans is not { Count: > 0 } || _spans.Length == 0)
+            {
+                return null;
+            }
+
+            var offset = paragraphSpans[0].Offset;
+
+            // The last page span starting at or before the offset is the only one that can hold
+            // it, because a page's spans do not overlap another page's.
+            int low = 0;
+            int high = _spans.Length - 1;
+            int candidate = -1;
+            while (low <= high)
+            {
+                var middle = low + ((high - low) / 2);
+                if (_spans[middle].Offset <= offset)
+                {
+                    candidate = middle;
+                    low = middle + 1;
+                }
+                else
+                {
+                    high = middle - 1;
+                }
+            }
+
+            return candidate >= 0 && offset < _spans[candidate].End ? _spans[candidate].PageNumber : null;
+        }
+    }
 
     /// <summary>A heading paragraph's text and its level: 1 for a title, 2 for a section heading.</summary>
     private sealed record Heading(string Text, int Level);

@@ -53,23 +53,20 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
     public async Task ParseAsync_DocxWithoutLines_UsesParagraphsNotWords()
     {
         // Office results carry words but no lines and no bounding regions. Building text from
-        // words would flatten every paragraph into one run; paragraphs keep the structure.
+        // words would flatten every paragraph into one run; paragraphs keep the structure. Both
+        // paragraphs' spans fall inside page 1's span, so they share page 1's section.
         var sections = await ParseAsync("docx-paragraphs");
 
-        Assert.Equal(2, sections.Count);
+        var section = Assert.Single(sections);
         Assert.Equal(
-            "The quarterly report covers revenue, costs and the outlook for next year.",
-            sections[0].Text);
-        Assert.Equal(
+            "The quarterly report covers revenue, costs and the outlook for next year.\n\n" +
             "Revenue grew by twelve percent compared with the same quarter last year.",
-            sections[1].Text);
-        Assert.All(sections, s => Assert.Null(s.PageNumber));
-        Assert.Equal([0, 1], sections.Select(s => s.SectionIndex));
+            section.Text);
+        Assert.Equal(1, section.PageNumber);
+        Assert.Equal(0, section.SectionIndex);
 
         // The words fallback would join both sentences with a single space into one run.
-        Assert.DoesNotContain(
-            sections,
-            s => s.Text.Contains("next year. Revenue grew", StringComparison.Ordinal));
+        Assert.DoesNotContain("next year. Revenue grew", section.Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -151,8 +148,59 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
     }
 
     [Fact]
+    public async Task ParseAsync_OfficeParagraphsWithoutRegions_GroupByThePageSpanHoldingThem()
+    {
+        // Office input: no bounding regions, but each page lists the content range it holds.
+        // Each paragraph lands on the page whose span contains its first span's offset, and a
+        // heading heads the page it opens and the pages after it.
+        var sections = await ParseAsync("office-headings");
+
+        Assert.Equal(2, sections.Count);
+
+        Assert.Equal(1, sections[0].PageNumber);
+        Assert.Equal("Employee Handbook\n\nWelcome to the company.", sections[0].Text);
+        Assert.Equal("Employee Handbook", sections[0].Heading);
+        Assert.Equal(1, sections[0].HeadingLevel);
+
+        Assert.Equal(2, sections[1].PageNumber);
+        Assert.Equal("Leave\n\nYou get twenty-five days.", sections[1].Text);
+        Assert.Equal("Leave", sections[1].Heading);
+        Assert.Equal(2, sections[1].HeadingLevel);
+
+        Assert.Equal([0, 1], sections.Select(s => s.SectionIndex));
+    }
+
+    [Fact]
+    public async Task ParseAsync_ParagraphOutsideEveryPageSpan_FollowsThePagesWithoutAPage()
+    {
+        // Page 1 holds only the title and page 2 starts at "Leave", so "Welcome" sits in no
+        // page's range. It stays page-less and comes after the paged sections, carrying the
+        // heading in effect where it occurs in the document.
+        var sections = await ParseAsync("partial-page-spans");
+
+        Assert.Equal(3, sections.Count);
+
+        Assert.Equal(1, sections[0].PageNumber);
+        Assert.Equal("Employee Handbook", sections[0].Text);
+        Assert.Equal("Employee Handbook", sections[0].Heading);
+
+        Assert.Equal(2, sections[1].PageNumber);
+        Assert.Equal("Leave\n\nYou get twenty-five days.", sections[1].Text);
+        Assert.Equal("Leave", sections[1].Heading);
+
+        Assert.Null(sections[2].PageNumber);
+        Assert.Equal("Welcome to the company.", sections[2].Text);
+        Assert.Equal("Employee Handbook", sections[2].Heading);
+        Assert.Equal(1, sections[2].HeadingLevel);
+
+        Assert.Equal([0, 1, 2], sections.Select(s => s.SectionIndex));
+    }
+
+    [Fact]
     public async Task ParseAsync_PagelessHeadings_HeadTheirOwnSectionAndTheOnesAfter()
     {
+        // The genuine fallback: the result's page carries no spans, so no paragraph can be
+        // placed on a page and each becomes its own page-less section, in document order.
         var sections = await ParseAsync("pageless-headings");
 
         Assert.Equal(4, sections.Count);
@@ -359,6 +407,30 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
 
         Assert.Contains("Azure's limit", exception.Message, StringComparison.Ordinal);
         Assert.Equal(0, stream.Position);
+        Assert.Empty(_fixture.Server.LogEntries);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ParseAsync_EmptyDocument_ThrowsBeforeAnyRequest(bool seekable)
+    {
+        // The service answers an empty document with a 400; refusing it locally saves the round
+        // trip and says what is actually wrong.
+        var sut = CreateParser("tiff-three-frames");
+        using Stream stream = seekable ? new MemoryStream([]) : new NonSeekableStream([]);
+
+        var exception = await Assert.ThrowsAsync<AzureDocumentIntelligenceException>(async () =>
+        {
+            await foreach (var _ in sut.ParseAsync(stream, Metadata(), TestContext.Current.CancellationToken))
+            {
+            }
+        });
+
+        Assert.Equal(FileName, exception.FileName);
+        Assert.Contains(FileName, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("empty", exception.Message, StringComparison.Ordinal);
+        Assert.Null(exception.InnerException);
         Assert.Empty(_fixture.Server.LogEntries);
     }
 
