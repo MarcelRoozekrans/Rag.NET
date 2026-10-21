@@ -26,7 +26,7 @@ Grouped the way [the sidebar](https://marcelroozekrans.github.io/Rag.NET/) is.
 
 | Page | What it covers |
 |------|---------------|
-| [Choosing Packages](guide/choosing-packages.md) | Which two or three of the 73 packages a given pipeline actually needs |
+| [Choosing Packages](guide/choosing-packages.md) | Which two or three of the 74 packages a given pipeline actually needs |
 | [Architecture](guide/architecture.md) | Pipeline internals, data-flow diagram, the core interfaces and models |
 | [Ingestion](guide/ingestion.md) | Parsers, `DocumentMetadata`, `IngestionOptions`, OCR, progress reporting |
 | [Chunking](guide/chunking.md) | Eight strategies with a trade-off table, plus the domain-specific templates |
@@ -97,7 +97,7 @@ Grouped the way [the sidebar](https://marcelroozekrans.github.io/Rag.NET/) is.
 
 ## Package layout
 
-Rag.NET ships as 73 packages so that a pipeline downloads only the dependencies it actually
+Rag.NET ships as 74 packages so that a pipeline downloads only the dependencies it actually
 uses. The shape is three layers — abstractions, core, and a satellite per opt-in feature — and
 [Choosing packages](guide/choosing-packages.md) walks through which two or three are yours.
 

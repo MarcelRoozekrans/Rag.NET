@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/github/license/MarcelRoozekrans/Rag.NET)](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/LICENSE)
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/MarcelRoozekrans?logo=githubsponsors&color=ea4aaa&label=Sponsor)](https://github.com/sponsors/MarcelRoozekrans)
 
-> A modular RAG pipeline for .NET, built on Microsoft.Extensions.AI. Ships as **73 packages**
+> A modular RAG pipeline for .NET, built on Microsoft.Extensions.AI. Ships as **74 packages**
 > so a pipeline downloads only what it calls.
 > **[Documentation](https://marcelroozekrans.github.io/Rag.NET/)** · **[Repository](https://github.com/MarcelRoozekrans/Rag.NET)**
 

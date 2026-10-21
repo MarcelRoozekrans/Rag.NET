@@ -656,6 +656,19 @@ Add an OCR pass for PDFs where `PdfPig` extracts no text (scanned documents). In
 
 ---
 
+### Azure Document Intelligence Parser
+**Package:** `Rag.NET.Parsers.AzureDocumentIntelligence`
+
+A parser, not an OCR engine: `AddAzureDocumentIntelligenceParser(endpoint, credential)` sends whole documents to an Azure AI Document Intelligence model and emits one `DocumentSection` per page, built from the result's paragraphs. By default it claims only TIFF and HEIF (`image/tiff`, `image/heif`, `image/heic`), the formats no other Rag.NET parser reads; PDF, PNG/JPEG/BMP, Word, Excel, PowerPoint and HTML are opt-in flags on `AzureDocumentIntelligenceFormats`. Each claimed content type is declared as a `ParserClaim`, so opting in to a format another registered parser claims (`Word` alongside `AddWordParser()`) is an `InvalidOperationException` at `AddRagNet`. `MaxBytes` (default 500,000,000) is checked before anything is sent; spend is recorded to `ICostLedger` as `CostKind.Ocr` but no budget is enforced; service failures throw `AzureDocumentIntelligenceException`. Office and HTML input is billed per 3,000 characters (Excel per worksheet, PowerPoint per slide) and returns the same embedded text the local parsers extract for free. `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence` is unchanged and remains the PDF parser's OCR engine.
+
+**Why:** Issue #824. Scanned TIFFs are a common archive format, and before this a `.tif` file was not even mapped to a content type: it reached the text parser and was ingested as bytes.
+
+**Status:** ✅ Done
+
+**Exercised by:** declared — `Rag.NET.Parsers.AzureDocumentIntelligence` carries a `<VerifiedByReason>` naming the Azure AI Document Intelligence service. `AzureDocumentIntelligenceDocumentParserTests` replay hand-written cassettes through the real SDK, and `AzureDocumentIntelligenceParserLiveTests` sends a single-frame TIFF to a real resource in the nightly run when the `RAGNET_DOCINTEL_*` secrets are present, but no recorded exchange is committed yet. One `RAGNET_DOCINTEL_CAPTURE` run would supply it. Until then, the real service's response shape for HEIF and Office input, and its error responses, stay unverified.
+
+---
+
 ### EPUB Parser
 **Package:** `Rag.NET.Parsers.Epub`
 
@@ -1326,6 +1339,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Multi-Index Federation | Medium | `IVectorStore` composition (dense-only) |
 | [x] | PDF Table Extraction | Medium | PdfPig geometry |
 | [x] | OCR for Scanned PDFs | Medium | Tesseract in source builds only (`EnableOcr` compile gate — the published package compiles it out); Azure Document Intelligence (ungated, per-page billed) |
+| [x] | Azure Document Intelligence Parser | Medium | Azure AI Document Intelligence (`Azure.AI.DocumentIntelligence`); TIFF and HEIF by default, other formats opt-in |
 | [x] | Contextual Compression | Medium | `IChatClient` or embeddings |
 | [x] | Corrective RAG (CRAG) | Medium | `IChatClient` + web search |
 | [x] | Proposition Extraction Chunking | Medium | `IChatClient` |
