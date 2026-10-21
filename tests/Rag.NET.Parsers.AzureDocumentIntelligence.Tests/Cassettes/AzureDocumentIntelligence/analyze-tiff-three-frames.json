@@ -1,6 +1,6 @@
 {
   "Guid": "7a2e5c10-0000-4000-8000-000000000006",
-  "Title": "HAND-WRITTEN from the documented response shape: AnalyzeDocument accepted for a three-frame TIFF read by prebuilt-read: one page per frame, paragraphs with bounding regions",
+  "Title": "HAND-WRITTEN from the documented response shape: AnalyzeDocument accepted for a three-frame TIFF read by prebuilt-read: one page per frame, paragraphs listed out of page order (3, 1, 2, 1)",
   "Request": {
     "Path": {
       "Matchers": [

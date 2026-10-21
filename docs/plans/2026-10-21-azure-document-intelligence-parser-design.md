@@ -70,7 +70,7 @@ rag.AddAzureDocumentIntelligenceParser(endpoint, credential, o =>
 A parser cannot degrade the way the OCR engine does: the engine falls back to PdfPig's text, but a TIFF parser has no local text to fall back to. The precedent is the Vision parser, which throws a typed `VisionDescriptionException` rather than ingesting an empty document.
 
 - **Service failure** (throttling, auth, unsupported content) throws `AzureDocumentIntelligenceException`, wrapping the `RequestFailedException`, and names the document. An empty section list is never returned for a failed call.
-- **`BudgetExceededException` and cancellation propagate unchanged.**
+- **Cancellation propagates unwrapped.** The parser records spend to `ICostLedger` but does not enforce a budget, as with the Phase 2.4 engine.
 - **Configuration errors are validated at registration**, as `AzureDocumentIntelligenceBuilderExtensions.BuildOptions` already does for the engine.
 
 ## 7. Shared code with the existing engine

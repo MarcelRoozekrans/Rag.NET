@@ -33,6 +33,8 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
     [Fact]
     public async Task ParseAsync_ThreeFrameTiff_EmitsPagesOneToThreeInOrder()
     {
+        // The cassette lists paragraphs out of page order (3, 1, 2, 1), so this pins the sort
+        // and the grouping of a page's non-adjacent paragraphs, not just the payload's order.
         var sections = await ParseAsync("tiff-three-frames");
 
         Assert.Equal([1, 2, 3], sections.Select(s => s.PageNumber));
@@ -63,13 +65,10 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
         Assert.All(sections, s => Assert.Null(s.PageNumber));
         Assert.Equal([0, 1], sections.Select(s => s.SectionIndex));
 
-        // Joined the way a downstream chunker sees the document: paragraph breaks survive.
-        var joined = string.Join("\n\n", sections.Select(s => s.Text));
-        Assert.Contains("\n\n", joined, StringComparison.Ordinal);
-        Assert.Contains(
-            "Revenue grew by twelve percent compared with the same quarter last year.",
-            joined,
-            StringComparison.Ordinal);
+        // The words fallback would join both sentences with a single space into one run.
+        Assert.DoesNotContain(
+            sections,
+            s => s.Text.Contains("next year. Revenue grew", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -141,6 +140,41 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
     }
 
     [Fact]
+    public async Task ParseAsync_NoParagraphsPagesOutOfOrder_EmitsLinesInPageOrder()
+    {
+        var sections = await ParseAsync("lines-out-of-order");
+
+        Assert.Equal(["ONE", "TWO", "THREE"], sections.Select(s => s.Text), StringComparer.Ordinal);
+        Assert.Equal([1, 2, 3], sections.Select(s => s.PageNumber));
+        Assert.Equal([0, 1, 2], sections.Select(s => s.SectionIndex));
+    }
+
+    [Fact]
+    public async Task ParseAsync_PagelessHeadings_HeadTheirOwnSectionAndTheOnesAfter()
+    {
+        var sections = await ParseAsync("pageless-headings");
+
+        Assert.Equal(4, sections.Count);
+        Assert.All(sections, s => Assert.Null(s.PageNumber));
+
+        Assert.Equal("Employee Handbook", sections[0].Text);
+        Assert.Equal("Employee Handbook", sections[0].Heading);
+        Assert.Equal(1, sections[0].HeadingLevel);
+
+        Assert.Equal("Welcome to the company.", sections[1].Text);
+        Assert.Equal("Employee Handbook", sections[1].Heading);
+        Assert.Equal(1, sections[1].HeadingLevel);
+
+        Assert.Equal("Leave", sections[2].Text);
+        Assert.Equal("Leave", sections[2].Heading);
+        Assert.Equal(2, sections[2].HeadingLevel);
+
+        Assert.Equal("You get twenty-five days.", sections[3].Text);
+        Assert.Equal("Leave", sections[3].Heading);
+        Assert.Equal(2, sections[3].HeadingLevel);
+    }
+
+    [Fact]
     public async Task ParseAsync_NoParagraphsOrLines_FallsBackToPageWords()
     {
         var sections = await ParseAsync("words-only");
@@ -190,6 +224,15 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
             ["image/png", "image/jpeg", "image/jpg", "image/bmp"],
             AzureDocumentIntelligenceFormats.Images.ContentTypes());
         Assert.Equal(["text/html"], AzureDocumentIntelligenceFormats.Html.ContentTypes());
+        Assert.Equal(
+            ["application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+            AzureDocumentIntelligenceFormats.Word.ContentTypes());
+        Assert.Equal(
+            ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+            AzureDocumentIntelligenceFormats.Excel.ContentTypes());
+        Assert.Equal(
+            ["application/vnd.openxmlformats-officedocument.presentationml.presentation"],
+            AzureDocumentIntelligenceFormats.PowerPoint.ContentTypes());
         Assert.Equal(3, AzureDocumentIntelligenceFormats.Office.ContentTypes().Count);
         Assert.Empty(AzureDocumentIntelligenceFormats.None.ContentTypes());
     }
@@ -230,6 +273,31 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
             {
             }
         });
+    }
+
+    [Fact]
+    public async Task ParseAsync_CancelledWhilePolling_PropagatesOperationCanceledUnwrapped()
+    {
+        // The cassette delays the terminal poll by ten seconds; the token fires mid-wait, inside
+        // the analyzer, which is the path the pre-cancelled test above never reaches.
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cts.CancelAfter(TimeSpan.FromMilliseconds(300));
+        var sut = CreateParser("slow-poll");
+        using var stream = Content();
+
+        var exception = await Record.ExceptionAsync(async () =>
+        {
+            await foreach (var _ in sut.ParseAsync(stream, Metadata(), cts.Token))
+            {
+            }
+        });
+
+        Assert.IsAssignableFrom<OperationCanceledException>(exception);
+        Assert.IsNotType<AzureDocumentIntelligenceException>(exception);
+        // It got as far as the analyze submission, so cancellation came from inside the analyzer.
+        Assert.Contains(
+            _fixture.Server.LogEntries,
+            e => e.RequestMessage?.Path?.EndsWith("slow-poll:analyze", StringComparison.Ordinal) == true);
     }
 
     [Fact]

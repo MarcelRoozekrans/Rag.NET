@@ -15,9 +15,7 @@ namespace Rag.NET.Parsers.AzureDocumentIntelligence;
 /// </para>
 /// <para>
 /// <b>Only service failures are wrapped.</b> An <see cref="OperationCanceledException"/> from the
-/// caller's token and <c>BudgetExceededException</c> propagate untouched: the first is not a
-/// failure, and the second is this library's own stop signal, which must stay recognisable by
-/// type so nothing retries past a spend limit.
+/// caller's token propagates untouched, because cancellation is not a failure.
 /// </para>
 /// </remarks>
 /// <param name="fileName">The document being analyzed when the call failed.</param>

@@ -31,9 +31,13 @@ namespace Rag.NET.Parsers.AzureDocumentIntelligence;
 /// </para>
 /// <para>
 /// <b>Failures throw.</b> A service failure is wrapped in
-/// <see cref="AzureDocumentIntelligenceException"/> naming the file; cancellation and
-/// <see cref="BudgetExceededException"/> propagate unchanged. An empty section list is never
-/// returned for a failed call.
+/// <see cref="AzureDocumentIntelligenceException"/> naming the file; cancellation propagates
+/// unwrapped. An empty section list is never returned for a failed call.
+/// </para>
+/// <para>
+/// <b>Spend is recorded, not enforced.</b> The analyzer records analyzed pages to
+/// <see cref="ICostLedger"/>, as the PDF OCR engine does, but nothing here checks a budget before
+/// submitting a document.
 /// </para>
 /// </remarks>
 public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
@@ -83,7 +87,6 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
 
     /// <inheritdoc/>
     /// <exception cref="AzureDocumentIntelligenceException">The service failed to analyze the document.</exception>
-    /// <exception cref="BudgetExceededException">A cost budget stopped the call.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,
@@ -118,7 +121,7 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
     /// <summary>
     /// Analyzes the document, translating a service failure into
     /// <see cref="AzureDocumentIntelligenceException"/>. Nothing else is caught, so cancellation
-    /// and <see cref="BudgetExceededException"/> reach the caller untouched.
+    /// reaches the caller untouched.
     /// </summary>
     private async Task<AnalyzeResult> AnalyzeAsync(BinaryData content, string fileName, CancellationToken cancellationToken)
     {
