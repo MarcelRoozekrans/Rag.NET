@@ -81,7 +81,7 @@
 - [ ] **Step 2: Run them and confirm they fail.** Run `dotnet test tests/Rag.NET.Parsers.AzureDocumentIntelligence.Tests`. Expected: a compile failure, because the types do not exist yet.
 - [ ] **Step 3: Implement the analyzer and settings**, moving the logic out of `AzureDocumentIntelligenceOcrEngine.RecognizeAsync` and `RecordCostAsync` rather than rewriting it. The csproj carries:
   - `<VerifiedBy>unit</VerifiedBy>`
-  - `<VerifiedByReason>`: cassettes are hand-written from the documented response shape; the env-gated live test runs nightly; a captured cassette is owed. Name `RAGNET_DOCINTEL_CAPTURE`.
+  - `<VerifiedByReason>`: cassettes are hand-written from the documented response shape; the env-gated live test runs nightly; a captured cassette is owed. *[Corrected 2026-10-21 by the final review: the `RAGNET_DOCINTEL_*` repository secrets are not provisioned, so the live test skips every night and has never run; the reason says so.]* Name `RAGNET_DOCINTEL_CAPTURE`.
   - a unique `<Description>`.
 - [ ] **Step 4: Rerun those tests, then the repo-convention tests.** Run `dotnet test tests/Rag.NET.Parsers.AzureDocumentIntelligence.Tests` and `dotnet test tests/Rag.NET.RepoConventions.Tests`. Expected: pass. The README header, description, VerifiedBy, solution membership and central pins are all checked there.
 - [ ] **Step 5: Commit.** `feat(parsers): add the Azure Document Intelligence analyzer package`

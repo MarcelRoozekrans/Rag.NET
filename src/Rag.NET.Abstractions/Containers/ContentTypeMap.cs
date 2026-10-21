@@ -1,10 +1,10 @@
 namespace Rag.NET;
 
 /// <summary>
-/// Minimal file-extension → MIME-type map used when an Outlook attachment does not carry
-/// an explicit MIME type (see <c>MsgDocumentParser</c>). Covers the content types
-/// handled by the Rag.NET parser packages; unknown extensions map to
-/// <c>application/octet-stream</c>.
+/// Minimal file-extension → MIME-type map, used wherever a file name is all there is to type a
+/// document by: an Outlook attachment without an explicit MIME type, a ZIP entry, a CLI ingest
+/// and a pipeline document with no declared content type. Covers the content types handled by
+/// the Rag.NET parser packages; unknown extensions map to <c>application/octet-stream</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -25,10 +25,12 @@ namespace Rag.NET;
 /// </para>
 /// <para>
 /// <b>The Phase 3.9 addendum this replaces attributed that failure to this type, which is wrong.</b>
-/// <c>FromFileName</c> has exactly one caller in the repository — <c>StorageMessageAdapter</c>,
-/// on the <c>.msg</c> path — so an extension-table miss is the only route this map is
-/// responsible for. An <c>.eml</c> attachment never touches it: <c>MimeMessageAdapter.Enumerate</c>
-/// builds the type from the part's own MIME headers, so it is
+/// On the email path <c>FromFileName</c> has one caller, <c>StorageMessageAdapter</c> on the
+/// <c>.msg</c> route, so an extension-table miss is the only email failure this map is
+/// responsible for. Its other callers are <c>DocumentContentTypeResolver</c>,
+/// <c>ZipDocumentParser</c> and the CLI's <c>IngestCommand</c>. An <c>.eml</c> attachment never
+/// touches it: <c>MimeMessageAdapter.Enumerate</c> builds the type from the part's own MIME
+/// headers, so it is
 /// <c>application/octet-stream</c> because the sending client wrote that, which is both commoner
 /// and less avoidable than a lookup miss. Both routes produce the same type and both were broken;
 /// only the first is this map's doing. The invariant matters for both, which is why it is recorded
@@ -65,8 +67,10 @@ public static class ContentTypeMap
         [".webp"] = "image/webp",
         // image/tiff is still unclaimed unless the Azure Document Intelligence parser is registered;
         // an unclaimed TIFF is warn-and-skipped by the dispatcher instead of being parsed as text.
-        // .tif, .heif and .heic need an entry for the same reason: an unmapped extension resolves
-        // to text/plain, which would ingest a scan as text.
+        // .tif, .heif and .heic need an entry for the same reason. A miss here answers
+        // application/octet-stream, and DocumentContentTypeResolver.ResolveContentType turns that
+        // into text/plain for a pipeline document with no declared type, which would ingest a
+        // scan as text.
         [".tiff"] = "image/tiff",
         [".tif"] = "image/tiff",
         [".heif"] = "image/heif",

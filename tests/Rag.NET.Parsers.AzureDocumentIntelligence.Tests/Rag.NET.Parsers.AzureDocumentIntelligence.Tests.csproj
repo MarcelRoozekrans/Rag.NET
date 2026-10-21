@@ -4,9 +4,9 @@
     <IsPackable>false</IsPackable>
     <!-- Reads RAGNET_DOCINTEL_ENDPOINT and RAGNET_DOCINTEL_KEY and calls Assert.Skip when either
          is absent, so this project is safe in every tier and simply skips that test. The
-         declaration exists so nightly.yml can select it and supply the values, which is the only
-         run where the live Azure Document Intelligence parser path executes — and it bills one
-         page. -->
+         declaration exists so nightly.yml can select it and supply the values. Those repository
+         secrets are not provisioned yet, so the live parser test skips there too, and it has not
+         run anywhere; once they are, a run bills one page. See docs/reference/ci.md. -->
     <RequiresSecrets>true</RequiresSecrets>
   </PropertyGroup>
 

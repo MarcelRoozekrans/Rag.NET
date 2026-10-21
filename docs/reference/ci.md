@@ -84,11 +84,12 @@ easy to misread a stale green tick as covering the latest commit.
 
 ## The secrets overlay
 
-Seven projects contain tests that need credentials or large local assets:
+Eight projects contain tests that need credentials or large local assets:
 
 | Project | Reads | Where the value comes from |
 |---|---|---|
 | `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests` | `RAGNET_DOCINTEL_ENDPOINT`, `RAGNET_DOCINTEL_KEY` | repository secrets, never yet configured; provisionable by the fenced procedure below |
+| `Rag.NET.Parsers.AzureDocumentIntelligence.Tests` | `RAGNET_DOCINTEL_ENDPOINT`, `RAGNET_DOCINTEL_KEY` | the same two repository secrets, never yet configured; provisionable by the fenced procedure below |
 | `Rag.NET.Embeddings.Onnx.Tests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
 | `Rag.NET.Chunking.IntegrationTests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
 | `Rag.NET.Benchmarks.Quality.IntegrationTests` | those two, plus `RAGNET_BEIR_CACHE`, `RAGNET_BEIR_LONG_RUNS` and `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB` | downloaded, plus a runner temp path; the last three are deliberately **never supplied by the job** — see below |
@@ -183,7 +184,8 @@ decision above argues against rather than toward.
 **The Document Intelligence live suite is satisfiable by the procedure below — and has still
 never run.** Both facts matter, so both are stated. `RAGNET_DOCINTEL_ENDPOINT` and
 `RAGNET_DOCINTEL_KEY` are mapped from repository secrets that have never been configured, so
-`AzureDocumentIntelligenceLiveTests` has skipped on every run to date; its offline coverage is
+`AzureDocumentIntelligenceLiveTests`, and the parser package's `AzureDocumentIntelligenceParserLiveTests`
+alongside it, have skipped on every run to date; their offline coverage is
 hand-written WireMock cassettes that nothing has confirmed against the real service, and the
 recorded-responses work that fixes *that* is Phase 6.1. What is no longer true is that the gate is
 satisfiable nowhere: any maintainer with an Azure subscription can run the suite — the **F0 free
@@ -200,14 +202,19 @@ endpoint=$(az cognitiveservices account show --name <name> --resource-group <rg>
 key=$(az cognitiveservices account keys list --name <name> --resource-group <rg> \
   --query key1 -o tsv)
 
-# The live suite: skips without the variables, runs and submits real pages with them.
+# The live suites: skip without the variables, run and submit real pages with them. The
+# parser's suite submits one single-frame TIFF, so it bills one page.
 RAGNET_DOCINTEL_ENDPOINT="$endpoint" RAGNET_DOCINTEL_KEY="$key" \
   dotnet test tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests --no-build -c Release
+RAGNET_DOCINTEL_ENDPOINT="$endpoint" RAGNET_DOCINTEL_KEY="$key" \
+  dotnet test tests/Rag.NET.Parsers.AzureDocumentIntelligence.Tests --no-build -c Release
 
 # The same run, keeping what the service actually sent: one numbered file per HTTP call in
 # $PWD/captured — 01-202.json for the analyze answer, then one per poll, the last of which
 # carries the whole analyzeResult.
 RAGNET_DOCINTEL_ENDPOINT="$endpoint" RAGNET_DOCINTEL_KEY="$key"   RAGNET_DOCINTEL_CAPTURE="$PWD/captured"   dotnet test tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests --no-build -c Release
+# The parser's suite captures the same way; give it its own directory, since both number from 01.
+RAGNET_DOCINTEL_ENDPOINT="$endpoint" RAGNET_DOCINTEL_KEY="$key"   RAGNET_DOCINTEL_CAPTURE="$PWD/captured-parser"   dotnet test tests/Rag.NET.Parsers.AzureDocumentIntelligence.Tests --no-build -c Release
 
 # Nightly coverage rides on the same two values as repository secrets:
 gh secret set RAGNET_DOCINTEL_ENDPOINT --body "$endpoint"

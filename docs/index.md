@@ -108,7 +108,7 @@ flowchart TD
     CORE["Rag.NET<br>Core pipeline · Text/Markdown/CSV/JSON parsers · Recursive chunking<br>Brings Abstractions and QueryTechniques transitively"]
 
     CORE --> STORES["Vector stores<br>PgVector · Qdrant · AzureAISearch<br>Pinecone · Chroma · Weaviate · Redis"]
-    CORE --> PARSERS["Parsers<br>Pdf (+AzureDocumentIntelligence) · Html · Office<br>Email · Epub · Archive · Audio · Vision"]
+    CORE --> PARSERS["Parsers<br>Pdf (+AzureDocumentIntelligence) · AzureDocumentIntelligence<br>Html · Office · Email · Epub · Archive · Audio · Vision"]
     CORE --> SOURCES["Data providers<br>DataProviders base + 18 connectors"]
     CORE --> RETRIEVAL["Advanced retrieval<br>Raptor (+Store) · GraphRag · Graph<br>AnswerEngines · Memory · Reranking · WebSearch.Tavily"]
     CORE --> CHUNK["Chunking<br>Chunking · Chunking.CSharp<br>Chunking.Templates · Embeddings.Onnx"]
@@ -162,6 +162,7 @@ flowchart TD
 |--------------|----------|
 | `Rag.NET.Parsers.Pdf` | PDF parser, with table extraction and Tesseract OCR |
 | `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence` | Whole-document OCR engine for the PDF parser (paid, per page) |
+| `Rag.NET.Parsers.AzureDocumentIntelligence` | Whole-document parser over Azure Document Intelligence: TIFF and HEIF scans by default, opt-in PDF, image, Office and HTML (paid, per page) |
 | `Rag.NET.Parsers.Html` | HTML parser (AngleSharp) |
 | `Rag.NET.Parsers.Office` | Word `.docx`, Excel `.xlsx` and PowerPoint `.pptx` in one package (OpenXml) |
 | `Rag.NET.Parsers.Email` | EML and MSG email parser (MimeKit) |

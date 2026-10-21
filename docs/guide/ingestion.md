@@ -632,21 +632,31 @@ An empty `Formats` is a registration error, not a parser that claims nothing.
 
 - **One section per page**, with `PageNumber` set, built from the result's paragraphs joined by a
   blank line. A paragraph that crosses a page break appears once, on the page it starts on.
-- **Office and HTML paragraphs have no page.** Each comes out as its own section without a
-  `PageNumber`, in document order.
+- **Office and HTML pages come from Azure's page units.** Their paragraphs carry no position on a
+  page, so each is placed on the page whose content range holds the paragraph's start, and
+  groups with that page like any other. For Word and HTML a page is a run of about 3,000
+  characters, for Excel a worksheet and for PowerPoint a slide. A paragraph no page holds, or any
+  paragraph in a result without page ranges, comes out as its own section without a
+  `PageNumber`, in document order, after the paged sections.
 - **Headings come only from a layout model.** `prebuilt-read`, the default, assigns no paragraph
   roles, so it yields no headings. With `o.Analyzer.ModelId = "prebuilt-layout"`, title and
   section-heading paragraphs set `Heading` and `HeadingLevel` (1 and 2) from the section that
   starts with them until the next heading. A heading partway down a page applies from the next
-  section, the next page, onwards. Page headers, footers and page numbers are dropped. Tables, key-value pairs and selection marks are not mapped.
+  section, the next page, onwards. Page headers, footers and page numbers are dropped. Tables,
+  key-value pairs and selection marks are not mapped.
 
 #### Limits and spend
 
 - **`MaxBytes` defaults to 500,000,000 bytes**, Azure's documented 500 MB limit on the S0 tier.
   It is checked before anything is sent: a larger document throws
-  `AzureDocumentIntelligenceException` naming the file and the cap, and no request is made. The
-  whole document is buffered in one array to submit it, so `MaxBytes` also bounds memory per
-  parse, and values above `Array.MaxLength` are rejected at registration.
+  `AzureDocumentIntelligenceException` naming the file and the cap, and no request is made. An
+  empty document is refused the same way. Values above `Array.MaxLength` are rejected at
+  registration, because the document is buffered in one array.
+- **Budget roughly 2.5 to 3.5 times the document in memory per concurrent parse.** The SDK takes
+  the document as one in-memory buffer, not a stream. A stream without a length is buffered in
+  an array that grows by doubling, so it can hold up to twice the document, and the SDK then
+  posts the document base64-encoded inside a JSON body, about 1.33 times the document again.
+  `MaxBytes` caps the document, not this multiple of it.
 - **Spend is recorded, not capped.** When an `ICostLedger` is registered, each call is recorded
   as a `CostKind.Ocr` entry with the analyzed page count and that count × `PricePerPage`, as the
   PDF OCR engine does. That spend counts toward the [cost budgeting](resilience.md#cost-budgeting)

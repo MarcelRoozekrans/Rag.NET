@@ -665,7 +665,7 @@ A parser, not an OCR engine: `AddAzureDocumentIntelligenceParser(endpoint, crede
 
 **Status:** ✅ Done
 
-**Exercised by:** declared — `Rag.NET.Parsers.AzureDocumentIntelligence` carries a `<VerifiedByReason>` naming the Azure AI Document Intelligence service. `AzureDocumentIntelligenceDocumentParserTests` replay hand-written cassettes through the real SDK, and `AzureDocumentIntelligenceParserLiveTests` sends a single-frame TIFF to a real resource in the nightly run when the `RAGNET_DOCINTEL_*` secrets are present, but no recorded exchange is committed yet. One `RAGNET_DOCINTEL_CAPTURE` run would supply it. Until then, the real service's response shape for HEIF and Office input, and its error responses, stay unverified.
+**Exercised by:** declared — `Rag.NET.Parsers.AzureDocumentIntelligence` carries a `<VerifiedByReason>` naming the Azure AI Document Intelligence service. `AzureDocumentIntelligenceDocumentParserTests` replay hand-written cassettes through the real SDK. `AzureDocumentIntelligenceParserLiveTests` would send a single-frame TIFF to a real resource, but it skips until the `RAGNET_DOCINTEL_ENDPOINT` and `RAGNET_DOCINTEL_KEY` repository secrets are provisioned, which they are not, so it skips every night and nothing in the package has run against the real service yet. A recorded cassette from one `RAGNET_DOCINTEL_CAPTURE` run is owed. Until then, the real service's response shape for TIFF, HEIF and Office input, and its error responses, stay unverified.
 
 ---
 

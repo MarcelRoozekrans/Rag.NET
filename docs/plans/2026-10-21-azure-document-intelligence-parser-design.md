@@ -56,7 +56,7 @@ rag.AddAzureDocumentIntelligenceParser(endpoint, credential, o =>
 ## 4. Output
 
 - **One `DocumentSection` per analyzed page**, with `PageNumber` set. For Office input, a "page" is Azure's page unit (3,000 characters, a worksheet or a slide), and the docs say so.
-- **Text is built from `paragraphs`**, grouped per page through their `boundingRegions` page numbers. Office and HTML paragraphs carry no bounding regions, so paragraphs without a page are emitted in document order as page-less sections. If `paragraphs` is absent, text falls back to `lines`, then to `words`.
+- **Text is built from `paragraphs`**, grouped per page through their `boundingRegions` page numbers. Office and HTML paragraphs carry no bounding regions, so each is attributed to the page whose `spans` contain the offset of the paragraph's first span, and groups with that page. Only a paragraph no page span contains, or any paragraph in a result without page spans, is emitted as a page-less section, in document order after the paged ones. If `paragraphs` is absent, text falls back to `lines`, then to `words`. *Amended 2026-10-21 by the final branch review: this bullet first said every paragraph without bounding regions became its own page-less section, which contradicted the bullet above; the page-span attribution is what keeps the one-section-per-page-unit promise.*
 - **Headings, only when a model provides them:** `prebuilt-read` returns paragraphs without a `Role`. `prebuilt-layout` fills `ParagraphRole.Title` and `ParagraphRole.SectionHeading`. When `ModelId` is a layout model, those set `Heading` / `HeadingLevel`, and `PageHeader`, `PageFooter` and `PageNumber` paragraphs are dropped so running headers do not repeat into every chunk. With the default `prebuilt-read`, no headings are inferred; the parser does not guess at structure from font size. Tables, key-value pairs and selection marks stay out of scope, as in Phase 2.4.
 
 ## 5. Cost and limits
@@ -87,7 +87,7 @@ The engine and the parser need the same client construction, polling loop, cost 
 
 ## 8. Testing
 
-- **WireMock cassettes** for the long-running operation, as Phase 2.4 §7 established. At least one TIFF, one multi-frame TIFF (page numbering) and one DOCX, the DOCX proving that paragraphs, not lines, reach the output. Cassettes are recorded live once and committed, never edited to match the code.
+- **WireMock cassettes** for the long-running operation, as Phase 2.4 §7 established. At least one TIFF, one multi-frame TIFF (page numbering) and one DOCX, the DOCX proving that paragraphs, not lines, reach the output. Cassettes are hand-written from the documented response shape and committed, never edited to match the code, and are labelled HAND-WRITTEN in their titles. A capture from one live run with `RAGNET_DOCINTEL_CAPTURE` set is owed, and replaces the hand-written bodies once taken. *Amended 2026-10-21: this bullet first said the cassettes were recorded live once; the implementation plan's global constraint, that no cassette may be described as recorded unless it was, superseded that wording, because no live resource was available to record from.*
 - **Claim tests:** the default claims exactly `image/tiff`, `image/heif` and `image/heic`; enabling `Word` alongside `AddWordParser` throws at `AddRagNet`; an empty `Formats` throws.
 - **Content-type map test** for `.tif`, `.heif` and `.heic` (§2).
 - **Env-gated live test**, skipped without an endpoint and key, matching the engine's.
@@ -99,7 +99,7 @@ Each item is enforced by a test the agent should expect to fail first:
 
 - `ExpectedPackageCount` 73 → 74, with a dated note (`ProducedPackageTests.cs`).
 - The new assembly in `ParserClaimCoverageTests.s_parserAssemblies`, with `FewestPlausibleOptedInParsers` raised if the count moves.
-- Its own `README.md` with the shared header, a unique `<Description>`, one `<VerifiedBy>recorded</VerifiedBy>`, the same as the existing engine, the solution entries, and central version pins.
+- Its own `README.md` with the shared header, a unique `<Description>`, one `<VerifiedBy>unit</VerifiedBy>` with a `<VerifiedByReason>` stating that the cassettes are hand-written and a capture is owed (the existing engine is `recorded` since its #354 capture), the solution entries, and central version pins. *Amended 2026-10-21: this item first asked for `<VerifiedBy>recorded</VerifiedBy>`; the implementation plan's global constraint, `unit` with a `<VerifiedByReason>` until a real capture is committed, superseded it, since nothing was recorded.*
 - Docs: `docs/guide/ingestion.md` gains the parser and the per-format table from §1; `docs/reference/features.md` gets a row.
 
 ## Out of scope

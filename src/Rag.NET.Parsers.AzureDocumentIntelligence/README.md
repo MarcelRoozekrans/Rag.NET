@@ -91,9 +91,13 @@ format. An empty `Formats` is a registration error.
 ## Limits, spend and failures
 
 - **`MaxBytes` defaults to 500,000,000 bytes**, Azure's documented 500 MB S0 limit. It is checked
-  before anything is sent, and an oversized document throws `AzureDocumentIntelligenceException`
-  without a request being made. The document is buffered in one array, so values above
-  `Array.MaxLength` are rejected.
+  before anything is sent, and an oversized or empty document throws
+  `AzureDocumentIntelligenceException` without a request being made. The document is buffered in
+  one array, so values above `Array.MaxLength` are rejected.
+- **Budget roughly 2.5 to 3.5 times the document in memory per concurrent parse.** The SDK takes
+  the document as one buffer, a stream without a length is buffered in a doubling array that can
+  reach twice the document, and the request carries it base64-encoded in JSON, about 1.33 times
+  the document again.
 - **Spend is recorded, not capped.** With an `ICostLedger` registered, each call is recorded as a
   `CostKind.Ocr` entry with the analyzed page count and that count × `PricePerPage`. It counts
   toward the `UseCostBudgeting` window, but the parser checks no budget before submitting.
@@ -101,8 +105,11 @@ format. An empty `Formats` is a registration error.
   to fall back to. Cancellation propagates unwrapped.
 - **Headings need a layout model.** `prebuilt-read` assigns no paragraph roles; with
   `prebuilt-layout`, titles and section headings set the section heading. A heading partway
-  down a page applies from the next section, the next page, onwards. Office and HTML
-  paragraphs carry no page, so each becomes its own section without a page number.
+  down a page applies from the next section, the next page, onwards.
+- **Office and HTML sections follow Azure's page units:** about 3,000 characters for Word and
+  HTML, a worksheet for Excel, a slide for PowerPoint. Each paragraph goes to the page whose
+  content range holds its start. Only a paragraph no page holds becomes its own section without
+  a page number, after the paged ones.
 
 ## Not the PDF OCR engine
 

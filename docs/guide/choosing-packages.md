@@ -49,6 +49,12 @@ package), `.Email`, `.Epub`, `.Archive` (ZIP), `.Audio`, `.Vision`. Parser packa
 `Rag.NET.Abstractions`, not on core, so each adds just its own format library (PdfPig,
 AngleSharp, OpenXml, MimeKit, …) to your build.
 
+For TIFF and HEIF scans, which no local parser reads, add
+`Rag.NET.Parsers.AzureDocumentIntelligence`. It sends whole documents to Azure Document
+Intelligence and bills per page. It can also take over PDF, image, Office and HTML input if
+you want every format parsed in Azure, in place of the local parser for that format. See
+[Azure Document Intelligence as a parser](ingestion.md#azure-document-intelligence-as-a-parser).
+
 ## Decision 3 (optional): a data source connector
 
 If you pull documents from a SaaS source instead of pushing streams yourself, add that
