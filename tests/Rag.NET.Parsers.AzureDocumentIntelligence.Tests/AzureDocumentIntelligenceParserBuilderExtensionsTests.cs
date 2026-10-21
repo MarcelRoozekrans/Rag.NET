@@ -4,7 +4,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Parsers.Excel;
+using Rag.NET.Parsers.Html;
+using Rag.NET.Parsers.Pdf;
 using Rag.NET.Parsers.PowerPoint;
+using Rag.NET.Parsers.Vision;
 using Rag.NET.Parsers.Word;
 using Xunit;
 
@@ -61,6 +64,36 @@ public sealed class AzureDocumentIntelligenceParserBuilderExtensionsTests
                 o => o.Formats = AzureDocumentIntelligenceFormats.Word)));
 
         Assert.Contains(typeof(WordDocumentParser).FullName!, exception.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            typeof(AzureDocumentIntelligenceDocumentParser).FullName!, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(AzureDocumentIntelligenceFormats.Pdf)]
+    [InlineData(AzureDocumentIntelligenceFormats.Html)]
+    [InlineData(AzureDocumentIntelligenceFormats.Images)]
+    public void Register_OptedInFormatAlongsideItsLocalParser_ThrowsAtAddRagNet(AzureDocumentIntelligenceFormats format)
+    {
+        var services = new ServiceCollection();
+        var localParser = format switch
+        {
+            AzureDocumentIntelligenceFormats.Pdf => typeof(PdfDocumentParser),
+            AzureDocumentIntelligenceFormats.Html => typeof(HtmlDocumentParser),
+            _ => typeof(ImageDocumentParser),
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(() => services.AddRagNet(rag =>
+        {
+            _ = format switch
+            {
+                AzureDocumentIntelligenceFormats.Pdf => rag.AddPdfParser(),
+                AzureDocumentIntelligenceFormats.Html => rag.AddHtmlParser(),
+                _ => rag.UseImageDescription(),
+            };
+            rag.AddAzureDocumentIntelligenceParser(Endpoint, new AzureKeyCredential("key"), o => o.Formats = format);
+        }));
+
+        Assert.Contains(localParser.FullName!, exception.Message, StringComparison.Ordinal);
         Assert.Contains(
             typeof(AzureDocumentIntelligenceDocumentParser).FullName!, exception.Message, StringComparison.Ordinal);
     }

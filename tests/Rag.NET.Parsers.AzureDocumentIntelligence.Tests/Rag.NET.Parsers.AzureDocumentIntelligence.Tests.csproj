@@ -13,10 +13,14 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.AzureDocumentIntelligence\Rag.NET.Parsers.AzureDocumentIntelligence.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
-    <!-- Test-only: the claim tests register AddWordParser alongside this parser to prove the
-         conflict guard fires, and pin the copied OOXML content types to the Office parsers' own
-         lists. The shipped package must not reference Rag.NET.Parsers.Office. -->
+    <!-- Test-only: the claim tests register each local parser an opt-in format overlaps,
+         AddWordParser, AddPdfParser, AddHtmlParser and UseImageDescription, alongside this parser
+         to prove the conflict guard fires, and pin the copied OOXML content types to the Office
+         parsers' own lists. The shipped package must reference none of these. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Office\Rag.NET.Parsers.Office.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Pdf\Rag.NET.Parsers.Pdf.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Vision\Rag.NET.Parsers.Vision.csproj" />
     <ProjectReference Include="..\Rag.NET.Testing\Rag.NET.Testing.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
