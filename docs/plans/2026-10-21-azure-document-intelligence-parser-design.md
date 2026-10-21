@@ -49,7 +49,7 @@ rag.AddAzureDocumentIntelligenceParser(endpoint, credential, o =>
 ```
 
 - **Both credential types**, `AzureKeyCredential` and `TokenCredential`, matching Phase 2.4 and the AzureBlob precedent.
-- **Formats are an explicit flags enum**: `Tiff`, `Heif`, `Pdf`, `Images` (PNG/JPEG/BMP), `Word`, `Excel`, `PowerPoint`, `Html`, plus an `Office` convenience. Each maps to the content types it claims. The default is `Tiff | Heif`.
+- **Formats are an explicit flags enum**: `Tiff`, `Heif`, `Pdf`, `Images` (PNG/JPEG/BMP), `Word`, `Excel`, `PowerPoint`, `Html`, plus an `Office` convenience. Each maps to the content types it claims. The default is `Tiff | Heif`, claiming `image/tiff`, `image/heif` and `image/heic`.
 - **Claims are declared**, so `ValidateParserClaims` sees them. The claims depend on options, so registration is by factory with claims declared explicitly, the way `AddPdfParser(configure)` and the Vision registrations do it. Enabling `Word` alongside `AddWordParser` is a startup `InvalidOperationException` naming both parsers. That is the guard working: one parser per format, chosen by the user, never a silent first-registered-wins.
 - **An empty `Formats` is a registration error**, not a parser that claims nothing.
 
@@ -83,12 +83,12 @@ The engine and the parser need the same client construction, polling loop, cost 
 | **B. The OCR package references the new parser package** and calls a public `AzureDocumentIntelligenceAnalyzer` that both use | one implementation; a small public type; the dependency points from the PDF-specific package to the general one, which is the right direction |
 | C. Merge the engine into the new package and deprecate the old package id | breaking for current users; retired ids remain real namespaces |
 
-**Recommended: B.** The old package keeps its id, API and behaviour. The engine's existing tests must pass unchanged, which is the proof that nothing moved. `DependencyClosureTests` gains the new edge.
+**Recommended: B.** The old package keeps its id, API and behaviour. The engine's existing tests must pass unchanged, which is the proof that nothing moved. `DependencyClosureTests` needs no change. It guards core's extracted clusters and the merged packages, not every package reference.
 
 ## 8. Testing
 
 - **WireMock cassettes** for the long-running operation, as Phase 2.4 §7 established. At least one TIFF, one multi-frame TIFF (page numbering) and one DOCX, the DOCX proving that paragraphs, not lines, reach the output. Cassettes are recorded live once and committed, never edited to match the code.
-- **Claim tests:** the default claims exactly `image/tiff` and `image/heif`; enabling `Word` alongside `AddWordParser` throws at `AddRagNet`; an empty `Formats` throws.
+- **Claim tests:** the default claims exactly `image/tiff`, `image/heif` and `image/heic`; enabling `Word` alongside `AddWordParser` throws at `AddRagNet`; an empty `Formats` throws.
 - **Content-type map test** for `.tif`, `.heif` and `.heic` (§2).
 - **Env-gated live test**, skipped without an endpoint and key, matching the engine's.
 - **The engine's existing tests pass unchanged** under option B.
