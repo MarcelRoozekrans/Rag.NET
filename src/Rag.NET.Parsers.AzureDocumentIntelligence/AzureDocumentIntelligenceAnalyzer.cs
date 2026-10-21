@@ -35,7 +35,10 @@ public sealed class AzureDocumentIntelligenceAnalyzer
     /// <summary>Creates an analyzer authenticating with an API key.</summary>
     /// <param name="endpoint">The Document Intelligence resource endpoint.</param>
     /// <param name="credential">The resource's API key.</param>
-    /// <param name="settings">Model, pricing and polling settings. Validated here.</param>
+    /// <param name="settings">
+    /// Model, pricing and polling settings. Validated and copied here, so changing the object
+    /// afterwards does not change this analyzer.
+    /// </param>
     /// <param name="costLedger">Ledger to record page spend to, or <see langword="null"/> for no recording.</param>
     /// <param name="logger">
     /// Logger, or <see langword="null"/> for no logging. Non-generic on purpose: the PDF OCR
@@ -64,7 +67,7 @@ public sealed class AzureDocumentIntelligenceAnalyzer
         _client = clientOptions is null
             ? new DocumentIntelligenceClient(endpoint, credential)
             : new DocumentIntelligenceClient(endpoint, credential, clientOptions);
-        _settings = AzureDocumentIntelligenceAnalyzerSettings.Validate(settings, nameof(settings));
+        _settings = Snapshot(settings);
         _costLedger = costLedger;
         _logger = logger;
     }
@@ -72,7 +75,10 @@ public sealed class AzureDocumentIntelligenceAnalyzer
     /// <summary>Creates an analyzer authenticating with OAuth / managed identity.</summary>
     /// <param name="endpoint">The Document Intelligence resource endpoint.</param>
     /// <param name="credential">The token credential to authenticate with.</param>
-    /// <param name="settings">Model, pricing and polling settings. Validated here.</param>
+    /// <param name="settings">
+    /// Model, pricing and polling settings. Validated and copied here, so changing the object
+    /// afterwards does not change this analyzer.
+    /// </param>
     /// <param name="costLedger">Ledger to record page spend to, or <see langword="null"/> for no recording.</param>
     /// <param name="logger">
     /// Logger, or <see langword="null"/> for no logging. Non-generic on purpose: the PDF OCR
@@ -101,9 +107,29 @@ public sealed class AzureDocumentIntelligenceAnalyzer
         _client = clientOptions is null
             ? new DocumentIntelligenceClient(endpoint, credential)
             : new DocumentIntelligenceClient(endpoint, credential, clientOptions);
-        _settings = AzureDocumentIntelligenceAnalyzerSettings.Validate(settings, nameof(settings));
+        _settings = Snapshot(settings);
         _costLedger = costLedger;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Returns a validated private copy of <paramref name="settings"/>. Without the copy a caller
+    /// could change the object after construction and reach the service with a value validation
+    /// would have refused, such as a negative price or a blank model id. The copy is what gets
+    /// validated, so a change racing this constructor cannot slip between the check and the copy.
+    /// </summary>
+    private static AzureDocumentIntelligenceAnalyzerSettings Snapshot(AzureDocumentIntelligenceAnalyzerSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        var copy = new AzureDocumentIntelligenceAnalyzerSettings
+        {
+            ModelId = settings.ModelId,
+            PricePerPage = settings.PricePerPage,
+            PollingInterval = settings.PollingInterval,
+            Locale = settings.Locale,
+        };
+        return AzureDocumentIntelligenceAnalyzerSettings.Validate(copy, nameof(settings));
     }
 
     /// <summary>

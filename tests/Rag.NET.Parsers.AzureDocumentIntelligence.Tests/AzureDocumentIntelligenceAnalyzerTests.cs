@@ -175,6 +175,41 @@ public sealed class AzureDocumentIntelligenceAnalyzerTests
         Assert.Same(settings, AzureDocumentIntelligenceAnalyzerSettings.Validate(settings, "settings"));
     }
 
+    [Fact]
+    public async Task Constructor_SettingsMutatedAfterwards_HaveNoEffect()
+    {
+        // Validation runs in the constructor, so a later change to the caller's object must not
+        // reach the service: neither an unvalidated price nor a different model.
+        var ledger = new FakeCostLedger();
+        var settings = new AzureDocumentIntelligenceAnalyzerSettings
+        {
+            ModelId = TwoPagesModel,
+            PollingInterval = TimeSpan.Zero,
+        };
+        var sut = new AzureDocumentIntelligenceAnalyzer(
+            new Uri(_fixture.BaseUrl),
+            new AzureKeyCredential("cassette-key"),
+            settings,
+            ledger,
+            logger: null,
+            NoWaitingClientOptions());
+
+        settings.ModelId = UnauthorizedModel;
+        settings.PricePerPage = -1m;
+        settings.PollingInterval = TimeSpan.FromSeconds(-1);
+        settings.Locale = "nl-NL";
+
+        var result = await sut.AnalyzeAsync(Content(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.Pages.Count);
+        Assert.Equal(2 * 0.0015m, Assert.Single(ledger.Entries).Cost);
+        var submission = Assert.Single(
+            _fixture.Server.LogEntries,
+            e => e.RequestMessage?.Path?.EndsWith(":analyze", StringComparison.Ordinal) == true);
+        Assert.EndsWith($"{TwoPagesModel}:analyze", submission.RequestMessage!.Path, StringComparison.Ordinal);
+        Assert.DoesNotContain("locale", submission.RequestMessage.Url, StringComparison.Ordinal);
+    }
+
     private AzureDocumentIntelligenceAnalyzer CreateAnalyzer(
         string modelId,
         FakeCostLedger? costLedger = null,
