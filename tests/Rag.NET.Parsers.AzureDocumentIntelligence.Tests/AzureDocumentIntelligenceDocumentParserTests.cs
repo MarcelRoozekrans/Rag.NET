@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Azure;
 using Azure.AI.DocumentIntelligence;
 using Azure.Core;
@@ -315,6 +316,97 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
         }
 
         Assert.True(stream.CanRead);
+    }
+
+    [Fact]
+    public async Task ParseAsync_NonSeekableStreamOverMaxBytes_ThrowsBeforeAnyRequest()
+    {
+        // A forward-only stream has no Length to check up front, so only the bounded read can
+        // catch it: it must stop at MaxBytes + 1 bytes, not buffer the whole document first.
+        var sut = CreateParser("tiff-three-frames", options: new AzureDocumentIntelligenceParserOptions { MaxBytes = 16 });
+        using var stream = new NonSeekableStream(new byte[1024]);
+
+        var exception = await Assert.ThrowsAsync<AzureDocumentIntelligenceException>(async () =>
+        {
+            await foreach (var _ in sut.ParseAsync(stream, Metadata(), TestContext.Current.CancellationToken))
+            {
+            }
+        });
+
+        Assert.Equal(FileName, exception.FileName);
+        Assert.Contains(FileName, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("16", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Azure's limit", exception.Message, StringComparison.Ordinal);
+        Assert.Null(exception.InnerException);
+        Assert.Equal(17, stream.BytesRead);
+        Assert.Empty(_fixture.Server.LogEntries);
+    }
+
+    [Fact]
+    public async Task ParseAsync_SeekableStreamOverMaxBytes_ThrowsWithoutReadingOrSending()
+    {
+        var sut = CreateParser("tiff-three-frames", options: new AzureDocumentIntelligenceParserOptions { MaxBytes = 16 });
+        using var stream = new MemoryStream(new byte[17]);
+
+        var exception = await Assert.ThrowsAsync<AzureDocumentIntelligenceException>(async () =>
+        {
+            await foreach (var _ in sut.ParseAsync(stream, Metadata(), TestContext.Current.CancellationToken))
+            {
+            }
+        });
+
+        Assert.Contains("Azure's limit", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(0, stream.Position);
+        Assert.Empty(_fixture.Server.LogEntries);
+    }
+
+    [Fact]
+    public async Task ParseAsync_NonSeekableStreamExactlyAtMaxBytes_IsSentWhole()
+    {
+        var sut = CreateParser("tiff-three-frames", options: new AzureDocumentIntelligenceParserOptions { MaxBytes = 16 });
+        using var stream = new NonSeekableStream(new byte[16]);
+        var sections = new List<DocumentSection>();
+
+        await foreach (var section in sut.ParseAsync(stream, Metadata(), TestContext.Current.CancellationToken))
+        {
+            sections.Add(section);
+        }
+
+        Assert.Equal(3, sections.Count);
+        var submission = Assert.Single(
+            _fixture.Server.LogEntries,
+            e => e.RequestMessage?.Path?.EndsWith("tiff-three-frames:analyze", StringComparison.Ordinal) == true);
+        // The SDK posts the document as base64 inside a JSON body.
+        using var body = JsonDocument.Parse(submission.RequestMessage!.BodyAsBytes);
+        Assert.Equal(16, body.RootElement.GetProperty("base64Source").GetBytesFromBase64().Length);
+    }
+
+    [Fact]
+    public async Task ParseAsync_SeekableStreamPartlyRead_CapsOnlyTheRemainder()
+    {
+        // The parser sends from the current position, so the cap applies to what is left.
+        var sut = CreateParser("tiff-three-frames", options: new AzureDocumentIntelligenceParserOptions { MaxBytes = 16 });
+        using var stream = new MemoryStream(new byte[20]) { Position = 4 };
+        var sections = new List<DocumentSection>();
+
+        await foreach (var section in sut.ParseAsync(stream, Metadata(), TestContext.Current.CancellationToken))
+        {
+            sections.Add(section);
+        }
+
+        Assert.Equal(3, sections.Count);
+    }
+
+    [Theory]
+    [InlineData(0L)]
+    [InlineData(-1L)]
+    public void Constructor_NonPositiveMaxBytes_Throws(long maxBytes)
+    {
+        var options = new AzureDocumentIntelligenceParserOptions { MaxBytes = maxBytes };
+
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => CreateParser("unused", options: options));
+
+        Assert.Equal("options", exception.ParamName);
     }
 
     /// <summary>

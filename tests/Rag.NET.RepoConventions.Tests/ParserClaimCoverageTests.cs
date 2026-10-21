@@ -41,7 +41,7 @@ namespace Rag.NET.RepoConventions.Tests;
 /// </para>
 /// <para>
 /// <b>Discovery, not a hardcoded list.</b> The nine parsers below are reached by scanning every
-/// type in the six referenced parser assemblies for <see cref="IDeclaresContentTypes"/>
+/// type in the referenced parser assemblies for <see cref="IDeclaresContentTypes"/>
 /// implementers, rather than by naming <c>AudioDocumentParser</c>, <c>PdfDocumentParser</c> and so
 /// on directly. A parser added to one of these packages later is covered automatically; only a
 /// wholly new parser package would need a line added to <c>s_parserAssemblies</c>, and
@@ -64,10 +64,18 @@ public sealed class ParserClaimCoverageTests
     /// PowerPoint and Excel all live in the same assembly (<c>Rag.NET.Parsers.Office</c>); listing
     /// one is enough to reach the other two, but all three are named so a reader does not have to
     /// know that to find them here.
+    /// <para>
+    /// <c>Rag.NET.Parsers.AzureDocumentIntelligence</c> is listed although it contributes no
+    /// implementer today: its content types depend on the configured formats, so its registration
+    /// extensions declare <see cref="ParserClaim"/>s per call instead of a static list. It is
+    /// scanned so that a type in it which does opt in later is covered without anyone having to
+    /// remember this list.
+    /// </para>
     /// </summary>
     private static readonly Assembly[] s_parserAssemblies =
     [
         typeof(Rag.NET.Parsers.Audio.AudioDocumentParser).Assembly,
+        typeof(Rag.NET.Parsers.AzureDocumentIntelligence.AzureDocumentIntelligenceDocumentParser).Assembly,
         typeof(Rag.NET.Parsers.Epub.EpubDocumentParser).Assembly,
         typeof(Rag.NET.Parsers.Html.HtmlDocumentParser).Assembly,
         typeof(Rag.NET.Parsers.Word.WordDocumentParser).Assembly,
