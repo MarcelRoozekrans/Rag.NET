@@ -70,11 +70,17 @@ public sealed class AzureDocumentIntelligenceParserBuilderExtensionsTests
     {
         var services = new ServiceCollection();
 
-        services.AddRagNet(rag => rag
+        var exception = Record.Exception(() => services.AddRagNet(rag => rag
             .AddWordParser()
-            .AddAzureDocumentIntelligenceParser(Endpoint, new AzureKeyCredential("key")));
+            .AddAzureDocumentIntelligenceParser(Endpoint, new AzureKeyCredential("key"))));
 
-        Assert.Contains(services, d => d.ServiceType == typeof(IDocumentParser));
+        Assert.Null(exception);
+        var claimed = Claims(services).ToLookup(c => c.ParserTypeName, c => c.ContentType, StringComparer.Ordinal);
+        Assert.Equal(
+            new HashSet<string>(StringComparer.Ordinal) { "image/tiff", "image/heif", "image/heic" },
+            claimed[typeof(AzureDocumentIntelligenceDocumentParser).FullName!].ToHashSet(StringComparer.Ordinal));
+        Assert.Equal(
+            WordDocumentParser.ContentTypes, claimed[typeof(WordDocumentParser).FullName!], StringComparer.Ordinal);
     }
 
     [Fact]
@@ -117,6 +123,24 @@ public sealed class AzureDocumentIntelligenceParserBuilderExtensionsTests
         Assert.Equal("configure", exception.ParamName);
         Assert.Contains(nameof(AzureDocumentIntelligenceParserOptions.MaxBytes), exception.Message, StringComparison.Ordinal);
         Assert.Empty(services);
+    }
+
+    [Fact]
+    public void Register_MaxBytesBeyondTheLargestBuffer_Throws()
+    {
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => builder.AddAzureDocumentIntelligenceParser(
+            Endpoint, new AzureKeyCredential("key"), o => o.MaxBytes = Array.MaxLength + 1L));
+
+        Assert.Equal("configure", exception.ParamName);
+        Assert.Contains(nameof(AzureDocumentIntelligenceParserOptions.MaxBytes), exception.Message, StringComparison.Ordinal);
+        Assert.Empty(services);
+
+        builder.AddAzureDocumentIntelligenceParser(
+            Endpoint, new AzureKeyCredential("key"), o => o.MaxBytes = Array.MaxLength);
+        Assert.NotEmpty(services);
     }
 
     [Fact]

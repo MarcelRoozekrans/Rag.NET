@@ -63,7 +63,7 @@ rag.AddAzureDocumentIntelligenceParser(endpoint, credential, o =>
 
 - **Spend goes to `ICostLedger`** as `CostKind.Ocr` with `Pages = analyzed page count`, exactly like the engine. It shares the `UseCostBudgeting` window, as Phase 2.4 §5 decided.
 - **`PricePerPage`** is configurable with the same indicative default and the same caveat.
-- **`MaxPages`:** the analyzed page count is only known after the call, so it cannot bound spend in advance for every format. It is replaced by a **`MaxBytes` cap checked before submission**, defaulting to Azure's own 500 MB S0 limit, so an oversized file fails fast locally instead of being uploaded to fail remotely. The docs must state that Office spend is per 3,000 characters and cannot be capped by page count beforehand.
+- **`MaxPages`:** the analyzed page count is only known after the call, so it cannot bound spend in advance for every format. It is replaced by a **`MaxBytes` cap checked before submission**, defaulting to Azure's own 500 MB S0 limit, taken as 500,000,000 bytes because Microsoft documents it in decimal megabytes and a binary 500 MiB cap would let through files Azure then rejects, so an oversized file fails fast locally instead of being uploaded to fail remotely. The docs must state that Office spend is per 3,000 characters and cannot be capped by page count beforehand.
 
 ## 6. Failure posture
 

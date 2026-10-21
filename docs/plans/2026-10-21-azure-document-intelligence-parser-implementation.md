@@ -17,7 +17,7 @@
 - `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence` keeps its package id and public API. Every existing test in `tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests` passes **without edits**.
 - The default `Formats` is `Tiff | Heif`, which claims exactly `image/tiff`, `image/heif` and `image/heic`.
 - The default `ModelId` is `"prebuilt-read"`, the default `PricePerPage` is `0.0015m`, and the default `PollingInterval` is `TimeSpan.FromSeconds(1)`. These are the engine's defaults.
-- The default `MaxBytes` is `500L * 1024 * 1024`, Azure's S0 limit.
+- The default `MaxBytes` is `500_000_000`, Azure's S0 limit. Microsoft documents it as "500 MB", so it is read as decimal; a binary 500 MiB cap would pass files Azure then rejects after the upload.
 - `<VerifiedBy>unit</VerifiedBy>` with a `<VerifiedByReason>` until a real capture is committed. No cassette may be described as recorded unless it was.
 - Commit headers stay at 100 characters or fewer and follow conventional commits; commitlint runs on every commit. No nested parentheses in commit bodies.
 - No `InternalsVisibleTo` across packages. Anything the old package uses from the new one is public.
@@ -106,7 +106,7 @@
     - `Images` → `image/png`, `image/jpeg`, `image/jpg`, `image/bmp`
     - `Word`, `Excel`, `PowerPoint` → the three OOXML types the Office parsers declare
     - `Html` → `text/html`
-  - `public sealed class AzureDocumentIntelligenceParserOptions`, which holds `AzureDocumentIntelligenceAnalyzerSettings Analyzer { get; } = new()`, `AzureDocumentIntelligenceFormats Formats { get; set; } = Tiff | Heif` and `long MaxBytes { get; set; } = 500L * 1024 * 1024`.
+  - `public sealed class AzureDocumentIntelligenceParserOptions`, which holds `AzureDocumentIntelligenceAnalyzerSettings Analyzer { get; } = new()`, `AzureDocumentIntelligenceFormats Formats { get; set; } = Tiff | Heif` and `long MaxBytes { get; set; } = 500_000_000`.
   - `public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser`, with:
     - constructor `(AzureDocumentIntelligenceAnalyzer analyzer, AzureDocumentIntelligenceParserOptions options)`
     - `CanParse(string contentType)`, matching the media type before any `;`, case-insensitively, against `options.Formats.ContentTypes()`.

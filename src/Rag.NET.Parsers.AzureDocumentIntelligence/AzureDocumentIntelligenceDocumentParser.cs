@@ -63,7 +63,8 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
     /// <paramref name="analyzer"/> or <paramref name="options"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// <see cref="AzureDocumentIntelligenceParserOptions.MaxBytes"/> is not positive.
+    /// <see cref="AzureDocumentIntelligenceParserOptions.MaxBytes"/> is not positive, or is larger
+    /// than <see cref="Array.MaxLength"/>, the most one buffer can hold.
     /// </exception>
     public AzureDocumentIntelligenceDocumentParser(
         AzureDocumentIntelligenceAnalyzer analyzer,
@@ -72,11 +73,11 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
         ArgumentNullException.ThrowIfNull(analyzer);
         ArgumentNullException.ThrowIfNull(options);
 
-        if (options.MaxBytes <= 0)
+        if (options.MaxBytes <= 0 || options.MaxBytes > Array.MaxLength)
         {
             throw new ArgumentOutOfRangeException(nameof(options), options.MaxBytes,
                 $"{nameof(AzureDocumentIntelligenceParserOptions)}.{nameof(AzureDocumentIntelligenceParserOptions.MaxBytes)} " +
-                "must be positive.");
+                $"must be between 1 and {Array.MaxLength}, the most one buffer can hold.");
         }
 
         _analyzer = analyzer;
@@ -137,7 +138,8 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
     /// <summary>
     /// Buffers the rest of the stream for upload, leaving the stream open, and refuses a document
     /// larger than the cap. At most <c>_maxBytes + 1</c> bytes are read: the extra byte is what
-    /// proves a stream without a length is too large. A seekable stream is also checked by its
+    /// proves a stream without a length is too large, and it is never written to the buffer, which
+    /// therefore holds at most <c>_maxBytes</c>. A seekable stream is also checked by its
     /// remaining length first, so an oversized one is refused without being read.
     /// </summary>
     private async Task<BinaryData> BufferAsync(Stream stream, string fileName, CancellationToken cancellationToken)
@@ -149,31 +151,30 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
         }
 
         // Sized up front when the length is known, so a large scan is not copied on every doubling.
-        using var buffer = remaining >= 0
-            ? new MemoryStream((int)Math.Min(remaining, Array.MaxLength))
-            : new MemoryStream();
+        // The cast is safe: remaining is at most _maxBytes, which the constructor bounds by
+        // Array.MaxLength.
+        using var buffer = remaining >= 0 ? new MemoryStream((int)remaining) : new MemoryStream();
         var chunk = ArrayPool<byte>.Shared.Rent(CopyChunkSize);
         try
         {
             long total = 0;
-            while (total <= _maxBytes)
+            while (true)
             {
-                // Never asks for more than one byte past the cap. Written as Min(...) + 1 rather
-                // than Min(..., _maxBytes + 1 - total) so a cap of long.MaxValue cannot overflow.
-                var count = (int)Math.Min(chunk.Length - 1L, _maxBytes - total) + 1;
+                // Never asks for more than one byte past the cap.
+                var count = (int)Math.Min(chunk.Length, _maxBytes + 1 - total);
                 var read = await stream.ReadAsync(chunk.AsMemory(0, count), cancellationToken).ConfigureAwait(false);
                 if (read == 0)
                 {
                     break;
                 }
 
-                buffer.Write(chunk, 0, read);
                 total += read;
-            }
+                if (total > _maxBytes)
+                {
+                    throw TooLarge(fileName);
+                }
 
-            if (total > _maxBytes)
-            {
-                throw TooLarge(fileName);
+                buffer.Write(chunk, 0, read);
             }
         }
         finally
@@ -188,8 +189,8 @@ public sealed class AzureDocumentIntelligenceDocumentParser : IDocumentParser
         new(fileName,
             $"'{fileName}' was not sent to Azure Document Intelligence: it is larger than " +
             $"{nameof(AzureDocumentIntelligenceParserOptions)}.{nameof(AzureDocumentIntelligenceParserOptions.MaxBytes)} " +
-            $"({_maxBytes} bytes). The default cap is Azure's limit of 500 MB on the S0 tier, so a " +
-            "larger file would only be rejected by the service after uploading.");
+            $"({_maxBytes} bytes). The default cap is Azure's limit of 500 MB (500,000,000 bytes) " +
+            "on the S0 tier, so a larger file would only be rejected by the service after uploading.");
 
     /// <summary>
     /// Analyzes the document, translating a service failure into

@@ -48,8 +48,8 @@ public static class AzureDocumentIntelligenceParserBuilderExtensions
     /// content type, or the analyzer's model id is blank.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// <see cref="AzureDocumentIntelligenceParserOptions.MaxBytes"/> is not positive, or the
-    /// analyzer's price or polling interval is negative.
+    /// <see cref="AzureDocumentIntelligenceParserOptions.MaxBytes"/> is not positive or is larger
+    /// than <see cref="Array.MaxLength"/>, or the analyzer's price or polling interval is negative.
     /// </exception>
     public static TBuilder AddAzureDocumentIntelligenceParser<TBuilder>(
         this TBuilder builder,
@@ -91,8 +91,8 @@ public static class AzureDocumentIntelligenceParserBuilderExtensions
     /// content type, or the analyzer's model id is blank.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// <see cref="AzureDocumentIntelligenceParserOptions.MaxBytes"/> is not positive, or the
-    /// analyzer's price or polling interval is negative.
+    /// <see cref="AzureDocumentIntelligenceParserOptions.MaxBytes"/> is not positive or is larger
+    /// than <see cref="Array.MaxLength"/>, or the analyzer's price or polling interval is negative.
     /// </exception>
     public static TBuilder AddAzureDocumentIntelligenceParser<TBuilder>(
         this TBuilder builder,
@@ -157,11 +157,11 @@ public static class AzureDocumentIntelligenceParserBuilderExtensions
                 nameof(configure));
         }
 
-        if (options.MaxBytes <= 0)
+        if (options.MaxBytes <= 0 || options.MaxBytes > Array.MaxLength)
         {
             throw new ArgumentOutOfRangeException(nameof(configure), options.MaxBytes,
                 $"{nameof(AzureDocumentIntelligenceParserOptions)}.{nameof(AzureDocumentIntelligenceParserOptions.MaxBytes)} " +
-                "must be positive.");
+                $"must be between 1 and {Array.MaxLength}, the most one buffer can hold.");
         }
 
         AzureDocumentIntelligenceAnalyzerSettings.Validate(options.Analyzer, nameof(configure));

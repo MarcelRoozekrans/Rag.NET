@@ -244,7 +244,9 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
         var options = new AzureDocumentIntelligenceParserOptions();
 
         Assert.Equal(AzureDocumentIntelligenceFormats.Tiff | AzureDocumentIntelligenceFormats.Heif, options.Formats);
-        Assert.Equal(500L * 1024 * 1024, options.MaxBytes);
+        // Decimal 500 MB, as Microsoft documents the S0 limit: a binary 500 MiB cap would let
+        // through files between the two that Azure then rejects after the upload.
+        Assert.Equal(500_000_000L, options.MaxBytes);
         Assert.Equal("prebuilt-read", options.Analyzer.ModelId);
     }
 
@@ -395,6 +397,20 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
         }
 
         Assert.Equal(3, sections.Count);
+    }
+
+    [Fact]
+    public void Constructor_MaxBytesBeyondTheLargestBuffer_Throws()
+    {
+        // The document is buffered in one array, so a larger cap could never be honoured: it would
+        // fail mid-copy with an IOException after buffering 2 GiB instead of failing here.
+        var options = new AzureDocumentIntelligenceParserOptions { MaxBytes = Array.MaxLength + 1L };
+
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(() => CreateParser("unused", options: options));
+
+        Assert.Equal("options", exception.ParamName);
+        Assert.Contains(nameof(AzureDocumentIntelligenceParserOptions.MaxBytes), exception.Message, StringComparison.Ordinal);
+        CreateParser("unused", options: new AzureDocumentIntelligenceParserOptions { MaxBytes = Array.MaxLength });
     }
 
     [Theory]
