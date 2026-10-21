@@ -184,14 +184,14 @@ decision above argues against rather than toward.
 **The Document Intelligence live suite is satisfiable by the procedure below — and has still
 never run.** Both facts matter, so both are stated. `RAGNET_DOCINTEL_ENDPOINT` and
 `RAGNET_DOCINTEL_KEY` are mapped from repository secrets that have never been configured, so
-`AzureDocumentIntelligenceLiveTests`, and the parser package's `AzureDocumentIntelligenceParserLiveTests`
-alongside it, have skipped on every run to date; their offline coverage is
-hand-written WireMock cassettes that nothing has confirmed against the real service, and the
-recorded-responses work that fixes *that* is Phase 6.1. What is no longer true is that the gate is
-satisfiable nowhere: any maintainer with an Azure subscription can run the suite — the **F0 free
-tier (500 pages/month) exists**, so satisfying the gate does not even require spend, though a paid
-tier bills per page and the suite submits real documents. The procedure, not yet executed by
-anyone:
+`AzureDocumentIntelligenceLiveTests`, and the parser package's
+`AzureDocumentIntelligenceParserLiveTests` alongside it, have skipped on every run to date; their
+offline coverage is hand-written WireMock cassettes that nothing has confirmed against the real
+service, and the recorded-responses work that fixes *that* is Phase 6.1. What is no longer true is
+that the gate is satisfiable nowhere: any maintainer with an Azure subscription can run the suite —
+the **F0 free tier (500 pages/month) exists**, so satisfying the gate does not even require spend,
+though a paid tier bills per page and the suite submits real documents. The procedure, not yet
+executed by anyone:
 
 ```bash
 # Once: an Azure Document Intelligence resource (the resource kind is still FormRecognizer).

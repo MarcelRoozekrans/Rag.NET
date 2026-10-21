@@ -197,6 +197,27 @@ public sealed class AzureDocumentIntelligenceDocumentParserTests
     }
 
     [Fact]
+    public async Task ParseAsync_ParagraphStartingAtAPageSpanEnd_IsNotOnThatPage()
+    {
+        // Page 1's span is [0, 18) and "Welcome" starts at offset 18, so the span end is
+        // exclusive: the paragraph is outside page 1 and stays page-less.
+        var sections = await ParseAsync("page-span-end");
+
+        Assert.Equal(3, sections.Count);
+
+        Assert.Equal(1, sections[0].PageNumber);
+        Assert.Equal("Employee Handbook", sections[0].Text);
+
+        Assert.Equal(2, sections[1].PageNumber);
+        Assert.Equal("Leave\n\nYou get twenty-five days.", sections[1].Text);
+
+        Assert.Null(sections[2].PageNumber);
+        Assert.Equal("Welcome to the company.", sections[2].Text);
+
+        Assert.Equal([0, 1, 2], sections.Select(s => s.SectionIndex));
+    }
+
+    [Fact]
     public async Task ParseAsync_PagelessHeadings_HeadTheirOwnSectionAndTheOnesAfter()
     {
         // The genuine fallback: the result's page carries no spans, so no paragraph can be
