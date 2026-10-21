@@ -6,13 +6,15 @@
     <Description>Azure Document Intelligence document parser for Rag.NET: TIFF and HEIF scans, with opt-in PDF, image, Office and HTML formats</Description>
     <VerifiedBy>unit</VerifiedBy>
     <VerifiedByReason>Azure AI Document Intelligence. Its WireMock cassettes are HAND-WRITTEN from the
-      documented response shape rather than recorded, so they verify the analyzer against fixtures
-      written alongside it. No capture has been taken for this package yet: one owed run with
-      RAGNET_DOCINTEL_CAPTURE set against a real resource, the same capture the PDF OCR engine took in
-      #354, would let these cassettes be replaced by the service's own responses. No env-gated live
-      test exists in this package yet either. What stays unverified: that the real service's response
-      shape for TIFF, HEIF and Office input matches those fixtures, and that its error responses
-      deserialise as the hand-written 401 does.</VerifiedByReason>
+      documented response shape rather than recorded, so they verify the analyzer and the parser's
+      section mapping against fixtures written alongside them. An env-gated live test,
+      AzureDocumentIntelligenceParserLiveTests, sends a single-frame TIFF to a real resource and runs
+      nightly with the RAGNET_DOCINTEL_ENDPOINT and RAGNET_DOCINTEL_KEY secrets; it proves the TIFF
+      path against the service but leaves nothing committed behind. Still owed: one run with
+      RAGNET_DOCINTEL_CAPTURE set, whose captured bodies replace the hand-written ones as a committed
+      recorded cassette, the same capture the PDF OCR engine took in #354. What stays unverified until
+      then, outside that nightly run: that the real service's response shape for HEIF and Office input
+      matches the fixtures, and that its error responses deserialise as the hand-written 401 does.</VerifiedByReason>
   </PropertyGroup>
 
   <!-- No reference to Rag.NET.Parsers.Pdf on purpose: a consumer that only wants TIFF scans

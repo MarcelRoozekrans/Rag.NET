@@ -2,6 +2,12 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Reads RAGNET_DOCINTEL_ENDPOINT and RAGNET_DOCINTEL_KEY and calls Assert.Skip when either
+         is absent, so this project is safe in every tier and simply skips that test. The
+         declaration exists so nightly.yml can select it and supply the values, which is the only
+         run where the live Azure Document Intelligence parser path executes — and it bills one
+         page. -->
+    <RequiresSecrets>true</RequiresSecrets>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +26,20 @@
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="WireMock.Net" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Linked, not moved: the engine's suite owns it and tests it, and the live test here
+         captures through the same policy, so both packages' cassettes come from one mechanism. -->
+    <Compile Include="..\Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests\ResponseCapturePolicy.cs" Link="ResponseCapturePolicy.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- A single-frame TIFF with known text, drawn by the script in Resources/README.md. TIFF is
+         the parser's default claim and a format no local parser reads, so the live test submits
+         what the package exists for. -->
+    <EmbeddedResource Include="Resources\sample-scan.tif"
+                      LogicalName="Rag.NET.Parsers.AzureDocumentIntelligence.Tests.Resources.sample-scan.tif" />
   </ItemGroup>
 
 </Project>
