@@ -45,18 +45,7 @@ public static class ParserFactoryRegistrationExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(factory);
 
-        if (replaces is not null)
-        {
-            ParserReplacement.Remove(builder.Services, replaces.FullName ?? replaces.Name);
-        }
-
-        if (replacesTypeNames is not null)
-        {
-            foreach (var replacedTypeName in replacesTypeNames)
-            {
-                ParserReplacement.Remove(builder.Services, replacedTypeName);
-            }
-        }
+        ParserReplacement.Remove(builder.Services, replaces, replacesTypeNames);
 
         var descriptor = ServiceDescriptor.Singleton<IDocumentParser>(sp => factory(sp));
         builder.Services.Add(descriptor);

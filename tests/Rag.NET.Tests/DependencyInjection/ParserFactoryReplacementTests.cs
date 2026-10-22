@@ -132,4 +132,55 @@ public class ParserFactoryReplacementTests
 
         Assert.Equal(before + 1, services.Count);
     }
+
+    [Fact]
+    public void AddParserFactory_WithReplacesTypeNames_RemovesAFactoryRegisteredParser()
+    {
+        var (services, builder) = Create();
+        RegisterFakeWithClaim(builder);
+
+        builder.AddParserFactory(_ => new OtherParser(), replacesTypeNames: [typeof(FakeParser).FullName!]);
+
+        AssertFakeGone(services);
+    }
+
+    [Fact]
+    public void AddParserFactory_ReplacingAnUnmarkedFactoryParser_Throws()
+    {
+        var (services, builder) = Create();
+        services.AddSingleton<IDocumentParser>(_ => new FakeParser());
+        services.AddSingleton(ParserClaim.For<FakeParser>("x/y", "AddFake()"));
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => builder.AddParserFactory(_ => new OtherParser(), replaces: typeof(FakeParser)));
+
+        Assert.Contains("AddParserFactory", ex.Message);
+    }
+
+    [Fact]
+    public void Replace_Throwing_LeavesTheCollectionUntouched()
+    {
+        var (services, builder) = Create();
+        RegisterFakeWithClaim(builder);
+        services.AddSingleton<IDocumentParser>(_ => new OtherParser());
+        services.AddSingleton(ParserClaim.For<OtherParser>("x/z", "AddOther()"));
+        var before = services.ToList();
+
+        Assert.Throws<InvalidOperationException>(() => builder.AddParser<OtherParser>(
+            replacesTypeNames: [typeof(FakeParser).FullName!, typeof(OtherParser).FullName!]));
+
+        Assert.Equal(before, services.ToList());
+    }
+
+    [Fact]
+    public void Replace_InstanceRegisteredParser_RemovesItInsteadOfThrowing()
+    {
+        var (services, builder) = Create();
+        services.AddSingleton<IDocumentParser>(new FakeParser());
+        services.AddSingleton(ParserClaim.For<FakeParser>("x/y", "AddFake()"));
+
+        builder.AddParser<OtherParser>(replaces: typeof(FakeParser));
+
+        AssertFakeGone(services);
+    }
 }

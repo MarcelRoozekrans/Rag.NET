@@ -9,61 +9,98 @@ namespace Rag.NET.Abstractions;
 internal static class ParserReplacement
 {
     /// <summary>
-    /// Removes the parser named <paramref name="parserTypeName"/>: its <see cref="IDocumentParser"/>
-    /// descriptors matched by <see cref="ServiceDescriptor.ImplementationType"/>, every descriptor a
-    /// matching <see cref="ParserRegistration"/> marks, the markers, and matching
-    /// <see cref="ParserClaim"/>s. A name matching nothing is a silent no-op, which an optional
-    /// package that was never installed requires.
+    /// Removes every parser named by <paramref name="replaces"/> and <paramref name="replacesTypeNames"/>,
+    /// or removes nothing and throws. All names are validated before any is removed, so a failing
+    /// call leaves <paramref name="services"/> untouched. <paramref name="replaces"/> is matched by
+    /// <see cref="Type.FullName"/>, not <see cref="Type.Name"/>; see
+    /// <see cref="ParserClaim.ParserTypeName"/> for why.
     /// </summary>
     /// <exception cref="InvalidOperationException">
-    /// At least one claim was removed but no <see cref="IDocumentParser"/> descriptor: the parser
-    /// declared what it claims, so it is installed, but its registration is an unmarked factory
-    /// that cannot be found. Silently leaving it would let it keep winning selection.
+    /// A name has <see cref="ParserClaim"/>s but no findable <see cref="IDocumentParser"/>
+    /// registration: the parser declared what it claims, so it is installed, but its registration is
+    /// an unmarked factory that cannot be found. Silently leaving it would let it keep winning
+    /// selection.
     /// </exception>
-    internal static void Remove(IServiceCollection services, string parserTypeName)
+    internal static void Remove(IServiceCollection services, Type? replaces, string[]? replacesTypeNames)
     {
-        var removedParser = false;
-        var removedClaim = false;
-
-        for (var i = services.Count - 1; i >= 0; i--)
+        var names = new List<string>();
+        if (replaces is not null)
         {
-            var descriptor = services[i];
+            names.Add(replaces.FullName ?? replaces.Name);
+        }
 
-            if (descriptor.ServiceType == typeof(ParserRegistration) &&
-                descriptor.ImplementationInstance is ParserRegistration marker &&
-                string.Equals(marker.ParserTypeName, parserTypeName, StringComparison.Ordinal))
-            {
-                services.RemoveAt(i);
-                removedParser |= services.Remove(marker.Descriptor);
-                // The marked descriptor can sit before or after i; restart the scan from the end.
-                i = services.Count;
-                continue;
-            }
+        if (replacesTypeNames is not null)
+        {
+            names.AddRange(replacesTypeNames);
+        }
 
-            if (descriptor.ServiceType == typeof(IDocumentParser) &&
-                string.Equals(descriptor.ImplementationType?.FullName, parserTypeName, StringComparison.Ordinal))
+        foreach (var name in names)
+        {
+            if (HasClaim(services, name) && !HasRegistration(services, name))
             {
-                services.RemoveAt(i);
-                removedParser = true;
-                continue;
-            }
-
-            if (descriptor.ServiceType == typeof(ParserClaim) &&
-                descriptor.ImplementationInstance is ParserClaim claim &&
-                string.Equals(claim.ParserTypeName, parserTypeName, StringComparison.Ordinal))
-            {
-                services.RemoveAt(i);
-                removedClaim = true;
+                throw new InvalidOperationException(
+                    $"Cannot replace parser '{name}': it declares content-type claims, so it is " +
+                    "installed, but no registration for it could be found. A factory registration does not " +
+                    "reveal the type it builds, so the package that registers it must use " +
+                    "AddParserFactory<TParser> instead of AddSingleton<IDocumentParser>(sp => ...).");
             }
         }
 
-        if (removedClaim && !removedParser)
+        foreach (var name in names)
         {
-            throw new InvalidOperationException(
-                $"Cannot replace parser '{parserTypeName}': it declares content-type claims, so it is " +
-                "installed, but no registration for it could be found. A factory registration does not " +
-                "reveal the type it builds, so the package that registers it must use " +
-                "AddParserFactory<TParser> instead of AddSingleton<IDocumentParser>(sp => ...).");
+            RemoveNamed(services, name);
+        }
+    }
+
+    private static bool HasClaim(IServiceCollection services, string name) =>
+        services.Any(d => d.ServiceType == typeof(ParserClaim) &&
+            d.ImplementationInstance is ParserClaim claim &&
+            string.Equals(claim.ParserTypeName, name, StringComparison.Ordinal));
+
+    private static bool HasRegistration(IServiceCollection services, string name) =>
+        services.Any(d => IsParserNamed(d, name) ||
+            (d.ServiceType == typeof(ParserRegistration) &&
+                d.ImplementationInstance is ParserRegistration marker &&
+                string.Equals(marker.ParserTypeName, name, StringComparison.Ordinal) &&
+                services.Contains(marker.Descriptor)));
+
+    /// <summary>
+    /// A type registration names its parser through <see cref="ServiceDescriptor.ImplementationType"/>;
+    /// an instance registration through the instance's own type. A factory names nothing.
+    /// </summary>
+    private static bool IsParserNamed(ServiceDescriptor d, string name) =>
+        d.ServiceType == typeof(IDocumentParser) &&
+        string.Equals(
+            d.ImplementationType?.FullName ?? d.ImplementationInstance?.GetType().FullName,
+            name,
+            StringComparison.Ordinal);
+
+    private static void RemoveNamed(IServiceCollection services, string name)
+    {
+        // Collected first, removed after: a marker points at a descriptor that can sit anywhere in
+        // the collection, so removing while scanning by index would skip or misplace entries.
+        var doomed = new List<ServiceDescriptor>();
+        foreach (var d in services)
+        {
+            if (d.ServiceType == typeof(ParserRegistration) &&
+                d.ImplementationInstance is ParserRegistration marker &&
+                string.Equals(marker.ParserTypeName, name, StringComparison.Ordinal))
+            {
+                doomed.Add(d);
+                doomed.Add(marker.Descriptor);
+            }
+            else if ((d.ServiceType == typeof(ParserClaim) &&
+                    d.ImplementationInstance is ParserClaim claim &&
+                    string.Equals(claim.ParserTypeName, name, StringComparison.Ordinal)) ||
+                IsParserNamed(d, name))
+            {
+                doomed.Add(d);
+            }
+        }
+
+        foreach (var d in doomed)
+        {
+            services.Remove(d);
         }
     }
 }

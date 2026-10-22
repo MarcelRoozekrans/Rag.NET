@@ -170,6 +170,12 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// <paramref name="replaces"/> — by full type name, and a name with no matching registration
     /// removes nothing and is not an error.
     /// </param>
+    /// <exception cref="InvalidOperationException">
+    /// A replaced name has claims but no findable registration: it was registered as an unmarked
+    /// factory. Factory parsers are reachable only through
+    /// <see cref="ParserFactoryRegistrationExtensions.AddParserFactory{TParser}"/>. Nothing is
+    /// removed when this throws.
+    /// </exception>
     /// <remarks>
     /// When <typeparamref name="TParser"/> implements <see cref="IDeclaresContentTypes"/>, this also
     /// declares one <see cref="ParserClaim"/> per content type it reports — see
@@ -179,19 +185,7 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     public RagBuilder AddParser<TParser>(Type? replaces = null, string[]? replacesTypeNames = null)
         where TParser : class, IDocumentParser
     {
-        if (replaces is not null)
-        {
-            RemoveReplacedParser(replaces.FullName ?? replaces.Name);
-        }
-
-        if (replacesTypeNames is not null)
-        {
-            foreach (var replacedTypeName in replacesTypeNames)
-            {
-                RemoveReplacedParser(replacedTypeName);
-            }
-        }
-
+        ParserReplacement.Remove(Services, replaces, replacesTypeNames);
         Services.AddSingleton<IDocumentParser, TParser>();
         DeclareContentTypeClaims<TParser>(replaces, replacesTypeNames);
         return this;
@@ -253,29 +247,6 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     private static IReadOnlyCollection<string> GetDeclaredContentTypes<TParser>()
         where TParser : IDeclaresContentTypes =>
         TParser.ContentTypes;
-
-    /// <summary>
-    /// Removes the parser named <paramref name="replacedTypeName"/>'s <see cref="IDocumentParser"/>
-    /// registration and every <see cref="ParserClaim"/> declared for it, so a caller of
-    /// <see cref="AddParser{TParser}(Type?, string[]?)"/> that names it — by <see cref="Type"/> or by
-    /// name — actually wins selection rather than merely avoiding the conflict check. A name that
-    /// matches nothing currently registered removes nothing, which is the no-op an optional
-    /// dependency that was never added requires.
-    /// <para>
-    /// <b>Factory registrations are reachable only when marked.</b> A factory descriptor does not
-    /// reveal the type it builds, so a parser registered through
-    /// <c>AddSingleton&lt;IDocumentParser&gt;(sp =&gt; …)</c> is found only if it was registered with
-    /// <see cref="ParserFactoryRegistrationExtensions.AddParserFactory{TParser}"/>, which records a
-    /// <see cref="ParserRegistration"/> marker. An unmarked factory parser that declared claims makes
-    /// the replace throw rather than silently do nothing. The removal itself lives in
-    /// <c>ParserReplacement</c>, shared with <c>AddParserFactory</c>.
-    /// </para>
-    /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// The name has claims but no findable <see cref="IDocumentParser"/> registration.
-    /// </exception>
-    private void RemoveReplacedParser(string replacedTypeName) =>
-        ParserReplacement.Remove(Services, replacedTypeName);
 
     /// <inheritdoc/>
     IRagBuilder IRagBuilder.AddParser<TParser>(Type? replaces, string[]? replacesTypeNames) =>
