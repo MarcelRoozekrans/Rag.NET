@@ -3,6 +3,7 @@ using Azure.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
+using Rag.NET.Models;
 using Rag.NET.Parsers.Excel;
 using Rag.NET.Parsers.Html;
 using Rag.NET.Parsers.Pdf;
@@ -236,6 +237,35 @@ public sealed class AzureDocumentIntelligenceParserBuilderExtensionsTests
             builder.AddAzureDocumentIntelligenceParser(Endpoint, (AzureKeyCredential)null!));
         Assert.Throws<ArgumentNullException>(() =>
             builder.AddAzureDocumentIntelligenceParser(Endpoint, (TokenCredential)null!));
+    }
+
+    [Fact]
+    public void Register_IsReplaceableByType()
+    {
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+
+        builder.AddAzureDocumentIntelligenceParser(Endpoint, new AzureKeyCredential("key"));
+        builder.AddParser<StubParser>(replaces: typeof(AzureDocumentIntelligenceDocumentParser));
+
+        using var provider = services.BuildServiceProvider();
+        var parsers = provider.GetServices<IDocumentParser>().ToList();
+        Assert.DoesNotContain(parsers, p => p is AzureDocumentIntelligenceDocumentParser);
+        Assert.Contains(parsers, p => p is StubParser);
+    }
+
+    private sealed class StubParser : IDocumentParser
+    {
+        public bool CanParse(string contentType) => false;
+
+        public async IAsyncEnumerable<DocumentSection> ParseAsync(
+            Stream stream,
+            DocumentMetadata metadata,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
     }
 
     private static List<ParserClaim> Claims(ServiceCollection services) =>

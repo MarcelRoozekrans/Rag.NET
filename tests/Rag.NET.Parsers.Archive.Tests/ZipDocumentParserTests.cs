@@ -587,4 +587,32 @@ public class ZipDocumentParserTests
 
         return types;
     }
+
+    [Fact]
+    public void AddArchiveParser_IsReplaceableByType()
+    {
+        var builder = new TestRagBuilder();
+
+        builder.AddArchiveParser();
+        builder.AddParserFactory(_ => new StubParser(), replaces: typeof(ZipDocumentParser));
+
+        using var provider = builder.Services.BuildServiceProvider();
+        var parsers = provider.GetServices<IDocumentParser>().ToList();
+        Assert.DoesNotContain(parsers, p => p is ZipDocumentParser);
+        Assert.Contains(parsers, p => p is StubParser);
+    }
+
+    private sealed class StubParser : IDocumentParser
+    {
+        public bool CanParse(string contentType) => false;
+
+        public async IAsyncEnumerable<DocumentSection> ParseAsync(
+            Stream stream,
+            DocumentMetadata metadata,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+    }
 }

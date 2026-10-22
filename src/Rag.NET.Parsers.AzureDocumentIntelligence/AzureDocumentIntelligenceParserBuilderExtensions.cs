@@ -125,7 +125,7 @@ public static class AzureDocumentIntelligenceParserBuilderExtensions
         Func<IServiceProvider, AzureDocumentIntelligenceAnalyzer> createAnalyzer)
         where TBuilder : IRagBuilder
     {
-        builder.Services.AddSingleton<IDocumentParser>(sp =>
+        builder.AddParserFactory(sp =>
             new AzureDocumentIntelligenceDocumentParser(createAnalyzer(sp), options));
 
         foreach (var contentType in options.Formats.ContentTypes())

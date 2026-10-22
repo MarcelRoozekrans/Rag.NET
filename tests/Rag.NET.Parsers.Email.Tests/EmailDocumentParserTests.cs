@@ -352,4 +352,34 @@ public class EmailDocumentParserTests
         stream.Position = 0;
         return stream;
     }
+
+    [Fact]
+    public void AddEmailParser_IsReplaceableByType()
+    {
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+
+        builder.AddEmailParser();
+        builder.AddParser<StubParser>(replaces: typeof(EmailDocumentParser));
+
+        using var provider = services.BuildServiceProvider();
+        var parsers = provider.GetServices<IDocumentParser>().ToList();
+        Assert.DoesNotContain(parsers, p => p is EmailDocumentParser);
+        Assert.Contains(parsers, p => p is MsgDocumentParser);
+        Assert.Contains(parsers, p => p is StubParser);
+    }
+
+    private sealed class StubParser : IDocumentParser
+    {
+        public bool CanParse(string contentType) => false;
+
+        public async IAsyncEnumerable<DocumentSection> ParseAsync(
+            Stream stream,
+            DocumentMetadata metadata,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+    }
 }
