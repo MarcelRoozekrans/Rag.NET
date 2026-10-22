@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.2.0...v1.3.0) (2026-10-22)
+
+
+### Features
+
+* **parsers:** make factory-registered parsers replaceable and let the Azure parser take formats over ([#847](https://github.com/MarcelRoozekrans/Rag.NET/issues/847)) ([2aeb2b0](https://github.com/MarcelRoozekrans/Rag.NET/commit/2aeb2b0b42e272c21006efae5a292cfd88141044))
+
 ## [1.2.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.1.3...v1.2.0) (2026-10-22)
 
 
