@@ -45,10 +45,19 @@ packages see only `IRagBuilder.Services`.
   an **extension method** in `Rag.NET.Abstractions`. It registers the factory as an
   `IDocumentParser` singleton, adds the `ParserRegistration` marker, declares claims for
   `IDeclaresContentTypes` parsers like `AddParser<T>` does, and supports `replaces:` the same way.
+  *Amended 2026-10-22: `AddParserFactory` declares no claims. A generic helper cannot know the
+  user-facing label a claim carries, such as `AddPdfParser(configure)`, and declaring claims would
+  duplicate the ones each package already declares. The helper registers the parser and its marker
+  only, and `replaces:` and `replacesTypeNames:` behave as described.*
 - **Removal moves to `Rag.NET.Abstractions`** as an internal helper, already visible to `Rag.NET`
   through `InternalsVisibleTo`. Both `AddParser<T>` and `AddParserFactory<T>` call it. It removes, for
   a type name: descriptors whose `ImplementationType` matches, descriptors a `ParserRegistration`
   marks, the markers themselves, and the claims.
+  *Amended 2026-10-22: two behaviours this section did not specify. The helper validates every
+  replaced name before it removes anything, so a throw for one name leaves the collection untouched
+  rather than half-edited. And it also matches a parser registered as an instance
+  (`ImplementationInstance`), not only by type or marker, so `AddSingleton<IDocumentParser>(new X())`
+  is replaceable too.*
 
 ### 1.1 Why this is not a breaking change
 
@@ -75,6 +84,10 @@ claims, so it is installed, but its registration cannot be found. The message na
 and says its package must register through `AddParserFactory`. A name that matches nothing at all
 is still a no-op, which is what an optional package that was never installed needs.
 
+*Amended 2026-10-22: "no registration that can be found" covers a registration by type, by
+`AddParserFactory` marker and by instance. In practice it leaves only a third-party raw
+`AddSingleton<IDocumentParser>(sp => ...)`.*
+
 ## 2. Azure: `ReplaceExistingParsers`
 
 `AzureDocumentIntelligenceParserOptions.ReplaceExistingParsers` (bool, default `false`):
@@ -98,6 +111,11 @@ services.AddRagNet(rag => rag
   covers only PNG, JPEG and BMP — the registration throws `InvalidOperationException`, naming the
   types that would lose their parser. Removing them silently is the failure this design exists to
   prevent.
+  *Amended 2026-10-22: the error names every parser that would be orphaned, each with its sorted
+  leftover types, not just the first, so one run shows everything to fix. It is thrown before
+  anything is added. This also means `Images` with `UseImageDescription()` always throws: Vision
+  claims `image/gif` and `image/webp`, which Azure never emits, so no `Formats` value takes PNG,
+  JPEG or BMP over from it.*
 - **Order matters, and the failure is loud.** Only parsers registered **before** Azure can be
   replaced. One registered after it still collides at `AddRagNet`'s claim check, as it does today.
   The docs say to register Azure last.

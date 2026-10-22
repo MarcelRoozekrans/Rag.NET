@@ -297,12 +297,27 @@ declare `QAPairsDocumentParser` as a deliberate override of core's `CsvDocumentP
 templates](chunking.md#domain-specific-templates-ragnetchunkingtemplates) for the resulting
 behaviour change.
 
-**One current limit, worth knowing before you reach for it:** `replaces`/`replacesTypeNames` can
-only remove a parser registered by concrete type (`AddParser<T>()`, or a `[Singleton]`-attributed
-built-in). A parser registered through a factory lambda —
-`services.AddSingleton<IDocumentParser>(sp => new MyParser(...))`, the pattern
-`Rag.NET.Parsers.Vision`, `.Email` and `.Archive` all use — cannot be named this way; naming one is
-a silent no-op indistinguishable from naming a package that was never installed.
+**A parser registered by factory lambda is reachable only if it was registered to be.** A plain
+`services.AddSingleton<IDocumentParser>(sp => new MyParser(...))` leaves `ServiceDescriptor.ImplementationType`
+`null`, so `replaces` has nothing to match. If the parser declares claims, naming it in `replaces`
+or `replacesTypeNames` throws `InvalidOperationException` rather than doing nothing silently; a
+name that matches nothing at all is still a no-op. All replaced names are validated before any is
+removed. The in-repository packages that build their parser from a factory
+(`Rag.NET.Parsers.Vision`, `.Email`, `.Archive`, `.Pdf` with its configuring overload) register
+through `AddParserFactory`, so replacing them works.
+
+**For package authors: `AddParserFactory<TParser>`.** A parser whose construction needs the
+container belongs behind `AddParserFactory<TParser>(factory, replaces:, replacesTypeNames:)`, an
+extension on `IRagBuilder`. It registers the singleton `IDocumentParser` and a `ParserRegistration`
+marker recording `TParser`'s full name, which is what lets a later `replaces:` find and remove it
+however it was registered: by type, through `AddParserFactory`, or as an instance. It declares no
+`ParserClaim`s. A generic helper cannot know the label users see, such as `AddPdfParser(configure)`,
+and declaring claims would duplicate the ones your package already declares. Keep declaring them
+yourself:
+
+```csharp
+rag.AddParserFactory(sp => new MyXmlParser(sp.GetRequiredService<TimeProvider>()));
+```
 
 ### PDF: table extraction and OCR
 
@@ -627,6 +642,54 @@ parser silently wins. Choose one parser per format; see
 conflict with nothing this library ships.
 
 An empty `Formats` is a registration error, not a parser that claims nothing.
+
+#### Replacing the default formats
+
+`Formats` starts as TIFF and HEIF. `|=` adds to that; `=` replaces it, which is how you drop TIFF
+and HEIF when you want Azure for something else only:
+
+```csharp
+services.AddRagNet(rag => rag
+    .AddAzureDocumentIntelligenceParser(endpoint, credential, o =>
+    {
+        o.Formats = AzureDocumentIntelligenceFormats.Word;  // Word only: TIFF and HEIF are dropped
+    }));
+```
+
+#### Taking a format over from another parser
+
+There are two routes. The first is to remove the other parser's `Add...Parser()` call, so Azure is
+the only claimant. The second is to keep that call and set `ReplaceExistingParsers`, which removes
+the parsers that already claim the formats Azure takes:
+
+```csharp
+services.AddRagNet(rag => rag
+    .AddWordParser()                                              // registered first
+    .AddAzureDocumentIntelligenceParser(endpoint, credential, o =>
+    {
+        o.Formats = AzureDocumentIntelligenceFormats.Word;
+        o.ReplaceExistingParsers = true;                          // Azure now reads .docx
+    }));
+```
+
+- **Register Azure last.** Only parsers registered before the Azure call are replaced. A parser
+  registered after it still conflicts with Azure's claims at `AddRagNet`, as it does without the
+  option.
+- **Only declared claims are found.** The option looks at the `ParserClaim`s already declared for
+  the content types `Formats` enables, compared case-insensitively. A parser registered without
+  claims is invisible to it, as it is to the conflict check.
+- **Partial overlap throws.** Replacing removes a whole parser. If a parser Azure would replace
+  also claims content types outside `Formats`, registration throws `InvalidOperationException`,
+  naming every such parser with its leftover types sorted, and adds nothing. Removing the parser
+  anyway would leave those types with no reader.
+- **Images with `UseImageDescription()` always throws.** The vision parser also claims
+  `image/gif` and `image/webp`, and Azure never emits those: `Images` covers PNG, JPEG and BMP
+  only. No setting of `Formats` changes that, so there is no way to take PNG, JPEG or BMP over from
+  the vision parser. Keep the vision parser for images, or drop `UseImageDescription()`.
+- **Bundled services stay registered.** Only the parser is removed. For example the chunking
+  strategy that `UseImageDescription()` registers remains in the container.
+- **The override is recorded.** When exactly one parser is replaced, the claims Azure declares
+  carry its type name in `ReplacesParserTypeName`.
 
 #### Sections
 

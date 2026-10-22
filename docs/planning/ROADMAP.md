@@ -497,22 +497,23 @@ future reader can tell the difference between "never existed" and "dealt with".
   → no phase currently owns the general `IOptions`/`ZeroAlloc.Validation` alignment; stays
   unscheduled until one does, re-justified rather than silently carried under a phase number that
   no longer means it.
-- **`AddParser<T>(replaces:, replacesTypeNames:)` cannot replace a factory-registered parser**
+- **`AddParser<T>(replaces:, replacesTypeNames:)` cannot replace a factory-registered parser** — **resolved 2026-10-22**, see [the replaceable factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md)
   (found while implementing Phase 4.2's `RemoveReplacedParser`, 2026-08-08): both parameters match
   on `ServiceDescriptor.ImplementationType`, which is `null` for every parser registered through
   `AddSingleton<IDocumentParser>(sp => …)` rather than `AddSingleton<IDocumentParser, TParser>()`.
-  `Rag.NET.Parsers.Vision`, `.Email`, `.Archive` and this repository's own
-  `Rag.NET.Chunking.Templates` all register that way. Naming one of them in `replaces:` or
+  `Rag.NET.Parsers.Vision`, `.Email`, `.Archive` and `.Pdf` (its configuring overload) all registered
+  that way. *(This entry first listed `Rag.NET.Chunking.Templates` too; it registers through
+  `AddParser<QAPairsDocumentParser>(replacesTypeNames:)`, by type, and was never affected.)* Naming one of them in `replaces:` or
   `replacesTypeNames:` removes nothing and throws nothing — it is a silent no-op indistinguishable
   from naming a package that was never installed, which is the exact failure shape this whole
   mechanism exists to remove. Documented on `RagBuilder.RemoveReplacedParser`'s own remarks rather
   than fixed; the two replacements this repository ships today (`CsvDocumentParser`,
   `ExcelDocumentParser`) both arrive through `AddParser<T>()` and are unaffected.
-  → no phase currently owns extending the replacement match beyond `ImplementationType` — the
-  options are resolving a provider to read the runtime type (the same "needs live instances"
-  problem `ParserClaim`'s own remarks describe) or a second, explicit removal key a factory
-  registration could supply; stays unscheduled until a phase touches parser registration internals
-  again, re-justified rather than silently dropped.
+  *Resolved:* those packages now register through `AddParserFactory<TParser>`, which leaves a marker
+  that `replaces:` and `replacesTypeNames:` find; a replaced name with claims but no findable
+  registration throws instead of doing nothing.
+  → closed: the second, explicit removal key was the option taken, as the `ParserRegistration`
+  marker that `AddParserFactory<TParser>` records.
 - **The first `MakeGenericMethod` call in `src/`** (Phase 4.2's Task 3, 2026-08-08):
   `RagBuilder.DeclareContentTypeClaims<TParser>` needs to invoke
   `IDeclaresContentTypes.ContentTypes`, a static abstract interface member, on a `TParser` known
@@ -2373,7 +2374,7 @@ documentation only.
 **Three new debts found during implementation, all recorded above rather than fixed inline**:
 `AddParser<T>(replaces:)` cannot reach a factory-registered parser (`ImplementationType` is `null`
 for it) — the same silent-no-op shape this phase set out to remove, now narrowed rather than
-closed; the first `MakeGenericMethod` call in `src/`, with no AOT/trim analyzer enabled anywhere to
+closed (*resolved 2026-10-22, see [the replaceable factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md)*); the first `MakeGenericMethod` call in `src/`, with no AOT/trim analyzer enabled anywhere to
 have caught it, routed to Phase 5.1 as the first phase that measures Native AOT startup time; and
 `ParserClaimCoverageTests` reading `ContentTypeMap`'s private `s_map` field by reflection, because
 the map has no public enumeration surface — fails loudly if the field is renamed, but the coupling
