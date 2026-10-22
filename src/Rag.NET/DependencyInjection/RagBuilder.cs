@@ -262,40 +262,20 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// matches nothing currently registered removes nothing, which is the no-op an optional
     /// dependency that was never added requires.
     /// <para>
-    /// <b>Only reaches parsers registered by type.</b> Matching is on
-    /// <see cref="ServiceDescriptor.ImplementationType"/>, which is <see langword="null"/> for a
-    /// factory registration — <c>AddSingleton&lt;IDocumentParser&gt;(sp =&gt; …)</c>, as
-    /// <c>Rag.NET.Parsers.Vision</c>, <c>.Email</c>, <c>.Archive</c> and this package's own
-    /// registrations use. A factory descriptor does not say what type it will produce without
-    /// resolving it, so naming one here removes nothing and looks identical to naming a package
-    /// that was never installed. Both parsers this repository replaces today
-    /// (<c>CsvDocumentParser</c>, <c>ExcelDocumentParser</c>) arrive through
-    /// <see cref="AddParser{TParser}(Type?, string[]?)"/> and are therefore reachable; a caller
-    /// trying to replace a factory-registered parser gets a silent no-op, which is the failure
-    /// shape this whole mechanism exists to remove. Recorded as debt rather than fixed here.
+    /// <b>Factory registrations are reachable only when marked.</b> A factory descriptor does not
+    /// reveal the type it builds, so a parser registered through
+    /// <c>AddSingleton&lt;IDocumentParser&gt;(sp =&gt; …)</c> is found only if it was registered with
+    /// <see cref="ParserFactoryRegistrationExtensions.AddParserFactory{TParser}"/>, which records a
+    /// <see cref="ParserRegistration"/> marker. An unmarked factory parser that declared claims makes
+    /// the replace throw rather than silently do nothing. The removal itself lives in
+    /// <c>ParserReplacement</c>, shared with <c>AddParserFactory</c>.
     /// </para>
     /// </summary>
-    private void RemoveReplacedParser(string replacedTypeName)
-    {
-        for (var i = Services.Count - 1; i >= 0; i--)
-        {
-            var descriptor = Services[i];
-
-            var isReplacedParser =
-                descriptor.ServiceType == typeof(IDocumentParser) &&
-                string.Equals(descriptor.ImplementationType?.FullName, replacedTypeName, StringComparison.Ordinal);
-
-            var isReplacedClaim =
-                descriptor.ServiceType == typeof(ParserClaim) &&
-                descriptor.ImplementationInstance is ParserClaim claim &&
-                string.Equals(claim.ParserTypeName, replacedTypeName, StringComparison.Ordinal);
-
-            if (isReplacedParser || isReplacedClaim)
-            {
-                Services.RemoveAt(i);
-            }
-        }
-    }
+    /// <exception cref="InvalidOperationException">
+    /// The name has claims but no findable <see cref="IDocumentParser"/> registration.
+    /// </exception>
+    private void RemoveReplacedParser(string replacedTypeName) =>
+        ParserReplacement.Remove(Services, replacedTypeName);
 
     /// <inheritdoc/>
     IRagBuilder IRagBuilder.AddParser<TParser>(Type? replaces, string[]? replacesTypeNames) =>

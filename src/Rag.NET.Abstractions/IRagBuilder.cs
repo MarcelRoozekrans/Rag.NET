@@ -23,7 +23,8 @@ public interface IRagBuilder
     /// When set, deliberately overrides <paramref name="replaces"/>: its registration and its
     /// <see cref="ParserClaim"/> are removed before <typeparamref name="TParser"/> is registered, so
     /// <typeparamref name="TParser"/> wins selection instead of merely avoiding the conflict check.
-    /// See <c>RagBuilder.AddParser</c>'s remarks for the full rationale.
+    /// See <c>RagBuilder.AddParser</c>'s remarks for the full rationale. A parser registered by a
+    /// factory is reachable only when its package used <see cref="ParserFactoryRegistrationExtensions.AddParserFactory{TParser}"/>.
     /// </param>
     /// <param name="replacesTypeNames">
     /// The same override as <paramref name="replaces"/>, by full type name rather than by
