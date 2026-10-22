@@ -289,9 +289,9 @@ services.AddRagNet(rag => rag
     .AddParser<MyExcelParser>(replacesTypeNames: ["Rag.NET.Parsers.Excel.ExcelDocumentParser"]));
 ```
 
-A name (or type) that matches nothing currently registered removes nothing and is **not** an
-error — replacing a parser from a package you never installed is a no-op, which is exactly what an
-optional dependency needs. `Rag.NET.Chunking.Templates`'s `UseQAPairsChunking()` uses this to
+A name (or type) that matches neither a registration nor a claim removes nothing and is **not**
+an error — replacing a parser from a package you never installed is a no-op, which is exactly what
+an optional dependency needs. `Rag.NET.Chunking.Templates`'s `UseQAPairsChunking()` uses this to
 declare `QAPairsDocumentParser` as a deliberate override of core's `CsvDocumentParser` and, when
 `Rag.NET.Parsers.Office` is installed, its `ExcelDocumentParser` — see [domain-specific chunking
 templates](chunking.md#domain-specific-templates-ragnetchunkingtemplates) for the resulting
@@ -302,21 +302,26 @@ behaviour change.
 `ServiceDescriptor.ImplementationType` `null`, so `replaces` has nothing to match. If the parser
 declares claims, naming it in `replaces` or `replacesTypeNames` throws `InvalidOperationException`
 rather than doing nothing silently; a name that matches nothing at all is still a no-op. All
-replaced names are validated before any is removed. The in-repository packages that build their
-parser from a factory (`Rag.NET.Parsers.Vision`, `.Email`, `.Archive`, `.Pdf` with its configuring
-overload) register through `AddParserFactory`, so replacing them works.
+replaced names are validated before any is removed. Every parser Rag.NET itself registers is
+reachable: the built-in `TextDocumentParser` and `MarkdownDocumentParser` are registered by type,
+and the packages that build their parser from a factory (`Rag.NET.Parsers.Vision`, `.Email`,
+`.Archive`, `.AzureDocumentIntelligence`, and `.Pdf` with its configuring overload) register
+through `AddParserFactory`, so replacing any of them works.
 
 **For package authors: `AddParserFactory<TParser>`.** A parser whose construction needs the
 container belongs behind `AddParserFactory<TParser>(factory, replaces:, replacesTypeNames:)`, an
 extension on `IRagBuilder`. It registers the singleton `IDocumentParser` and a `ParserRegistration`
 marker recording `TParser`'s full name, which is what lets a later `replaces:` find and remove it.
-The marker covers only `AddParserFactory` registrations: a parser registered by type or as an
-instance is matched directly, with no marker. It declares no `ParserClaim`s. A generic helper
-cannot know the label users see, such as `AddPdfParser(configure)`, and declaring claims would
-duplicate the ones your package already declares. Keep declaring them yourself:
+`TParser` must therefore be the concrete type the factory returns, the same type your claims name;
+an interface or abstract `TParser` is rejected with `ArgumentException`. The marker covers only
+`AddParserFactory` registrations: a parser registered by type or as an instance is matched
+directly, with no marker. It declares no `ParserClaim`s. A generic helper cannot know the label
+users see, such as `AddPdfParser(configure)`, and declaring claims would duplicate the ones your
+package already declares. Keep declaring them yourself:
 
 ```csharp
 rag.AddParserFactory(sp => new MyXmlParser(sp.GetRequiredService<TimeProvider>()));
+rag.Services.AddSingleton(ParserClaim.For<MyXmlParser>("application/xml", "AddMyXmlParser()"));
 ```
 
 ### PDF: table extraction and OCR

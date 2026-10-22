@@ -663,12 +663,18 @@ future reader can tell the difference between "never existed" and "dealt with".
   `Type.FullName`, not `Type.Name` — the same short-name reasoning `ParserClaim.ParserTypeName`
   pins. **One debt this closure created rather than removed, recorded above**: the match is on
   `ServiceDescriptor.ImplementationType`, which is `null` for a factory-registered parser, so
-  Vision, Email, Archive and Chunking.Templates' own factory registrations cannot be named here
-  (Chunking.Templates' was never affected, and the rest are resolved, see below) — a silent no-op
-  indistinguishable from an absent package. *Resolved 2026-10-22, see [the replaceable factory
-  parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md). Vision, Email,
-  Archive and Pdf now register through `AddParserFactory<TParser>`; Chunking.Templates registers
-  `QAPairsDocumentParser` by type and was never affected.*
+  the factory registrations of Vision, Email, Archive and Pdf cannot be named here — a silent
+  no-op indistinguishable from an absent package. *Resolved 2026-10-22, see [the replaceable
+  factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md). Those four
+  packages, and Azure Document Intelligence, now register through `AddParserFactory<TParser>`,
+  which records a marker `replaces:` can find, and replacing an unmarked factory parser that has
+  claims now throws instead of doing nothing. That rule caught two more factories the original
+  list missed because they are not in the source: ZeroAlloc.Inject generated the registrations of
+  the built-in `TextDocumentParser` and `MarkdownDocumentParser` from a `[Singleton]` attribute,
+  so the documented `AddParser<X>(replaces: typeof(TextDocumentParser))` would have thrown. The
+  attribute is gone and `AddRagNet` registers both by type, in the same order and before
+  `configure`; no `IDocumentParser` registration in `src/`, generated output included, is an
+  unmarked factory.*
 - ~~**`Rag.NET.Chunking.Templates` still ships `MimeKit`, `CsvHelper` and `ClosedXML`**~~ (Phase
   4.7's Task 10, stopped rather than completed, 2026-08-04) → closed 2026-08-08 in Phase 4.2,
   **partly implemented, and correctly not finished**. `message/rfc822` — `EmailTemplateDocumentParser`
@@ -1091,7 +1097,7 @@ future reader can tell the difference between "never existed" and "dealt with".
   Archive, Email and this repository's own Chunking.Templates use *with* claims, and declared none
   — an inconsistency with its own peers, not the documented `AddParser<T>()` limit.
   *(Replacing such a factory registration was a separate debt, resolved 2026-10-22: see [the
-replaceable factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md).)*
+  replaceable factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md).)*
   **What actually shipped, in the order the design required** (reversing it would have turned
   `UseQAPairsChunking()` into a startup error for every user of `Rag.NET.Parsers.Office`):
   `AddParser<T>(replaces:, replacesTypeNames:)` landed first as the override vocabulary;

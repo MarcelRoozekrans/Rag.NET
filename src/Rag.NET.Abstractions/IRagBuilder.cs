@@ -29,9 +29,16 @@ public interface IRagBuilder
     /// <param name="replacesTypeNames">
     /// The same override as <paramref name="replaces"/>, by full type name rather than by
     /// <see cref="Type"/>, for a caller that cannot reference the replaced parser's assembly — an
-    /// optional package that may not even be installed. A name with no matching registration is a
-    /// no-op, not an error. See <c>RagBuilder.AddParser</c>'s remarks for the full rationale.
+    /// optional package that may not even be installed. A name that matches neither a registration
+    /// nor a <see cref="ParserClaim"/> is a no-op; a name that has claims but no registration that
+    /// can be found throws. See <c>RagBuilder.AddParser</c>'s remarks for the full rationale.
     /// </param>
+    /// <exception cref="InvalidOperationException">
+    /// A replaced name has <see cref="ParserClaim"/>s but no registration that can be found: its
+    /// package registered it as a factory without
+    /// <see cref="ParserFactoryRegistrationExtensions.AddParserFactory{TParser}"/>. Every name is
+    /// checked before any is removed, so nothing is removed when this throws.
+    /// </exception>
     IRagBuilder AddParser<TParser>(Type? replaces = null, string[]? replacesTypeNames = null)
         where TParser : class, IDocumentParser;
 

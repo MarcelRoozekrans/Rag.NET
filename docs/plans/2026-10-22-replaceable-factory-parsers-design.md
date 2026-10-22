@@ -32,6 +32,17 @@ The ROADMAP entry also lists `Rag.NET.Chunking.Templates`; it now registers thro
 `AddParser<QAPairsDocumentParser>(replacesTypeNames:)`, by type, and is no longer affected. The
 ROADMAP line is corrected as part of this change.
 
+*Amended 2026-10-22: the table missed two parsers, because their registrations are not in the
+source. `Rag.NET`'s built-ins, `MarkdownDocumentParser` and `TextDocumentParser`, carried
+`[Singleton(As = typeof IDocumentParser, AllowMultiple = true)]`, and ZeroAlloc.Inject's generated
+`AddRagNETServices()` registered them as factories, `sp => new TextDocumentParser()`, with no
+marker. Their claims were declared by hand in `AddRagNet`, so once §1.2 made an unmarked factory
+with claims throw, `AddParser<X>(replaces: typeof(TextDocumentParser))`, the call
+`docs/guide/extending.md` documents as the supported way to override a built-in, threw too. The
+fix is at the source: the attribute is gone from both parsers, and `AddRagNet` registers them by
+type, next to their claims, in the generator's order and before `configure`. A generated
+registration is always a factory, so no `IDocumentParser` is left to the generator.*
+
 ## 1. Core: a removal key that a factory registration supplies
 
 A factory cannot say what type it will build without being run, so the type has to be stated at
@@ -85,8 +96,12 @@ and says its package must register through `AddParserFactory`. A name that match
 is still a no-op, which is what an optional package that was never installed needs.
 
 *Amended 2026-10-22: "no registration that can be found" covers a registration by type, by
-`AddParserFactory` marker and by instance. In practice it leaves only a third-party raw
-`AddSingleton<IDocumentParser>(sp => ...)`.*
+`AddParserFactory` marker and by instance. What is left is any raw
+`AddSingleton<IDocumentParser>(sp => ...)` whose parser has claims, and that includes registrations
+a source generator writes, since generated output is always a factory. When this was first
+written, the built-in Text and Markdown parsers were exactly that, and replacing them threw; §0's
+amendment records the fix. No registration in `src/`, generated output included, is an unmarked
+factory now, so in practice only a third-party one remains.*
 
 ## 2. Azure: `ReplaceExistingParsers`
 
@@ -143,6 +158,11 @@ loudly when someone tries.
   removes its registration, marker and claims; the replacement wins selection in a built provider.
   An unmarked factory parser with claims throws the §1.2 error. A name matching nothing is still a
   no-op. `AddParserFactory<T>` declares `IDeclaresContentTypes` claims like `AddParser<T>`.
+  *Amended 2026-10-22: per §1's amendment, `AddParserFactory<T>` declares no claims, so the test
+  shows it registers the parser and its marker only. It also rejects an interface or abstract
+  `TParser`, since the marker must name the concrete type the claims name. And the built-in
+  `TextDocumentParser` and `MarkdownDocumentParser` are each replaced through
+  `AddParser<T>(replaces:)` on a built provider, per §0's amendment.*
 - **Per migrated package**: the existing registration tests pass unchanged, and one test per
   package replaces its parser through `replaces:` and shows the replacement selected.
 - **Azure**: `Word` replaces `AddWordParser()`, a type registration. `Pdf` replaces

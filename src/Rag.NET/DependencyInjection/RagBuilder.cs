@@ -159,16 +159,18 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// place would let it keep winning even once the conflict is silenced. <paramref name="replaces"/>
     /// is matched by <see cref="Type.FullName"/>, not <see cref="Type.Name"/> — see
     /// <see cref="ParserClaim.ParserTypeName"/>'s remarks for why a short-name match would collapse
-    /// two distinct parsers that happen to share one. A <paramref name="replaces"/> that was never
-    /// registered removes nothing and is not an error.
+    /// two distinct parsers that happen to share one. A <paramref name="replaces"/> that matches
+    /// neither a registration nor a <see cref="ParserClaim"/> removes nothing and is not an error;
+    /// one that has claims but no registration that can be found throws.
     /// </param>
     /// <param name="replacesTypeNames">
     /// The same override as <paramref name="replaces"/>, expressed by full type name rather than by
     /// <see cref="Type"/>. Exists for a caller that cannot reference the replaced parser's assembly
     /// at all — <c>Rag.NET.Chunking.Templates</c> overriding <c>Rag.NET.Parsers.Office</c>'s Excel
     /// parser, which may not even be installed, is the motivating case. Matched the same way as
-    /// <paramref name="replaces"/> — by full type name, and a name with no matching registration
-    /// removes nothing and is not an error.
+    /// <paramref name="replaces"/> — by full type name. A name that matches neither a registration
+    /// nor a claim removes nothing and is not an error; a name that has claims but no registration
+    /// that can be found throws.
     /// </param>
     /// <exception cref="InvalidOperationException">
     /// A replaced name has claims but no findable registration: it was registered as an unmarked
