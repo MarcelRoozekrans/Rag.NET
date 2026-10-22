@@ -508,9 +508,10 @@ future reader can tell the difference between "never existed" and "dealt with".
   through `AddParser<QAPairsDocumentParser>(replacesTypeNames:)`, by type, and was never
   affected.)* Naming one of them in `replaces:` or `replacesTypeNames:` removes nothing and throws
   nothing — it is a silent no-op indistinguishable from naming a package that was never
-  installed, which is the exact failure shape this whole mechanism exists to remove. Documented on `RagBuilder.RemoveReplacedParser`'s own remarks rather
-  than fixed; the two replacements this repository ships today (`CsvDocumentParser`,
-  `ExcelDocumentParser`) both arrive through `AddParser<T>()` and are unaffected.
+  installed, which is the exact failure shape this whole mechanism exists to remove. Documented on
+  `RagBuilder.RemoveReplacedParser`'s own remarks rather than fixed; the two replacements this
+  repository ships today (`CsvDocumentParser`, `ExcelDocumentParser`) both arrive through
+  `AddParser<T>()` and are unaffected.
   *Resolved:* those packages now register through `AddParserFactory<TParser>`, which leaves a marker
   that `replaces:` and `replacesTypeNames:` find; a replaced name with claims but no findable
   registration throws instead of doing nothing.
@@ -662,11 +663,12 @@ future reader can tell the difference between "never existed" and "dealt with".
   `Type.FullName`, not `Type.Name` — the same short-name reasoning `ParserClaim.ParserTypeName`
   pins. **One debt this closure created rather than removed, recorded above**: the match is on
   `ServiceDescriptor.ImplementationType`, which is `null` for a factory-registered parser, so
-  Vision, Email, Archive and Chunking.Templates' own factory registrations cannot be named here —
-  a silent no-op indistinguishable from an absent package. *Resolved 2026-10-22, see [the replaceable
-  factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md).
-  Vision, Email, Archive and Pdf now register through `AddParserFactory<TParser>`; Chunking.Templates
-  registers `QAPairsDocumentParser` by type and was never affected.*
+  Vision, Email, Archive and Chunking.Templates' own factory registrations cannot be named here
+  (Chunking.Templates' was never affected, and the rest are resolved, see below) — a silent no-op
+  indistinguishable from an absent package. *Resolved 2026-10-22, see [the replaceable factory
+  parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md). Vision, Email,
+  Archive and Pdf now register through `AddParserFactory<TParser>`; Chunking.Templates registers
+  `QAPairsDocumentParser` by type and was never affected.*
 - ~~**`Rag.NET.Chunking.Templates` still ships `MimeKit`, `CsvHelper` and `ClosedXML`**~~ (Phase
   4.7's Task 10, stopped rather than completed, 2026-08-04) → closed 2026-08-08 in Phase 4.2,
   **partly implemented, and correctly not finished**. `message/rfc822` — `EmailTemplateDocumentParser`
@@ -2332,12 +2334,11 @@ MIME type of an extracted video *frame*, not a `CanParse` claim, found by greppi
 rather than reading `CanParse` bodies. **The one genuine oversight the corrected measurement found:
 Vision.** It registers two parsers through `AddSingleton<IDocumentParser>`, the mechanism Archive,
 Email and this repository's own Chunking.Templates use *with* claims, and declared none — an
-inconsistency with its own peers, not the documented `AddParser<T>()` limit.
-*(Replacing such a factory registration was a separate debt, resolved 2026-10-22: see [the
-replaceable factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md).)*
-The pattern behind all
-three overstatements was the same: a count taken from text matching, then reasoned about as though
-it had been read. *Grepping a file is not reading a method.*
+inconsistency with its own peers, not the documented `AddParser<T>()` limit. *(Replacing such a
+factory registration was a separate debt, resolved 2026-10-22: see [the replaceable factory parsers
+design](../plans/2026-10-22-replaceable-factory-parsers-design.md).)* The pattern behind all three
+overstatements was the same: a count taken from text matching, then reasoned about as though it had
+been read. *Grepping a file is not reading a method.*
 **Why the ordering is load-bearing (design §2).** Closing the coverage gap before QA-pairs chunking
 can declare an override would turn `UseQAPairsChunking()` into a startup error for anyone also
 using `Rag.NET.Parsers.Office` — the `…spreadsheetml.sheet` overlap is legitimate (a caller who

@@ -298,22 +298,22 @@ templates](chunking.md#domain-specific-templates-ragnetchunkingtemplates) for th
 behaviour change.
 
 **A parser registered by factory lambda is reachable only if it was registered to be.** A plain
-`services.AddSingleton<IDocumentParser>(sp => new MyParser(...))` leaves `ServiceDescriptor.ImplementationType`
-`null`, so `replaces` has nothing to match. If the parser declares claims, naming it in `replaces`
-or `replacesTypeNames` throws `InvalidOperationException` rather than doing nothing silently; a
-name that matches nothing at all is still a no-op. All replaced names are validated before any is
-removed. The in-repository packages that build their parser from a factory
-(`Rag.NET.Parsers.Vision`, `.Email`, `.Archive`, `.Pdf` with its configuring overload) register
-through `AddParserFactory`, so replacing them works.
+`services.AddSingleton<IDocumentParser>(sp => new MyParser(...))` leaves
+`ServiceDescriptor.ImplementationType` `null`, so `replaces` has nothing to match. If the parser
+declares claims, naming it in `replaces` or `replacesTypeNames` throws `InvalidOperationException`
+rather than doing nothing silently; a name that matches nothing at all is still a no-op. All
+replaced names are validated before any is removed. The in-repository packages that build their
+parser from a factory (`Rag.NET.Parsers.Vision`, `.Email`, `.Archive`, `.Pdf` with its configuring
+overload) register through `AddParserFactory`, so replacing them works.
 
 **For package authors: `AddParserFactory<TParser>`.** A parser whose construction needs the
 container belongs behind `AddParserFactory<TParser>(factory, replaces:, replacesTypeNames:)`, an
 extension on `IRagBuilder`. It registers the singleton `IDocumentParser` and a `ParserRegistration`
 marker recording `TParser`'s full name, which is what lets a later `replaces:` find and remove it.
 The marker covers only `AddParserFactory` registrations: a parser registered by type or as an
-instance is matched directly, with no marker. It declares no `ParserClaim`s. A generic helper cannot know the label users see, such as `AddPdfParser(configure)`,
-and declaring claims would duplicate the ones your package already declares. Keep declaring them
-yourself:
+instance is matched directly, with no marker. It declares no `ParserClaim`s. A generic helper
+cannot know the label users see, such as `AddPdfParser(configure)`, and declaring claims would
+duplicate the ones your package already declares. Keep declaring them yourself:
 
 ```csharp
 rag.AddParserFactory(sp => new MyXmlParser(sp.GetRequiredService<TimeProvider>()));
