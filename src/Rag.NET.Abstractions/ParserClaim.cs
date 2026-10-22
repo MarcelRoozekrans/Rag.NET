@@ -57,13 +57,12 @@ namespace Rag.NET.Abstractions;
 /// </para>
 /// <para>
 /// The limit is that this catches only registrations that <i>declare</i> a claim — which is not
-/// the same boundary as "first-party", and saying so understated it. The two parsers
-/// <c>AddRagNETServices()</c> auto-registers, <c>TextDocumentParser</c> and
-/// <c>MarkdownDocumentParser</c>, declared nothing when the guard shipped, so registering a parser
-/// that claimed <c>text/plain</c> left one declared claimant and the guard stayed silent while
-/// selection resolved <c>text/plain</c> to the built-in and the user's parser never ran. They
-/// declare their claims now, from <c>AddRagNet</c> itself, because a source generator writes their
-/// registrations and cannot host one.
+/// the same boundary as "first-party", and saying so understated it. The two built-in parsers,
+/// <c>TextDocumentParser</c> and <c>MarkdownDocumentParser</c>, declared nothing when the guard
+/// shipped, so registering a parser that claimed <c>text/plain</c> left one declared claimant and
+/// the guard stayed silent while selection resolved <c>text/plain</c> to the built-in and the
+/// user's parser never ran. <c>AddRagNet</c> now registers both by type and declares their claims
+/// beside the registrations.
 /// </para>
 /// <para>
 /// What genuinely goes undetected is a parser registered through <c>AddParser&lt;T&gt;()</c>,

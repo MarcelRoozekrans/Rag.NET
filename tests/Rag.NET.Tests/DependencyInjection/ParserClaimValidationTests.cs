@@ -156,7 +156,7 @@ public class ParserClaimValidationTests
     }
 
     /// <summary>
-    /// The built-in parsers are claimants like any other. <c>AddRagNETServices()</c> registers
+    /// The built-in parsers are claimants like any other. <c>AddRagNet</c> registers
     /// <see cref="TextDocumentParser"/> before <c>configure</c> runs, so a user parser claiming
     /// <c>text/plain</c> loses the race and never runs — and until the built-ins declared claims
     /// the guard could not see it, because one declared claimant is not a conflict.
@@ -209,6 +209,69 @@ public class ParserClaimValidationTests
         var parsers = sp.GetServices<IDocumentParser>().ToList();
         Assert.Contains(parsers, p => p is TextDocumentParser);
         Assert.Contains(parsers, p => p is MarkdownDocumentParser);
+    }
+
+    /// <summary>
+    /// The call <c>docs/guide/extending.md</c> documents as the supported way to take a content
+    /// type from a built-in. The built-ins used to be registered by generated factories, which
+    /// name no implementation type, so <c>replaces:</c> found their claims but not their
+    /// registration and threw. They are registered by type now, so the replace removes the
+    /// built-in and the replacement is the parser selection picks.
+    /// </summary>
+    [Fact]
+    public void ReplacingTheBuiltInTextParser_RemovesItAndTheReplacementWinsSelection()
+    {
+        using var sp = BaseServices().AddRagNet(rag =>
+            {
+                rag.AddParser<PlainTextStubParser>(replaces: typeof(TextDocumentParser));
+                rag.Services.AddSingleton(ParserClaim.For<PlainTextStubParser>(
+                    "text/plain", "AddParser<PlainTextStubParser>()"));
+            })
+            .BuildServiceProvider();
+
+        var parsers = sp.GetServices<IDocumentParser>().ToList();
+        Assert.DoesNotContain(parsers, p => p is TextDocumentParser);
+        Assert.Contains(parsers, p => p is MarkdownDocumentParser);
+        Assert.IsType<PlainTextStubParser>(parsers.First(p => p.CanParse("text/plain")));
+    }
+
+    /// <summary>
+    /// The same for <see cref="MarkdownDocumentParser"/>: removing it takes both of its claims,
+    /// so a replacement claiming only the alias leaves nothing to conflict with.
+    /// </summary>
+    [Fact]
+    public void ReplacingTheBuiltInMarkdownParser_RemovesItAndTheReplacementWinsSelection()
+    {
+        using var sp = BaseServices().AddRagNet(rag =>
+            {
+                rag.AddParser<MarkdownStubParser>(replaces: typeof(MarkdownDocumentParser));
+                rag.Services.AddSingleton(ParserClaim.For<MarkdownStubParser>(
+                    "text/x-markdown", "AddParser<MarkdownStubParser>()"));
+            })
+            .BuildServiceProvider();
+
+        var parsers = sp.GetServices<IDocumentParser>().ToList();
+        Assert.DoesNotContain(parsers, p => p is MarkdownDocumentParser);
+        Assert.Contains(parsers, p => p is TextDocumentParser);
+        Assert.IsType<MarkdownStubParser>(parsers.First(p => p.CanParse("text/x-markdown")));
+        Assert.DoesNotContain(parsers, p => p.CanParse("text/markdown"));
+    }
+
+    /// <summary>
+    /// The built-ins keep the position and order the generator gave them: registered before
+    /// anything <c>configure</c> adds, Markdown before Text.
+    /// </summary>
+    [Fact]
+    public void TheBuiltInParsers_RegisterBeforeConfigureInGeneratorOrder()
+    {
+        using var sp = BaseServices()
+            .AddRagNet(rag => rag.AddParser<PlainTextStubParser>())
+            .BuildServiceProvider();
+
+        var types = sp.GetServices<IDocumentParser>().Select(p => p.GetType()).ToList();
+        Assert.Equal(
+            [typeof(MarkdownDocumentParser), typeof(TextDocumentParser), typeof(PlainTextStubParser)],
+            types);
     }
 
     /// <summary>
