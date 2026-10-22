@@ -55,6 +55,20 @@ public class ZipDocumentParserTests
     public void TheUnknownBinaryContentTypeIsNotClaimed() =>
         Assert.False(new ZipDocumentParser([]).CanParse("application/octet-stream"));
 
+    [Fact]
+    public void AddArchiveParser_IsReplaceableByType()
+    {
+        var builder = new TestRagBuilder();
+
+        builder.AddArchiveParser();
+        builder.AddParserFactory(_ => new StubParser(), replaces: typeof(ZipDocumentParser));
+
+        using var provider = builder.Services.BuildServiceProvider();
+        var parsers = provider.GetServices<IDocumentParser>().ToList();
+        Assert.DoesNotContain(parsers, p => p is ZipDocumentParser);
+        Assert.Contains(parsers, p => p is StubParser);
+    }
+
     /// <summary>
     /// The drift Phase 3.11 left unenforced: <c>AddArchiveParser</c> declares the claims the startup
     /// guard reasons about, and nothing made them agree with the predicate that actually selects the
@@ -586,20 +600,6 @@ public class ZipDocumentParserTests
         }
 
         return types;
-    }
-
-    [Fact]
-    public void AddArchiveParser_IsReplaceableByType()
-    {
-        var builder = new TestRagBuilder();
-
-        builder.AddArchiveParser();
-        builder.AddParserFactory(_ => new StubParser(), replaces: typeof(ZipDocumentParser));
-
-        using var provider = builder.Services.BuildServiceProvider();
-        var parsers = provider.GetServices<IDocumentParser>().ToList();
-        Assert.DoesNotContain(parsers, p => p is ZipDocumentParser);
-        Assert.Contains(parsers, p => p is StubParser);
     }
 
     private sealed class StubParser : IDocumentParser

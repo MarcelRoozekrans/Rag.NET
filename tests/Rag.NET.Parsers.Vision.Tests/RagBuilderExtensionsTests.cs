@@ -124,6 +124,20 @@ public class RagBuilderExtensionsTests
         Assert.Contains(parsers, p => p is StubParser);
     }
 
+    [Fact]
+    public void UseVideoDescription_IsReplaceableByType()
+    {
+        var sp = BaseServices()
+            .AddRagNet(rag => rag
+                .UseVideoDescription()
+                .AddParser<StubParser>(replaces: typeof(VideoDocumentParser)))
+            .BuildServiceProvider();
+
+        var parsers = sp.GetServices<IDocumentParser>().ToList();
+        Assert.DoesNotContain(parsers, p => p is VideoDocumentParser);
+        Assert.Contains(parsers, p => p is StubParser);
+    }
+
     private sealed class StubParser : IDocumentParser
     {
         public bool CanParse(string contentType) => false;

@@ -38,9 +38,10 @@ public static class RagBuilderExtensions
         // through a factory lambda above (it needs opts.ChatClient and the resolved
         // ImageChunkingStrategy pairing), which does not route through AddParser and therefore
         // does not trigger its automatic claim declaration. This was Phase 4.2's one genuine
-        // registration-site oversight — Archive, Email and Templates all declare claims from the
-        // same AddSingleton<IDocumentParser> factory shape, and Vision alone did not. Read from
-        // ImageDocumentParser.ContentTypes rather than repeated here, so the two cannot drift.
+        // registration-site oversight — Archive, Email and Templates all declared claims by hand
+        // for their factory registrations, and Vision alone did not. The parser is registered
+        // through AddParserFactory so replaces: can find it, but that declares no claims, so they
+        // stay hand-declared. Read from ImageDocumentParser.ContentTypes rather than repeated here, so the two cannot drift.
         foreach (var contentType in ImageDocumentParser.ContentTypes)
         {
             builder.Services.AddSingleton(ParserClaim.For<ImageDocumentParser>(
