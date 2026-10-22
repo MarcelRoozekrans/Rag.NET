@@ -19,7 +19,8 @@ namespace Rag.NET.Parsers.AzureDocumentIntelligence;
 /// configured <see cref="AzureDocumentIntelligenceParserOptions.Formats"/> claim. That is what
 /// makes <c>AddRagNet</c> refuse, at startup, an opted-in format another parser also claims:
 /// <see cref="AzureDocumentIntelligenceFormats.Word"/> alongside <c>AddWordParser()</c>, for
-/// instance.
+/// instance. Setting <see cref="AzureDocumentIntelligenceParserOptions.ReplaceExistingParsers"/>
+/// makes the call remove such overlapping parsers instead, when they claim nothing else.
 /// </para>
 /// <para>
 /// <c>DocumentIntelligenceClientOptions</c> is intentionally not exposed here; it is the
@@ -154,7 +155,7 @@ public static class AzureDocumentIntelligenceParserBuilderExtensions
         var ourTypes = new HashSet<string>(ours, StringComparer.OrdinalIgnoreCase);
         var ownName = typeof(AzureDocumentIntelligenceDocumentParser).FullName;
         var claimsByParser = services
-            .Where(d => d.ServiceType == typeof(ParserClaim))
+            .Where(d => d.ServiceType == typeof(ParserClaim) && d.ImplementationInstance is ParserClaim)
             .Select(d => (ParserClaim)d.ImplementationInstance!)
             .Where(c => !string.Equals(c.ParserTypeName, ownName, StringComparison.Ordinal))
             .GroupBy(c => c.ParserTypeName, StringComparer.Ordinal)
@@ -162,18 +163,25 @@ public static class AzureDocumentIntelligenceParserBuilderExtensions
             .OrderBy(g => g.Key, StringComparer.Ordinal)
             .ToList();
 
+        var orphaned = new List<string>();
         foreach (var parser in claimsByParser)
         {
             var leftover = LeftoverTypes(parser, ourTypes);
             if (leftover.Count > 0)
             {
-                throw new InvalidOperationException(
-                    $"{nameof(AzureDocumentIntelligenceParserOptions.ReplaceExistingParsers)} cannot replace " +
-                    $"{parser.Key}: it also claims {string.Join(", ", leftover)}, which the configured " +
-                    $"{nameof(AzureDocumentIntelligenceParserOptions.Formats)} do not cover, so replacing it " +
-                    "would leave those types without a parser. Narrow or widen the formats, or remove the " +
-                    "other parser yourself.");
+                orphaned.Add($"{parser.Key} also claims {string.Join(", ", leftover)}");
             }
+        }
+
+        if (orphaned.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"{nameof(AzureDocumentIntelligenceParserOptions.ReplaceExistingParsers)} cannot take over " +
+                "parsers that claim types the configured " +
+                $"{nameof(AzureDocumentIntelligenceParserOptions.Formats)} do not cover, because replacing " +
+                $"them would leave those types without a parser: {string.Join("; ", orphaned)}. " +
+                $"Leave {nameof(AzureDocumentIntelligenceParserOptions.ReplaceExistingParsers)} off, or " +
+                "remove the other parser's registration yourself.");
         }
 
         return [.. claimsByParser.Select(g => g.Key)];

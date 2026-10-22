@@ -115,6 +115,54 @@ public sealed class ReplaceExistingParsersTests
         AssertReplaced(services, typeof(UpperCaseTiffParser), "image/tiff");
     }
 
+    [Fact]
+    public void SeveralOrphaningParsers_AreAllNamedInOneError()
+    {
+        var services = new ServiceCollection();
+        var rag = new RagBuilder(services);
+        rag.AddParserFactory(_ => new OrphanOneParser());
+        services.AddSingleton(ParserClaim.For<OrphanOneParser>("image/tiff", "AddOne"));
+        services.AddSingleton(ParserClaim.For<OrphanOneParser>("x/one", "AddOne"));
+        rag.AddParserFactory(_ => new OrphanTwoParser());
+        services.AddSingleton(ParserClaim.For<OrphanTwoParser>("image/heif", "AddTwo"));
+        services.AddSingleton(ParserClaim.For<OrphanTwoParser>("x/two", "AddTwo"));
+        var before = services.Count;
+
+        var exception = Assert.Throws<InvalidOperationException>(() => rag.AddAzureDocumentIntelligenceParser(
+            Endpoint, new AzureKeyCredential("key"), o => o.ReplaceExistingParsers = true));
+
+        Assert.Contains(typeof(OrphanOneParser).FullName!, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("x/one", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(typeof(OrphanTwoParser).FullName!, exception.Message, StringComparison.Ordinal);
+        Assert.Contains("x/two", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(before, services.Count);
+    }
+
+    [Fact]
+    public void SeveralReplacedParsers_AreAllRemovedAndClaimsRecordNone()
+    {
+        var services = new ServiceCollection();
+
+        services.AddRagNet(rag =>
+        {
+            rag.AddWordParser();
+            rag.AddParserFactory(_ => new UpperCaseTiffParser());
+            rag.Services.AddSingleton(ParserClaim.For<UpperCaseTiffParser>("image/tiff", "AddTiff"));
+            rag.AddAzureDocumentIntelligenceParser(
+                Endpoint,
+                new AzureKeyCredential("key"),
+                Replace(AzureDocumentIntelligenceFormats.Tiff | AzureDocumentIntelligenceFormats.Word));
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var parsers = provider.GetServices<IDocumentParser>().ToList();
+        Assert.DoesNotContain(parsers, p => p is WordDocumentParser or UpperCaseTiffParser);
+        Assert.Contains(parsers, p => p is AzureDocumentIntelligenceDocumentParser);
+        Assert.All(
+            Claims(services).Where(c => string.Equals(c.ParserTypeName, typeof(AzureDocumentIntelligenceDocumentParser).FullName, StringComparison.Ordinal)),
+            c => Assert.Null(c.ReplacesParserTypeName));
+    }
+
     private static Action<AzureDocumentIntelligenceParserOptions> Replace(AzureDocumentIntelligenceFormats formats) =>
         o =>
         {
@@ -136,8 +184,26 @@ public sealed class ReplaceExistingParsersTests
 
     private static List<ParserClaim> Claims(ServiceCollection services) =>
         [.. services
-            .Where(d => d.ServiceType == typeof(ParserClaim))
-            .Select(d => (ParserClaim)d.ImplementationInstance!)];
+            .Select(d => d.ImplementationInstance)
+            .OfType<ParserClaim>()];
+
+    private sealed class OrphanOneParser : StubParser;
+
+    private sealed class OrphanTwoParser : StubParser;
+
+    private abstract class StubParser : IDocumentParser
+    {
+        public bool CanParse(string contentType) => false;
+
+        public async IAsyncEnumerable<DocumentSection> ParseAsync(
+            Stream stream,
+            DocumentMetadata metadata,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+    }
 
     private sealed class UpperCaseTiffParser : IDocumentParser
     {
