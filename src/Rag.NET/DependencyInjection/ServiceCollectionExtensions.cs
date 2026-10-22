@@ -24,11 +24,11 @@ public static class ServiceCollectionExtensions
         Action<IngestionPipelineBuilder>? ingestion = null,
         Action<RetrievalPipelineBuilder>? retrieval = null)
     {
-        // ZeroAlloc.Inject-generated: registers IDocumentParser (Text, Markdown),
-        // IChunkingStrategy (Recursive), all [Singleton] behaviors by their concrete type,
-        // PipelineIngestor (as IIngestor), PipelineRetriever (as IRetriever).
+        // ZeroAlloc.Inject-generated: registers IChunkingStrategy (Recursive), all [Singleton]
+        // behaviors by their concrete type, PipelineIngestor (as IIngestor), PipelineRetriever
+        // (as IRetriever). The built-in parsers are registered by hand right after it.
         services.AddRagNETServices();
-        DeclareBuiltInParserClaims(services);
+        AddBuiltInParsers(services);
 
         services.TryAddSingleton<ChunkingOptions>();
         services.AddSingleton<InMemoryBm25Index>(sp => new InMemoryBm25Index(sp.GetService<SynonymMap>()));
@@ -116,22 +116,34 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Declares the claims of the two parsers <c>AddRagNETServices()</c> auto-registers, so
+    /// Registers the two built-in parsers, <see cref="MarkdownDocumentParser"/> and
+    /// <see cref="TextDocumentParser"/>, and declares their claims so
     /// <see cref="ValidateParserClaims"/> can see them.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Declared here rather than beside the parsers because a source generator writes their
-    /// registrations — <c>[Singleton(As = typeof(IDocumentParser), AllowMultiple = true)]</c> — and
-    /// its output cannot host a claim. This call is the next best place: every route into the
-    /// container goes through <see cref="AddRagNet"/>, and it runs before <c>configure</c>, which
-    /// is also the order the registrations themselves run in.
+    /// Registered here by type rather than through a <c>[Singleton]</c> attribute. ZeroAlloc.Inject
+    /// used to emit them from <c>[Singleton(As = typeof(IDocumentParser), AllowMultiple = true)]</c>,
+    /// and its output is always a factory, <c>sp =&gt; new TextDocumentParser()</c>. A factory
+    /// leaves <see cref="ServiceDescriptor.ImplementationType"/> <see langword="null"/>, so
+    /// <c>AddParser&lt;T&gt;(replaces: typeof(TextDocumentParser))</c> could not find the
+    /// registration it was told to remove, even though <c>docs/guide/extending.md</c> documents
+    /// that call as the supported way to override a built-in. A type registration names its
+    /// parser, so the replace finds it. Generated output cannot host a claim either, so registering
+    /// both here keeps each parser and its claims in one place.
     /// </para>
     /// <para>
-    /// Without these two claims the guard was blind to the case a user is most likely to hit.
+    /// The order is the one the generator emitted, Markdown before Text, and the call sits
+    /// immediately after <c>AddRagNETServices()</c> and before <c>configure</c>, where the
+    /// generated registrations used to run. Parser selection takes the first registered parser
+    /// whose <c>CanParse</c> matches, so a built-in still wins over a user parser for the same
+    /// content type unless that parser names it in <c>replaces:</c>.
+    /// </para>
+    /// <para>
+    /// Without the claims the guard was blind to the case a user is most likely to hit.
     /// Registering a parser that declares <c>text/plain</c> left one <i>declared</i> claimant, so
     /// nothing fired, while parser selection resolved <c>text/plain</c> to
-    /// <see cref="TextDocumentParser"/> — auto-registered before anything the user adds — and the
+    /// <see cref="TextDocumentParser"/> — registered before anything the user adds — and the
     /// user's parser silently never ran. That is precisely the failure the guard exists to prevent,
     /// and it was reachable without a third-party package.
     /// </para>
@@ -143,8 +155,11 @@ public static class ServiceCollectionExtensions
     /// <see cref="ParserClaim.ParserOptOut"/>.
     /// </para>
     /// </remarks>
-    private static void DeclareBuiltInParserClaims(IServiceCollection services)
+    private static void AddBuiltInParsers(IServiceCollection services)
     {
+        services.AddSingleton<IDocumentParser, MarkdownDocumentParser>();
+        services.AddSingleton<IDocumentParser, TextDocumentParser>();
+
         services.AddSingleton(ParserClaim.For<TextDocumentParser>(
             "text/plain", BuiltInRegistrationMethod));
         services.AddSingleton(ParserClaim.For<MarkdownDocumentParser>(
@@ -155,7 +170,8 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// The call a user would recognise as having registered the built-in parsers. They arrive
-    /// through <c>AddRagNETServices()</c>, which is generated and which nobody calls directly.
+    /// through <see cref="AddBuiltInParsers"/>, which is private, so the claim names the public
+    /// call that runs it.
     /// </summary>
     private const string BuiltInRegistrationMethod = "AddRagNet()";
 

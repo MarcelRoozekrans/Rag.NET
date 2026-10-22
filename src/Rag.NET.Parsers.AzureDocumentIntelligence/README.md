@@ -63,6 +63,59 @@ rag.AddAzureDocumentIntelligenceParser(endpoint, credential, options =>
 });
 ```
 
+## Replacing the default formats
+
+`Formats` starts as TIFF and HEIF. `|=` adds to that; `=` replaces it, so TIFF and HEIF are
+dropped:
+
+```csharp
+using Azure;
+using Rag.NET.Parsers.AzureDocumentIntelligence;
+
+Uri endpoint = new("https://example.cognitiveservices.azure.com/");
+var credential = new AzureKeyCredential("<key>");
+
+rag.AddAzureDocumentIntelligenceParser(endpoint, credential, o =>
+{
+    o.Formats = AzureDocumentIntelligenceFormats.Word;  // Word only
+});
+```
+
+## Taking a format over from another parser
+
+Either remove the other `Add...Parser()` call, or keep it and set `ReplaceExistingParsers`:
+
+```csharp
+using Azure;
+using Rag.NET.Parsers.AzureDocumentIntelligence;
+
+Uri endpoint = new("https://example.cognitiveservices.azure.com/");
+var credential = new AzureKeyCredential("<key>");
+
+// A local .docx parser, such as AddWordParser() from Rag.NET.Parsers.Office, registered first.
+rag.AddAzureDocumentIntelligenceParser(endpoint, credential, o =>
+{
+    o.Formats = AzureDocumentIntelligenceFormats.Word;
+    o.ReplaceExistingParsers = true;                          // Azure now reads .docx
+});
+```
+
+- **Register Azure last.** Only parsers registered before the Azure call are replaced. One
+  registered after it still conflicts at `AddRagNet`.
+- **Only declared claims are found.** The parsers to replace come from the `ParserClaim`s already
+  declared for the enabled content types, compared case-insensitively. A parser registered without
+  claims is invisible to the option.
+- **Partial overlap throws.** If a parser Azure would replace also claims types `Formats` does not
+  cover, registration throws `InvalidOperationException`, naming every such parser and its sorted
+  leftover types, and adds nothing.
+- **Images with `UseImageDescription()` always throws.** The vision parser also claims
+  `image/gif` and `image/webp`, which Azure never emits, so PNG, JPEG and BMP cannot be taken over
+  from it. Keep the vision parser for images, or drop `UseImageDescription()`.
+- **Bundled services stay registered.** Only the parser is removed; the chunking strategy that
+  `UseImageDescription()` registers, for example, remains.
+- **The override is recorded.** With exactly one parser replaced, the claims Azure declares carry
+  its type name in `ReplacesParserTypeName`.
+
 ## What it claims, and what Azure charges
 
 By default the parser claims **TIFF and HEIF only**: `image/tiff`, `image/heif` and

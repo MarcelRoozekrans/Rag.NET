@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
+using Rag.NET.Models;
 using Rag.NET.Parsers.Vision;
 using Xunit;
 
@@ -107,5 +108,47 @@ public class RagBuilderExtensionsTests
             .AddRagNet(rag => rag.UseVideoDescription(o => o.MaxScenes = 10))
             .BuildServiceProvider();
         Assert.Equal(10, sp.GetRequiredService<VideoDescriptionOptions>().MaxScenes);
+    }
+
+    [Fact]
+    public void UseImageDescription_IsReplaceableByType()
+    {
+        var sp = BaseServices()
+            .AddRagNet(rag => rag
+                .UseImageDescription()
+                .AddParser<StubParser>(replaces: typeof(ImageDocumentParser)))
+            .BuildServiceProvider();
+
+        var parsers = sp.GetServices<IDocumentParser>().ToList();
+        Assert.DoesNotContain(parsers, p => p is ImageDocumentParser);
+        Assert.Contains(parsers, p => p is StubParser);
+    }
+
+    [Fact]
+    public void UseVideoDescription_IsReplaceableByType()
+    {
+        var sp = BaseServices()
+            .AddRagNet(rag => rag
+                .UseVideoDescription()
+                .AddParser<StubParser>(replaces: typeof(VideoDocumentParser)))
+            .BuildServiceProvider();
+
+        var parsers = sp.GetServices<IDocumentParser>().ToList();
+        Assert.DoesNotContain(parsers, p => p is VideoDocumentParser);
+        Assert.Contains(parsers, p => p is StubParser);
+    }
+
+    private sealed class StubParser : IDocumentParser
+    {
+        public bool CanParse(string contentType) => false;
+
+        public async IAsyncEnumerable<DocumentSection> ParseAsync(
+            Stream stream,
+            DocumentMetadata metadata,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
     }
 }

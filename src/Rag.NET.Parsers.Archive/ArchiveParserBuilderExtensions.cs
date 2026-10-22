@@ -55,7 +55,7 @@ public static class ArchiveParserBuilderExtensions
         if (registerOptions)
             builder.Services.AddSingleton(options);
 
-        builder.Services.AddSingleton<IDocumentParser>(sp => new ZipDocumentParser(
+        builder.AddParserFactory(sp => new ZipDocumentParser(
             ResolveParsersLater(sp),
             sp.GetService<ILogger<ZipDocumentParser>>(),
             options));

@@ -55,12 +55,12 @@ public static class EmailParserBuilderExtensions
         if (registerOptions)
             builder.Services.AddSingleton(options);
 
-        builder.Services.AddSingleton<IDocumentParser>(sp => new EmailDocumentParser(
+        builder.AddParserFactory(sp => new EmailDocumentParser(
             new LazyDocumentParsers(sp),
             sp.GetRequiredService<HtmlDocumentParser>(),
             sp.GetService<ILogger<EmailDocumentParser>>(),
             options));
-        builder.Services.AddSingleton<IDocumentParser>(sp => new MsgDocumentParser(
+        builder.AddParserFactory(sp => new MsgDocumentParser(
             new LazyDocumentParsers(sp),
             sp.GetRequiredService<HtmlDocumentParser>(),
             sp.GetService<ILogger<MsgDocumentParser>>(),

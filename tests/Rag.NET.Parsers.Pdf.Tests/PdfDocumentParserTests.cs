@@ -179,4 +179,34 @@ public class PdfDocumentParserTests
                 o.TessDataPath = "  ";
             }));
     }
+
+    [Fact]
+    public void AddPdfParserConfigure_IsReplaceableByType()
+    {
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+
+        builder.AddPdfParser(o => o.ExtractTables = false);
+        builder.AddPdfParser(o => o.ExtractTables = true);
+        builder.AddParser<StubParser>(replaces: typeof(PdfDocumentParser));
+
+        using var provider = services.BuildServiceProvider();
+        var parsers = provider.GetServices<IDocumentParser>().ToList();
+        Assert.DoesNotContain(parsers, p => p is PdfDocumentParser);
+        Assert.Contains(parsers, p => p is StubParser);
+    }
+
+    private sealed class StubParser : IDocumentParser
+    {
+        public bool CanParse(string contentType) => false;
+
+        public async IAsyncEnumerable<DocumentSection> ParseAsync(
+            Stream stream,
+            DocumentMetadata metadata,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+    }
 }

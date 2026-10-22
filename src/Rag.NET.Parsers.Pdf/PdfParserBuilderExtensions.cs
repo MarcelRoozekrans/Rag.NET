@@ -46,7 +46,7 @@ public static class PdfParserBuilderExtensions
         configure?.Invoke(options);
         ValidateOptions(options, nameof(configure), builder.Services);
         builder.Services.AddSingleton(options);
-        builder.Services.AddSingleton<IDocumentParser>(sp =>
+        builder.AddParserFactory(sp =>
             new PdfDocumentParser(
                 options,
                 sp.GetService<ILogger<PdfDocumentParser>>(),

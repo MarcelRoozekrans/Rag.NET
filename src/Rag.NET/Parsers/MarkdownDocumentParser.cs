@@ -2,11 +2,9 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
-using ZeroAlloc.Inject;
 
 namespace Rag.NET.Parsers;
 
-[Singleton(As = typeof(IDocumentParser), AllowMultiple = true)]
 public sealed partial class MarkdownDocumentParser : IDocumentParser
 {
     [GeneratedRegex(@"^(#{1,6})\s+(.+)$", RegexOptions.Multiline | RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking)]

@@ -33,4 +33,21 @@ public sealed class AzureDocumentIntelligenceParserOptions
     /// </para>
     /// </summary>
     public long MaxBytes { get; set; } = 500_000_000;
+
+    /// <summary>
+    /// Whether registering the parser removes the parsers already registered for the types
+    /// <see cref="Formats"/> claims, instead of leaving <c>AddRagNet</c> to refuse the overlap.
+    /// Defaults to <see langword="false"/>.
+    /// <para>
+    /// Only parsers that declare a <see cref="Rag.NET.Abstractions.ParserClaim"/> for those types
+    /// are found; a parser registered without claims is invisible here, as it is to the conflict
+    /// check. Only whole parsers registered <i>before</i> this call are replaced. A parser that
+    /// also claims a type outside <see cref="Formats"/> would be left half-covered, so registration
+    /// throws <see cref="InvalidOperationException"/> naming every such parser and its uncovered
+    /// types, and nothing is added. A parser registered afterwards still conflicts at
+    /// <c>AddRagNet</c>. Services a replaced parser's registration call also registered stay
+    /// registered.
+    /// </para>
+    /// </summary>
+    public bool ReplaceExistingParsers { get; set; }
 }

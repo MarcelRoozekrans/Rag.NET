@@ -274,9 +274,9 @@ public sealed class NamedPipelineTests
     /// <para>
     /// Regression test for <c>ServiceCollectionDescriptorExtensions.Replace</c> removing only the
     /// <em>first</em> matching descriptor. <c>IDocumentParser</c> is exactly this shape in
-    /// production — <c>TextDocumentParser</c> and <c>MarkdownDocumentParser</c> both carry
-    /// <c>[Singleton(As = typeof(IDocumentParser), AllowMultiple = true)]</c>, so every child
-    /// starts with two registrations before forwarding runs.
+    /// production — <c>AddRagNet</c> registers both <c>TextDocumentParser</c> and
+    /// <c>MarkdownDocumentParser</c> as <c>IDocumentParser</c>, so every child starts with two
+    /// registrations before forwarding runs.
     /// </para>
     /// <para>
     /// Against the old code, sharing two parsers here would delete only the first built-in
