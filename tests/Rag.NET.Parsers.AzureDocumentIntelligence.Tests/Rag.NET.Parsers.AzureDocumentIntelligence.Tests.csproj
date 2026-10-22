@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- Reads RAGNET_DOCINTEL_ENDPOINT and RAGNET_DOCINTEL_KEY and calls Assert.Skip when either
+         is absent, so this project is safe in every tier and simply skips that test. The
+         declaration exists so nightly.yml can select it and supply the values. Those repository
+         secrets are not provisioned yet, so the live parser test skips there too, and it has not
+         run anywhere; once they are, a run bills one page. See docs/reference/ci.md. -->
+    <RequiresSecrets>true</RequiresSecrets>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.AzureDocumentIntelligence\Rag.NET.Parsers.AzureDocumentIntelligence.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <!-- Test-only: the claim tests register each local parser an opt-in format overlaps,
+         AddWordParser, AddPdfParser, AddHtmlParser and UseImageDescription, alongside this parser
+         to prove the conflict guard fires, and pin the copied OOXML content types to the Office
+         parsers' own lists. The shipped package must reference none of these. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Office\Rag.NET.Parsers.Office.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Pdf\Rag.NET.Parsers.Pdf.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Vision\Rag.NET.Parsers.Vision.csproj" />
+    <ProjectReference Include="..\Rag.NET.Testing\Rag.NET.Testing.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="WireMock.Net" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Linked, not moved: the engine's suite owns it and tests it, and the live test here
+         captures through the same policy, so both packages' cassettes come from one mechanism. -->
+    <Compile Include="..\Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests\ResponseCapturePolicy.cs" Link="ResponseCapturePolicy.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- A single-frame TIFF with known text, drawn by the script in Resources/README.md. TIFF is
+         the parser's default claim and a format no local parser reads, so the live test submits
+         what the package exists for. -->
+    <EmbeddedResource Include="Resources\sample-scan.tif"
+                      LogicalName="Rag.NET.Parsers.AzureDocumentIntelligence.Tests.Resources.sample-scan.tif" />
+  </ItemGroup>
+
+</Project>

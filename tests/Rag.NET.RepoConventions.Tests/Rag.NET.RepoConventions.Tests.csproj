@@ -8,10 +8,11 @@
        files, workflow files — so most of them need no ProjectReference. ParserClaimCoverageTests
        is the exception: it has to call IDeclaresContentTypes.ContentTypes and CanParse on the
        actual parser types, which only a ProjectReference can hand it. The references below are
-       deliberately narrow — the six packages that implement IDeclaresContentTypes today, plus
-       Rag.NET.Abstractions for the interface and ContentTypeMap themselves — and deliberately
-       exclude Rag.NET.Testing, so this project stays out of the container-fixture scan in
-       TestProjectTierTests; see the comment there. -->
+       deliberately narrow — the six packages that implement IDeclaresContentTypes today, the
+       Azure Document Intelligence parser package (scanned, though it declares its claims per
+       registration instead), plus Rag.NET.Abstractions for the interface and ContentTypeMap
+       themselves — and deliberately exclude Rag.NET.Testing, so this project stays out of the
+       container-fixture scan in TestProjectTierTests; see the comment there. -->
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
@@ -24,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Audio\Rag.NET.Parsers.Audio.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.AzureDocumentIntelligence\Rag.NET.Parsers.AzureDocumentIntelligence.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Epub\Rag.NET.Parsers.Epub.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Office\Rag.NET.Parsers.Office.csproj" />

@@ -1,0 +1,25 @@
+{
+  "Guid": "7a2e5c10-0000-4000-8000-000000000009",
+  "Title": "HAND-WRITTEN from the documented response shape: terminal poll for a DOCX analyzed by prebuilt-read: embedded text with words but no lines, paragraphs carry no bounding regions",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/docx-paragraphs/analyzeResults/docx-paragraphs",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [
+      "GET"
+    ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"status\":\"succeeded\",\"createdDateTime\":\"2026-10-21T10:00:00Z\",\"lastUpdatedDateTime\":\"2026-10-21T10:00:02Z\",\"analyzeResult\":{\"apiVersion\":\"2024-11-30\",\"modelId\":\"docx-paragraphs\",\"stringIndexType\":\"utf16CodeUnit\",\"content\":\"The quarterly report covers revenue, costs and the outlook for next year.\\nRevenue grew by twelve percent compared with the same quarter last year.\",\"pages\":[{\"pageNumber\":1,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"spans\":[{\"offset\":0,\"length\":146}],\"words\":[{\"content\":\"The\",\"span\":{\"offset\":0,\"length\":3},\"confidence\":1.0},{\"content\":\"quarterly\",\"span\":{\"offset\":4,\"length\":9},\"confidence\":1.0},{\"content\":\"report\",\"span\":{\"offset\":14,\"length\":6},\"confidence\":1.0},{\"content\":\"covers\",\"span\":{\"offset\":21,\"length\":6},\"confidence\":1.0},{\"content\":\"revenue,\",\"span\":{\"offset\":28,\"length\":8},\"confidence\":1.0},{\"content\":\"costs\",\"span\":{\"offset\":37,\"length\":5},\"confidence\":1.0},{\"content\":\"and\",\"span\":{\"offset\":43,\"length\":3},\"confidence\":1.0},{\"content\":\"the\",\"span\":{\"offset\":47,\"length\":3},\"confidence\":1.0},{\"content\":\"outlook\",\"span\":{\"offset\":51,\"length\":7},\"confidence\":1.0},{\"content\":\"for\",\"span\":{\"offset\":59,\"length\":3},\"confidence\":1.0},{\"content\":\"next\",\"span\":{\"offset\":63,\"length\":4},\"confidence\":1.0},{\"content\":\"year.\",\"span\":{\"offset\":68,\"length\":5},\"confidence\":1.0},{\"content\":\"Revenue\",\"span\":{\"offset\":74,\"length\":7},\"confidence\":1.0},{\"content\":\"grew\",\"span\":{\"offset\":82,\"length\":4},\"confidence\":1.0},{\"content\":\"by\",\"span\":{\"offset\":87,\"length\":2},\"confidence\":1.0},{\"content\":\"twelve\",\"span\":{\"offset\":90,\"length\":6},\"confidence\":1.0},{\"content\":\"percent\",\"span\":{\"offset\":97,\"length\":7},\"confidence\":1.0},{\"content\":\"compared\",\"span\":{\"offset\":105,\"length\":8},\"confidence\":1.0},{\"content\":\"with\",\"span\":{\"offset\":114,\"length\":4},\"confidence\":1.0},{\"content\":\"the\",\"span\":{\"offset\":119,\"length\":3},\"confidence\":1.0},{\"content\":\"same\",\"span\":{\"offset\":123,\"length\":4},\"confidence\":1.0},{\"content\":\"quarter\",\"span\":{\"offset\":128,\"length\":7},\"confidence\":1.0},{\"content\":\"last\",\"span\":{\"offset\":136,\"length\":4},\"confidence\":1.0},{\"content\":\"year.\",\"span\":{\"offset\":141,\"length\":5},\"confidence\":1.0}]}],\"paragraphs\":[{\"spans\":[{\"offset\":0,\"length\":73}],\"content\":\"The quarterly report covers revenue, costs and the outlook for next year.\"},{\"spans\":[{\"offset\":74,\"length\":72}],\"content\":\"Revenue grew by twelve percent compared with the same quarter last year.\"}]}}"
+  }
+}

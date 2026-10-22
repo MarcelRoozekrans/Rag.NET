@@ -1,0 +1,25 @@
+{
+  "Guid": "7a2e5c10-0000-4000-8000-000000000021",
+  "Title": "HAND-WRITTEN from the documented response shape: terminal poll for a DOCX analyzed by prebuilt-layout: title and sectionHeading paragraphs without bounding regions, and a page with empty spans, so no paragraph can be placed on a page",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/pageless-headings/analyzeResults/pageless-headings",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [
+      "GET"
+    ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"status\":\"succeeded\",\"createdDateTime\":\"2026-10-21T10:00:00Z\",\"lastUpdatedDateTime\":\"2026-10-21T10:00:02Z\",\"analyzeResult\":{\"apiVersion\":\"2024-11-30\",\"modelId\":\"pageless-headings\",\"stringIndexType\":\"utf16CodeUnit\",\"content\":\"Employee Handbook\\nWelcome to the company.\\nLeave\\nYou get twenty-five days.\",\"pages\":[{\"pageNumber\":1,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"spans\":[],\"words\":[]}],\"paragraphs\":[{\"spans\":[{\"offset\":0,\"length\":17}],\"content\":\"Employee Handbook\",\"role\":\"title\"},{\"spans\":[{\"offset\":18,\"length\":23}],\"content\":\"Welcome to the company.\"},{\"spans\":[{\"offset\":42,\"length\":5}],\"content\":\"Leave\",\"role\":\"sectionHeading\"},{\"spans\":[{\"offset\":48,\"length\":25}],\"content\":\"You get twenty-five days.\"}]}}"
+  }
+}

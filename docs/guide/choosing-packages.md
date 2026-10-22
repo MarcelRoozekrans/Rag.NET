@@ -6,7 +6,7 @@ sidebar_position: 4
 
 # Choosing Packages
 
-Rag.NET ships as 73 packages, and a working pipeline needs two or three of them. This page
+Rag.NET ships as 74 packages, and a working pipeline needs two or three of them. This page
 exists because the catalogue does not say which — the packages compose transitively, so most
 of what a pipeline uses arrives on its own, and the only decisions you actually make are the
 ones this page walks through.
@@ -48,6 +48,12 @@ you ingest: `Rag.NET.Parsers.Pdf`, `.Html`, `.Office` (Word, Excel and PowerPoin
 package), `.Email`, `.Epub`, `.Archive` (ZIP), `.Audio`, `.Vision`. Parser packages sit on
 `Rag.NET.Abstractions`, not on core, so each adds just its own format library (PdfPig,
 AngleSharp, OpenXml, MimeKit, …) to your build.
+
+For TIFF and HEIF scans, which no local parser reads, add
+`Rag.NET.Parsers.AzureDocumentIntelligence`. It sends whole documents to Azure Document
+Intelligence and bills per page. It can also take over PDF, image, Office and HTML input if
+you want every format parsed in Azure, in place of the local parser for that format. See
+[Azure Document Intelligence as a parser](ingestion.md#azure-document-intelligence-as-a-parser).
 
 ## Decision 3 (optional): a data source connector
 

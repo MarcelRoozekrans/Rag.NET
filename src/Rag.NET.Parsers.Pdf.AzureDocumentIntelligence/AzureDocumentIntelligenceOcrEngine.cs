@@ -4,7 +4,7 @@ using Azure.AI.DocumentIntelligence;
 using Azure.Core;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
-using Rag.NET.Models;
+using Rag.NET.Parsers.AzureDocumentIntelligence;
 using Rag.NET.Parsers.Pdf.Ocr;
 
 namespace Rag.NET.Parsers.Pdf.AzureDocumentIntelligence;
@@ -42,9 +42,8 @@ namespace Rag.NET.Parsers.Pdf.AzureDocumentIntelligence;
 /// </remarks>
 public sealed class AzureDocumentIntelligenceOcrEngine : IDocumentOcrEngine
 {
-    private readonly DocumentIntelligenceClient _client;
-    private readonly AzureDocumentIntelligenceOcrOptions _options;
-    private readonly ICostLedger? _costLedger;
+    private readonly AzureDocumentIntelligenceAnalyzer _analyzer;
+    private readonly string _modelId;
     private readonly ILogger<AzureDocumentIntelligenceOcrEngine>? _logger;
 
     /// <summary>Creates an engine authenticating with an API key.</summary>
@@ -80,11 +79,11 @@ public sealed class AzureDocumentIntelligenceOcrEngine : IDocumentOcrEngine
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentNullException.ThrowIfNull(credential);
 
-        _client = clientOptions is null
-            ? new DocumentIntelligenceClient(endpoint, credential)
-            : new DocumentIntelligenceClient(endpoint, credential, clientOptions);
-        _options = Validate(options ?? new AzureDocumentIntelligenceOcrOptions(), nameof(options));
-        _costLedger = costLedger;
+        var settings = ToAnalyzerSettings(
+            Validate(options ?? new AzureDocumentIntelligenceOcrOptions(), nameof(options)));
+        _analyzer = new AzureDocumentIntelligenceAnalyzer(
+            endpoint, credential, settings, costLedger, logger, clientOptions);
+        _modelId = settings.ModelId;
         _logger = logger;
     }
 
@@ -121,11 +120,11 @@ public sealed class AzureDocumentIntelligenceOcrEngine : IDocumentOcrEngine
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentNullException.ThrowIfNull(credential);
 
-        _client = clientOptions is null
-            ? new DocumentIntelligenceClient(endpoint, credential)
-            : new DocumentIntelligenceClient(endpoint, credential, clientOptions);
-        _options = Validate(options ?? new AzureDocumentIntelligenceOcrOptions(), nameof(options));
-        _costLedger = costLedger;
+        var settings = ToAnalyzerSettings(
+            Validate(options ?? new AzureDocumentIntelligenceOcrOptions(), nameof(options)));
+        _analyzer = new AzureDocumentIntelligenceAnalyzer(
+            endpoint, credential, settings, costLedger, logger, clientOptions);
+        _modelId = settings.ModelId;
         _logger = logger;
     }
 
@@ -137,26 +136,16 @@ public sealed class AzureDocumentIntelligenceOcrEngine : IDocumentOcrEngine
         // Reads to the end but never disposes: the parser owns this stream.
         var content = await BinaryData.FromStreamAsync(pdf, cancellationToken).ConfigureAwait(false);
 
-        var analyzeOptions = new AnalyzeDocumentOptions(_options.ModelId, content);
-        if (!string.IsNullOrWhiteSpace(_options.Locale))
-        {
-            analyzeOptions.Locale = _options.Locale;
-        }
+        // Polling and cost recording live in the shared analyzer; only the projection onto
+        // PDF page lines is this engine's own.
+        var result = await _analyzer.AnalyzeAsync(content, cancellationToken).ConfigureAwait(false);
 
-        // WaitUntil.Started, then an explicit wait: the parameterless completion wait uses the
-        // SDK's own back-off, which nothing on DocumentIntelligenceClientOptions can influence.
-        var operation = await _client
-            .AnalyzeDocumentAsync(WaitUntil.Started, analyzeOptions, cancellationToken)
-            .ConfigureAwait(false);
-        await operation.WaitForCompletionAsync(_options.PollingInterval, cancellationToken).ConfigureAwait(false);
-
-        var pageText = BuildPageText(operation.Value, out var billedPages);
+        var pageText = BuildPageText(result, out var billedPages);
         if (_logger is not null)
         {
-            AzureDocumentIntelligenceLog.Analyzed(_logger, billedPages, _options.ModelId, pageText.Count);
+            AzureDocumentIntelligenceLog.Analyzed(_logger, billedPages, _modelId, pageText.Count);
         }
 
-        await RecordCostAsync(billedPages, cancellationToken).ConfigureAwait(false);
         return new DocumentOcrResult(pageText, billedPages);
     }
 
@@ -232,40 +221,17 @@ public sealed class AzureDocumentIntelligenceOcrEngine : IDocumentOcrEngine
     }
 
     /// <summary>
-    /// Records page spend, computing the cost from the configured per-page price because the
-    /// ledger prices nothing itself. An OCR entry carries pages and zero tokens.
+    /// Maps validated engine options onto the shared analyzer's settings. A copy, not a view:
+    /// the analyzer validates its settings once, at construction.
     /// </summary>
-    /// <remarks>
-    /// Fire-and-forget by house convention: the OCR call already succeeded, so a ledger write
-    /// failure is logged and swallowed rather than discarding a result the caller paid for.
-    /// Cancellation is the one exception — it propagates, as it does everywhere else here.
-    /// </remarks>
-    private async Task RecordCostAsync(int billedPages, CancellationToken cancellationToken)
-    {
-        if (_costLedger is null || billedPages <= 0)
+    private static AzureDocumentIntelligenceAnalyzerSettings ToAnalyzerSettings(
+        AzureDocumentIntelligenceOcrOptions options) => new()
         {
-            return;
-        }
-
-        var entry = new CostEntry
-        {
-            Kind = CostKind.Ocr,
-            Pages = billedPages,
-            Cost = billedPages * _options.PricePerPage,
+            ModelId = options.ModelId,
+            PricePerPage = options.PricePerPage,
+            PollingInterval = options.PollingInterval,
+            Locale = options.Locale,
         };
-
-        try
-        {
-            await _costLedger.RecordAsync(entry, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            if (_logger is not null)
-            {
-                AzureDocumentIntelligenceLog.CostLedgerWriteFailed(_logger, billedPages, exception);
-            }
-        }
-    }
 
     /// <summary>
     /// Validates every configurable value and returns <paramref name="options"/> unchanged.

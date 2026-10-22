@@ -1,0 +1,26 @@
+{
+  "Guid": "7a2e5c10-0000-4000-8000-000000000023",
+  "Title": "HAND-WRITTEN from the documented response shape: terminal poll for an operation whose terminal poll is delayed by 10 seconds, so a caller can cancel mid-poll",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/slow-poll/analyzeResults/slow-poll",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [
+      "GET"
+    ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"status\":\"succeeded\",\"createdDateTime\":\"2026-10-21T10:00:00Z\",\"lastUpdatedDateTime\":\"2026-10-21T10:00:02Z\",\"analyzeResult\":{\"apiVersion\":\"2024-11-30\",\"modelId\":\"slow-poll\",\"stringIndexType\":\"utf16CodeUnit\",\"content\":\"\",\"pages\":[],\"paragraphs\":[]}}",
+    "Delay": 10000
+  }
+}

@@ -18,7 +18,7 @@ rendered and searchable. The same pages live under [`docs/`](docs/) if you prefe
 
 ## Features
 
-A selection. The library ships **73 packages**, and [the guide](docs/guide/) covers each
+A selection. The library ships **74 packages**, and [the guide](docs/guide/) covers each
 subsystem in depth. [docs/reference/features.md](docs/reference/features.md) is the maintainers'
 per-feature ledger — what is done, what exercises it, which phase owns the rest. It is kept in
 the repository rather than published to the documentation site, because it answers "where does
@@ -66,7 +66,7 @@ this project stand" and not "what does this library do".
 ## Packages
 
 Not sure what to install? [Choosing packages](docs/guide/choosing-packages.md) walks
-through the two or three decisions and what arrives transitively. A selection of the 73:
+through the two or three decisions and what arrives transitively. A selection of the 74:
 
 | Package | Description |
 |---------|-------------|

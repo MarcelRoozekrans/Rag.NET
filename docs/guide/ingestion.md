@@ -175,6 +175,7 @@ Parsers implement `IDocumentParser`. The pipeline selects the first registered p
 | `application/epub+zip` | `Rag.NET.Parsers.Epub` | Chapter-aware, emits a `DocumentSection` per chapter |
 | `application/zip`, `application/x-zip-compressed` | `Rag.NET.Parsers.Archive` | Container: each entry is parsed by whichever parser claims its content type, under read and entry-count budgets |
 | `audio/wav`, `audio/mpeg`, `audio/flac`, `audio/mp4`, `audio/ogg` | `Rag.NET.Parsers.Audio` | Transcription via Whisper.net (local, no API key) |
+| `image/tiff`, `image/heif`, `image/heic` | `Rag.NET.Parsers.AzureDocumentIntelligence` | OCR via Azure AI Document Intelligence; PDF, image, Office and HTML formats are opt-in — see [below](#azure-document-intelligence-as-a-parser) |
 | `image/png`, `image/jpeg`, `image/webp`, `image/gif`, `image/bmp` | `Rag.NET.Parsers.Vision` | Description via a vision LLM — `UseImageDescription()` |
 | `video/mp4`, `video/webm`, `video/quicktime`, `video/x-matroska`, `video/x-msvideo` | `Rag.NET.Parsers.Vision` | Keyframe description via FFMpeg + a vision LLM — `UseVideoDescription()` |
 | `text/csv` | (core) `CsvDocumentParser` | |
@@ -548,6 +549,133 @@ Two consequences to know before enabling it:
 - OCR replaces only pages below `OcrMinCharacters`; a page whose extracted text clears the
   threshold keeps PdfPig's text, which is exact. On the Azure path that page is still submitted
   and still billed — the whole document goes in one call — but its recognized text is discarded.
+
+### Azure Document Intelligence as a parser
+
+`Rag.NET.Parsers.AzureDocumentIntelligence` is a parser in its own right: it sends a whole
+document to an Azure AI Document Intelligence model and turns the result into sections. It is
+not the PDF OCR engine above, and installing one does not register the other.
+
+```bash
+dotnet add package Rag.NET.Parsers.AzureDocumentIntelligence
+```
+
+```csharp
+using Azure;
+using Rag.NET.Parsers.AzureDocumentIntelligence;
+
+Uri endpoint = new("https://example.cognitiveservices.azure.com/");
+var credential = new AzureKeyCredential("<key>");
+
+services.AddRagNet(rag => rag
+    .AddAzureDocumentIntelligenceParser(endpoint, credential));
+```
+
+The credential is either an `AzureKeyCredential` or a `TokenCredential` (managed identity /
+OAuth); there is an overload for each. The package does not depend on `Rag.NET.Parsers.Pdf`, so
+it brings in no PDF library.
+
+#### What it claims by default
+
+**TIFF and HEIF only**: `image/tiff`, `image/heif` and `image/heic`. Those are the formats no
+other Rag.NET parser reads. `.tif`, `.tiff`, `.heif` and `.heic` files resolve to those content
+types, so a scan from any data provider reaches this parser. Without it, they are warned about
+and skipped like any other unclaimed binary type.
+
+Every other format is an opt-in on `Formats`, because a local parser already reads it for free:
+
+```csharp
+services.AddRagNet(rag => rag
+    .AddAzureDocumentIntelligenceParser(endpoint, credential, o =>
+    {
+        o.Formats |= AzureDocumentIntelligenceFormats.Office;  // Word, Excel and PowerPoint
+        o.Analyzer.ModelId = "prebuilt-read";                  // default
+        o.Analyzer.PricePerPage = 0.0015m;                     // default; indicative only
+        o.MaxBytes = 500_000_000;                              // default
+    }));
+```
+
+#### What Azure returns, and what it costs, per format
+
+From Microsoft's Read model page for v4.0, API version `2024-11-30`:
+
+| Format | `Formats` flag | Azure returns | Billed per | Rag.NET without Azure |
+|---|---|---|---|---|
+| TIFF | `Tiff` (default) | OCR text, one page per frame | frame | nothing |
+| HEIF / HEIC | `Heif` (default) | OCR text | image | nothing |
+| PDF | `Pdf` | OCR text, lines, paragraphs | page | `AddPdfParser`, plus the PDF OCR engine for scanned pages |
+| PNG, JPEG, BMP | `Images` | OCR text | image | `UseImageDescription`: a vision LLM's description, optionally Tesseract first |
+| DOCX | `Word` | the embedded text as is; images ignored; no lines | 3,000 characters | `AddWordParser`, locally, free |
+| XLSX | `Excel` | the same | worksheet | `AddExcelParser`, locally, free |
+| PPTX | `PowerPoint` | the same | slide | `AddPowerPointParser`, locally, free |
+| HTML | `Html` | the same | 3,000 characters | `AddHtmlParser`, locally, free |
+
+**For Office and HTML, Azure adds cost, not text.** It extracts the same embedded text the local
+parsers do and ignores embedded images. The only reason to route them here is one pipeline for
+every format. **Word and HTML are billed per 3,000 characters, Excel per worksheet and PowerPoint
+per slide**, so their cost depends on the amount of text, sheets or slides and cannot be known, or
+capped by a page count, before the call.
+
+#### Opting in to a format another parser claims
+
+Every claimed content type is declared to `AddRagNet`'s claim check. Enabling a format that
+another registered parser also claims is an `InvalidOperationException` at startup naming both
+parsers: `Word` alongside `AddWordParser()`, `Pdf` alongside `AddPdfParser()`, `Html` alongside
+`AddHtmlParser()` or `Images` alongside `UseImageDescription()`. Nothing is resolved first and no
+parser silently wins. Choose one parser per format; see
+[the claim model](#content-type-ownership-and-the-claim-model). The default TIFF and HEIF claims
+conflict with nothing this library ships.
+
+An empty `Formats` is a registration error, not a parser that claims nothing.
+
+#### Sections
+
+- **One section per page**, with `PageNumber` set, built from the result's paragraphs joined by a
+  blank line. A paragraph that crosses a page break appears once, on the page it starts on.
+- **Office and HTML pages come from Azure's page units.** Their paragraphs carry no position on a
+  page, so each is placed on the page whose content range holds the paragraph's start, and
+  groups with that page like any other. For Word and HTML a page is a run of about 3,000
+  characters, for Excel a worksheet and for PowerPoint a slide. A paragraph no page holds, or any
+  paragraph in a result without page ranges, comes out as its own section without a
+  `PageNumber`, in document order, after the paged sections.
+- **Headings come only from a layout model.** `prebuilt-read`, the default, assigns no paragraph
+  roles, so it yields no headings. With `o.Analyzer.ModelId = "prebuilt-layout"`, title and
+  section-heading paragraphs set `Heading` and `HeadingLevel` (1 and 2) from the section that
+  starts with them until the next heading. A heading partway down a page applies from the next
+  section, the next page, onwards. Page headers, footers and page numbers are dropped. Tables,
+  key-value pairs and selection marks are not mapped.
+
+#### Limits and spend
+
+- **`MaxBytes` defaults to 500,000,000 bytes**, Azure's documented 500 MB limit on the S0 tier.
+  It is checked before anything is sent: a larger document throws
+  `AzureDocumentIntelligenceException` naming the file and the cap, and no request is made. An
+  empty document is refused the same way. Values above `Array.MaxLength` are rejected at
+  registration, because the document is buffered in one array.
+- **Budget roughly 2.5 to 3.5 times the document in memory per concurrent parse.** The SDK takes
+  the document as one in-memory buffer, not a stream. A stream without a length is buffered in
+  an array that grows by doubling, so it can hold up to twice the document, and the SDK then
+  posts the document base64-encoded inside a JSON body, about 1.33 times the document again.
+  `MaxBytes` caps the document, not this multiple of it.
+- **Spend is recorded, not capped.** When an `ICostLedger` is registered, each call is recorded
+  as a `CostKind.Ocr` entry with the analyzed page count and that count × `PricePerPage`, as the
+  PDF OCR engine does. That spend counts toward the [cost budgeting](resilience.md#cost-budgeting)
+  window, but the parser checks no budget before submitting a document. `MaxBytes` is the only
+  limit applied in advance.
+- **`PricePerPage` defaults to `0.0015`** (USD 1.50 per 1,000 pages for `prebuilt-read`), which is
+  indicative only; set it from your own price sheet. It only prices the ledger entry.
+- **Failures throw.** There is no local text to fall back to, so a service failure (throttling,
+  authentication, unsupported content) throws `AzureDocumentIntelligenceException`, naming the
+  file and wrapping the SDK's exception. Cancellation propagates unwrapped.
+
+#### The PDF OCR package is unchanged
+
+`Rag.NET.Parsers.Pdf.AzureDocumentIntelligence` keeps its id, API and behaviour. It serves a
+different purpose: it is an OCR engine for `AddPdfParser()`, called only for PDFs with pages
+below `OcrMinCharacters`, and the PDF parser keeps PdfPig's text for every other page. It now
+depends on this package, whose analyzer makes its service call, but it does not register the
+parser. To read scanned PDFs, use the OCR engine; to read TIFF and HEIF scans, or to send whole
+documents of other formats to Azure, use this parser.
 
 ## `DocumentSection`
 

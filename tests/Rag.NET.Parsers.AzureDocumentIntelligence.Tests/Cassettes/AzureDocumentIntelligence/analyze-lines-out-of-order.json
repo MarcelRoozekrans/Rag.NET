@@ -1,0 +1,27 @@
+{
+  "Guid": "7a2e5c10-0000-4000-8000-000000000018",
+  "Title": "HAND-WRITTEN from the documented response shape: AnalyzeDocument accepted for a result without paragraphs whose pages are listed out of order (3, 1, 2)",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/lines-out-of-order:analyze",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [
+      "POST"
+    ]
+  },
+  "Response": {
+    "StatusCode": 202,
+    "UseTransformer": true,
+    "Headers": {
+      "Operation-Location": "http://{{request.headers.Host}}/documentintelligence/documentModels/lines-out-of-order/analyzeResults/lines-out-of-order?api-version=2024-11-30",
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{}"
+  }
+}

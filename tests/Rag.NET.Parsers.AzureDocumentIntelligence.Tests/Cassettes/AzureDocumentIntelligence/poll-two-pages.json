@@ -1,0 +1,23 @@
+{
+  "Guid": "7a2e5c10-0000-4000-8000-000000000002",
+  "Title": "HAND-WRITTEN from the documented response shape: terminal poll of a two-page analyze operation",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/two-pages/analyzeResults/two-pages",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"status\":\"succeeded\",\"createdDateTime\":\"2026-10-21T10:00:00Z\",\"lastUpdatedDateTime\":\"2026-10-21T10:00:02Z\",\"analyzeResult\":{\"apiVersion\":\"2024-11-30\",\"modelId\":\"two-pages\",\"stringIndexType\":\"utf16CodeUnit\",\"content\":\"PAGE ONE TEXT\\nPAGE TWO TEXT\",\"pages\":[{\"pageNumber\":1,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"words\":[],\"lines\":[{\"content\":\"PAGE ONE TEXT\",\"spans\":[{\"offset\":0,\"length\":13}]}],\"spans\":[{\"offset\":0,\"length\":13}]},{\"pageNumber\":2,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"words\":[],\"lines\":[{\"content\":\"PAGE TWO TEXT\",\"spans\":[{\"offset\":14,\"length\":13}]}],\"spans\":[{\"offset\":14,\"length\":13}]}]}}"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "Guid": "7a2e5c10-0000-4000-8000-000000000006",
+  "Title": "HAND-WRITTEN from the documented response shape: AnalyzeDocument accepted for a three-frame TIFF read by prebuilt-read: one page per frame, paragraphs listed out of page order (3, 1, 2, 1)",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/tiff-three-frames:analyze",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [
+      "POST"
+    ]
+  },
+  "Response": {
+    "StatusCode": 202,
+    "UseTransformer": true,
+    "Headers": {
+      "Operation-Location": "http://{{request.headers.Host}}/documentintelligence/documentModels/tiff-three-frames/analyzeResults/tiff-three-frames?api-version=2024-11-30",
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{}"
+  }
+}

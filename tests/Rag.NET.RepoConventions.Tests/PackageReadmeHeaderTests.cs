@@ -12,8 +12,8 @@ namespace Rag.NET.RepoConventions.Tests;
 /// <b>Why the headers are shared and the bodies are not.</b> A reader arriving on nuget.org for
 /// one package should recognise it as the same project the repository shows, which is what the
 /// badge row and the note give them. They should not be handed the whole project: the root
-/// README is 414 lines about 73 packages, and on the page for <c>Rag.NET.Parsers.Epub</c> that
-/// is 72 packages of noise ahead of the install line. So the top of each README converges and
+/// README is 414 lines about 74 packages, and on the page for <c>Rag.NET.Parsers.Epub</c> that
+/// is 73 packages of noise ahead of the install line. So the top of each README converges and
 /// the rest stays local, which is also what <c>Directory.Build.props</c> already enforces by
 /// refusing to fall back to the root README at pack time.
 /// </para>

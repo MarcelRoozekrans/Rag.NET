@@ -66,6 +66,7 @@
     <Project Path="src/Rag.NET.Memory/Rag.NET.Memory.csproj" />
     <Project Path="src/Rag.NET.Parsers.Vision/Rag.NET.Parsers.Vision.csproj" />
     <Project Path="src/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.csproj" />
+    <Project Path="src/Rag.NET.Parsers.AzureDocumentIntelligence/Rag.NET.Parsers.AzureDocumentIntelligence.csproj" />
     <Project Path="src/Rag.NET.Ingestion.AzureServiceBus/Rag.NET.Ingestion.AzureServiceBus.csproj" />
     <Project Path="src/Rag.NET.Diagnostics/Rag.NET.Diagnostics.csproj" />
     <Project Path="src/Rag.NET.Diagnostics.AspNetCore/Rag.NET.Diagnostics.AspNetCore.csproj" />
@@ -145,6 +146,7 @@
     <Project Path="tests/Rag.NET.GraphRag.Tests/Rag.NET.GraphRag.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Vision.Tests/Rag.NET.Parsers.Vision.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Parsers.AzureDocumentIntelligence.Tests/Rag.NET.Parsers.AzureDocumentIntelligence.Tests.csproj" />
     <Project Path="tests/Rag.NET.Ingestion.AzureServiceBus.Tests/Rag.NET.Ingestion.AzureServiceBus.Tests.csproj" />
     <Project Path="tests/Rag.NET.Diagnostics.Tests/Rag.NET.Diagnostics.Tests.csproj" />
     <Project Path="tests/Rag.NET.PackageValidation.Tests/Rag.NET.PackageValidation.Tests.csproj" />

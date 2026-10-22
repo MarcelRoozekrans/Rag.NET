@@ -1,0 +1,25 @@
+{
+  "Guid": "7a2e5c10-0000-4000-8000-000000000007",
+  "Title": "HAND-WRITTEN from the documented response shape: terminal poll for a three-frame TIFF read by prebuilt-read: one page per frame, paragraphs listed out of page order (3, 1, 2, 1)",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/tiff-three-frames/analyzeResults/tiff-three-frames",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [
+      "GET"
+    ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"status\":\"succeeded\",\"createdDateTime\":\"2026-10-21T10:00:00Z\",\"lastUpdatedDateTime\":\"2026-10-21T10:00:02Z\",\"analyzeResult\":{\"apiVersion\":\"2024-11-30\",\"modelId\":\"tiff-three-frames\",\"stringIndexType\":\"utf16CodeUnit\",\"content\":\"Frame three text.\\nFrame one first paragraph.\\nFrame two text.\\nFrame one second paragraph.\",\"pages\":[{\"pageNumber\":1,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"spans\":[{\"offset\":0,\"length\":54}],\"words\":[]},{\"pageNumber\":2,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"spans\":[{\"offset\":55,\"length\":15}],\"words\":[]},{\"pageNumber\":3,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"spans\":[{\"offset\":71,\"length\":17}],\"words\":[]}],\"paragraphs\":[{\"spans\":[{\"offset\":0,\"length\":17}],\"content\":\"Frame three text.\",\"boundingRegions\":[{\"pageNumber\":3,\"polygon\":[0,0,1,0,1,1,0,1]}]},{\"spans\":[{\"offset\":18,\"length\":26}],\"content\":\"Frame one first paragraph.\",\"boundingRegions\":[{\"pageNumber\":1,\"polygon\":[0,0,1,0,1,1,0,1]}]},{\"spans\":[{\"offset\":45,\"length\":15}],\"content\":\"Frame two text.\",\"boundingRegions\":[{\"pageNumber\":2,\"polygon\":[0,0,1,0,1,1,0,1]}]},{\"spans\":[{\"offset\":61,\"length\":27}],\"content\":\"Frame one second paragraph.\",\"boundingRegions\":[{\"pageNumber\":1,\"polygon\":[0,0,1,0,1,1,0,1]}]}]}}"
+  }
+}

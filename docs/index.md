@@ -26,7 +26,7 @@ Grouped the way [the sidebar](https://marcelroozekrans.github.io/Rag.NET/) is.
 
 | Page | What it covers |
 |------|---------------|
-| [Choosing Packages](guide/choosing-packages.md) | Which two or three of the 73 packages a given pipeline actually needs |
+| [Choosing Packages](guide/choosing-packages.md) | Which two or three of the 74 packages a given pipeline actually needs |
 | [Architecture](guide/architecture.md) | Pipeline internals, data-flow diagram, the core interfaces and models |
 | [Ingestion](guide/ingestion.md) | Parsers, `DocumentMetadata`, `IngestionOptions`, OCR, progress reporting |
 | [Chunking](guide/chunking.md) | Eight strategies with a trade-off table, plus the domain-specific templates |
@@ -97,7 +97,7 @@ Grouped the way [the sidebar](https://marcelroozekrans.github.io/Rag.NET/) is.
 
 ## Package layout
 
-Rag.NET ships as 73 packages so that a pipeline downloads only the dependencies it actually
+Rag.NET ships as 74 packages so that a pipeline downloads only the dependencies it actually
 uses. The shape is three layers — abstractions, core, and a satellite per opt-in feature — and
 [Choosing packages](guide/choosing-packages.md) walks through which two or three are yours.
 
@@ -108,7 +108,7 @@ flowchart TD
     CORE["Rag.NET<br>Core pipeline · Text/Markdown/CSV/JSON parsers · Recursive chunking<br>Brings Abstractions and QueryTechniques transitively"]
 
     CORE --> STORES["Vector stores<br>PgVector · Qdrant · AzureAISearch<br>Pinecone · Chroma · Weaviate · Redis"]
-    CORE --> PARSERS["Parsers<br>Pdf (+AzureDocumentIntelligence) · Html · Office<br>Email · Epub · Archive · Audio · Vision"]
+    CORE --> PARSERS["Parsers<br>Pdf (+AzureDocumentIntelligence) · AzureDocumentIntelligence<br>Html · Office · Email · Epub · Archive · Audio · Vision"]
     CORE --> SOURCES["Data providers<br>DataProviders base + 18 connectors"]
     CORE --> RETRIEVAL["Advanced retrieval<br>Raptor (+Store) · GraphRag · Graph<br>AnswerEngines · Memory · Reranking · WebSearch.Tavily"]
     CORE --> CHUNK["Chunking<br>Chunking · Chunking.CSharp<br>Chunking.Templates · Embeddings.Onnx"]
@@ -162,6 +162,7 @@ flowchart TD
 |--------------|----------|
 | `Rag.NET.Parsers.Pdf` | PDF parser, with table extraction and Tesseract OCR |
 | `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence` | Whole-document OCR engine for the PDF parser (paid, per page) |
+| `Rag.NET.Parsers.AzureDocumentIntelligence` | Whole-document parser over Azure Document Intelligence: TIFF and HEIF scans by default, opt-in PDF, image, Office and HTML (paid, per page) |
 | `Rag.NET.Parsers.Html` | HTML parser (AngleSharp) |
 | `Rag.NET.Parsers.Office` | Word `.docx`, Excel `.xlsx` and PowerPoint `.pptx` in one package (OpenXml) |
 | `Rag.NET.Parsers.Email` | EML and MSG email parser (MimeKit) |
