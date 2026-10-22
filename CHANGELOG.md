@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.1.3...v1.2.0) (2026-10-22)
+
+
+### Features
+
+* **parsers:** add an Azure Document Intelligence parser for non-PDF formats ([#839](https://github.com/MarcelRoozekrans/Rag.NET/issues/839)) ([227c422](https://github.com/MarcelRoozekrans/Rag.NET/commit/227c42257c78863f72d549e5d7d7a4c6aaf09c6f))
+
 ## [1.1.3](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.1.2...v1.1.3) (2026-10-20)
 
 
