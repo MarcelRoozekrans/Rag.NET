@@ -125,16 +125,72 @@ public static class AzureDocumentIntelligenceParserBuilderExtensions
         Func<IServiceProvider, AzureDocumentIntelligenceAnalyzer> createAnalyzer)
         where TBuilder : IRagBuilder
     {
-        builder.AddParserFactory(sp =>
-            new AzureDocumentIntelligenceDocumentParser(createAnalyzer(sp), options));
+        var replaced = options.ReplaceExistingParsers
+            ? FindParsersToReplace(builder.Services, options.Formats.ContentTypes())
+            : [];
 
+        builder.AddParserFactory(
+            sp => new AzureDocumentIntelligenceDocumentParser(createAnalyzer(sp), options),
+            replacesTypeNames: replaced);
+
+        var replacesTypeName = replaced.Length == 1 ? replaced[0] : null;
         foreach (var contentType in options.Formats.ContentTypes())
         {
             builder.Services.AddSingleton(ParserClaim.For<AzureDocumentIntelligenceDocumentParser>(
-                contentType, RegistrationMethod));
+                contentType, RegistrationMethod, replacesTypeName: replacesTypeName));
         }
 
         return builder;
+    }
+
+    /// <summary>
+    /// Returns the full type names of the other parsers whose claims overlap
+    /// <paramref name="ours"/>, sorted. Throws, before anything is added, when one of them also
+    /// claims a type outside <paramref name="ours"/>, because replacing it would leave that type
+    /// without a parser.
+    /// </summary>
+    private static string[] FindParsersToReplace(IServiceCollection services, IReadOnlyList<string> ours)
+    {
+        var ourTypes = new HashSet<string>(ours, StringComparer.OrdinalIgnoreCase);
+        var ownName = typeof(AzureDocumentIntelligenceDocumentParser).FullName;
+        var claimsByParser = services
+            .Where(d => d.ServiceType == typeof(ParserClaim))
+            .Select(d => (ParserClaim)d.ImplementationInstance!)
+            .Where(c => !string.Equals(c.ParserTypeName, ownName, StringComparison.Ordinal))
+            .GroupBy(c => c.ParserTypeName, StringComparer.Ordinal)
+            .Where(g => g.Any(c => ourTypes.Contains(c.ContentType)))
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .ToList();
+
+        foreach (var parser in claimsByParser)
+        {
+            var leftover = LeftoverTypes(parser, ourTypes);
+            if (leftover.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(AzureDocumentIntelligenceParserOptions.ReplaceExistingParsers)} cannot replace " +
+                    $"{parser.Key}: it also claims {string.Join(", ", leftover)}, which the configured " +
+                    $"{nameof(AzureDocumentIntelligenceParserOptions.Formats)} do not cover, so replacing it " +
+                    "would leave those types without a parser. Narrow or widen the formats, or remove the " +
+                    "other parser yourself.");
+            }
+        }
+
+        return [.. claimsByParser.Select(g => g.Key)];
+    }
+
+    private static SortedSet<string> LeftoverTypes(IEnumerable<ParserClaim> claims, HashSet<string> ourTypes)
+    {
+        var leftover = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var claim in claims)
+        {
+            if (!ourTypes.Contains(claim.ContentType))
+            {
+                leftover.Add(claim.ContentType);
+            }
+        }
+
+        return leftover;
     }
 
     /// <summary>
