@@ -85,6 +85,20 @@ packages see only `IRagBuilder.Services`.
   Vision's claims and leave Vision selectable; now it removes Vision. No configuration that works
   correctly today depends on the old result.
 - **ApiCompat strict** runs over every package and is the proof; the release is a `feat:` minor.
+  *Amended 2026-10-22: it does not run anywhere. The repository has no ApiCompat step in `dotnet
+  pack`, in `pack-validate` or in any CI workflow. For this branch it was run by hand against the
+  published 1.1.3 packages of `Rag.NET.Abstractions`, `Rag.NET`, `Rag.NET.Parsers.Vision`,
+  `.Pdf`, `.Email` and `.Archive`; `Rag.NET.Parsers.AzureDocumentIntelligence` has no 1.1.3
+  release to compare against. The tool is `dotnet tool install Microsoft.DotNet.ApiCompat.Tool
+  --version 10.0.402 --tool-path <dir>`, each baseline is
+  `https://api.nuget.org/v3-flatcontainer/<id>/1.1.3/<id>.1.1.3.nupkg`, and each package was
+  checked with `<dir>/apicompat package artifacts/packages/<Id>.<Version>.nupkg
+  --baseline-package <id>.1.1.3.nupkg --enable-strict-mode-for-compatible-tfms true
+  --enable-strict-mode-for-compatible-frameworks-in-package true`, then again with
+  `--enable-strict-mode-for-baseline-validation true` added. The first run found no breaking
+  change in any of the six. The strict-baseline run reported only CP0003, the assembly version,
+  and in `Rag.NET.Abstractions` CP0001 for the two intended new types, `ParserRegistration` and
+  `ParserFactoryRegistrationExtensions`.*
 
 ### 1.2 Unmarked factories become loud
 
@@ -170,6 +184,8 @@ loudly when someone tries.
   and names `image/webp` and `image/gif`. A parser registered after Azure still collides. The
   default `false` still collides.
 - **ApiCompat strict** shows no breaking change in any package.
+  *Amended 2026-10-22: no step in the repository runs ApiCompat, so this was checked by hand; see
+  §1.1's amendment for the command and the result.*
 
 ## Out of scope
 

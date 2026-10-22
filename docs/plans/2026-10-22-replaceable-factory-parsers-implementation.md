@@ -7,12 +7,15 @@
 **Architecture:** A public `ParserRegistration` marker record stored in the service collection names the parser type a factory builds. An `AddParserFactory<TParser>` extension on `IRagBuilder` writes the factory and the marker together. Removal logic moves from `RagBuilder` into an internal Abstractions helper that matches by implementation type or marker, and throws when claims exist but no registration can be found. The Azure parser finds the parsers to replace from existing `ParserClaim`s and removes them through the same helper.
 
 **Tech Stack:** .NET 10, Microsoft.Extensions.DependencyInjection, xUnit v3, ApiCompat.
+*Amended 2026-10-22: ApiCompat is not part of the repository's build, pack or CI; it was run by
+hand for this branch, as the next amendment describes.*
 
 **Spec:** `docs/plans/2026-10-22-replaceable-factory-parsers-design.md`
 
 ## Global Constraints
 
 - Not a breaking change: **no member is added to `IRagBuilder`, and no overload is added to `AddParser<T>`**. ApiCompat strict, run by `pack-validate`, must report no breaking change.
+  *Amended 2026-10-22: `pack-validate` does not run ApiCompat, and nothing else in the repository does, neither `dotnet pack` nor any CI workflow. For this branch it was run by hand against the published 1.1.3 packages of `Rag.NET.Abstractions`, `Rag.NET`, `Rag.NET.Parsers.Vision`, `.Pdf`, `.Email` and `.Archive`; the Azure package has no 1.1.3 release. Install with `dotnet tool install Microsoft.DotNet.ApiCompat.Tool --version 10.0.402 --tool-path <dir>`, download each baseline from `https://api.nuget.org/v3-flatcontainer/<id>/1.1.3/<id>.1.1.3.nupkg`, and run `<dir>/apicompat package artifacts/packages/<Id>.<Version>.nupkg --baseline-package <id>.1.1.3.nupkg --enable-strict-mode-for-compatible-tfms true --enable-strict-mode-for-compatible-frameworks-in-package true`, then again with `--enable-strict-mode-for-baseline-validation true` added. Result: no breaking change in any of the six; the strict-baseline run reported only the assembly version, CP0003, and in `Rag.NET.Abstractions` the two intended new types, `ParserRegistration` and `ParserFactoryRegistrationExtensions`, as CP0001.*
 - The new entry point is named exactly `AddParserFactory<TParser>`, an extension method on `IRagBuilder` in `Rag.NET.Abstractions`.
 - A replaced name that matches **nothing** stays a silent no-op. A name that matches **claims but no registration** throws `InvalidOperationException`.
 - Azure option: `AzureDocumentIntelligenceParserOptions.ReplaceExistingParsers`, `bool`, default `false`.
