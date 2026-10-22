@@ -41,7 +41,8 @@ public static class RagBuilderExtensions
         // registration-site oversight — Archive, Email and Templates all declared claims by hand
         // for their factory registrations, and Vision alone did not. The parser is registered
         // through AddParserFactory so replaces: can find it, but that declares no claims, so they
-        // stay hand-declared. Read from ImageDocumentParser.ContentTypes rather than repeated here, so the two cannot drift.
+        // stay hand-declared. Read from ImageDocumentParser.ContentTypes rather than repeated
+        // here, so the two cannot drift.
         foreach (var contentType in ImageDocumentParser.ContentTypes)
         {
             builder.Services.AddSingleton(ParserClaim.For<ImageDocumentParser>(

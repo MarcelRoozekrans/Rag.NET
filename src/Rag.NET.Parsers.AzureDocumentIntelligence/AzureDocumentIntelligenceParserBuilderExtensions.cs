@@ -155,8 +155,9 @@ public static class AzureDocumentIntelligenceParserBuilderExtensions
         var ourTypes = new HashSet<string>(ours, StringComparer.OrdinalIgnoreCase);
         var ownName = typeof(AzureDocumentIntelligenceDocumentParser).FullName;
         var claimsByParser = services
-            .Where(d => d.ServiceType == typeof(ParserClaim) && d.ImplementationInstance is ParserClaim)
-            .Select(d => (ParserClaim)d.ImplementationInstance!)
+            .Where(d => d.ServiceType == typeof(ParserClaim))
+            .Select(d => d.ImplementationInstance)
+            .OfType<ParserClaim>()
             .Where(c => !string.Equals(c.ParserTypeName, ownName, StringComparison.Ordinal))
             .GroupBy(c => c.ParserTypeName, StringComparer.Ordinal)
             .Where(g => g.Any(c => ourTypes.Contains(c.ContentType)))
