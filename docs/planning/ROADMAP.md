@@ -1064,6 +1064,10 @@ future reader can tell the difference between "never existed" and "dealt with".
   now declare their claims from `AddRagNet` itself, `MarkdownDocumentParser` including the
   `text/x-markdown` alias its `CanParse` also answers, because a source generator writes their
   registrations and cannot host a claim.
+  *Resolved 2026-10-22, see [the replaceable
+  factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md).*
+  Since then both are registered by type in `AddRagNet`, next to their claims, through
+  `AddBuiltInParsers`, so the source-generator reason above no longer applies.
   **Still open, and not scheduled.** A parser registered through `AddParser<T>()` declares no claim
   and is undetected. `CanParse` is a predicate, not an enumeration, so nothing can discover what an
   arbitrary parser accepts without probing it against a guessed list of content types — which is a
