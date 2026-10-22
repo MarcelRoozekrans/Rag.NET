@@ -16,7 +16,13 @@ public static class ParserFactoryRegistrationExtensions
     /// <c>AddSingleton&lt;IDocumentParser&gt;(sp =&gt; ...)</c> leaves <c>ImplementationType</c>
     /// <see langword="null"/>, so a replace cannot tell what it builds.
     /// </summary>
-    /// <typeparam name="TParser">The parser type <paramref name="factory"/> builds.</typeparam>
+    /// <typeparam name="TParser">
+    /// The concrete type <paramref name="factory"/> returns at runtime, and the type the package's
+    /// <see cref="ParserClaim"/>s name. The marker records <typeparamref name="TParser"/>, and
+    /// <c>replaces:</c> finds a parser by comparing that name with the claims' name, so an interface
+    /// or base type here would leave the claims pointing at a type no marker names, and a replace
+    /// would throw. An interface or abstract type is therefore rejected.
+    /// </typeparam>
     /// <param name="builder">The builder to register on.</param>
     /// <param name="factory">Builds the parser.</param>
     /// <param name="replaces">
@@ -25,13 +31,16 @@ public static class ParserFactoryRegistrationExtensions
     /// </param>
     /// <param name="replacesTypeNames">
     /// The same override by full type name, for a parser whose assembly is not referenced. A name
-    /// matching nothing is a no-op.
+    /// that matches neither a registration nor a claim is a no-op.
     /// </param>
     /// <remarks>
     /// Declares no <see cref="ParserClaim"/>s. Each package keeps declaring its own, labelled with
     /// the call the user actually wrote, such as <c>AddPdfParser(configure)</c>.
     /// </remarks>
     /// <returns>The same <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentException">
+    /// <typeparamref name="TParser"/> is an interface or an abstract class. Nothing is added.
+    /// </exception>
     /// <exception cref="InvalidOperationException">
     /// A replaced name has claims but no findable registration; see <c>ParserReplacement</c>.
     /// </exception>
@@ -44,10 +53,18 @@ public static class ParserFactoryRegistrationExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(factory);
+        if (typeof(TParser).IsInterface || typeof(TParser).IsAbstract)
+        {
+            throw new ArgumentException(
+                $"TParser must be the concrete parser type the factory returns, not '{typeof(TParser).FullName}'. " +
+                "The registration marker records TParser, and replaces: matches it against the type the " +
+                "package's ParserClaims name, so an interface or abstract type would make the parser unreachable.",
+                nameof(factory));
+        }
 
         ParserReplacement.Remove(builder.Services, replaces, replacesTypeNames);
 
-        var descriptor = ServiceDescriptor.Singleton<IDocumentParser>(sp => factory(sp));
+        var descriptor = ServiceDescriptor.Singleton<IDocumentParser>(factory);
         builder.Services.Add(descriptor);
         builder.Services.AddSingleton(ParserRegistration.For<TParser>(descriptor));
         return builder;

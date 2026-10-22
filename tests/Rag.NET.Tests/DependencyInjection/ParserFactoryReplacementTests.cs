@@ -58,6 +58,54 @@ public class ParserFactoryReplacementTests
         Assert.Same(descriptor, marker.Descriptor);
     }
 
+    private abstract class AbstractParser : IDocumentParser
+    {
+        public abstract bool CanParse(string contentType);
+
+        public abstract IAsyncEnumerable<DocumentSection> ParseAsync(
+            Stream stream, DocumentMetadata metadata, CancellationToken cancellationToken = default);
+    }
+
+    private sealed class ConcreteOfAbstractParser : AbstractParser
+    {
+        public override bool CanParse(string contentType) => false;
+
+        public override IAsyncEnumerable<DocumentSection> ParseAsync(
+            Stream stream, DocumentMetadata metadata, CancellationToken cancellationToken = default) =>
+            AsyncEnumerable.Empty<DocumentSection>();
+    }
+
+    /// <summary>
+    /// The marker names <c>TParser</c> and claims name the concrete type, so a <c>TParser</c> that
+    /// is an interface would leave the parser's claims matched by no marker. Rejected up front,
+    /// before anything is added.
+    /// </summary>
+    [Fact]
+    public void AddParserFactory_WithAnInterfaceTParser_ThrowsAndAddsNothing()
+    {
+        var (services, builder) = Create();
+
+        var ex = Assert.Throws<ArgumentException>(
+            () => builder.AddParserFactory<IDocumentParser>(_ => new FakeParser()));
+
+        Assert.Contains(typeof(IDocumentParser).FullName!, ex.Message, StringComparison.Ordinal);
+        Assert.Empty(services);
+    }
+
+    [Fact]
+    public void AddParserFactory_WithAnAbstractTParser_ThrowsAndAddsNothing()
+    {
+        var (services, builder) = Create();
+        RegisterFakeWithClaim(builder);
+        var before = services.ToList();
+
+        Assert.Throws<ArgumentException>(
+            () => builder.AddParserFactory<AbstractParser>(
+                _ => new ConcreteOfAbstractParser(), replaces: typeof(FakeParser)));
+
+        Assert.Equal(before, services.ToList());
+    }
+
     [Fact]
     public void AddParser_WithReplaces_RemovesAFactoryRegisteredParser()
     {
