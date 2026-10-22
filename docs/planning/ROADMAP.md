@@ -497,16 +497,18 @@ future reader can tell the difference between "never existed" and "dealt with".
   → no phase currently owns the general `IOptions`/`ZeroAlloc.Validation` alignment; stays
   unscheduled until one does, re-justified rather than silently carried under a phase number that
   no longer means it.
-- **`AddParser<T>(replaces:, replacesTypeNames:)` cannot replace a factory-registered parser** — **resolved 2026-10-22**, see [the replaceable factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md)
+- **`AddParser<T>(replaces:, replacesTypeNames:)` cannot replace a factory-registered parser** —
+  **resolved 2026-10-22**, see [the replaceable factory parsers
+  design](../plans/2026-10-22-replaceable-factory-parsers-design.md)
   (found while implementing Phase 4.2's `RemoveReplacedParser`, 2026-08-08): both parameters match
   on `ServiceDescriptor.ImplementationType`, which is `null` for every parser registered through
   `AddSingleton<IDocumentParser>(sp => …)` rather than `AddSingleton<IDocumentParser, TParser>()`.
-  `Rag.NET.Parsers.Vision`, `.Email`, `.Archive` and `.Pdf` (its configuring overload) all registered
-  that way. *(This entry first listed `Rag.NET.Chunking.Templates` too; it registers through
-  `AddParser<QAPairsDocumentParser>(replacesTypeNames:)`, by type, and was never affected.)* Naming one of them in `replaces:` or
-  `replacesTypeNames:` removes nothing and throws nothing — it is a silent no-op indistinguishable
-  from naming a package that was never installed, which is the exact failure shape this whole
-  mechanism exists to remove. Documented on `RagBuilder.RemoveReplacedParser`'s own remarks rather
+  `Rag.NET.Parsers.Vision`, `.Email`, `.Archive` and `.Pdf` (its configuring overload) all
+  registered that way. *(This entry first listed `Rag.NET.Chunking.Templates` too; it registers
+  through `AddParser<QAPairsDocumentParser>(replacesTypeNames:)`, by type, and was never
+  affected.)* Naming one of them in `replaces:` or `replacesTypeNames:` removes nothing and throws
+  nothing — it is a silent no-op indistinguishable from naming a package that was never
+  installed, which is the exact failure shape this whole mechanism exists to remove. Documented on `RagBuilder.RemoveReplacedParser`'s own remarks rather
   than fixed; the two replacements this repository ships today (`CsvDocumentParser`,
   `ExcelDocumentParser`) both arrive through `AddParser<T>()` and are unaffected.
   *Resolved:* those packages now register through `AddParserFactory<TParser>`, which leaves a marker
@@ -661,7 +663,10 @@ future reader can tell the difference between "never existed" and "dealt with".
   pins. **One debt this closure created rather than removed, recorded above**: the match is on
   `ServiceDescriptor.ImplementationType`, which is `null` for a factory-registered parser, so
   Vision, Email, Archive and Chunking.Templates' own factory registrations cannot be named here —
-  a silent no-op indistinguishable from an absent package.
+  a silent no-op indistinguishable from an absent package. *Resolved 2026-10-22, see [the replaceable
+  factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md).
+  Vision, Email, Archive and Pdf now register through `AddParserFactory<TParser>`; Chunking.Templates
+  registers `QAPairsDocumentParser` by type and was never affected.*
 - ~~**`Rag.NET.Chunking.Templates` still ships `MimeKit`, `CsvHelper` and `ClosedXML`**~~ (Phase
   4.7's Task 10, stopped rather than completed, 2026-08-04) → closed 2026-08-08 in Phase 4.2,
   **partly implemented, and correctly not finished**. `message/rfc822` — `EmailTemplateDocumentParser`
@@ -1083,6 +1088,8 @@ future reader can tell the difference between "never existed" and "dealt with".
   Vision**: it registered two parsers through `AddSingleton<IDocumentParser>`, the same mechanism
   Archive, Email and this repository's own Chunking.Templates use *with* claims, and declared none
   — an inconsistency with its own peers, not the documented `AddParser<T>()` limit.
+  *(Replacing such a factory registration was a separate debt, resolved 2026-10-22: see [the
+replaceable factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md).)*
   **What actually shipped, in the order the design required** (reversing it would have turned
   `UseQAPairsChunking()` into a startup error for every user of `Rag.NET.Parsers.Office`):
   `AddParser<T>(replaces:, replacesTypeNames:)` landed first as the override vocabulary;
@@ -2325,7 +2332,10 @@ MIME type of an extracted video *frame*, not a `CanParse` claim, found by greppi
 rather than reading `CanParse` bodies. **The one genuine oversight the corrected measurement found:
 Vision.** It registers two parsers through `AddSingleton<IDocumentParser>`, the mechanism Archive,
 Email and this repository's own Chunking.Templates use *with* claims, and declared none — an
-inconsistency with its own peers, not the documented `AddParser<T>()` limit. The pattern behind all
+inconsistency with its own peers, not the documented `AddParser<T>()` limit.
+*(Replacing such a factory registration was a separate debt, resolved 2026-10-22: see [the
+replaceable factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md).)*
+The pattern behind all
 three overstatements was the same: a count taken from text matching, then reasoned about as though
 it had been read. *Grepping a file is not reading a method.*
 **Why the ordering is load-bearing (design §2).** Closing the coverage gap before QA-pairs chunking
@@ -2374,8 +2384,10 @@ documentation only.
 **Three new debts found during implementation, all recorded above rather than fixed inline**:
 `AddParser<T>(replaces:)` cannot reach a factory-registered parser (`ImplementationType` is `null`
 for it) — the same silent-no-op shape this phase set out to remove, now narrowed rather than
-closed (*resolved 2026-10-22, see [the replaceable factory parsers design](../plans/2026-10-22-replaceable-factory-parsers-design.md)*); the first `MakeGenericMethod` call in `src/`, with no AOT/trim analyzer enabled anywhere to
-have caught it, routed to Phase 5.1 as the first phase that measures Native AOT startup time; and
+closed (*resolved 2026-10-22, see [the replaceable factory parsers
+design](../plans/2026-10-22-replaceable-factory-parsers-design.md)*); the first `MakeGenericMethod`
+call in `src/`, with no AOT/trim analyzer enabled anywhere to have caught it, routed to Phase 5.1
+as the first phase that measures Native AOT startup time; and
 `ParserClaimCoverageTests` reading `ContentTypeMap`'s private `s_map` field by reflection, because
 the map has no public enumeration surface — fails loudly if the field is renamed, but the coupling
 is real.
