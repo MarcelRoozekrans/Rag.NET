@@ -67,7 +67,7 @@
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.0.6" />
     <PackageVersion Include="MimeKit" Version="4.18.1" />
     <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
-    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
     <PackageVersion Include="MsgReader" Version="6.1.3" />
     <PackageVersion Include="NGitLab" Version="12.5.0" />
     <PackageVersion Include="Npgsql" Version="10.0.3" />
