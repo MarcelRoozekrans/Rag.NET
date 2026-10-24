@@ -422,10 +422,11 @@ wheels = [
 
 [[package]]
 name = "haystack-ai"
-version = "3.4.0"
+version = "3.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
+    { name = "certifi" },
     { name = "docstring-parser" },
     { name = "filetype" },
     { name = "httpx" },
@@ -444,9 +445,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3e/2e/da50d8acc597b01e03a866812dc47fb264dda24fc12b7d0f261a98919e29/haystack_ai-3.4.0.tar.gz", hash = "sha256:d09b30cc8f2f947946825342a859a82554f41b27f41c2c2020ff96adfae87028", size = 543776, upload-time = "2026-10-15T09:26:29.62Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/76/8924698e18dad371b0f081ad3f6b34d323db541249c0e081351b108eb6da/haystack_ai-3.4.1.tar.gz", hash = "sha256:95b57e672264584a9c437857e4ca4c89bf2137dab80fc972553df491349d811b", size = 543777, upload-time = "2026-10-21T19:10:51.848Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/37/6a/0eb5b5e8bbc124d62293dee7a9ba37a54d576cc3d6768e4c5d93753cece9/haystack_ai-3.4.0-py3-none-any.whl", hash = "sha256:4378474733cfb2553c6579002eeee1905814b701e368a92f755fb9c57765b42d", size = 751544, upload-time = "2026-10-15T09:26:27.817Z" },
+    { url = "https://files.pythonhosted.org/packages/29/b6/60d85784f117fdb26796e4b8ff3425ebc5c14ac8cb66c6162fd5835025b3/haystack_ai-3.4.1-py3-none-any.whl", hash = "sha256:f9093156d534adcf92ef68d03601c11b67f0945e81b00e999504b68bce4fdd80", size = 751565, upload-time = "2026-10-21T19:10:50.167Z" },
 ]
 
 [[package]]
@@ -768,7 +769,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "haystack-ai", specifier = "==3.4.0" },
+    { name = "haystack-ai", specifier = "==3.4.1" },
     { name = "langchain-core", specifier = "==1.6.13" },
     { name = "langchain-text-splitters", specifier = "==1.1.3" },
     { name = "llama-index-core", specifier = "==0.14.25" },
