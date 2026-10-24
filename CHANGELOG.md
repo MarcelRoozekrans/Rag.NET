@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.3.0...v1.3.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **deps:** update dependency haystack-ai to v3.4.1 ([#859](https://github.com/MarcelRoozekrans/Rag.NET/issues/859)) ([c307ace](https://github.com/MarcelRoozekrans/Rag.NET/commit/c307aceebf061cd1b8d9a01d2e09f7155175ee46))
+* **deps:** update dependency langchain-core to v1.6.13 ([#860](https://github.com/MarcelRoozekrans/Rag.NET/issues/860)) ([1efd7dd](https://github.com/MarcelRoozekrans/Rag.NET/commit/1efd7dd0a48707d582d1e7e929ff421a8a957bfb))
+
 ## [1.3.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.2.0...v1.3.0) (2026-10-22)
 
 
