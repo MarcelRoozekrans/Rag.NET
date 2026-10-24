@@ -65,7 +65,7 @@
     <!-- 18.0.x is the last line on Microsoft.Testing.Platform v1, which xunit.v3 3.x runs on. 18.1 and
          later need platform v2, so this moves together with the xunit.v3 4.x bump. -->
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.0.6" />
-    <PackageVersion Include="MimeKit" Version="4.18.1" />
+    <PackageVersion Include="MimeKit" Version="4.18.2" />
     <PackageVersion Include="ModelContextProtocol" Version="2.3.0" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
     <PackageVersion Include="MsgReader" Version="6.1.3" />
