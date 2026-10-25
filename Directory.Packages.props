@@ -82,7 +82,7 @@
     <PackageVersion Include="PdfPig" Version="0.1.16" />
     <PackageVersion Include="Pgvector" Version="0.3.2" />
     <PackageVersion Include="Pinecone.Client" Version="3.1.0" />
-    <PackageVersion Include="Qdrant.Client" Version="1.19.0" />
+    <PackageVersion Include="Qdrant.Client" Version="1.20.0" />
     <PackageVersion Include="Roslynator.Analyzers" Version="5.0.1" />
     <PackageVersion Include="Scriban.Signed" Version="7.5.1" />
     <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
