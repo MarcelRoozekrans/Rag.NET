@@ -412,6 +412,29 @@ commit header before you push — see [Catching a long commit header before you 
 - A compatible embedding provider (OpenAI, Ollama, Azure OpenAI, etc.)
 - A vector store — PostgreSQL+pgvector, Qdrant, Azure AI Search, Pinecone, Chroma, Weaviate or Redis
 
+## Family
+
+Rag.NET is part of a small family of .NET projects for AI work:
+
+- [AI.Sentinel](https://marcelroozekrans.github.io/AI.Sentinel/): Security monitoring middleware for `IChatClient`: prompt injection, hallucination and PII detection with an audit trail.
+- [Minos.NET](https://marcelroozekrans.github.io/Minos.NET): Typed, source-generated decision questions with calibrated answers.
+- [Roslyn CodeLens MCP](https://github.com/MarcelRoozekrans/roslyn-codelens-mcp): Semantic .NET code intelligence for AI agents over MCP.
+- [MemoryLens MCP](https://github.com/MarcelRoozekrans/memorylens-mcp): On-demand .NET memory profiling with AI-actionable fixes over MCP.
+
+## Built on ZeroAlloc
+
+Rag.NET uses these [ZeroAlloc](https://zeroalloc.net) libraries, which are source generators and analyzers with no reflection at runtime:
+
+- [ZeroAlloc.Analyzers](https://analyzers.zeroalloc.net)
+- [ZeroAlloc.Mediator](https://mediator.zeroalloc.net)
+- [ZeroAlloc.Inject](https://inject.zeroalloc.net)
+- [ZeroAlloc.Pipeline](https://pipeline.zeroalloc.net)
+- [ZeroAlloc.Rest](https://rest.zeroalloc.net)
+- [ZeroAlloc.Results](https://results.zeroalloc.net)
+- [ZeroAlloc.Specification](https://specification.zeroalloc.net)
+- [ZeroAlloc.Validation](https://validation.zeroalloc.net)
+- [ZeroAlloc.ValueObjects](https://valueobjects.zeroalloc.net)
+
 ## License
 
 [MIT](LICENSE)
