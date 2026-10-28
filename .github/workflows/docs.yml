@@ -101,7 +101,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
 
       # Works because Task 1 committed package-lock.json — before that there was no lockfile and
       # `npm ci` had nothing to install from. This is also what gives the Docusaurus 3.10.2 upgrade
