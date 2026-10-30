@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.3.2...v1.3.3) (2026-10-30)
+
+
+### Bug Fixes
+
+* **deps:** update dependency onnxruntime to v1.31.1 ([#890](https://github.com/MarcelRoozekrans/Rag.NET/issues/890)) ([b11e2e4](https://github.com/MarcelRoozekrans/Rag.NET/commit/b11e2e4e80242dcd465464f9d7e3eeabf449a08a))
+
 ## [1.3.2](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.3.1...v1.3.2) (2026-10-25)
 
 
