@@ -597,7 +597,8 @@ public static class ServiceCollectionExtensions
             // this; it needs no resolution, only the declared types, so it is safe here.
             if (shared.Count == 0)
             {
-                shared.AddRange(registration.Shared.Entries.Select(e => e.ServiceType));
+                foreach (var entry in registration.Shared.Entries)
+                    shared.Add(entry.ServiceType);
             }
         }
 
