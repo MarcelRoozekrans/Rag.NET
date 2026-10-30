@@ -99,13 +99,12 @@ public sealed class SelfQueryBehavior : IRetrievalBehavior
     // No server-side key filtering is applied here, unlike LlmMetadataExtractionBehavior.
     private static ISpecification<SearchResult>? BuildFilter(IReadOnlyList<KeyValuePair<string, string>> filters)
     {
-        ISpecification<SearchResult>? result = null;
-        foreach (var (key, value) in filters)
-        {
-            var spec = new HasTagSpec(key, value);
-            result = result is null ? spec : result.And(spec);
-        }
-        return result;
+        if (filters.Count == 0)
+            return null;
+        var tags = new HasTagSpec[filters.Count];
+        for (var i = 0; i < tags.Length; i++)
+            tags[i] = new HasTagSpec(filters[i].Key, filters[i].Value);
+        return new AllOfSpec<HasTagSpec>(tags);
     }
 
     private string BuildPrompt(string question)
