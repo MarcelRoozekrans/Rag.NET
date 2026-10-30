@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.4](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.3.3...v1.3.4) (2026-10-30)
+
+
+### Bug Fixes
+
+* avoid boxing and loop LINQ flagged by ZeroAlloc.Analyzers 1.12 ([#893](https://github.com/MarcelRoozekrans/Rag.NET/issues/893)) ([56f6f58](https://github.com/MarcelRoozekrans/Rag.NET/commit/56f6f588526b1e267b27ffb8d7d58d2a5d2803c3))
+
 ## [1.3.3](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.3.2...v1.3.3) (2026-10-30)
 
 
