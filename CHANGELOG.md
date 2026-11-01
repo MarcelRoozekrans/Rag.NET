@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.5](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.3.4...v1.3.5) (2026-11-01)
+
+
+### Bug Fixes
+
+* **deps:** update dependency langchain-core to v1.7.1 ([#897](https://github.com/MarcelRoozekrans/Rag.NET/issues/897)) ([8b514fd](https://github.com/MarcelRoozekrans/Rag.NET/commit/8b514fd23cc48cda1f6c7e927cac16a507fd7fff))
+
 ## [1.3.4](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.3.3...v1.3.4) (2026-10-30)
 
 
