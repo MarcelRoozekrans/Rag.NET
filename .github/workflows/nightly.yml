@@ -121,7 +121,7 @@ jobs:
               echo "::endgroup::"
               continue
             fi
-            if dotnet test "$project" --no-build -c Release --verbosity normal; then
+            if dotnet test "$project" --no-build -c Release --verbosity normal --results-directory "$(dirname "$project")/bin/Release/net10.0/TestResults"; then
               echo "::endgroup::"
               continue
             fi
@@ -507,7 +507,7 @@ jobs:
               echo "::endgroup::"
               continue
             fi
-            if dotnet test "$project" --no-build -c Release --verbosity normal; then
+            if dotnet test "$project" --no-build -c Release --verbosity normal --results-directory "$(dirname "$project")/bin/Release/net10.0/TestResults"; then
               echo "::endgroup::"
               continue
             fi

@@ -1,10 +1,8 @@
 using CsvHelper;
-using CsvHelper.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace Rag.NET.Chunking.Templates;
@@ -43,13 +41,11 @@ public sealed partial class QAPairsDocumentParser(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using var reader = new StreamReader(stream, leaveOpen: true);
-        var config = new CsvConfiguration(CultureInfo.InvariantCulture) { HasHeaderRecord = options.SkipHeader };
-        using var csv = new CsvReader(reader, config);
+        using var csv = CsvReader.Create(reader, new CsvReaderOptions { HasHeader = true }, leaveOpen: true);
 
-        await csv.ReadAsync().ConfigureAwait(false);
-        csv.ReadHeader();
+        await csv.ReadHeaderAsync(cancellationToken).ConfigureAwait(false);
 
-        var headers = csv.HeaderRecord ?? [];
+        var headers = csv.Headers;
         var questionCol = options.QuestionColumn
             ?? headers.FirstOrDefault(h => QAPairsChunkingOptions.DefaultQuestionColumns
                 .Contains(h, StringComparer.OrdinalIgnoreCase));
@@ -62,12 +58,12 @@ public sealed partial class QAPairsDocumentParser(
                 $"Cannot resolve question/answer columns. Headers: [{string.Join(", ", headers)}].");
 
         var index = 0;
-        while (await csv.ReadAsync().ConfigureAwait(false))
+        while (await csv.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var question = csv.GetField(questionCol) ?? string.Empty;
-            var answer = csv.GetField(answerCol) ?? string.Empty;
+            var question = csv.GetString(questionCol) ?? string.Empty;
+            var answer = csv.GetString(answerCol) ?? string.Empty;
 
             if (string.IsNullOrWhiteSpace(question))
             {
