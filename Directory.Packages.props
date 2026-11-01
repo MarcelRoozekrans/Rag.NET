@@ -15,7 +15,7 @@
     <PackageVersion Include="Box.V2.Core" Version="10.19.0" />
     <PackageVersion Include="ClosedXML" Version="0.105.1" />
     <PackageVersion Include="Cohere" Version="1.0.1" />
-    <PackageVersion Include="CsvHelper" Version="33.1.0" />
+    <PackageVersion Include="CsvHelper" Version="34.0.0" />
     <PackageVersion Include="DocumentFormat.OpenXml" Version="3.5.1" />
     <PackageVersion Include="Dropbox.Api" Version="7.4.0" />
     <PackageVersion Include="ErrorProne.NET.CoreAnalyzers" Version="0.1.2" />
@@ -64,7 +64,7 @@
     <PackageVersion Include="Microsoft.SemanticKernel.Connectors.InMemory" Version="1.74.0-preview" />
     <!-- 18.0.x is the last line on Microsoft.Testing.Platform v1, which xunit.v3 3.x runs on. 18.1 and
          later need platform v2, so this moves together with the xunit.v3 4.x bump. -->
-    <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.0.6" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.12.0" />
     <PackageVersion Include="MimeKit" Version="4.18.2" />
     <PackageVersion Include="ModelContextProtocol" Version="2.3.0" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
@@ -102,8 +102,8 @@
     <PackageVersion Include="Whisper.net.Runtime" Version="1.9.1" />
     <PackageVersion Include="WireMock.Net" Version="2.21.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
-    <PackageVersion Include="xunit.v3" Version="3.2.2" />
-    <PackageVersion Include="xunit.v3.extensibility.core" Version="3.2.2" />
+    <PackageVersion Include="xunit.v3" Version="4.0.2" />
+    <PackageVersion Include="xunit.v3.extensibility.core" Version="4.0.2" />
     <PackageVersion Include="ZeroAlloc.Analyzers" Version="1.11.2" />
     <PackageVersion Include="ZeroAlloc.Inject" Version="1.11.6" />
     <PackageVersion Include="ZeroAlloc.Inject.Generator" Version="1.11.6" />
