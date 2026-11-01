@@ -100,7 +100,7 @@
     <PackageVersion Include="VersOne.Epub" Version="3.3.6" />
     <PackageVersion Include="Whisper.net" Version="1.9.1" />
     <PackageVersion Include="Whisper.net.Runtime" Version="1.9.1" />
-    <PackageVersion Include="WireMock.Net" Version="2.20.0" />
+    <PackageVersion Include="WireMock.Net" Version="2.21.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.v3.extensibility.core" Version="3.2.2" />
