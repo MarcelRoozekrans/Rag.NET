@@ -370,9 +370,11 @@ public sealed class WorkflowWiringTests
             StringComparison.Ordinal);
 
         // id-token: write is what lets the OIDC token be minted at all, and a job-level
-        // permissions block replaces the workflow-level one, so contents: read has to be
-        // restated beside it or the checkout loses read access.
-        Assert.Contains("permissions: contents: read id-token: write", commands, StringComparison.Ordinal);
+        // permissions block replaces the workflow-level one, so contents has to be restated
+        // beside it or the checkout loses read access. It is write rather than read because the
+        // same job attaches the SBOM to the GitHub release, and that upload needs it.
+        Assert.Contains("permissions: contents: write id-token: write", commands, StringComparison.Ordinal);
+        Assert.Contains("uses: MarcelRoozekrans/ci-baseline/actions/sbom@v1", commands, StringComparison.Ordinal);
 
         // The documented procedure that satisfies the gate, held to TestGateTests' own standard
         // for procedures: a fenced command in docs/reference/ci.md, because a runnable command
