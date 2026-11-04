@@ -270,6 +270,15 @@ jobs:
             exit 1
           fi
 
+      # ci-baseline's gate: merges the Cobertura reports of both tiers and fails below the line
+      # coverage floor, or when codecov.yml would let a drop in coverage pass quietly. Linux only,
+      # because the gate runs on Linux runners in v1; the Linux leg carries the Docker tier too.
+      - name: Coverage gate
+        if: runner.os == 'Linux'
+        uses: MarcelRoozekrans/ci-baseline/actions/coverage-gate@v1
+        with:
+          reports: "tests/*/bin/Release/**/TestResults/*.cobertura.xml"
+
       # Both legs upload; Codecov merges them. The Docker tier adds its reports on Linux only.
       - name: Upload coverage to Codecov
         if: '!cancelled()'
@@ -521,11 +530,12 @@ jobs:
     timeout-minutes: 30
     # Trusted Publishing mints a short-lived key from an OIDC token, so this job needs
     # id-token: write. A job-level permissions block REPLACES the workflow-level one rather than
-    # merging with it, so contents: read is restated here — dropping it would leave the checkout
+    # merging with it, so contents is restated here — dropping it would leave the checkout
     # below without read access, and the failure would look like a repository problem rather than
-    # a permissions one.
+    # a permissions one. It is write, not read, because the SBOM step attaches a file to the
+    # GitHub release.
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - name: Checkout
@@ -613,3 +623,12 @@ jobs:
             --source https://api.nuget.org/v3/index.json \
             --api-key "$NUGET_API_KEY" \
             --skip-duplicate
+
+      # A CycloneDX SBOM of the solution, attached to the release this run was started for. On the
+      # release event and on a dispatch against the tag, github.ref_name is that tag, and the
+      # release exists by then: release-please published it.
+      - name: Attach the SBOM to the GitHub release
+        uses: MarcelRoozekrans/ci-baseline/actions/sbom@v1
+        with:
+          solution: Rag.NET.slnx
+          tag: ${{ github.ref_name }}
