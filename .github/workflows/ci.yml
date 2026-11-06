@@ -308,7 +308,7 @@ jobs:
   # request and fails loudly, but nothing mechanically blocks a merge on it until it is added to
   # the required checks — scheduled, with pack-validate, on Phase 6.3's checklist in the ROADMAP.
   commitlint:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
