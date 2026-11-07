@@ -104,7 +104,7 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
     <PackageVersion Include="xunit.v3.extensibility.core" Version="4.0.2" />
-    <PackageVersion Include="ZeroAlloc.Analyzers" Version="1.11.2" />
+    <PackageVersion Include="ZeroAlloc.Analyzers" Version="1.12.0" />
     <PackageVersion Include="ZeroAlloc.Inject" Version="1.11.6" />
     <PackageVersion Include="ZeroAlloc.Inject.Generator" Version="1.11.6" />
     <PackageVersion Include="ZeroAlloc.Mediator" Version="5.1.5" />
