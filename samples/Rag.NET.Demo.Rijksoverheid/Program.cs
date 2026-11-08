@@ -25,16 +25,32 @@ const string SitemapUrl = "https://www.rijksoverheid.nl/sitemap.xml";
 const string ThemeRoot = "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid";
 const string ThemePrefix = ThemeRoot + "/";
 
-var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+// OpenAI directly, or any OpenAI-compatible endpoint. OpenRouter is picked up from its own key, and
+// then needs provider-prefixed model ids; OPENAI_BASE_URL points at anything else.
+var openAiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+var openRouterKey = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
+var useOpenRouter = string.IsNullOrWhiteSpace(openAiKey) && !string.IsNullOrWhiteSpace(openRouterKey);
+var apiKey = useOpenRouter ? openRouterKey : openAiKey;
 if (string.IsNullOrWhiteSpace(apiKey))
 {
-    await Console.Error.WriteLineAsync("Set the OPENAI_API_KEY environment variable.");
+    await Console.Error.WriteLineAsync("Set OPENAI_API_KEY or OPENROUTER_API_KEY.");
     return 1;
 }
 
-var chatModel = Environment.GetEnvironmentVariable("OPENAI_CHAT_MODEL") ?? "gpt-4o-mini";
-var embeddingModel = Environment.GetEnvironmentVariable("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
-const int VectorDimensions = 1536; // text-embedding-3-small
+var baseUrl = Environment.GetEnvironmentVariable("OPENAI_BASE_URL")
+    ?? (useOpenRouter ? "https://openrouter.ai/api/v1" : null);
+var modelPrefix = useOpenRouter ? "openai/" : "";
+var chatModel = Environment.GetEnvironmentVariable("OPENAI_CHAT_MODEL") ?? modelPrefix + "gpt-4o-mini";
+var embeddingModel = Environment.GetEnvironmentVariable("OPENAI_EMBEDDING_MODEL") ?? modelPrefix + "text-embedding-3-small";
+// 1536 is text-embedding-3-small's size; another embedding model needs its own.
+var vectorDimensions = int.TryParse(Environment.GetEnvironmentVariable("EMBEDDING_DIMENSIONS"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var dims) && dims > 0
+    ? dims
+    : 1536;
+var clientOptions = new OpenAI.OpenAIClientOptions();
+if (baseUrl is not null)
+{
+    clientOptions.Endpoint = new Uri(baseUrl);
+}
 var evalMode = Array.Exists(args, a => string.Equals(a, "--eval", StringComparison.Ordinal));
 var cohereKey = Environment.GetEnvironmentVariable("COHERE_API_KEY");
 var rerankerRegistered = evalMode && !string.IsNullOrWhiteSpace(cohereKey);
@@ -45,6 +61,7 @@ var maxPages = int.TryParse(Environment.GetEnvironmentVariable("RAG_MAX_PAGES"),
     ? parsed
     : evalMode ? int.MaxValue : 150;
 
+Console.WriteLine($"Chat {chatModel}, embeddings {embeddingModel} ({vectorDimensions} dimensions) via {baseUrl ?? "OpenAI"}");
 Console.WriteLine("Starting PostgreSQL (pgvector) container...");
 var postgres = new PostgreSqlBuilder("pgvector/pgvector:pg17").Build();
 await postgres.StartAsync();
@@ -52,12 +69,13 @@ await postgres.StartAsync();
 try
 {
     var services = new ServiceCollection();
-    services.AddChatClient(new OpenAI.Chat.ChatClient(chatModel, apiKey).AsIChatClient());
+    var credential = new System.ClientModel.ApiKeyCredential(apiKey);
+    services.AddChatClient(new OpenAI.Chat.ChatClient(chatModel, credential, clientOptions).AsIChatClient());
     services.AddEmbeddingGenerator(
-        new OpenAI.Embeddings.EmbeddingClient(embeddingModel, apiKey).AsIEmbeddingGenerator());
+        new OpenAI.Embeddings.EmbeddingClient(embeddingModel, credential, clientOptions).AsIEmbeddingGenerator());
     services.AddRagNet(rag =>
     {
-        rag.UsePgVector(postgres.GetConnectionString(), VectorDimensions)
+        rag.UsePgVector(postgres.GetConnectionString(), vectorDimensions)
            .AddHtmlParser();
 
         // Only the evaluation registers these, and it switches each on per variant. Registered in
@@ -146,6 +164,11 @@ try
 
     Console.WriteLine(
         $"\nIngested {result.IngestedCount} pages, {result.FailedCount} failed, {result.SkippedCount} skipped.");
+    if (result.Errors.Count > 0)
+    {
+        // Usually the same cause for every page, such as a wrong key or model id.
+        Console.WriteLine($"First error: {result.Errors[0]}");
+    }
 
     if (evalMode)
     {

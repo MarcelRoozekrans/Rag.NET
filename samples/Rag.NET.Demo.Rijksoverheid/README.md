@@ -29,12 +29,23 @@ crawl does not grant a licence.
 
 ## Run it
 
-Needs Docker (Postgres with pgvector via Testcontainers) and an OpenAI API key.
+Needs Docker (Postgres with pgvector via Testcontainers) and an OpenAI or OpenRouter API key.
 
 ```bash
 export OPENAI_API_KEY=sk-...
 dotnet run --project samples/Rag.NET.Demo.Rijksoverheid
 ```
+
+Or through [OpenRouter](https://openrouter.ai), which serves the same chat and embedding models:
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+dotnet run --project samples/Rag.NET.Demo.Rijksoverheid
+```
+
+With only `OPENROUTER_API_KEY` set, the sample talks to `https://openrouter.ai/api/v1` and uses
+the OpenRouter ids `openai/gpt-4o-mini` and `openai/text-embedding-3-small`. `OPENAI_API_KEY`
+wins when both are set.
 
 Optional settings:
 
@@ -43,6 +54,8 @@ Optional settings:
 | `RAG_MAX_PAGES` | `150` | Pages to ingest before stopping the walk |
 | `OPENAI_CHAT_MODEL` | `gpt-4o-mini` | Chat model |
 | `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model; multilingual, 1536 dimensions |
+| `EMBEDDING_DIMENSIONS` | `1536` | Vector size; set it when you change the embedding model, e.g. `1024` for `baai/bge-m3` |
+| `OPENAI_BASE_URL` | OpenAI, or OpenRouter's URL | Any other OpenAI-compatible endpoint |
 
 Ingesting 150 pages takes a few minutes. The theme's pages are spread across the site's
 sitemap shards, so each shard read yields only a few of them. The database lives in a throwaway
@@ -51,8 +64,8 @@ container, so every run ingests again.
 ## Measuring retrieval
 
 ```bash
-export OPENAI_API_KEY=sk-...
-export COHERE_API_KEY=...   # optional: adds the reranker variants
+export OPENAI_API_KEY=sk-...   # or OPENROUTER_API_KEY
+export COHERE_API_KEY=...     # optional: adds the reranker variants
 dotnet run --project samples/Rag.NET.Demo.Rijksoverheid -- --eval
 ```
 
