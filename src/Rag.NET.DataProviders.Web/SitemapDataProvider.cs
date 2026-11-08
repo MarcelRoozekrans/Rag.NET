@@ -10,6 +10,7 @@ namespace Rag.NET.DataProviders.Web;
 /// <summary>
 /// Enumerates URLs from a <c>sitemap.xml</c> or sitemap index file.
 /// Follows <c>&lt;sitemapindex&gt;</c> links recursively.
+/// Each page URL is yielded once per walk, even when the site lists it in several sitemaps.
 /// ETag is set from the <c>&lt;lastmod&gt;</c> element when present.
 /// </summary>
 /// <remarks>
@@ -103,8 +104,8 @@ public sealed class SitemapDataProvider : IFileContentProvider
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         // Per walk, not per provider: a second walk should see a robots.txt the site has changed.
-        var robotsByHost = new Dictionary<string, RobotsTxt>(StringComparer.OrdinalIgnoreCase);
-        await foreach (var entry in LoadSitemapAsync(_sitemapUrl, robotsByHost, cancellationToken).ConfigureAwait(false))
+        var walk = new Walk();
+        await foreach (var entry in LoadSitemapAsync(_sitemapUrl, walk, cancellationToken).ConfigureAwait(false))
             yield return entry;
     }
 
@@ -129,9 +130,23 @@ public sealed class SitemapDataProvider : IFileContentProvider
         return robots.IsDisallowed(url);
     }
 
+    /// <summary>State that lives for one <see cref="GetFilesAsync"/> walk.</summary>
+    private sealed class Walk
+    {
+        /// <summary>robots.txt per scheme-host-port, fetched on first use.</summary>
+        public Dictionary<string, RobotsTxt> RobotsByHost { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Page URLs already yielded. Sites do list one page in two shards, and the ingestion
+        /// pipeline does not drop repeats: each copy was fetched, embedded and stored again.
+        /// Ordinal, because the id is the URL verbatim and two spellings are two ids downstream.
+        /// </summary>
+        public HashSet<string> Yielded { get; } = new(StringComparer.Ordinal);
+    }
+
     private async IAsyncEnumerable<Result<FileEntry, RagError>> LoadSitemapAsync(
         string url,
-        Dictionary<string, RobotsTxt> robotsByHost,
+        Walk walk,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -147,7 +162,7 @@ public sealed class SitemapDataProvider : IFileContentProvider
                 // Pruning here skips every page under this index without fetching it, which is why
                 // it is opt-out (SitemapOptions.ExcludeNestedSitemaps) rather than implied.
                 if (_options.ExcludeNestedSitemaps && IsExcluded(loc)) continue;
-                await foreach (var entry in LoadSitemapAsync(loc, robotsByHost, cancellationToken).ConfigureAwait(false))
+                await foreach (var entry in LoadSitemapAsync(loc, walk, cancellationToken).ConfigureAwait(false))
                     yield return entry;
             }
         }
@@ -157,8 +172,10 @@ public sealed class SitemapDataProvider : IFileContentProvider
             {
                 var loc = urlEl.Element(s_ns + "loc")?.Value;
                 if (loc is null) continue;
+                if (walk.Yielded.Contains(loc)) continue;
                 if (!IsIncluded(loc) || IsExcluded(loc)) continue;
-                if (await IsDisallowedByRobotsAsync(loc, robotsByHost, cancellationToken).ConfigureAwait(false)) continue;
+                if (await IsDisallowedByRobotsAsync(loc, walk.RobotsByHost, cancellationToken).ConfigureAwait(false)) continue;
+                walk.Yielded.Add(loc);
                 var lastMod = urlEl.Element(s_ns + "lastmod")?.Value;
                 var capturedLoc = loc;
 

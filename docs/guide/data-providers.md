@@ -694,6 +694,9 @@ fetched; on an index of a thousand shards that is a thousand requests before the
 Where the index is partitioned by section, prune the irrelevant sections with
 `ExcludedUrlPrefixes` instead, which does skip the fetch.
 
+Each page URL is yielded once per walk. Large sites do list a page in two shards, and the
+ingestion pipeline does not drop repeats, so each copy used to be fetched and embedded again.
+
 `RespectRobotsTxt` is on by default, as it is for the crawler. It reads the `User-agent: *`
 group's `Disallow` prefixes; a missing robots.txt allows everything.
 

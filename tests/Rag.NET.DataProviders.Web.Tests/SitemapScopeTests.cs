@@ -136,6 +136,34 @@ public sealed class SitemapScopeTests
         Assert.Equal(2, urls.Count);
     }
 
+    // ── Duplicates ───────────────────────────────────────────────────────────
+
+    /// <remarks>
+    /// Found on the same government site: five theme pages appear in two shards each. Yielded
+    /// twice, each was fetched, embedded and stored twice, and the ingestion result listed it twice.
+    /// </remarks>
+    [Fact]
+    public async Task AUrlListedInTwoSitemaps_IsYieldedOnce()
+    {
+        var handler = new FakeHttpMessageHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [SitemapUrl] = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                  <sitemap><loc>https://example.com/sitemap/1.xml</loc></sitemap>
+                  <sitemap><loc>https://example.com/sitemap/2.xml</loc></sitemap>
+                </sitemapindex>
+                """,
+            ["https://example.com/sitemap/1.xml"] = Sitemap,
+            ["https://example.com/sitemap/2.xml"] = Sitemap,
+        });
+
+        var urls = await UrlsAsync(new SitemapOptions { RespectRobotsTxt = false }, handler);
+
+        Assert.Equal(5, urls.Count);
+        Assert.Equal(urls.Count, urls.Distinct(StringComparer.Ordinal).Count());
+    }
+
     // ── RespectRobotsTxt ─────────────────────────────────────────────────────
 
     [Fact]
