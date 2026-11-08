@@ -12,8 +12,9 @@
 > **[Documentation](https://marcelroozekrans.github.io/Rag.NET/)** · **[Choosing packages](https://marcelroozekrans.github.io/Rag.NET/guide/choosing-packages)**
 
 Web content providers for Rag.NET ingestion — no credentials, three shapes: a sitemap
-walker, an RSS/Atom feed reader, and a same-domain crawler with depth, page-count and
-robots.txt controls.
+walker with include/exclude filters, robots.txt and request spacing, an RSS/Atom feed reader,
+and a same-domain crawler with depth, page-count, path-prefix, request-spacing and robots.txt
+controls.
 
 ## Install
 
@@ -69,6 +70,22 @@ If you have crawled with a seed ending in `/` before v1.0, the root page's id ch
 next crawl — it arrives as one added page and one removed. That is one page per crawl, and the
 alternative was crawling and indexing the root twice whenever anything on the site linked back
 to it.
+
+### Taking one section of a large site
+
+```csharp
+using Rag.NET.DataProviders.Web;
+
+var section = new SitemapDataProvider("https://www.example.gov/sitemap.xml", httpClient, new SitemapOptions
+{
+    IncludedUrlPrefixes    = ["https://www.example.gov/themes/health/"],
+    RespectRobotsTxt       = true,                    // the default
+    MinimumRequestInterval = TimeSpan.FromSeconds(1), // be polite to servers you do not run
+});
+```
+
+Inclusion filters page URLs only; nested sitemaps are still fetched, because a sharded index's
+links (`/sitemap/1.xml`) match no content prefix.
 
 `RssDataProvider` follows the same pattern for feeds.
 

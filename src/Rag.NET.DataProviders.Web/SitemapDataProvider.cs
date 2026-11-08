@@ -10,6 +10,7 @@ namespace Rag.NET.DataProviders.Web;
 /// <summary>
 /// Enumerates URLs from a <c>sitemap.xml</c> or sitemap index file.
 /// Follows <c>&lt;sitemapindex&gt;</c> links recursively.
+/// Each page URL is yielded once per walk, even when the site lists it in several sitemaps.
 /// ETag is set from the <c>&lt;lastmod&gt;</c> element when present.
 /// </summary>
 /// <remarks>
@@ -27,7 +28,9 @@ public sealed class SitemapDataProvider : IFileContentProvider
     private readonly HttpClient _httpClient;
     private readonly SitemapOptions _options;
     private readonly IReadOnlyList<string> _excludedPrefixes;
+    private readonly IReadOnlyList<string> _includedPrefixes;
     private readonly IReadOnlyList<Regex> _excludedPatterns;
+    private readonly RequestThrottle _throttle;
 
     public SitemapDataProvider(string sitemapUrl, HttpClient httpClient, SitemapOptions? options = null)
     {
@@ -35,8 +38,18 @@ public sealed class SitemapDataProvider : IFileContentProvider
         _sitemapUrl = sitemapUrl;
         _httpClient = httpClient;
         _options = options ?? new SitemapOptions();
+        if (_options.MinimumRequestInterval < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                _options.MinimumRequestInterval,
+                $"{nameof(SitemapOptions.MinimumRequestInterval)} must not be negative.");
+        }
+
+        _throttle = new RequestThrottle(_options.MinimumRequestInterval);
         // Compiled once here, not per URL: a sitemap index can carry tens of thousands of entries.
         _excludedPrefixes = _options.NormalisedPrefixes();
+        _includedPrefixes = _options.NormalisedIncludedPrefixes();
         _excludedPatterns = _options.CompilePatterns();
     }
 
@@ -68,17 +81,62 @@ public sealed class SitemapDataProvider : IFileContentProvider
         return false;
     }
 
+    /// <summary>
+    /// Whether a page URL passes <see cref="SitemapOptions.IncludedUrlPrefixes"/>. Not applied to
+    /// index links: a sharded index's links match no content prefix.
+    /// </summary>
+    private bool IsIncluded(string url) => UrlPrefixes.MatchesAny(url, _includedPrefixes);
+
     public async IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var entry in LoadSitemapAsync(_sitemapUrl, cancellationToken).ConfigureAwait(false))
+        // Per walk, not per provider: a second walk should see a robots.txt the site has changed.
+        var walk = new Walk();
+        await foreach (var entry in LoadSitemapAsync(_sitemapUrl, walk, cancellationToken).ConfigureAwait(false))
             yield return entry;
+    }
+
+    /// <summary>
+    /// Whether robots.txt for <paramref name="url"/>'s host disallows it, fetching that file the
+    /// first time the host is seen.
+    /// </summary>
+    private async Task<bool> IsDisallowedByRobotsAsync(
+        string url, Dictionary<string, RobotsTxt> robotsByHost, CancellationToken ct)
+    {
+        if (!_options.RespectRobotsTxt) return false;
+
+        var uri = new Uri(url);
+        var origin = uri.GetLeftPart(UriPartial.Authority);
+        if (!robotsByHost.TryGetValue(origin, out var robots))
+        {
+            await _throttle.WaitAsync(ct).ConfigureAwait(false);
+            robots = await RobotsTxt.LoadAsync(_httpClient, uri, ct).ConfigureAwait(false);
+            robotsByHost[origin] = robots;
+        }
+
+        return robots.IsDisallowed(url);
+    }
+
+    /// <summary>State that lives for one <see cref="GetFilesAsync"/> walk.</summary>
+    private sealed class Walk
+    {
+        /// <summary>robots.txt per scheme-host-port, fetched on first use.</summary>
+        public Dictionary<string, RobotsTxt> RobotsByHost { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Page URLs already yielded. Sites do list one page in two shards, and the ingestion
+        /// pipeline does not drop repeats: each copy was fetched, embedded and stored again.
+        /// Ordinal, because the id is the URL verbatim and two spellings are two ids downstream.
+        /// </summary>
+        public HashSet<string> Yielded { get; } = new(StringComparer.Ordinal);
     }
 
     private async IAsyncEnumerable<Result<FileEntry, RagError>> LoadSitemapAsync(
         string url,
+        Walk walk,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
         var xml = await _httpClient.GetStringWithCharsetFallbackAsync(url, cancellationToken).ConfigureAwait(false);
         var root = XDocument.Parse(xml).Root!;
 
@@ -91,7 +149,7 @@ public sealed class SitemapDataProvider : IFileContentProvider
                 // Pruning here skips every page under this index without fetching it, which is why
                 // it is opt-out (SitemapOptions.ExcludeNestedSitemaps) rather than implied.
                 if (_options.ExcludeNestedSitemaps && IsExcluded(loc)) continue;
-                await foreach (var entry in LoadSitemapAsync(loc, cancellationToken).ConfigureAwait(false))
+                await foreach (var entry in LoadSitemapAsync(loc, walk, cancellationToken).ConfigureAwait(false))
                     yield return entry;
             }
         }
@@ -101,7 +159,10 @@ public sealed class SitemapDataProvider : IFileContentProvider
             {
                 var loc = urlEl.Element(s_ns + "loc")?.Value;
                 if (loc is null) continue;
-                if (IsExcluded(loc)) continue;
+                if (walk.Yielded.Contains(loc)) continue;
+                if (!IsIncluded(loc) || IsExcluded(loc)) continue;
+                if (await IsDisallowedByRobotsAsync(loc, walk.RobotsByHost, cancellationToken).ConfigureAwait(false)) continue;
+                walk.Yielded.Add(loc);
                 var lastMod = urlEl.Element(s_ns + "lastmod")?.Value;
                 var capturedLoc = loc;
 
@@ -110,6 +171,7 @@ public sealed class SitemapDataProvider : IFileContentProvider
                     FileName: InferFileName(loc),
                     OpenContentAsync: async ct =>
                     {
+                        await _throttle.WaitAsync(ct).ConfigureAwait(false);
                         var response = await _httpClient.GetStreamAsync(capturedLoc, ct).ConfigureAwait(false);
                         var buffer = new MemoryStream();
                         await response.CopyToAsync(buffer, ct).ConfigureAwait(false);

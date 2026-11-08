@@ -188,6 +188,9 @@ public sealed class SitemapFilteringTests
             {
                 ExcludedUrlPrefixes = [NestedUrl],
                 ExcludeNestedSitemaps = false,
+                // Off so the count below is about the index alone; robots.txt is counted in
+                // SitemapScopeTests.RobotsTxt_IsFetchedOncePerHost.
+                RespectRobotsTxt = false,
             });
 
         _ = await sut.GetFilesAsync(TestContext.Current.CancellationToken)

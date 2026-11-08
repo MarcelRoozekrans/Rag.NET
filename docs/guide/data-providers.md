@@ -669,6 +669,37 @@ var provider = new SitemapDataProvider(
     });
 ```
 
+To take one section of a large site, name what to keep and slow the walk down. Both settings
+below matter on a site you do not operate:
+
+```csharp
+var provider = new SitemapDataProvider(
+    "https://www.example.gov/sitemap.xml",
+    httpClient,
+    new SitemapOptions
+    {
+        // Keep only these pages. Exclusions still win over inclusions.
+        IncludedUrlPrefixes = ["https://www.example.gov/themes/health/"],
+        // Default true: robots.txt is read once per host and disallowed pages are skipped.
+        RespectRobotsTxt = true,
+        // Spaces the start of every request (sitemaps, robots.txt and page bodies), even when
+        // ingestion opens pages in parallel.
+        MinimumRequestInterval = TimeSpan.FromSeconds(1),
+    });
+```
+
+`IncludedUrlPrefixes` applies to page URLs only. A sharded index (`/sitemap/1.xml`,
+`/sitemap/2.xml`, …) has links that match no content prefix, so every nested sitemap is still
+fetched; on an index of a thousand shards that is a thousand requests before the first page.
+Where the index is partitioned by section, prune the irrelevant sections with
+`ExcludedUrlPrefixes` instead, which does skip the fetch.
+
+Each page URL is yielded once per walk. Large sites do list a page in two shards, and the
+ingestion pipeline does not drop repeats, so each copy used to be fetched and embedded again.
+
+`RespectRobotsTxt` is on by default, as it is for the crawler. It reads the `User-agent: *`
+group's `Disallow` prefixes; a missing robots.txt allows everything.
+
 ### Web — RSS / Atom feed
 
 ```csharp
@@ -688,6 +719,22 @@ var provider = new WebCrawlerDataProvider("https://docs.example.com", httpClient
 });
 services.AddSingleton<IFileContentProvider>(provider);
 ```
+
+To keep a crawl inside one section of a site, and slow it down:
+
+```csharp
+var faq = new WebCrawlerDataProvider("https://www.example.gov/themes/health/faq", httpClient, new WebCrawlerOptions
+{
+    MaxDepth = 1,
+    // Every URL, the seed included, must start with one of these. Links outside them are
+    // dropped before they are fetched, so header and footer links cost nothing.
+    IncludedUrlPrefixes = ["https://www.example.gov/themes/health/faq"],
+    MinimumRequestInterval = TimeSpan.FromSeconds(1),
+});
+```
+
+Prefixes are matched against the normalised page id (no fragment, no trailing slash), so leave
+the trailing slash off when the seed itself should match.
 
 **Page ids are normalised.** Each crawled page's id is its URL with the fragment and any trailing
 slash removed, so `https://site/`, `https://site` and `https://site#top` are one page rather than
