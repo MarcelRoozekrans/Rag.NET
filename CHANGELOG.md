@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.3.10...v1.4.0) (2026-11-08)
+
+
+### Features
+
+* **web:** scope sitemap and crawler walks, plus a rijksoverheid.nl demo ([#925](https://github.com/MarcelRoozekrans/Rag.NET/issues/925)) ([5cd298e](https://github.com/MarcelRoozekrans/Rag.NET/commit/5cd298e5df340b5f589436cb95aec251782b13a4))
+
 ## [1.3.10](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.3.9...v1.3.10) (2026-11-08)
 
 
