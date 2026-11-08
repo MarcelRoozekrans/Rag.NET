@@ -1,5 +1,48 @@
 # Session State
 
+**Last updated:** 2026-11-08 — **rijksoverheid.nl demo shipped in 1.4.0; its retrieval settings
+wait on one eval run.**
+
+**NEXT ACTION: the operator merges #931, then runs the eval.** #931 (`feat/demo-openrouter`,
+CI green) lets `samples/Rag.NET.Demo.Rijksoverheid` run on `OPENROUTER_API_KEY`; this STATE
+update rides on it. Then, with the operator's key (it is not available in agent sessions):
+
+```bash
+OPENROUTER_API_KEY=sk-or-... dotnet run --project samples/Rag.NET.Demo.Rijksoverheid -- --eval
+```
+
+Ingests the whole health theme (~20–25 min at 2 req/s), then prints Hit@1/Hit@5/Recall@5/MRR@10
+for dense, hybrid, hyde, hybrid+hyde and mmr over `eval/vragen.json` (40 hand-written Dutch
+questions with known answer URLs), plus dense's misses. **The step after it:** make the winning
+variant the chat mode's `RetrievalOptions` default in `Program.cs`, with the numbers in the
+sample README. Differences of a few hundredths on 40 questions are noise — read the
+better/worse counts. GraphRAG and RAPTOR were ruled out (short single-topic pages, factual Q&A;
+both guides say avoid). No reranker variant: the operator has no Cohere key, and the ONNX
+reranker cannot load a multilingual model (#926). Revisit only if the misses show ranking, not
+recall, is the problem.
+
+**What 1.4.0 (#925) shipped:** `SitemapOptions.IncludedUrlPrefixes`, `RespectRobotsTxt` (default
+true — a behaviour change for existing sitemap walks), `MinimumRequestInterval`;
+`WebCrawlerOptions.IncludedUrlPrefixes` and `MinimumRequestInterval`; fixes for sitemap URLs
+yielded twice and for a dropped connection ending a crawl. All 74 packages on nuget.org.
+
+**Site facts the demo depends on.** Texts are CC0 (`/copyright`); thuisarts.nl was rejected
+(personal use only, NHG permission needed for a public demo). The theme has 368 sitemap pages in
+1,209 shards; its ~330 FAQ answer pages are **not in the sitemap**, so the sample crawls first
+and uses the sitemap for the rest. 54 FAQ index pages (titles only) are kept out of the index.
+One FAQ answer can be published under up to four theme paths — why `mmr` is a variant.
+
+**Open issues from this work:** #926 (ONNX reranker docs recommend a model it cannot load —
+needs a docs-vs-SentencePiece decision), #927 (robots.txt covers part of RFC 9309), #928
+(`codecov/project` goes red until the second CI leg uploads — two-line `after_n_builds` fix),
+#930 (a failed embedding call is reported as `StorageFailed`, twice over — layer 2 mechanical,
+layer 1 a design call).
+
+**Local-only note:** `Rag.NET.E2ETests` `WhatIsMyAddress_WithReporterSettings_*` fails every time
+against the local Ollama model; CI does not run it, cause not investigated.
+
+---
+
 **Last updated:** 2026-09-16 — **the documentation site was publishing half of itself, and the
 half it published pointed at packages that do not exist.** Four PRs (#647, #648, #649, #652), all
 merged or green, each carrying a guard on `ci.yml`.
