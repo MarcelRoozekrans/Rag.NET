@@ -73,7 +73,7 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
                 await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
                 html = await _httpClient.GetStringWithCharsetFallbackAsync(url, cancellationToken).ConfigureAwait(false);
             }
-            catch (HttpRequestException)
+            catch (Exception ex) when (FetchFailure.IsSkippable(ex, cancellationToken))
             {
                 continue;
             }

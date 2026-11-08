@@ -20,7 +20,7 @@ internal sealed class RobotsTxt
 
     /// <summary>
     /// Fetches <c>/robots.txt</c> for <paramref name="origin"/>'s scheme, host and port.
-    /// A missing or unreachable file allows everything.
+    /// A missing, unreachable, broken-off or timed-out file allows everything.
     /// </summary>
     public static async Task<RobotsTxt> LoadAsync(HttpClient httpClient, Uri origin, CancellationToken ct)
     {
@@ -30,7 +30,7 @@ internal sealed class RobotsTxt
             var content = await httpClient.GetStringWithCharsetFallbackAsync(robotsUrl, ct).ConfigureAwait(false);
             return Parse(content);
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (FetchFailure.IsSkippable(ex, ct))
         {
             return s_allowAll;
         }
