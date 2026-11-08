@@ -669,6 +669,34 @@ var provider = new SitemapDataProvider(
     });
 ```
 
+To take one section of a large site, name what to keep and slow the walk down. Both settings
+below matter on a site you do not operate:
+
+```csharp
+var provider = new SitemapDataProvider(
+    "https://www.example.gov/sitemap.xml",
+    httpClient,
+    new SitemapOptions
+    {
+        // Keep only these pages. Exclusions still win over inclusions.
+        IncludedUrlPrefixes = ["https://www.example.gov/themes/health/"],
+        // Default true: robots.txt is read once per host and disallowed pages are skipped.
+        RespectRobotsTxt = true,
+        // Spaces the start of every request (sitemaps, robots.txt and page bodies), even when
+        // ingestion opens pages in parallel.
+        MinimumRequestInterval = TimeSpan.FromSeconds(1),
+    });
+```
+
+`IncludedUrlPrefixes` applies to page URLs only. A sharded index (`/sitemap/1.xml`,
+`/sitemap/2.xml`, …) has links that match no content prefix, so every nested sitemap is still
+fetched; on an index of a thousand shards that is a thousand requests before the first page.
+Where the index is partitioned by section, prune the irrelevant sections with
+`ExcludedUrlPrefixes` instead, which does skip the fetch.
+
+`RespectRobotsTxt` is on by default, as it is for the crawler. It reads the `User-agent: *`
+group's `Disallow` prefixes; a missing robots.txt allows everything.
+
 ### Web — RSS / Atom feed
 
 ```csharp

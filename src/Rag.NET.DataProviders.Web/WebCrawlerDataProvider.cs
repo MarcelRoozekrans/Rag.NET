@@ -31,9 +31,9 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var seedUri = new Uri(_seedUrl);
-        var disallowed = _options.RespectRobotsTxt
-            ? await LoadRobotsAsync(seedUri, cancellationToken).ConfigureAwait(false)
-            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var robots = _options.RespectRobotsTxt
+            ? await RobotsTxt.LoadAsync(_httpClient, seedUri, cancellationToken).ConfigureAwait(false)
+            : null;
 
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var queue = new Queue<(string url, int depth)>();
@@ -48,7 +48,7 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
         {
             var (url, depth) = queue.Dequeue();
             if (!visited.Add(url)) continue;
-            if (IsDisallowed(url, disallowed)) continue;
+            if (robots?.IsDisallowed(url) == true) continue;
             if (_options.SameDomain && !string.Equals(new Uri(url).Host, seedUri.Host, StringComparison.OrdinalIgnoreCase)) continue;
 
             string html;
@@ -101,56 +101,6 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
         var host = new Uri(url).Host;
         if (!string.IsNullOrEmpty(host)) metadata["host"] = host;
         return metadata;
-    }
-
-    private async Task<HashSet<string>> LoadRobotsAsync(Uri seedUri, CancellationToken ct)
-    {
-        try
-        {
-            var robotsUrl = new Uri(seedUri, "/robots.txt").ToString();
-            var content = await _httpClient.GetStringWithCharsetFallbackAsync(robotsUrl, ct).ConfigureAwait(false);
-            return ParseRobotsDisallowed(content);
-        }
-        catch (HttpRequestException)
-        {
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        }
-    }
-
-    private static HashSet<string> ParseRobotsDisallowed(string content)
-    {
-        var disallowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var applyToUs = false;
-
-        foreach (var line in content.Split('\n'))
-        {
-            var trimmed = line.Trim();
-            if (trimmed.StartsWith("User-agent:", StringComparison.OrdinalIgnoreCase))
-            {
-                var agent = trimmed["User-agent:".Length..].Trim();
-                applyToUs = string.Equals(agent, "*", StringComparison.Ordinal);
-            }
-            else if (applyToUs && trimmed.StartsWith("Disallow:", StringComparison.OrdinalIgnoreCase))
-            {
-                var path = trimmed["Disallow:".Length..].Trim();
-                if (!string.IsNullOrEmpty(path))
-                    disallowed.Add(path);
-            }
-        }
-
-        return disallowed;
-    }
-
-    private static bool IsDisallowed(string url, HashSet<string> disallowed)
-    {
-        var path = new Uri(url).AbsolutePath;
-        foreach (var rule in disallowed)
-        {
-            if (path.StartsWith(rule, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
     }
 
     private static IEnumerable<string> ExtractLinks(string html, string baseUrl)

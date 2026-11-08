@@ -33,6 +33,32 @@ public sealed class SitemapOptions
     public IReadOnlyList<string> ExcludedUrlPrefixes { get; init; } = [];
 
     /// <summary>
+    /// URL prefixes to keep, compared with <see cref="StringComparison.OrdinalIgnoreCase"/>.
+    /// When non-empty, a page URL is yielded only if it starts with one of them.
+    /// Empty by default, so the provider keeps everything unless asked.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Matched against the full URL, like <see cref="ExcludedUrlPrefixes"/>. Exclusions are
+    /// applied after inclusion, so an excluded URL stays excluded even when an included prefix
+    /// covers it.
+    /// </para>
+    /// <para>
+    /// <b>Applies to page URLs only, never to <c>&lt;sitemapindex&gt;</c> links.</b> Large sites
+    /// shard their index by number (<c>/sitemap/1.xml</c>, <c>/sitemap/2.xml</c>), and such a link
+    /// matches no content prefix; pruning by inclusion would yield nothing at all. Every nested
+    /// sitemap is therefore still fetched, which on a big index is the dominant cost — prune
+    /// known-irrelevant index links with <see cref="ExcludedUrlPrefixes"/> where the site's index
+    /// is partitioned by section.
+    /// </para>
+    /// <para>
+    /// Blank entries are dropped, so a list of only blanks means "no inclusion filter" rather than
+    /// "include nothing".
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> IncludedUrlPrefixes { get; init; } = [];
+
+    /// <summary>
     /// Regular expressions to skip; a URL matching any of them is excluded.
     /// Empty by default.
     /// </summary>
@@ -67,6 +93,31 @@ public sealed class SitemapOptions
     /// </remarks>
     public bool ExcludeNestedSitemaps { get; init; } = true;
 
+    /// <summary>
+    /// Fetch each page host's <c>/robots.txt</c> and skip page URLs its <c>User-agent: *</c>
+    /// group disallows. Default: <see langword="true"/>.
+    /// </summary>
+    /// <remarks>
+    /// Fetched once per host, the first time a page on that host is about to be yielded; a missing
+    /// or unreachable robots.txt allows everything. Sitemap and index URLs themselves are not
+    /// checked — the caller asked for them by name. Same rule as
+    /// <see cref="WebCrawlerOptions.RespectRobotsTxt"/>: prefix <c>Disallow</c> paths only.
+    /// </remarks>
+    public bool RespectRobotsTxt { get; init; } = true;
+
+    /// <summary>
+    /// The minimum time between the start of two requests this provider makes — sitemaps,
+    /// robots.txt and page bodies alike. Default <see cref="TimeSpan.Zero"/>: no spacing.
+    /// </summary>
+    /// <remarks>
+    /// Shared by every entry the provider yields, so it holds even when ingestion opens page
+    /// bodies in parallel (<c>IngestionOptions.MaxDegreeOfParallelism</c> above 1): requests are
+    /// serialised and spaced, not merely delayed per caller. Set it when walking a site you do not
+    /// operate; one request per second is a common courtesy. Negative values are rejected at
+    /// construction.
+    /// </remarks>
+    public TimeSpan MinimumRequestInterval { get; init; } = TimeSpan.Zero;
+
     /// <summary>Compiles <see cref="ExcludedUrlPatterns"/> once, with a match timeout.</summary>
     internal IReadOnlyList<Regex> CompilePatterns()
     {
@@ -89,20 +140,25 @@ public sealed class SitemapOptions
         return compiled;
     }
 
-    /// <summary>The prefixes, trimmed and with blanks dropped.</summary>
+    /// <summary>The exclusion prefixes, trimmed and with blanks dropped.</summary>
     /// <remarks>
     /// A blank prefix would match every URL and silently empty the whole sitemap — the one input
     /// here whose mistake is unrecoverable and invisible, so it is dropped rather than honoured.
     /// </remarks>
-    internal IReadOnlyList<string> NormalisedPrefixes()
+    internal IReadOnlyList<string> NormalisedPrefixes() => Normalise(ExcludedUrlPrefixes);
+
+    /// <summary>The inclusion prefixes, trimmed and with blanks dropped.</summary>
+    internal IReadOnlyList<string> NormalisedIncludedPrefixes() => Normalise(IncludedUrlPrefixes);
+
+    private static IReadOnlyList<string> Normalise(IReadOnlyList<string> prefixes)
     {
-        if (ExcludedUrlPrefixes.Count == 0)
+        if (prefixes.Count == 0)
         {
             return [];
         }
 
-        var kept = new List<string>(ExcludedUrlPrefixes.Count);
-        foreach (var prefix in ExcludedUrlPrefixes)
+        var kept = new List<string>(prefixes.Count);
+        foreach (var prefix in prefixes)
         {
             if (!string.IsNullOrWhiteSpace(prefix))
             {
