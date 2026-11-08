@@ -16,10 +16,14 @@ crawl does not grant a licence.
 
 ## What it shows
 
-- `SitemapDataProvider` taking one section of a site with ~120,000 URLs in 1,209 sitemap shards,
-  using `IncludedUrlPrefixes`.
-- `RespectRobotsTxt` and `MinimumRequestInterval`, so the walk is polite to a server you do not
-  run: one request every 500 ms.
+- Two providers combined, because neither alone has every page. The site's FAQ answers are
+  missing from its sitemap, so `WebCrawlerDataProvider` goes first, bounded to the theme with
+  `IncludedUrlPrefixes`. `SitemapDataProvider` then adds pages no link led to, taking one theme of
+  a site with ~120,000 URLs in 1,209 sitemap shards.
+- `RespectRobotsTxt` and `MinimumRequestInterval` on both, so the walk is polite to a server you
+  do not run: one request every 500 ms.
+- FAQ index pages left out of the index: they list question titles with no answers, so they match
+  questions well and answer none of them.
 - `AddHtmlParser()` dropping navigation, header and footer, so chunks hold page content.
 - Streaming answers with the source URLs listed (each page's document id is its URL).
 
@@ -43,6 +47,27 @@ Optional settings:
 Ingesting 150 pages takes a few minutes. The theme's pages are spread across the site's
 sitemap shards, so each shard read yields only a few of them. The database lives in a throwaway
 container, so every run ingests again.
+
+## Measuring retrieval
+
+```bash
+export OPENAI_API_KEY=sk-...
+export COHERE_API_KEY=...   # optional: adds the reranker variants
+dotnet run --project samples/Rag.NET.Demo.Rijksoverheid -- --eval
+```
+
+`--eval` ingests the whole theme, then runs the 40 questions in `eval/vragen.json` through each
+retrieval variant: dense, hybrid (BM25 + vector), HyDE, hybrid + HyDE, MMR, and with
+`COHERE_API_KEY` set, a multilingual reranker over dense and over hybrid. It prints Hit@1,
+Hit@5, Recall@5 and MRR@10 per variant, scored per page, and how many questions each variant
+ranks better or worse than dense. With 40 questions, a difference of a few hundredths is noise;
+the better/worse counts show whether a gain is broad or rides on two questions.
+
+MMR is in the list because the site publishes one FAQ answer under up to four theme paths:
+four documents with the same text, which can fill the top 5 with a single answer.
+
+Each question names the pages that answer it, FAQ answers included. The questions are written the way a citizen asks,
+not copied from page titles. A question whose page was not ingested is dropped and counted.
 
 Example questions:
 

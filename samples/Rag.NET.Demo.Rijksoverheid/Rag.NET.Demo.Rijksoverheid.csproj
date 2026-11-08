@@ -11,12 +11,18 @@
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Web\Rag.NET.DataProviders.Web.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.VectorStores.PgVector\Rag.NET.VectorStores.PgVector.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.QueryTechniques\Rag.NET.QueryTechniques.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Reranking.Cohere\Rag.NET.Reranking.Cohere.csproj" />
     <PackageReference Include="Microsoft.Extensions.AI" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <!-- Direct only to lift SSH.NET past GHSA-q939-rpr3-3284: Testcontainers pins the vulnerable 2025.1.0. Same as Rag.NET.Sample. -->
     <PackageReference Include="SSH.NET" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="eval\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
