@@ -1,25 +1,21 @@
 # Session State
 
-**Last updated:** 2026-11-08 — **rijksoverheid.nl demo shipped in 1.4.0; its retrieval settings
-wait on one eval run.**
+**Last updated:** 2026-11-08 — **rijksoverheid.nl demo: the eval ran, dense stays the chat
+default.**
 
-**NEXT ACTION: the operator merges #931, then runs the eval.** #931 (`feat/demo-openrouter`,
-CI green) lets `samples/Rag.NET.Demo.Rijksoverheid` run on `OPENROUTER_API_KEY`; this STATE
-update rides on it. Then, with the operator's key (it is not available in agent sessions):
+**NEXT ACTION: the operator merges the `feat/demo-retrieval-defaults` PR.** It makes dense
+retrieval (top 5, no hybrid, no HyDE) explicit in the sample's chat loop and puts the eval table
+in the sample README. #931 (OpenRouter support) is merged.
 
-```bash
-OPENROUTER_API_KEY=sk-or-... dotnet run --project samples/Rag.NET.Demo.Rijksoverheid -- --eval
-```
+**The eval (one run, 2026-11-08, OpenRouter, 1,018 pages, 40/40 questions answerable):** dense
+Hit@5 0.850 / MRR 0.680. Hybrid is the only clear result, and it is worse: 3 better / 7 worse.
+hyde 6/7, mmr 6/5, hybrid+hyde 7/5 (best Hit@1 0.625): within noise. The operator chose dense.
+Six questions miss dense's top 5. Next lever, if anyone picks this up: a reranker (needs a
+Cohere key; the ONNX one cannot load a multilingual model, #926). GraphRAG and RAPTOR stay ruled
+out.
 
-Ingests the whole health theme (~20–25 min at 2 req/s), then prints Hit@1/Hit@5/Recall@5/MRR@10
-for dense, hybrid, hyde, hybrid+hyde and mmr over `eval/vragen.json` (40 hand-written Dutch
-questions with known answer URLs), plus dense's misses. **The step after it:** make the winning
-variant the chat mode's `RetrievalOptions` default in `Program.cs`, with the numbers in the
-sample README. Differences of a few hundredths on 40 questions are noise — read the
-better/worse counts. GraphRAG and RAPTOR were ruled out (short single-topic pages, factual Q&A;
-both guides say avoid). No reranker variant: the operator has no Cohere key, and the ONNX
-reranker cannot load a multilingual model (#926). Revisit only if the misses show ranking, not
-recall, is the problem.
+**Found on the way:** #932, `AskAsync` cannot enable MMR or switch off HyDE, multi-query or
+reranking per call; `RagOptions` carries only eight retrieval fields. Needs an API decision.
 
 **What 1.4.0 (#925) shipped:** `SitemapOptions.IncludedUrlPrefixes`, `RespectRobotsTxt` (default
 true — a behaviour change for existing sitemap walks), `MinimumRequestInterval`;
