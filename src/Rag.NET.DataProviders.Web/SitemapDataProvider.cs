@@ -85,20 +85,7 @@ public sealed class SitemapDataProvider : IFileContentProvider
     /// Whether a page URL passes <see cref="SitemapOptions.IncludedUrlPrefixes"/>. Not applied to
     /// index links: a sharded index's links match no content prefix.
     /// </summary>
-    private bool IsIncluded(string url)
-    {
-        if (_includedPrefixes.Count == 0) return true;
-
-        foreach (var prefix in _includedPrefixes)
-        {
-            if (url.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    private bool IsIncluded(string url) => UrlPrefixes.MatchesAny(url, _includedPrefixes);
 
     public async IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)

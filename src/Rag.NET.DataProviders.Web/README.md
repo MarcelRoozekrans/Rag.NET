@@ -13,7 +13,8 @@
 
 Web content providers for Rag.NET ingestion — no credentials, three shapes: a sitemap
 walker with include/exclude filters, robots.txt and request spacing, an RSS/Atom feed reader,
-and a same-domain crawler with depth, page-count and robots.txt controls.
+and a same-domain crawler with depth, page-count, path-prefix, request-spacing and robots.txt
+controls.
 
 ## Install
 

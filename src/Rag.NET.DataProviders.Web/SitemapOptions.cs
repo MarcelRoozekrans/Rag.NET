@@ -145,27 +145,8 @@ public sealed class SitemapOptions
     /// A blank prefix would match every URL and silently empty the whole sitemap — the one input
     /// here whose mistake is unrecoverable and invisible, so it is dropped rather than honoured.
     /// </remarks>
-    internal IReadOnlyList<string> NormalisedPrefixes() => Normalise(ExcludedUrlPrefixes);
+    internal IReadOnlyList<string> NormalisedPrefixes() => UrlPrefixes.Normalise(ExcludedUrlPrefixes);
 
     /// <summary>The inclusion prefixes, trimmed and with blanks dropped.</summary>
-    internal IReadOnlyList<string> NormalisedIncludedPrefixes() => Normalise(IncludedUrlPrefixes);
-
-    private static IReadOnlyList<string> Normalise(IReadOnlyList<string> prefixes)
-    {
-        if (prefixes.Count == 0)
-        {
-            return [];
-        }
-
-        var kept = new List<string>(prefixes.Count);
-        foreach (var prefix in prefixes)
-        {
-            if (!string.IsNullOrWhiteSpace(prefix))
-            {
-                kept.Add(prefix.Trim());
-            }
-        }
-
-        return kept;
-    }
+    internal IReadOnlyList<string> NormalisedIncludedPrefixes() => UrlPrefixes.Normalise(IncludedUrlPrefixes);
 }

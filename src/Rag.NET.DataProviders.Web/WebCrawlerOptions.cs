@@ -18,4 +18,30 @@ public sealed class WebCrawlerOptions
     /// Fetch <c>/robots.txt</c> and skip disallowed paths. Default: <see langword="true"/>.
     /// </summary>
     public bool RespectRobotsTxt { get; init; } = true;
+
+    /// <summary>
+    /// URL prefixes the crawl stays beneath, compared with
+    /// <see cref="StringComparison.OrdinalIgnoreCase"/>. When non-empty, a URL is fetched only if
+    /// it starts with one of them. Empty by default: <see cref="SameDomain"/> is the only bound.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Applies to every URL, the seed included, so a seed outside every prefix yields nothing.
+    /// Links outside the prefixes are dropped before they are fetched, which is what makes this
+    /// a bound on a site you do not run rather than a filter applied afterwards.
+    /// </para>
+    /// <para>
+    /// Matched against the normalised URL the crawler uses as the page id — no fragment, no
+    /// trailing slash — so write prefixes without a trailing slash when the seed itself should
+    /// match. Blank entries are dropped, the same rule as <see cref="SitemapOptions.IncludedUrlPrefixes"/>.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> IncludedUrlPrefixes { get; init; } = [];
+
+    /// <summary>
+    /// The minimum time between the start of two requests this crawler makes, robots.txt
+    /// included. Default <see cref="TimeSpan.Zero"/>: no spacing. Negative values are rejected at
+    /// construction.
+    /// </summary>
+    public TimeSpan MinimumRequestInterval { get; init; } = TimeSpan.Zero;
 }

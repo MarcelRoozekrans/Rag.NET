@@ -18,6 +18,8 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
     private readonly string _seedUrl;
     private readonly HttpClient _httpClient;
     private readonly WebCrawlerOptions _options;
+    private readonly IReadOnlyList<string> _includedPrefixes;
+    private readonly RequestThrottle _throttle;
 
     public WebCrawlerDataProvider(string seedUrl, HttpClient httpClient, WebCrawlerOptions? options = null)
     {
@@ -25,15 +27,28 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
         _seedUrl = seedUrl;
         _httpClient = httpClient;
         _options = options ?? new WebCrawlerOptions();
+        if (_options.MinimumRequestInterval < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                _options.MinimumRequestInterval,
+                $"{nameof(WebCrawlerOptions.MinimumRequestInterval)} must not be negative.");
+        }
+
+        _includedPrefixes = UrlPrefixes.Normalise(_options.IncludedUrlPrefixes);
+        _throttle = new RequestThrottle(_options.MinimumRequestInterval);
     }
 
     public async IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var seedUri = new Uri(_seedUrl);
-        var robots = _options.RespectRobotsTxt
-            ? await RobotsTxt.LoadAsync(_httpClient, seedUri, cancellationToken).ConfigureAwait(false)
-            : null;
+        RobotsTxt? robots = null;
+        if (_options.RespectRobotsTxt)
+        {
+            await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
+            robots = await RobotsTxt.LoadAsync(_httpClient, seedUri, cancellationToken).ConfigureAwait(false);
+        }
 
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var queue = new Queue<(string url, int depth)>();
@@ -50,10 +65,12 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
             if (!visited.Add(url)) continue;
             if (robots?.IsDisallowed(url) == true) continue;
             if (_options.SameDomain && !string.Equals(new Uri(url).Host, seedUri.Host, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!UrlPrefixes.MatchesAny(url, _includedPrefixes)) continue;
 
             string html;
             try
             {
+                await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
                 html = await _httpClient.GetStringWithCharsetFallbackAsync(url, cancellationToken).ConfigureAwait(false);
             }
             catch (HttpRequestException)

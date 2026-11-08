@@ -720,6 +720,22 @@ var provider = new WebCrawlerDataProvider("https://docs.example.com", httpClient
 services.AddSingleton<IFileContentProvider>(provider);
 ```
 
+To keep a crawl inside one section of a site, and slow it down:
+
+```csharp
+var faq = new WebCrawlerDataProvider("https://www.example.gov/themes/health/faq", httpClient, new WebCrawlerOptions
+{
+    MaxDepth = 1,
+    // Every URL, the seed included, must start with one of these. Links outside them are
+    // dropped before they are fetched, so header and footer links cost nothing.
+    IncludedUrlPrefixes = ["https://www.example.gov/themes/health/faq"],
+    MinimumRequestInterval = TimeSpan.FromSeconds(1),
+});
+```
+
+Prefixes are matched against the normalised page id (no fragment, no trailing slash), so leave
+the trailing slash off when the seed itself should match.
+
 **Page ids are normalised.** Each crawled page's id is its URL with the fragment and any trailing
 slash removed, so `https://site/`, `https://site` and `https://site#top` are one page rather than
 three. The **seed** goes through the same rule as the links found in pages — before v1.0 it did not,
