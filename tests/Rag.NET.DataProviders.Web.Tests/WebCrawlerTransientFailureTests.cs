@@ -88,4 +88,45 @@ public sealed class WebCrawlerTransientFailureTests
                 .GetFilesAsync(cts.Token)
                 .ToListAsync(cts.Token));
     }
+
+    /// <remarks>
+    /// The other half of the timeout rule: a <see cref="TaskCanceledException"/> raised because
+    /// the caller cancelled mid-request must end the walk, not be skipped as a timed-out page.
+    /// </remarks>
+    [Fact]
+    public async Task CallerCancellationDuringARequest_StopsTheCrawl()
+    {
+        using var cts = new CancellationTokenSource();
+        var pages = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["https://example.com/"] = """<a href="/slow">x</a><a href="/fine">y</a>""",
+            ["https://example.com/fine"] = "<p>fine</p>",
+        };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            _ = await new WebCrawlerDataProvider(
+                    "https://example.com/",
+                    new HttpClient(new CancellingHandler(pages, "https://example.com/slow", cts)),
+                    new WebCrawlerOptions { RespectRobotsTxt = false })
+                .GetFilesAsync(cts.Token)
+                .ToListAsync(CancellationToken.None));
+    }
+
+    private sealed class CancellingHandler(Dictionary<string, string> pages, string cancelAt, CancellationTokenSource cts)
+        : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var url = request.RequestUri!.ToString();
+            if (string.Equals(url, cancelAt, StringComparison.Ordinal))
+            {
+                cts.Cancel();
+                throw new TaskCanceledException("Cancelled by the caller.");
+            }
+
+            return Task.FromResult(pages.TryGetValue(url, out var body)
+                ? new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(body) }
+                : new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+        }
+    }
 }
