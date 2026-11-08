@@ -88,7 +88,9 @@ Grouped the way [the sidebar](https://marcelroozekrans.github.io/Rag.NET/) is.
 ## Quick links
 
 - Sample applications: `samples/Rag.NET.Sample` — interactive console app (PgVector, Ollama/OpenAI)
-  — and `samples/Rag.NET.QuickStart` — a config-driven walkthrough built on `Rag.NET.Hosting`
+  — `samples/Rag.NET.QuickStart` — a config-driven walkthrough built on `Rag.NET.Hosting` — and
+  `samples/Rag.NET.Demo.Rijksoverheid` — Dutch Q&A over one theme of a real public site, ingested
+  from its sitemap
 - Benchmark results: [benchmarks.md](reference/benchmarks.md)
 - How Rag.NET compares: [quality and cost](reference/library-comparison.md) (measured) and
   [scope](reference/library-comparison-scope.md) (read, cited per claim)

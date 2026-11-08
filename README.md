@@ -367,6 +367,8 @@ dotnet run --project samples/Rag.NET.Sample
 OPENAI_API_KEY=sk-... RAG_PROVIDER=openai dotnet run --project samples/Rag.NET.Sample
 ```
 
+[samples/Rag.NET.Demo.Rijksoverheid](samples/Rag.NET.Demo.Rijksoverheid) runs the same pipeline on a real public site. It ingests the health theme of rijksoverheid.nl from its sitemap, filtered by URL prefix, respecting robots.txt and spacing its requests. It then answers Dutch questions and lists the source pages. Needs Docker and `OPENAI_API_KEY`.
+
 ## Benchmarks
 
 Full results with methodology and analysis: [docs/reference/benchmarks.md](docs/reference/benchmarks.md)
