@@ -54,6 +54,8 @@ public sealed partial class LlmPiiChunkSanitiser(
             return _fallback.Sanitise(text, metadata);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the document instead of degrading it (#938).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             LogLlmFailed(_logger, ex);

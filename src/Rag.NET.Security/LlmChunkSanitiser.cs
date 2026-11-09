@@ -49,6 +49,8 @@ public sealed partial class LlmChunkSanitiser(
             return text;
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the document instead of degrading it (#938).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             LogLlmFailed(_logger, ex);
