@@ -82,6 +82,30 @@ four documents with the same text, which can fill the top 5 with a single answer
 Each question names the pages that answer it, FAQ answers included. The questions are written the way a citizen asks,
 not copied from page titles. A question whose page was not ingested is dropped and counted.
 
+### Results
+
+One run on 2026-11-08 through OpenRouter, with `openai/text-embedding-3-small` embeddings and
+`openai/gpt-4o-mini` writing the HyDE passages. It ingested 1,018 pages with none failed, and
+all 40 questions had their answer page in the index. No Cohere key, so no reranker variants.
+
+| variant | Hit@1 | Hit@5 | Recall@5 | MRR@10 | MRR better / worse vs dense |
+|---|---:|---:|---:|---:|---:|
+| dense | 0.575 | 0.850 | 0.799 | 0.680 | — |
+| hybrid | 0.550 | 0.775 | 0.732 | 0.657 | 3 / 7 |
+| hyde | 0.575 | 0.875 | 0.837 | 0.705 | 6 / 7 |
+| hybrid+hyde | 0.625 | 0.875 | 0.807 | 0.720 | 7 / 5 |
+| mmr | 0.600 | 0.850 | 0.784 | 0.698 | 6 / 5 |
+
+Hybrid is the one clear result: it ranks seven questions worse than dense and three better.
+HyDE, MMR and hybrid + HyDE each move about as many questions up as down, so their higher
+averages come from a handful of questions and may not hold on another run. HyDE also costs a
+chat call before every answer. The chat mode therefore uses dense retrieval with the top 5
+chunks.
+
+Six questions had no answer page in dense's top 5, among them *Hoeveel wiet mag ik thuis
+hebben?* (answered by the page on softdrugs and coffeeshops) and *Wat is een pgb?*. `--eval`
+prints the full list.
+
 Example questions:
 
 - *Wanneer moet ik naar de huisarts en wanneer naar de ggz?*

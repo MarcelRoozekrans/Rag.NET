@@ -14,6 +14,7 @@ using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Web;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
+using Rag.NET.Models.Options;
 using Rag.NET.Parsers.Html;
 using Rag.NET.PgVector;
 using Rag.NET.QueryTechniques;
@@ -185,6 +186,13 @@ try
     }
 
     // --- Ask ---
+    // Dense retrieval, the top 5 chunks. Measured with --eval on the full theme (README,
+    // "Results"): hybrid ranked 7 of 40 questions worse than dense and 3 better; HyDE, MMR and
+    // hybrid + HyDE each moved about as many questions up as down. None beat dense by more than
+    // noise, and HyDE would add a chat call before every answer. HyDE stays unregistered in chat
+    // mode for that reason, which is what keeps it off here.
+    var chatOptions = new RagOptions { TopK = 5, UseHybridSearch = false };
+
     Console.WriteLine("\nStel een vraag over zorg en gezondheid (of 'quit'):\n");
     while (true)
     {
@@ -196,7 +204,7 @@ try
         }
 
         var sources = new List<string>();
-        await foreach (var update in pipeline.AskStreamingAsync(question))
+        await foreach (var update in pipeline.AskStreamingAsync(question, chatOptions))
         {
             if (update.Sources is { Count: > 0 })
             {
