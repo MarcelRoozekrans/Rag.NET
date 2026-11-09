@@ -263,6 +263,12 @@ public static class RagPipelineReindexExtensions
         {
             throw;
         }
+        // A deliberate refusal is not a sparse failure: the document fails and keeps its old
+        // version stamp, so a later run retries it (#938).
+        catch (CallRefusedException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             RagPipelineLog.SparseStorageFailed(logger, documentId, ex);

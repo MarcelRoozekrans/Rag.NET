@@ -12,7 +12,8 @@ namespace Rag.NET.Ingestion.Behaviors;
 /// <see cref="IngestionContext.SparseVectors"/> for <see cref="StorageBehavior"/> to persist.
 /// Transparent when no <see cref="ISparseEmbeddingGenerator"/> is registered or the vector
 /// store is not <see cref="ISparseSearchable"/>. Degraded, never broken: generation failure
-/// is logged and ingestion proceeds dense-only.
+/// is logged and ingestion proceeds dense-only. A deliberate refusal
+/// (<see cref="CallRefusedException"/>) is not a failure and fails the document (#938).
 /// </summary>
 [Singleton(As = typeof(SparseEmbeddingBehavior))]
 public sealed class SparseEmbeddingBehavior : IIngestionBehavior
