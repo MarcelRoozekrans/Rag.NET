@@ -147,6 +147,8 @@ services.AddRagNet(rag =>
 
 Before each call the decorator checks the recorded spend of the current UTC day and month against the configured limits and throws `BudgetExceededException` (carrying `Window`, `Limit`, and `Spend`) once a limit is reached. After each call it records token usage and cost to the ledger. For streaming calls the gate — like the rate limiter's permit — fires on **first enumeration**, not when `GetStreamingResponseAsync` returns. Every registered surface is decorated; at least one must be registered before the call. Repeat calls are idempotent (first configuration wins; decorators never stack).
 
+`BudgetExceededException` derives from `CallRefusedException`, the marker for a call refused on purpose. Components that report a provider failure as `ModelCallException` let a refusal through as itself, so a blown budget is never reported as a model failure. During ingestion it does not have a `RagError` case of its own yet ([#937](https://github.com/MarcelRoozekrans/Rag.NET/issues/937)): `IngestAsync` returns `RagError.StorageFailed` whose `Inner` is the `BudgetExceededException`. Check `Inner is CallRefusedException` to tell it apart from a real storage failure. Steps that fall back when their model call fails, such as proposition chunking and LLM metadata extraction, currently swallow a blown budget along with real failures and carry on in degraded form ([#938](https://github.com/MarcelRoozekrans/Rag.NET/issues/938)).
+
 Things to know:
 
 - **Prices are user-supplied.** There is no built-in price table — provider prices churn too fast to ship. All monetary values (prices, limits, ledger totals, the `ragnet.llm.cost` counter) share whatever currency you quote the prices in.
