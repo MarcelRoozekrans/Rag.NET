@@ -28,4 +28,17 @@ public class CallRefusedExceptionTests
         Assert.Equal("refused", ex.Message);
         Assert.Same(inner, ex.InnerException);
     }
+
+    /// <summary>
+    /// The analyzer-required parameterless form still says what it is: a refusal with an empty or
+    /// framework-default message would read like an unexplained failure in a log.
+    /// </summary>
+    [Fact]
+    public void CallRefusedException_WithoutAMessage_SaysNoModelWasCalled()
+    {
+        var ex = new CallRefusedException();
+
+        Assert.Contains("no model was called", ex.Message, StringComparison.Ordinal);
+        Assert.Null(ex.InnerException);
+    }
 }
