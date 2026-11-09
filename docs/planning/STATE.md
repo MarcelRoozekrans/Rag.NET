@@ -1,43 +1,51 @@
 # Session State
 
-**Last updated:** 2026-11-09 — **#930 layer 1 is built and green as #941, waiting for the
-operator's merge. #935 and #936 merged and shipped in 1.4.1.**
+**Last updated:** 2026-11-09 — **#932 is built as #946, waiting for CI and the operator's merge.
+#941 shipped in 1.5.0; its `feat` commit is in the 1.5.0 changelog.**
 
-**NEXT ACTION: after the operator merges #941, confirm its `feat` commit appears in the
-release-please PR's changelog** (a green workflow does not prove it was counted), then pick the next
-item from the open decisions below. Work on a fresh branch from main. The operator merges; the agent
-does not.
+**NEXT ACTION: watch #946's CI (ci-watch Wait stage) and report it, then start #938 on a fresh
+branch from main.** #938 was blocked on #941, and #941 is merged. When the operator merges #946,
+confirm its `feat` commits appear in the release-please PR's changelog. The operator merges; the
+agent does not.
 
-- **#941** (`feat/call-refused-marker`): adds `CallRefusedException` in `Rag.NET.Models` as the base
-  for deliberate refusals; `BudgetExceededException` derives from it and the benchmark caches'
-  refuse-on-miss throws use it. Every ingestion-path model call that propagates is wrapped:
-  - **The wrap order:** the caller's own cancellation passes through, a refusal passes through, an
-    existing `ModelCallException` is not wrapped twice, and everything else becomes
-    `ModelCallException`, which reaches the caller as `RagError.ModelCallFailed`.
-  - **Wrapped:** `EmbeddingBehavior`, `SemanticChunkingStrategy`, RAPTOR summaries and their
-    embeddings, community reports and their embeddings, graph entity and relationship embeddings,
-    and video frame descriptions.
-  - **Also in it:**
-    - An `HttpClient` timeout, a `TaskCanceledException` with the caller's token not cancelled,
-      is now a model failure. Before, it ended a provider run as if the caller had cancelled.
-    - Embedding wraps check the vector count.
-    - The retry predicate, `FallbackChatClient.IsTransient` and the image parser exempt the marker.
+**Decisions taken on 2026-11-09, each recorded as a comment on its issue:**
+- **#938:** a deliberate refusal fails the document. Add `catch (CallRefusedException) { throw; }`
+  before each degrading catch:
+  - the proposition, resume and late chunkers;
+  - `LlmMetadataExtractionBehavior`, `TagIngestionBehavior` and `SparseEmbeddingBehavior`;
+  - the LLM sanitisers and mind-map extraction.
 
-  Design and plan: `docs/plans/2026-11-09-call-refused-marker-*.md`. The late chunker needed no wrap:
-  it degrades locally. Every test project passed locally, twice, apart from the known local-only E2E
-  failure below; all 15 CI checks passed. On 2026-11-09 the branch was updated from main, so CI re-ran.
+  The full list is the one `ModelCallException`'s remarks give for "catch locally and degrade",
+  plus the two in the issue's comment. It ships as `fix:`, with a CHANGELOG note that
+  budget-limited ingestion now stops when the budget is spent. Next in line; start with
+  brainstorming, which here means a short design.
+- **#937:** `RagError.CallRefused` waits for the next major release, the way `ModelCallFailed`
+  arrived as a `feat!` in #508.
+- **#926:** support SentencePiece in the ONNX reranker with a `TokenizerPath` option, using
+  `Microsoft.ML.Tokenizers`. Check that `bge-reranker-v2-m3` loads and ranks Dutch text sensibly.
+- **#927:** implement RFC 9309 section 2.2 in full. `Crawl-delay` raises `MinimumRequestInterval`
+  and never lowers it. Ships as `fix:`.
 
-**Open decisions, each filed:**
-- **#937:** a deliberate refusal that reaches `PipelineIngestor` still maps to `StorageFailed`. The fix
-  is a `RagError` case, which breaks exhaustive switches.
-- **#938:** components that degrade on a model failure also swallow a refusal: proposition, resume and
-  late chunking, LLM metadata extraction, tag ingestion, sparse embedding, the sanitisers, mind-map
-  extraction. A blown budget does not stop them. The fix is one `catch (CallRefusedException) { throw; }`
-  each, but it changes behaviour.
-- **#932:** `AskAsync` cannot enable MMR or switch off HyDE, multi-query or reranking per call. Needs an
-  API decision.
-- **#926:** the ONNX reranker docs recommend a model it cannot load.
-- **#927:** robots.txt support covers only part of RFC 9309.
+- **#946** (`feat/ask-retrieval-options`, #932):
+  - `RagOptions.Retrieval` takes a full `RetrievalOptions`, which the pipeline passes on unchanged.
+  - The eight short-form fields record when they are assigned. Assigning any of them next to
+    `Retrieval` throws `ArgumentException`, even at the default value.
+  - The `ragnet.query` span is now marked as failed on a conflict and on a failed retrieval.
+  - `HttpRagPipeline` and `GrpcRagPipeline` throw `NotSupportedException` when `Retrieval` is set.
+    This is a stopgap; #944 tracks carrying the options over the wire.
+  - Design and plan: `docs/plans/2026-11-09-ask-retrieval-options-*.md`.
+  - All 79 test projects passed locally, apart from the known E2E failure below. Pack-validate
+    passed 34/34.
+  - A fresh reviewer read the whole branch, and every finding was fixed or filed.
+
+**New issues filed 2026-11-09:**
+- **#944:** the remote clients drop most `RagOptions` and default hybrid search to `true`, where the
+  in-process pipeline defaults it to `false`. The fix needs a decision on the wire format.
+- **#945:** `PromptHardeningAnswerEngineDecorator.ShallowCopy` drops `SkipCompression`,
+  `SendSourcesAsToolResult` and `Retrieval`.
+
+**E2E note:** `FullPipeline_Refine_AnswersQuestion` failed once locally when llama3.2:1b replied
+"I can't help with that." It then passed three times in a row. The cause is the model, not the code.
 
 **Host note:** the BEIR cache (`~/.cache/ragnet-beir`) is not on the Linux agents host, so 119 tests in
 `Rag.NET.Benchmarks.Quality.IntegrationTests` skip there. They are not unprovisioned; the cache lives on
@@ -45,6 +53,11 @@ the Windows workstation.
 
 **Local-only note:** `Rag.NET.E2ETests` `WhatIsMyAddress_WithReporterSettings_*` fails every time
 against the local Ollama model; CI does not run it, cause not investigated.
+
+**Testing note:** `dotnet test Rag.NET.slnx` stops at `tests/Rag.NET.Testing`, which is a library.
+Run each `*Tests.csproj` that `dotnet sln Rag.NET.slnx list` lists, one at a time.
+
+---
 
 **Rijksoverheid demo (#931, #933, #934), for reference.**
 
