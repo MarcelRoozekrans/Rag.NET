@@ -132,6 +132,20 @@ public class VisionProviderFailureTests
     }
 
     /// <summary>
+    /// Any deliberate refusal passes through, not only a blown budget: under the benchmark harness
+    /// the client can be a cache opened refuse-on-miss, and no model was called.
+    /// </summary>
+    [Fact]
+    public async Task ACallRefusal_PropagatesRatherThanBeingWrapped()
+    {
+        var refusal = new CallRefusedException("No cached response; this cache refuses on a miss.");
+
+        var caught = await ParseAndCatchAsync(refusal);
+
+        Assert.Same(refusal, caught);
+    }
+
+    /// <summary>
     /// The wrapping must not have changed the working path: a provider that answers still yields
     /// its description. Without this, a mutation that threw unconditionally would satisfy every
     /// assertion above.

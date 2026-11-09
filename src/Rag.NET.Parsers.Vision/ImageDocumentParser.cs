@@ -75,12 +75,12 @@ public partial class ImageDocumentParser(
             // The caller's token, not a provider failure. Never reclassified.
             throw;
         }
-        catch (BudgetExceededException)
+        catch (CallRefusedException)
         {
-            // This library's own stop signal, raised by a decorator around the client rather than
-            // by the provider. Reclassifying it as a model failure would invite the retry that
-            // FallbackChatClient.IsTransient exists to prevent -- retrying past a spend limit is
-            // the one response a blown budget must never produce.
+            // A deliberate refusal -- a blown budget, or a cache opened refuse-on-miss -- raised by
+            // a decorator around the client instead of calling the provider. Reclassifying it as a
+            // model failure would invite the retry that FallbackChatClient.IsTransient exists to
+            // prevent, and would report a model failure when no model was called.
             throw;
         }
         catch (Exception ex)

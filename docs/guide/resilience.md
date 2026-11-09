@@ -190,7 +190,7 @@ services.AddRagNet(rag =>
 });
 ```
 
-The resolved `IChatClient` is `CostTracking(RateLimited(Fallback(providers)))`. **Why this order:** cheapest gate first — a blown budget throws before consuming a rate permit, and a throttled call waits before starting a fallback sequence (so retries against secondary providers don't multiply your request rate). A `BudgetExceededException` is pinned as **non-transient** by type, so even a fallback chain nested *outside* the budget gate would never treat a blown budget as a provider failure to retry. Each decorator answers `GetService` for its own type, so the stack is probeable layer by layer.
+The resolved `IChatClient` is `CostTracking(RateLimited(Fallback(providers)))`. **Why this order:** cheapest gate first — a blown budget throws before consuming a rate permit, and a throttled call waits before starting a fallback sequence (so retries against secondary providers don't multiply your request rate). A `BudgetExceededException` is pinned as **non-transient** by type, so even a fallback chain nested *outside* the budget gate would never treat a blown budget as a provider failure to retry. The pin is on its base class, `CallRefusedException`, so any deliberate refusal (a blown budget, or a cache that refuses a miss) is treated the same way. Each decorator answers `GetService` for its own type, so the stack is probeable layer by layer.
 
 One estimation caveat specific to this example: the chain mixes OpenAI and Anthropic providers, but estimation (used whenever a provider omits usage counts) is always `cl100k_base` — an OpenAI tokenizer — so estimated entries for the Anthropic fallback leg can deviate systematically from Anthropic's own token accounting.
 
@@ -208,7 +208,7 @@ It follows the same ordering rule as the decorators above — it wraps whatever 
 
 Registering *one* of the two surfaces afterwards used to slip through that check: finding the other one satisfied it, and the late surface was skipped in silence — a retried store and unretried embedding calls, with nothing to see. Since [#195](https://github.com/MarcelRoozekrans/Rag.NET/issues/195) that is caught when the RAG pipeline is resolved, and the exception names the call and the surface it missed. The same check covers `UseRateLimiting` and `UseCostBudgeting`, whose decorators are equally dead if a later registration replaces the surface they wrapped.
 
-Cancellation is never retried: the caller's token flows into every attempt and the default retry predicate excludes `OperationCanceledException`, so a cancelled call fails on its first attempt. `BudgetExceededException` is excluded for the same reason — it is a deliberate kill switch, not a provider blip. Supply a `configure` delegate to replace the default policy; a custom pipeline owns its own predicates and should exclude both too.
+Cancellation is never retried: the caller's token flows into every attempt and the default retry predicate excludes `OperationCanceledException`, so a cancelled call fails on its first attempt. Any `CallRefusedException`, `BudgetExceededException` included, is excluded for the same reason: it is a deliberate refusal, not a provider blip. Supply a `configure` delegate to replace the default policy; a custom pipeline owns its own predicates and should exclude both too.
 
 **Where it sits in the stack.** `UseRateLimiting` and `UseCostBudgeting` decorate the same embedding surface, so call `ConfigureResilience` *after* them to make retry the outermost layer:
 

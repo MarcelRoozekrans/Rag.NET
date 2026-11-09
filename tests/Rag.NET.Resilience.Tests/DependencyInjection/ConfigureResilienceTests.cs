@@ -568,6 +568,31 @@ public class ConfigureResilienceTests
         Assert.Equal(1, inner.Attempts);
     }
 
+    /// <summary>
+    /// Any deliberate refusal is excluded, not only a blown budget: a refuse-on-miss cache will
+    /// refuse the same text on every attempt.
+    /// </summary>
+    [Fact]
+    public async Task CallRefusedException_IsNotRetried()
+    {
+        var inner = new CountingEmbeddingGenerator(
+            int.MaxValue, static () => new CallRefusedException("refused"));
+        var provider = new ServiceCollection()
+            .AddRagNet(rag =>
+            {
+                rag.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(inner);
+                rag.ConfigureResilience();
+            })
+            .BuildServiceProvider();
+
+        var generator = provider.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        await Assert.ThrowsAsync<CallRefusedException>(
+            () => generator.GenerateAsync(["x"], cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(1, inner.Attempts);
+    }
+
     /// <summary>The pipeline is no longer dangling: it is resolvable under the documented name.</summary>
     [Fact]
     public void ConfigureResilience_RegistersThePipelineUnderTheDocumentedName()
