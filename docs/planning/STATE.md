@@ -1,11 +1,34 @@
 # Session State
 
-**Last updated:** 2026-11-09 — **rijksoverheid.nl demo: the eval's answer lists were
-incomplete; with them fixed, dense still stays the chat default.**
+**Last updated:** 2026-11-09 — **#928 fixed (#935) and #930 layer 2 fixed (#936), both green
+and waiting for the operator's merge; #930 layer 1 waits on a design decision.**
 
-**NEXT ACTION: the operator merges the `feat/demo-eval-movers` PR.** #933 (dense as the chat
-default) is merged. This PR makes `--eval` list the questions each variant moves, adds
-`--pool <file>`, and adds 44 judged answer pages to `eval/vragen.json`.
+**NEXT ACTION: design #930 layer 1, option 1 (chosen by the operator on 2026-11-09), on a fresh
+branch from main.** Start with brainstorming: the marker's shape (base exception or interface,
+where it lives in Abstractions), which refusals carry it (`BudgetExceededException`, the
+benchmark caches' refuse-on-miss throws), and the call sites to wrap (`EmbeddingBehavior.cs:89`
+and `:124`, `SemanticChunkingStrategy.cs:82` and `:128`, `LateChunkingStrategy.cs:115`, and the
+`RaptorIngestionBehavior` and `CommunityDetectionBehavior` wraps #504 reverted). Read
+`ModelCallException`'s remarks first; they record why the earlier wraps were reverted. The design
+goes to the operator before building. Separately, the operator merges #935, then #936.
+
+- **#935** (this branch, `chore/state-after-934`): `after_n_builds: 2` for Codecov's status and
+  comment. Verified on its own run: Windows uploaded at 08:05:53 and Ubuntu at 08:10:25, and
+  `codecov/project` was first posted at 08:10:47, green. Nothing was posted in between.
+- **#936** (`fix/ingest-error-passthrough`, from main): `IngestFromProviderAsync` passes the
+  pipeline's own error through instead of re-wrapping it as `StorageFailed`. Content fetch maps
+  to `HttpFailed` or `TransportFailed`, and an `HttpClient` timeout no longer escapes the run as
+  a cancellation. It lacks #935, so it reproduced #928 live: `codecov/project` red at 08:17
+  (−3.93%, one upload in), green at 08:23 (+0.00%). If #935 merges first, rebasing #936 is
+  not needed for correctness.
+- **#930 layer 1:** four options are on the issue (comment of 2026-11-09). The recommendation is
+  option 1: a marker for deliberate refusals, so call-site wraps can let them through, then wrap
+  `EmbeddingBehavior`, the semantic and late chunkers, and re-apply #504's reverted chat wraps.
+  The blocker #504 recorded applies here too: the benchmark `EmbeddingCache` refuses with a plain
+  `InvalidOperationException` (`EmbeddingCache.cs:251`), and `CostTrackingEmbeddingGenerator`
+  throws `BudgetExceededException`.
+
+The demo work below is done; the operator merges, the agent does not.
 
 **What changed the picture.** Under the original labels dense scored Hit@5 0.850 / MRR 0.680,
 and three runs disagreed on which variant led. The per-question list showed variants losing

@@ -1585,4 +1585,160 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Equal(0, result.IngestedCount);
         _ = Assert.Single(result.Errors);
     }
+
+    // #930, layer 2: a failed IngestAsync used to be re-thrown as InvalidOperationException and
+    // caught again as StorageFailed, so a model or parser failure reached Errors labelled as a
+    // storage error, with the real error flattened into a string. The pipeline's own error now
+    // arrives as it is, on both the plain and the hash-store path.
+    public static TheoryData<RagError> PipelineErrors() => new()
+    {
+        new RagError.ModelCallFailed(new InvalidOperationException("HTTP 401")),
+        new RagError.NoParserFound("application/x-unknown"),
+    };
+
+    [Theory]
+    [MemberData(nameof(PipelineErrors))]
+    public async Task AFailedIngest_ReportsThePipelinesOwnError_WithoutAHashStore(RagError pipelineError)
+    {
+        _pipeline.IngestAsync(
+                Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Failure(pipelineError)));
+
+        var result = await _pipeline.IngestFromProviderAsync(MakeProvider(("id-1", "a.txt", "hello", null)),
+            new ProviderId("prov"), cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.FailedCount);
+        Assert.Same(pipelineError, Assert.Single(result.Errors));
+    }
+
+    [Theory]
+    [MemberData(nameof(PipelineErrors))]
+    public async Task AFailedIngest_ReportsThePipelinesOwnError_WithAHashStore(RagError pipelineError)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var hashStore = new SqliteContentHashStore(_dbPath);
+        _pipeline.IngestAsync(
+                Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Failure(pipelineError)));
+
+        var result = await _pipeline.IngestFromProviderAsync(MakeProvider(("id-1", "a.txt", "hello", null)),
+            new ProviderId("prov"), hashStore: hashStore, cancellationToken: ct);
+
+        Assert.Equal(1, result.FailedCount);
+        Assert.Same(pipelineError, Assert.Single(result.Errors));
+
+        // No hash recorded for a failed entry, or the next run would skip it as unchanged.
+        Assert.Null(await hashStore.GetHashAsync(new ProviderId("prov"), new EntryId("id-1"), ct));
+    }
+
+    private static IFileContentProvider MakeProviderWhoseContentThrows(Exception ex)
+    {
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-1"),
+                    FileName: "page.html",
+                    OpenContentAsync: _ => Task.FromException<Stream>(ex))),
+            }.ToAsyncEnumerable());
+        return provider;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ContentThatAnswersWithAnHttpError_IsReportedAsHttpFailed(bool withHashStore)
+    {
+        // A sitemap page that 404s when fetched used to be reported as StorageFailed.
+        var provider = MakeProviderWhoseContentThrows(
+            new HttpRequestException("Not Found", null, System.Net.HttpStatusCode.NotFound));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            hashStore: withHashStore ? new SqliteContentHashStore(_dbPath) : null,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.FailedCount);
+        var error = Assert.IsType<RagError.HttpFailed>(Assert.Single(result.Errors));
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, error.StatusCode);
+        Assert.Equal("Not Found", error.Content);
+        _ = await _pipeline.DidNotReceive().IngestAsync(
+            Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
+            Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ContentThatGetsNoHttpResponse_IsReportedAsTransportFailed(bool withHashStore)
+    {
+        var cause = new HttpRequestException("No such host is known.");
+        var provider = MakeProviderWhoseContentThrows(cause);
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            hashStore: withHashStore ? new SqliteContentHashStore(_dbPath) : null,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.FailedCount);
+        var error = Assert.IsType<RagError.TransportFailed>(Assert.Single(result.Errors));
+        Assert.Same(cause, error.Inner);
+    }
+
+    [Fact]
+    public async Task AHashStoreThatThrows_IsStillReportedAsStorageFailed()
+    {
+        var hashStore = Substitute.For<IContentHashStore>();
+        var cause = new InvalidOperationException("database is locked");
+        hashStore.GetHashAsync(Arg.Any<ProviderId>(), Arg.Any<EntryId>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<string?>(cause));
+
+        var result = await _pipeline.IngestFromProviderAsync(MakeProvider(("id-1", "a.txt", "hello", null)),
+            new ProviderId("prov"), hashStore: hashStore,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.FailedCount);
+        var error = Assert.IsType<RagError.StorageFailed>(Assert.Single(result.Errors));
+        Assert.Same(cause, error.Inner);
+    }
+
+    [Fact]
+    public async Task ContentThatTimesOut_IsReportedAsTransportFailed()
+    {
+        // HttpClient reports its own timeout as a TaskCanceledException. That used to escape the
+        // whole run as if the caller had cancelled it.
+        var timeout = new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.",
+            new TimeoutException());
+
+        var result = await _pipeline.IngestFromProviderAsync(MakeProviderWhoseContentThrows(timeout),
+            new ProviderId("prov"), cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.FailedCount);
+        var error = Assert.IsType<RagError.TransportFailed>(Assert.Single(result.Errors));
+        Assert.Same(timeout, error.Inner);
+    }
+
+    [Fact]
+    public async Task ContentFetchCancelledByTheCaller_StillPropagates()
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-1"),
+                    FileName: "page.html",
+                    OpenContentAsync: async ct =>
+                    {
+                        await cts.CancelAsync();
+                        ct.ThrowIfCancellationRequested();
+                        return Stream.Null;
+                    })),
+            }.ToAsyncEnumerable());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"), cancellationToken: cts.Token));
+    }
 }

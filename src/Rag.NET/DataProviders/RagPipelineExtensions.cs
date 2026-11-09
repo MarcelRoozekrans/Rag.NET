@@ -407,20 +407,28 @@ public static class RagPipelineExtensions
                 }
             }
 
-            var rawStream = await entry.OpenContentAsync(cancellationToken).ConfigureAwait(false);
+            Stream rawStream;
+            try
+            {
+                rawStream = await entry.OpenContentAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ContentFetchError(ex, cancellationToken) is { } fetchError)
+            {
+                errors.Add(fetchError);
+                return EntryOutcome.Failed;
+            }
+
             await using (rawStream.ConfigureAwait(false))
             {
                 if (hashStore is null)
                 {
                     var metadata = BuildMetadata(entry, baseMetadata, providerId);
                     var ingestResult = await pipeline.IngestAsync(rawStream, metadata, options, progress, cancellationToken).ConfigureAwait(false);
-                    if (!ingestResult.IsSuccess)
-                        throw new InvalidOperationException($"Ingestion failed: {ingestResult.Error}");
-                    return EntryOutcome.Ingested;
+                    return Outcome(ingestResult, errors);
                 }
 
                 return await IngestWithHashCheckAsync(pipeline, providerId, entry, hashStore, baseMetadata,
-                    options, progress, rawStream, cancellationToken).ConfigureAwait(false);
+                    options, progress, rawStream, errors, cancellationToken).ConfigureAwait(false);
             }
         }
         // ReservedMetadataKeyException is deliberately excluded alongside cancellation: it is a
@@ -428,6 +436,9 @@ public static class RagPipelineExtensions
         // a per-entry RagError would emit N copies of one bug and still ship a corrupted ranking.
         // Removing that exclusion silently reverts the escape — see the tests named at the throw
         // site in BuildMetadata.
+        // What reaches this catch is a hash-store call, a content stream that failed other than
+        // over HTTP, or a pipeline that threw instead of returning its error. A failed IngestAsync
+        // result never gets here: Outcome passes its error on as it is (#930).
         catch (Exception ex) when (ex is not OperationCanceledException and not ReservedMetadataKeyException)
         {
             errors.Add(new RagError.StorageFailed(ex));
@@ -447,10 +458,22 @@ public static class RagPipelineExtensions
         IngestionOptions? options,
         IProgress<IngestionProgress>? progress,
         Stream rawStream,
+        ConcurrentBag<RagError> errors,
         CancellationToken cancellationToken)
     {
         using var buffer = new MemoryStream();
-        await rawStream.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            // A provider may hand back a stream that is still downloading, so reading it is part
+            // of fetching the content, not a storage operation.
+            await rawStream.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ContentFetchError(ex, cancellationToken) is { } fetchError)
+        {
+            errors.Add(fetchError);
+            return EntryOutcome.Failed;
+        }
+
         var hash = ComputeHash(buffer.GetBuffer(), (int)buffer.Length);
 
         var storedHash = await hashStore.GetHashAsync(providerId, entry.Id, cancellationToken).ConfigureAwait(false);
@@ -470,10 +493,47 @@ public static class RagPipelineExtensions
         var metadata = BuildMetadata(entry, baseMetadata, providerId);
         var ingestResult = await pipeline.IngestAsync(buffer, metadata, options, progress, cancellationToken).ConfigureAwait(false);
         if (!ingestResult.IsSuccess)
-            throw new InvalidOperationException($"Ingestion failed: {ingestResult.Error}");
+            return Outcome(ingestResult, errors); // no hash recorded, so the next run retries it
         await hashStore.SetAsync(providerId, entry.Id, entry.ETag, hash, cancellationToken).ConfigureAwait(false);
         return EntryOutcome.Ingested;
     }
+
+    /// <summary>
+    /// Passes a failed <see cref="IRagPipeline.IngestAsync"/> result's error on as it is. It used to
+    /// be thrown as an <see cref="InvalidOperationException"/> and caught again as
+    /// <see cref="RagError.StorageFailed"/>, so a model or parser failure reached
+    /// <see cref="ProviderIngestionResult.Errors"/> labelled as storage, with the real error
+    /// flattened into a string (#930).
+    /// </summary>
+    private static EntryOutcome Outcome(Result<IngestionResult, RagError> ingestResult, ConcurrentBag<RagError> errors)
+    {
+        if (ingestResult.IsSuccess)
+            return EntryOutcome.Ingested;
+
+        errors.Add(ingestResult.Error);
+        return EntryOutcome.Failed;
+    }
+
+    /// <summary>
+    /// Classifies a failure to fetch an entry's content, or returns <see langword="null"/> for one
+    /// this method does not recognise, which then falls through to
+    /// <see cref="RagError.StorageFailed"/> as before.
+    /// </summary>
+    /// <remarks>
+    /// An HTTP response with an error status becomes <see cref="RagError.HttpFailed"/>: a sitemap
+    /// page that answers 404 is not a storage problem. An <see cref="HttpRequestException"/> with
+    /// no status, or an <see cref="HttpClient"/> timeout, means no response arrived and becomes
+    /// <see cref="RagError.TransportFailed"/>. A timeout is told apart from the caller cancelling
+    /// by the caller's token, which <see cref="RagError.TransportFailed"/> promises never to report.
+    /// </remarks>
+    private static RagError? ContentFetchError(Exception ex, CancellationToken cancellationToken) => ex switch
+    {
+        HttpRequestException { StatusCode: { } status } http => new RagError.HttpFailed(status, http.Message),
+        HttpRequestException http => new RagError.TransportFailed(http),
+        OperationCanceledException timeout when !cancellationToken.IsCancellationRequested
+            => new RagError.TransportFailed(timeout),
+        _ => null,
+    };
 
     private static async Task<List<ProviderEntryOutcome>> CleanupDisappearedAsync(
         IRagPipeline pipeline,
