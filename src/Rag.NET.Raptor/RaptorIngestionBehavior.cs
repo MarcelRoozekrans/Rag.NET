@@ -494,12 +494,41 @@ public sealed class RaptorIngestionBehavior(
         var concatenated = ConcatenateChunkTexts(childChunks);
         var prompt = options.SummaryPrompt.Replace("{chunks}", concatenated, StringComparison.Ordinal);
 
-        var response = await client.GetResponseAsync(
-            [new ChatMessage(ChatRole.User, prompt)], cancellationToken: ct).ConfigureAwait(false);
+        // Both calls classify a failure as a model failure (#930), in the order ModelCallException
+        // documents. A CallRefusedException passes through: under the benchmark harness the client
+        // is a cache opened refuse-on-miss, and #504 had to revert this wrap because, without the
+        // marker, that refusal was relabelled as a failed model call when no model was called.
+        ChatResponse response;
+        try
+        {
+            response = await client.GetResponseAsync(
+                [new ChatMessage(ChatRole.User, prompt)], cancellationToken: ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (CallRefusedException) { throw; }
+        catch (ModelCallException) { throw; }
+        catch (Exception ex)
+        {
+            throw new ModelCallException(
+                $"The model could not summarise RAPTOR cluster {clusterId} at level {level}.", ex);
+        }
+
         var summaryText = response.Text ?? string.Empty;
 
-        var summaryEmbeddings = await emb.GenerateAsync(
-            [summaryText], cancellationToken: ct).ConfigureAwait(false);
+        GeneratedEmbeddings<Embedding<float>> summaryEmbeddings;
+        try
+        {
+            summaryEmbeddings = await emb.GenerateAsync(
+                [summaryText], cancellationToken: ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (CallRefusedException) { throw; }
+        catch (ModelCallException) { throw; }
+        catch (Exception ex)
+        {
+            throw new ModelCallException(
+                $"The embedding model failed for the summary of RAPTOR cluster {clusterId} at level {level}.", ex);
+        }
 
         var childIds = BuildChildIds(childChunks);
         return new EmbeddedChunk
