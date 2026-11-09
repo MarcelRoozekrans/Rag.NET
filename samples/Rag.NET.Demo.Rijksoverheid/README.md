@@ -74,7 +74,9 @@ retrieval variant: dense, hybrid (BM25 + vector), HyDE, hybrid + HyDE, MMR, and 
 `COHERE_API_KEY` set, a multilingual reranker over dense and over hybrid. It prints Hit@1,
 Hit@5, Recall@5 and MRR@10 per variant, scored per page, and how many questions each variant
 ranks better or worse than dense. With 40 questions, a difference of a few hundredths is noise;
-the better/worse counts show whether a gain is broad or rides on two questions.
+the better/worse counts show whether a gain is broad or rides on two questions. Below the table,
+it lists each question a variant moved, with the rank of the first answer page before and after
+and the page the variant ranked first instead.
 
 MMR is in the list because the site publishes one FAQ answer under up to four theme paths:
 four documents with the same text, which can fill the top 5 with a single answer.
@@ -84,27 +86,33 @@ not copied from page titles. A question whose page was not ingested is dropped a
 
 ### Results
 
-One run on 2026-11-08 through OpenRouter, with `openai/text-embedding-3-small` embeddings and
-`openai/gpt-4o-mini` writing the HyDE passages. It ingested 1,018 pages with none failed, and
-all 40 questions had their answer page in the index. No Cohere key, so no reranker variants.
+Two runs on 2026-11-09 through OpenRouter, with `openai/text-embedding-3-small` embeddings and
+`openai/gpt-4o-mini` writing the HyDE passages. They ingested 1,021 and 1,014 pages with none
+failed, and all 40 questions had an answer page in the index. No Cohere key, so no reranker
+variants. Where the runs differ, the table shows both values.
 
 | variant | Hit@1 | Hit@5 | Recall@5 | MRR@10 | MRR better / worse vs dense |
 |---|---:|---:|---:|---:|---:|
-| dense | 0.575 | 0.850 | 0.799 | 0.680 | — |
-| hybrid | 0.550 | 0.775 | 0.732 | 0.657 | 3 / 7 |
-| hyde | 0.575 | 0.875 | 0.837 | 0.705 | 6 / 7 |
-| hybrid+hyde | 0.625 | 0.875 | 0.807 | 0.720 | 7 / 5 |
-| mmr | 0.600 | 0.850 | 0.784 | 0.698 | 6 / 5 |
+| dense | 0.825 | 0.975 | 0.872 | 0.884–0.886 | — |
+| hybrid | 0.800 | 0.950 | 0.795 | 0.868 | 2 / 6, 2 / 6 |
+| hyde | 0.850–0.875 | 0.975–1.000 | 0.887–0.892 | 0.905–0.913 | 5 / 3, 5 / 2 |
+| hybrid+hyde | 0.850–0.875 | 0.975 | 0.848–0.861 | 0.893–0.912 | 5 / 4, 6 / 4 |
+| mmr | 0.800–0.825 | 0.975–1.000 | 0.786–0.806 | 0.881–0.902 | 4 / 2, 4 / 1 |
 
-Hybrid is the one clear result: it ranks seven questions worse than dense and three better.
-HyDE, MMR and hybrid + HyDE each move about as many questions up as down, so their higher
-averages come from a handful of questions and may not hold on another run. HyDE also costs a
-chat call before every answer. The chat mode therefore uses dense retrieval with the top 5
-chunks.
+Dense finds an answer page in its top 5 for 39 of the 40 questions and ranks one first for 33.
+That leaves the other variants little to improve. Hybrid ranks more questions worse than better
+in every run so far. HyDE moves a few more questions up than down, but five against two or three
+on 40 questions can still be chance, and it costs a chat call before every answer. MMR's lower
+Recall@5 is by design: it keeps the copies of one FAQ answer out of the top 5. The chat mode
+therefore uses dense retrieval with the top 5 chunks.
 
-Six questions had no answer page in dense's top 5, among them *Hoeveel wiet mag ik thuis
-hebben?* (answered by the page on softdrugs and coffeeshops) and *Wat is een pgb?*. `--eval`
-prints the full list.
+**Why the answer lists grew.** The first runs scored dense at Hit@5 0.850 and MRR@10 0.680.
+Listing the questions each variant moved showed variants losing points for pages that do answer
+the question but were missing from `eval/vragen.json`. `--pool <file>` writes every page any
+variant ranks in its top 5. In one run, 295 such pages were not in the answer lists. Each was
+judged against its question from the full page text, and the 44 that answer it were added. A page
+on the same topic that does not answer the question does not count. One wrongly rejected page
+turned up in a spot check, so the lists may still miss a few answers.
 
 Example questions:
 

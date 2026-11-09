@@ -1,18 +1,25 @@
 # Session State
 
-**Last updated:** 2026-11-08 — **rijksoverheid.nl demo: the eval ran, dense stays the chat
-default.**
+**Last updated:** 2026-11-09 — **rijksoverheid.nl demo: the eval's answer lists were
+incomplete; with them fixed, dense still stays the chat default.**
 
-**NEXT ACTION: the operator merges the `feat/demo-retrieval-defaults` PR.** It makes dense
-retrieval (top 5, no hybrid, no HyDE) explicit in the sample's chat loop and puts the eval table
-in the sample README. #931 (OpenRouter support) is merged.
+**NEXT ACTION: the operator merges the `feat/demo-eval-movers` PR.** #933 (dense as the chat
+default) is merged. This PR makes `--eval` list the questions each variant moves, adds
+`--pool <file>`, and adds 44 judged answer pages to `eval/vragen.json`.
 
-**The eval (one run, 2026-11-08, OpenRouter, 1,018 pages, 40/40 questions answerable):** dense
-Hit@5 0.850 / MRR 0.680. Hybrid is the only clear result, and it is worse: 3 better / 7 worse.
-hyde 6/7, mmr 6/5, hybrid+hyde 7/5 (best Hit@1 0.625): within noise. The operator chose dense.
-Six questions miss dense's top 5. Next lever, if anyone picks this up: a reranker (needs a
-Cohere key; the ONNX one cannot load a multilingual model, #926). GraphRAG and RAPTOR stay ruled
-out.
+**What changed the picture.** Under the original labels dense scored Hit@5 0.850 / MRR 0.680,
+and three runs disagreed on which variant led. The per-question list showed variants losing
+points for pages that do answer the question but were not labelled. All 295 unlabelled pages in
+one run's top-5 pool were judged from full page text: 44 answer their question. One false
+negative turned up in a spot check, so a few may still be missing. Judging scratch files lived
+in /tmp and are gone with the machine; `--pool` regenerates the pool.
+
+**With the fixed labels (two runs, 2026-11-09):** dense Hit@1 0.825, Hit@5 0.975 (39/40), MRR
+0.885. Hybrid 2/6 worse in both runs, worse in all five runs so far. HyDE 5/3 and 5/2, MRR
++0.02–0.03, within chance on 40 questions and a chat call per answer. MMR 4/2 and 4/1, lower
+Recall@5 by design. Dense stays. Run-to-run noise comes mostly from the crawl: each run ingests
+1,008–1,021 pages. Revisit with more questions, or a reranker once a Cohere key exists (#926 for
+the ONNX one).
 
 **Found on the way:** #932, `AskAsync` cannot enable MMR or switch off HyDE, multi-query or
 reranking per call; `RagOptions` carries only eight retrieval fields. Needs an API decision.
