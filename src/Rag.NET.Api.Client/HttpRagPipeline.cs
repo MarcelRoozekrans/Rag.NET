@@ -76,6 +76,8 @@ public sealed class HttpRagPipeline : IRagPipeline
         RagOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfRetrievalSet(options);
+
         var request = new AskRequest
         {
             Query = query,
@@ -99,6 +101,8 @@ public sealed class HttpRagPipeline : IRagPipeline
         RagOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        ThrowIfRetrievalSet(options);
+
         var encodedQuery = Uri.EscapeDataString(query);
         using var response = await _httpClient.GetAsync(
             $"/rag/ask/stream?query={encodedQuery}",
@@ -140,4 +144,14 @@ public sealed class HttpRagPipeline : IRagPipeline
                 Metadata = dto.Metadata.ToDictionary(kv => kv.Key, kv => (MetadataValue)kv.Value, StringComparer.Ordinal)
             }
         };
+
+    // Stopgap until #944: the wire contract has no field for RagOptions.Retrieval, and dropping
+    // it would silently run a different retrieval than the caller asked for.
+    private static void ThrowIfRetrievalSet(RagOptions? options)
+    {
+        if (options?.Retrieval is not null)
+            throw new NotSupportedException(
+                "HttpRagPipeline cannot send RagOptions.Retrieval to the server yet; see issue #944. "
+                + "Use the short-form RagOptions fields, or call an in-process RagPipeline.");
+    }
 }

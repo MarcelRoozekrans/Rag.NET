@@ -66,6 +66,8 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
         RagOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfRetrievalSet(options);
+
         var request = new AskRequest
         {
             Query = query,
@@ -87,6 +89,8 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
         RagOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        ThrowIfRetrievalSet(options);
+
         var request = new AskRequest
         {
             Query = query,
@@ -126,5 +130,15 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
             Chunk = chunk,
             Score = proto.Score
         };
+    }
+
+    // Stopgap until #944: the wire contract has no field for RagOptions.Retrieval, and dropping
+    // it would silently run a different retrieval than the caller asked for.
+    private static void ThrowIfRetrievalSet(RagOptions? options)
+    {
+        if (options?.Retrieval is not null)
+            throw new NotSupportedException(
+                "GrpcRagPipeline cannot send RagOptions.Retrieval to the server yet; see issue #944. "
+                + "Use the short-form RagOptions fields, or call an in-process RagPipeline.");
     }
 }

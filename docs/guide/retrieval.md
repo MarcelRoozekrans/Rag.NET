@@ -1042,6 +1042,8 @@ var response = await pipeline.AskAsync("What is our refund policy?", new RagOpti
 
 The two forms do not mix. If `Retrieval` is set and any of the eight short-form fields was assigned, even to its default value as in `TopK = 5`, the call throws `ArgumentException` before any retrieval runs. Move those values into `Retrieval`.
 
+The remote clients, `HttpRagPipeline` and `GrpcRagPipeline`, cannot send `Retrieval` to the server yet, so they throw `NotSupportedException` when it is set ([#944](https://github.com/MarcelRoozekrans/Rag.NET/issues/944)).
+
 ### What the model actually receives
 
 `ChatAnswerEngine.BuildMessagesAsync` builds the context block by joining the retrieved sources with `"\n\n---\n\n"`, labelling each one `[Source N]`, and sends the whole block as the final **user** message alongside the question:

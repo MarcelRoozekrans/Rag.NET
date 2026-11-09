@@ -19,7 +19,7 @@ namespace Rag.NET.Models.Options;
 /// <para>
 /// The two forms do not mix. Assigning any of the eight fields, even to its default value, and
 /// setting <see cref="Retrieval"/> makes <c>AskAsync</c> and <c>AskStreamingAsync</c> throw
-/// <see cref="ArgumentException"/>.
+/// <see cref="ArgumentException"/>. See <see cref="Retrieval"/> for the remote clients.
 /// </para>
 /// </remarks>
 public sealed class RagOptions
@@ -41,9 +41,21 @@ public sealed class RagOptions
     /// <c>UseHyde = false</c>, <c>UseMultiQuery = false</c>, <c>UseReranking = false</c> and the rest.
     /// </summary>
     /// <remarks>
-    /// Setting this together with any of the short-form fields, even to its default value, makes
-    /// <c>AskAsync</c> and <c>AskStreamingAsync</c> throw <see cref="ArgumentException"/> before any
-    /// retrieval runs. Move those values into this object instead.
+    /// <para>
+    /// Setting this together with any of the short-form fields, even to its default value, makes the
+    /// in-process <c>RagPipeline</c>'s <c>AskAsync</c> and <c>AskStreamingAsync</c> throw
+    /// <see cref="ArgumentException"/> before any retrieval runs. Move those values into this
+    /// object instead.
+    /// </para>
+    /// <para>
+    /// The remote clients, <c>HttpRagPipeline</c> and <c>GrpcRagPipeline</c>, cannot send this to
+    /// the server yet and throw <see cref="NotSupportedException"/> when it is set (issue #944).
+    /// </para>
+    /// <para>
+    /// Serializing a <see cref="RagOptions"/> writes the short-form fields too, so deserializing
+    /// that JSON assigns them. A round-tripped instance with this property set therefore throws.
+    /// Serialize the <see cref="RetrievalOptions"/> separately instead.
+    /// </para>
     /// </remarks>
     public RetrievalOptions? Retrieval { get; set; }
     /// <summary>
