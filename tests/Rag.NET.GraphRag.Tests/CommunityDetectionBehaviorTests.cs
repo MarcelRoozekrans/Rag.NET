@@ -641,6 +641,105 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
     }
 
 
+    // ── Failure classification (#930, re-applying the wrap #504 reverted) ─────
+
+    private static ValueTask<IngestionResult> Next(IngestionContext c, CancellationToken _) =>
+        ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 });
+
+    private async Task RunWithFailingReportChatAsync(Exception thrown, CancellationToken ct)
+    {
+        await PopulateGraphStore();
+        _chatClient
+            .GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ChatResponse>>(_ => throw thrown);
+        SetupEmbedder(4);
+        var sut = new CommunityDetectionBehavior(_chatClient, _embedder, _graphStore, new GraphRagOptions { Enabled = true });
+
+        await sut.HandleAsync(CreateContext(), ct, Next);
+    }
+
+    private async Task RunWithFailingReportEmbedderAsync(Exception thrown)
+    {
+        await PopulateGraphStore();
+        SetupChatClient("Report text");
+        _embedder
+            .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(_ => throw thrown);
+        var sut = new CommunityDetectionBehavior(_chatClient, _embedder, _graphStore, new GraphRagOptions { Enabled = true });
+
+        await sut.HandleAsync(CreateContext(), TestContext.Current.CancellationToken, Next);
+    }
+
+    [Fact]
+    public async Task ReportChatFailure_SurfacesAsModelCallException()
+    {
+        var provider = new HttpRequestException("HTTP 429 (Too Many Requests)");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(
+            () => RunWithFailingReportChatAsync(provider, TestContext.Current.CancellationToken));
+
+        Assert.Same(provider, ex.InnerException);
+        Assert.Contains("report for community", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The regression #504 hit: the GraphRAG benchmark replays reports from a cache opened
+    /// refuse-on-miss, and its refusal was relabelled as "the model could not generate a community
+    /// report" when no model was called.
+    /// </summary>
+    [Fact]
+    public async Task ReportChat_CacheRefusal_PassesThroughAsThatExactType()
+    {
+        var refusal = new CallRefusedException("No cached GraphRAG response; this cache refuses on a miss.");
+
+        var ex = await Assert.ThrowsAsync<CallRefusedException>(
+            () => RunWithFailingReportChatAsync(refusal, TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task ReportChat_BlownBudget_PassesThroughUnwrapped()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            () => RunWithFailingReportChatAsync(refusal, TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task ReportChat_Cancellation_PassesThrough()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => RunWithFailingReportChatAsync(new OperationCanceledException(cts.Token), cts.Token));
+    }
+
+    [Fact]
+    public async Task ReportEmbeddingFailure_SurfacesAsModelCallException()
+    {
+        var provider = new HttpRequestException("HTTP 503 (Service Unavailable)");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => RunWithFailingReportEmbedderAsync(provider));
+
+        Assert.Same(provider, ex.InnerException);
+        Assert.Contains("community reports", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ReportEmbedding_CacheRefusal_PassesThroughAsThatExactType()
+    {
+        var refusal = new CallRefusedException("Never prefetched; this cache refuses on a miss.");
+
+        var ex = await Assert.ThrowsAsync<CallRefusedException>(() => RunWithFailingReportEmbedderAsync(refusal));
+
+        Assert.Same(refusal, ex);
+    }
+
     private static IngestionContext CreateContext()
     {
         return new IngestionContext

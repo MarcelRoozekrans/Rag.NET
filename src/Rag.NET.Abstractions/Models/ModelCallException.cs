@@ -29,9 +29,10 @@ namespace Rag.NET.Models;
 /// </para>
 /// <para>
 /// <b>Which components throw this.</b> Vision parsing, <c>EmbeddingBehavior</c>,
-/// <c>SemanticChunkingStrategy</c>, <c>RaptorIngestionBehavior</c> and
-/// <c>CommunityDetectionBehavior</c> — the ingestion-path components whose model failures
-/// propagate. The rest — proposition, resume and late chunking, graph entity extraction, mind-map
+/// <c>SemanticChunkingStrategy</c>, <c>RaptorIngestionBehavior</c>,
+/// <c>CommunityDetectionBehavior</c>, and <c>GraphEntityExtractionBehavior</c>'s entity and
+/// relationship embedding — the ingestion-path model calls whose failures propagate. The rest —
+/// proposition, resume and late chunking, graph entity extraction's chat call, mind-map
 /// extraction, both LLM sanitisers, and core's own metadata extraction — catch locally and degrade,
 /// so their failures never reach <c>PipelineIngestor</c>.
 /// </para>

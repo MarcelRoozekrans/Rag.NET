@@ -89,7 +89,10 @@ Call sites:
   locally, like the components `ModelCallException`'s remarks list. Degrading components that
   swallow a refusal are tracked in #938.
 - `RaptorIngestionBehavior`: the summary chat call (`:497`) and its embedding (`:501`).
-- `CommunityDetectionBehavior`: the report chat call (`:254`).
+- `CommunityDetectionBehavior`: the report chat call (`:254`) and the report embedding (`:485`).
+- `GraphEntityExtractionBehavior`: the entity and relationship embedding calls (`:312`, `:345`).
+  Its extraction chat call degrades locally, but these two propagated. Added during
+  implementation; #930's survey missed them.
 
 **Bringing the existing code in line:**
 
