@@ -1,3 +1,12 @@
+# build-test uploads one report per leg (ubuntu-latest and windows-latest, ci.yml). Without
+# after_n_builds Codecov posts its status and comment on the first upload and compares half a
+# report with main's full one, which shows as a false coverage drop until the second leg lands
+# (#928). If the number of uploads per commit changes, change both counts with it.
+codecov:
+  notify:
+    after_n_builds: 2
+comment:
+  after_n_builds: 2
 coverage:
   status:
     project:
