@@ -11,7 +11,8 @@ namespace Rag.NET.Security;
 /// Detects and redacts PII from chunk text using an LLM call.
 /// Runs after <see cref="PiiChunkSanitiser"/> when both are registered.
 /// Falls back to <see cref="PiiChunkSanitiser"/> (default options) on LLM failure.
-/// Never throws — returns original (or regex-sanitised) text on failure.
+/// Returns original (or regex-sanitised) text on failure. A deliberate refusal
+/// (<see cref="CallRefusedException"/>) and cancellation propagate instead.
 /// </summary>
 public sealed partial class LlmPiiChunkSanitiser(
     IChatClient chatClient,

@@ -220,7 +220,7 @@ services.AddRagNet(rag => rag.UsePropositionChunking(o =>
 
 For Parent Document Retrieval users the recommended setup is a **non-LLM parent chunker** (e.g. `RecursiveChunkingStrategy` or `TokenAwareChunkingStrategy`) as the registered strategy, with proposition chunks maintained as a separate index (dual-index setup via `EmitParentPassages`).
 
-**Failure fallback:** if the LLM call fails, the response is not valid JSON, or no usable propositions survive filtering, the strategy logs a warning and emits the passage itself as a single chunk (`chunk.kind = "passage"`) — ingestion never loses content and never throws for one bad passage. Cancellation is always propagated, never swallowed.
+**Failure fallback:** if the LLM call fails, the response is not valid JSON, or no usable propositions survive filtering, the strategy logs a warning and emits the passage itself as a single chunk (`chunk.kind = "passage"`) — ingestion never loses content and never throws for one bad passage. Cancellation is always propagated, never swallowed, and so is a deliberate refusal such as a spent cost budget (`CallRefusedException`): it fails the document rather than storing it as passages (see [Cost budgeting](resilience.md#cost-budgeting)).
 
 **Cost:** one LLM call per `MaxPassageTokens`-sized passage at ingest time. Proposition chunking trades ingest cost and chunk count for maximum retrieval precision.
 
@@ -277,7 +277,7 @@ What is *not* refused, and used to be: `\n`, `\t` and `\r` are substituted with 
 
 A refusal is not an error you see: it takes the fallback below, so a CJK or NFD document is chunked and embedded normally and simply does not get late chunking's whole-document context. The generator's exception message names the direction the length moved and the cause it implies, and `LateChunkingStrategy` logs it at Warning.
 
-**Fallback semantics:** if the token-embedding generator fails (or returns a matrix violating its contract), the section is still chunked into the same cl100k token windows — the chunks simply carry **no precomputed embedding** and are embedded normally downstream by the pipeline's regular embedder. Ingestion never loses content; cancellation is always propagated.
+**Fallback semantics:** if the token-embedding generator fails (or returns a matrix violating its contract), the section is still chunked into the same cl100k token windows — the chunks simply carry **no precomputed embedding** and are embedded normally downstream by the pipeline's regular embedder. Ingestion never loses content; cancellation is always propagated, and so is a deliberate refusal such as a spent cost budget (`CallRefusedException`), which fails the document.
 
 **Storage-dimension caveat:** a precomputed embedding whose dimension does not match the vector store's configured dimension fails at **storage time with a backend-side error** (e.g. a pgvector or Qdrant server rejection), not a Rag.NET-owned message. Make sure the ONNX model's hidden dimension matches the collection/table dimension you provisioned.
 

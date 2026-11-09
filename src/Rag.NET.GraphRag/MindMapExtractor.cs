@@ -40,7 +40,8 @@ public sealed partial class MindMapExtractor
     /// Extract a mind-map tree from <paramref name="text"/>. If an IGraphStore was provided,
     /// nodes are written as GraphEntity (Type = "mind_map_node") and edges as GraphRelationship
     /// (Description = "has_subtopic"), all tagged with <paramref name="documentId"/>.
-    /// Returns an empty root node on LLM or parse failure (never throws).
+    /// Returns an empty root node on LLM or parse failure. A deliberate refusal
+    /// (<see cref="CallRefusedException"/>) and cancellation propagate instead.
     /// </summary>
     public async Task<MindMapNode> ExtractAsync(string text, string documentId, CancellationToken ct)
     {

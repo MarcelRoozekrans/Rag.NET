@@ -41,7 +41,9 @@ namespace Rag.NET.Models;
 /// proposition, resume and late chunking, graph entity extraction's chat call, mind-map
 /// extraction, both LLM sanitisers, core's own metadata extraction, tag ingestion and sparse
 /// embedding — catch locally and degrade, so their failures never reach <c>PipelineIngestor</c>.
-/// That catch also takes a deliberate refusal, which is tracked as #938.
+/// Each of those catches rethrows a <see cref="CallRefusedException"/> first, so a deliberate
+/// refusal fails the document instead of being ingested in degraded form (#938). The same
+/// degrading catches on the query path do not yet; that is tracked as #948.
 /// </para>
 /// <para>
 /// <b>A call-site <c>catch</c> cannot tell a provider failure from a decorator's refusal by
