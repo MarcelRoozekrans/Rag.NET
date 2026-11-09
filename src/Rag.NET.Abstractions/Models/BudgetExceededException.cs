@@ -8,13 +8,14 @@ namespace Rag.NET.Models;
 /// <summary>
 /// Thrown by the cost-budgeting decorators when the recorded spend in a window has reached
 /// its configured limit: the call is blocked before it starts. Deliberately loud — this is
-/// the one resilience feature whose job is to throw.
+/// the one resilience feature whose job is to throw. A <see cref="CallRefusedException"/>, so
+/// call-site wraps, retries and provider fallback all let it through untouched.
 /// </summary>
 /// <param name="window">The exhausted window.</param>
 /// <param name="limit">The configured limit for that window.</param>
 /// <param name="spend">The recorded spend that reached the limit.</param>
 public sealed class BudgetExceededException(CostWindow window, decimal limit, decimal spend)
-    : InvalidOperationException(BuildMessage(window, limit, spend))
+    : CallRefusedException(BuildMessage(window, limit, spend))
 {
     /// <summary>The exhausted window (<see cref="CostWindow.Day"/> or <see cref="CostWindow.Month"/>).</summary>
     public CostWindow Window { get; } = window;

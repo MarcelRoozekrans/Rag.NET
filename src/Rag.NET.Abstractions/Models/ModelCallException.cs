@@ -28,30 +28,27 @@ namespace Rag.NET.Models;
 /// <see cref="RagError.TransportFailed"/> already documents.
 /// </para>
 /// <para>
-/// <b>Only vision parsing throws this today, and the reason the others do not is a finding rather
-/// than a gap.</b> Of the ingestion-path components that call a model, most — proposition and
-/// resume chunking, graph entity extraction, mind-map extraction, both LLM sanitisers, and core's
-/// own metadata extraction — already catch locally and degrade, so their failures never reach
-/// <c>PipelineIngestor</c> and were never misclassified. Only <c>RaptorIngestionBehavior</c> and
-/// <c>CommunityDetectionBehavior</c> propagate.
+/// <b>Which components throw this.</b> Vision parsing, <c>EmbeddingBehavior</c>,
+/// <c>SemanticChunkingStrategy</c>, <c>RaptorIngestionBehavior</c> and
+/// <c>CommunityDetectionBehavior</c> — the ingestion-path components whose model failures
+/// propagate. The rest — proposition, resume and late chunking, graph entity extraction, mind-map
+/// extraction, both LLM sanitisers, and core's own metadata extraction — catch locally and degrade,
+/// so their failures never reach <c>PipelineIngestor</c>.
 /// </para>
 /// <para>
-/// <b>Those two were wrapped, and the wrap was reverted, because a call-site <c>catch</c> cannot
-/// tell a provider failure from a decorator's refusal.</b> The <c>IChatClient</c> they hold is
-/// frequently not a provider at all: under the benchmark harness it is a cache opened
-/// refuse-on-miss, which throws <em>instead of</em> calling the model, carrying a message that is
-/// the experiment's protection. Wrapping relabelled that as "the model could not generate a
-/// community report" when no model was called, and two guards that pin the refusal by type failed.
-/// The same hazard applies to <see cref="BudgetExceededException"/>, which
-/// <c>FallbackChatClient.IsTransient</c> already pins by type so a blown budget cannot trigger a
-/// retry past the limit.
+/// <b>A call-site <c>catch</c> cannot tell a provider failure from a decorator's refusal by
+/// shape, which is why the RAPTOR and community-detection wraps were first reverted (#504).</b> The
+/// client a component holds is frequently not a provider at all: under the benchmark harness it is
+/// a cache opened refuse-on-miss, which throws <em>instead of</em> calling the model. Wrapping that
+/// relabelled the experiment's protection as "the model could not generate a community report"
+/// when no model was called. <see cref="CallRefusedException"/> is the seam that was missing
+/// (#930): a deliberate refusal derives from it, <see cref="BudgetExceededException"/> included.
 /// </para>
 /// <para>
-/// So a component should throw this only where the call really is a provider call and the
-/// deliberate signals are let through — the vision parser rethrows both cancellation and
-/// <see cref="BudgetExceededException"/> untouched before translating anything else. Extending it
-/// to the two propagating behaviours needs a seam that can distinguish a decorator's refusal, which
-/// does not exist yet; that is recorded on #504 rather than guessed at.
+/// So every wrap follows one order: rethrow <see cref="OperationCanceledException"/>, rethrow
+/// <see cref="CallRefusedException"/>, rethrow an existing <see cref="ModelCallException"/> so a
+/// nested wrap does not wrap twice, and translate anything else into this, keeping the original as
+/// <see cref="Exception.InnerException"/>.
 /// </para>
 /// </remarks>
 /// <param name="message">What failed, and where.</param>
