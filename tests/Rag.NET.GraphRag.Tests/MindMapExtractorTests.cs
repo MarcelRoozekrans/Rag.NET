@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using Rag.NET.Models;
 using Xunit;
 
 namespace Rag.NET.GraphRag.Tests;
@@ -149,5 +150,21 @@ public class MindMapExtractorTests
             Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
         await _chatClient.DidNotReceive().GetResponseAsync(
             Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>A deliberate refusal is not a failed call: no empty root, the document fails (#938).</summary>
+    [Fact]
+    public async Task ExtractAsync_CallRefusal_PropagatesUnwrapped()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        _chatClient.GetResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(refusal);
+        var sut = CreateSut();
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            () => sut.ExtractAsync("Some text about ML.", "doc-1", TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
     }
 }

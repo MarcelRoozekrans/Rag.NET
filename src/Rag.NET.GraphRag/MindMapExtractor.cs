@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Graph;
+using Rag.NET.Models;
 
 namespace Rag.NET.GraphRag;
 
@@ -57,6 +58,11 @@ public sealed partial class MindMapExtractor
             responseText = response.Text;
         }
         catch (OperationCanceledException)
+        {
+            throw;
+        }
+        // A deliberate refusal is not a model failure: it fails the document instead of degrading it (#938).
+        catch (CallRefusedException)
         {
             throw;
         }
