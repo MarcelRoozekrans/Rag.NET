@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.4.1...v1.5.0) (2026-11-09)
+
+
+### Features
+
+* **core:** mark deliberate refusals so model-call failures stop reporting as StorageFailed ([#941](https://github.com/MarcelRoozekrans/Rag.NET/issues/941)) ([a4229da](https://github.com/MarcelRoozekrans/Rag.NET/commit/a4229dac755bba9bbdf9e9140bb72386566a1243))
+
 ## [1.4.1](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.4.0...v1.4.1) (2026-11-09)
 
 
