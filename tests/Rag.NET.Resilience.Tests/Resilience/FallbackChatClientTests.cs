@@ -345,6 +345,17 @@ public class FallbackChatClientTests
         Assert.False(FallbackChatClient.IsTransient(ex));
     }
 
+    [Fact]
+    public void IsTransient_AnyCallRefusal_IsNotTransient_EvenWhenItsMessageReadsTransient()
+    {
+        // A refuse-on-miss cache called no model, so there is nothing for the next provider to
+        // answer instead. The message carries a transient keyword on purpose: the type check has
+        // to run before the keyword match, or wording alone would start a fallback.
+        var ex = new Rag.NET.Models.CallRefusedException("cache miss: upstream unavailable");
+
+        Assert.False(FallbackChatClient.IsTransient(ex));
+    }
+
     /// <summary>
     /// A provider returning <c>finish_reason: "error"</c> is a provider outage, so it must reach
     /// the next client rather than propagating.

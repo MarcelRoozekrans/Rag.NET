@@ -79,6 +79,52 @@ public sealed class EmbeddingBehavior : IIngestionBehavior
     }
 
     /// <summary>
+    /// Calls the embedder once and checks it returned one vector per text, classifying any failure
+    /// as a model failure (#930).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without this, a rate-limited or failing embedder reached <c>PipelineIngestor</c>'s catch-all
+    /// and was reported as <see cref="RagError.StorageFailed"/>, sending an operator to a vector
+    /// store that had not been asked to do anything.
+    /// </para>
+    /// <para>
+    /// The order of the catches is the contract <see cref="ModelCallException"/> documents.
+    /// The caller's cancellation and a <see cref="CallRefusedException"/> — a blown budget, a cache
+    /// that refuses a miss — pass through untouched: neither is a model failure. A cancellation the
+    /// caller did not ask for, such as an <c>HttpClient</c> timeout, is the provider failing, so it
+    /// is translated rather than allowed to end an ingestion run as if the caller had cancelled. An
+    /// embedder that already threw <see cref="ModelCallException"/> is not wrapped twice. A wrong
+    /// vector count is inside the wrap on purpose: the generator answered, and answered wrongly.
+    /// </para>
+    /// </remarks>
+    /// <param name="texts">The texts to embed.</param>
+    /// <param name="where">Where this call sits, for messages; starts with a space.</param>
+    /// <param name="ct">The caller's token.</param>
+    private async Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+        List<string> texts, string where, CancellationToken ct)
+    {
+        try
+        {
+            var generated = await Embedder.GenerateAsync(texts, cancellationToken: ct).ConfigureAwait(false);
+            if (generated.Count != texts.Count)
+            {
+                throw new InvalidOperationException(
+                    $"Embedding generator returned {generated.Count} embeddings for {texts.Count} inputs{where}.");
+            }
+
+            return generated;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (CallRefusedException) { throw; }
+        catch (ModelCallException) { throw; }
+        catch (Exception ex)
+        {
+            throw new ModelCallException($"The embedding model failed{where}.", ex);
+        }
+    }
+
+    /// <summary>
     /// The pre-batching fast path: all pending texts embed in one generator call.
     /// Documents at or below <see cref="IngestionOptions.EmbedBatchSize"/> pending
     /// chunks always take this path, preserving the original single-call semantics.
@@ -86,12 +132,8 @@ public sealed class EmbeddingBehavior : IIngestionBehavior
     private async Task<ReadOnlyMemory<float>[]> EmbedSingleBatchAsync(
         IngestionContext ctx, List<string> texts, CancellationToken ct)
     {
-        var generated = await Embedder.GenerateAsync(texts, cancellationToken: ct).ConfigureAwait(false);
-        if (generated.Count != texts.Count)
-        {
-            throw new InvalidOperationException(
-                $"Embedding generator returned {generated.Count} embeddings for {texts.Count} inputs (document '{ctx.Metadata.DocumentId.Value}').");
-        }
+        var generated = await GenerateAsync(
+            texts, $" (document '{ctx.Metadata.DocumentId.Value}')", ct).ConfigureAwait(false);
 
         var vectors = new ReadOnlyMemory<float>[texts.Count];
         for (var i = 0; i < texts.Count; i++)
@@ -121,12 +163,10 @@ public sealed class EmbeddingBehavior : IIngestionBehavior
         {
             var start = batch * options.EmbedBatchSize;
             var batchTexts = texts.GetRange(start, Math.Min(options.EmbedBatchSize, texts.Count - start));
-            var generated = await Embedder.GenerateAsync(batchTexts, cancellationToken: token).ConfigureAwait(false);
-            if (generated.Count != batchTexts.Count)
-            {
-                throw new InvalidOperationException(
-                    $"Embedding generator returned {generated.Count} embeddings for {batchTexts.Count} inputs in batch {batch + 1}/{batchCount} (document '{ctx.Metadata.DocumentId.Value}').");
-            }
+            var generated = await GenerateAsync(
+                batchTexts,
+                $" in batch {batch + 1}/{batchCount} (document '{ctx.Metadata.DocumentId.Value}')",
+                token).ConfigureAwait(false);
 
             // Thread safety: each batch writes only its own disjoint index range
             // [start, start + batchTexts.Count) of the shared array — no two batches

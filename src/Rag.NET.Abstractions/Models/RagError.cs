@@ -57,8 +57,9 @@ public abstract record RagError
     public sealed record TransportFailed(Exception Inner) : RagError;
 
     /// <summary>
-    /// A call to a language model failed — the provider returned an error, rate-limited the
-    /// request, or answered with something its SDK could not read.
+    /// A call to a model failed — a chat completion or an embedding: the provider returned an
+    /// error, rate-limited or timed out the request, or answered with something its SDK could not
+    /// read.
     /// <para>
     /// Distinct from <see cref="StorageFailed"/>, which covers an <c>IVectorStore</c>/persistence
     /// operation. Before this case existed every non-parser ingestion failure was reported as
@@ -68,7 +69,7 @@ public abstract record RagError
     /// <para>
     /// Distinct from <see cref="HttpFailed"/> and <see cref="TransportFailed"/> in <i>what</i>
     /// failed rather than in how far it got: those describe a call to a data provider or another
-    /// external service, this one a completion. A model failure may be transient — a 429 usually
+    /// external service, this one a model call — a completion or an embedding. A model failure may be transient — a 429 usually
     /// is, an unreadable response often is — so retrying is frequently the right response, which is
     /// exactly the decision <see cref="StorageFailed"/> made unavailable.
     /// </para>

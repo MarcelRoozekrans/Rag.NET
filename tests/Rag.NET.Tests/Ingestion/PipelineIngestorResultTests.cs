@@ -1,5 +1,7 @@
+using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
 using Rag.NET.Ingestion;
+using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
@@ -47,6 +49,66 @@ public class PipelineIngestorResultTests
         var error = Assert.IsType<RagError.ModelCallFailed>(result.Error);
         Assert.Same(thrown, error.Inner);
         Assert.Same(provider, error.Inner.InnerException);
+    }
+
+    /// <summary>
+    /// #930 end to end: a failing embedder inside the pipeline is reported as a model failure, not
+    /// as <see cref="RagError.StorageFailed"/>. Runs the real <c>EmbeddingBehavior</c> inside the
+    /// ingestor rather than throwing a <see cref="ModelCallException"/> by hand.
+    /// </summary>
+    [Fact]
+    public async Task IngestAsync_EmbedderFails_ReturnsModelCallFailedRatherThanStorageFailed()
+    {
+        var provider = new HttpRequestException("HTTP 429 (Too Many Requests)");
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder
+            .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(_ => throw provider);
+        var embedding = new EmbeddingBehavior { Embedder = embedder };
+        var pipeline = new Pipeline<IngestionContext, IngestionResult>((ctx, ct) =>
+        {
+            ctx.Chunks.Add(new TextChunk { Text = "a chunk", DocumentId = ctx.Metadata.DocumentId, ChunkIndex = 0 });
+            return embedding.HandleAsync(ctx, ct, static (c, _) =>
+                ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+        });
+        var sut = CreateSut(pipeline);
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "f.txt" };
+
+        var result = await sut.IngestAsync(
+            new MemoryStream([1]), metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ModelCallFailed>(result.Error);
+        Assert.Same(provider, error.Inner.InnerException);
+    }
+
+    /// <summary>
+    /// A refusal is not a model failure either. It stays <see cref="RagError.StorageFailed"/> with the
+    /// refusal as <c>Inner</c> until #937 gives it a case; this pins the stopgap the docs describe.
+    /// </summary>
+    [Fact]
+    public async Task IngestAsync_EmbedderRefuses_IsNotReportedAsAModelFailure()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder
+            .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(_ => throw refusal);
+        var embedding = new EmbeddingBehavior { Embedder = embedder };
+        var pipeline = new Pipeline<IngestionContext, IngestionResult>((ctx, ct) =>
+        {
+            ctx.Chunks.Add(new TextChunk { Text = "a chunk", DocumentId = ctx.Metadata.DocumentId, ChunkIndex = 0 });
+            return embedding.HandleAsync(ctx, ct, static (c, _) =>
+                ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+        });
+        var sut = CreateSut(pipeline);
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "f.txt" };
+
+        var result = await sut.IngestAsync(
+            new MemoryStream([1]), metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<RagError.StorageFailed>(result.Error);
+        Assert.Same(refusal, error.Inner);
     }
 
     /// <summary>

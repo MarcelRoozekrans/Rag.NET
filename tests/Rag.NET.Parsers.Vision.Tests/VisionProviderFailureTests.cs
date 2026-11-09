@@ -37,7 +37,7 @@ public class VisionProviderFailureTests
     /// <summary>Vision only — OCR would short-circuit the call under test.</summary>
     private static ImageDescriptionOptions VisionOnly() => new() { TryOcrBeforeVision = false };
 
-    private static async Task<Exception> ParseAndCatchAsync(Exception thrownByProvider)
+    private static async Task<Exception> ParseAndCatchAsync(Exception thrownByProvider, CancellationToken? ct = null)
     {
         var client = Substitute.For<IChatClient>();
         client
@@ -51,7 +51,7 @@ public class VisionProviderFailureTests
 
         return await Record.ExceptionAsync(async () =>
         {
-            await foreach (var _ in sut.ParseAsync(stream, PngMetadata, TestContext.Current.CancellationToken))
+            await foreach (var _ in sut.ParseAsync(stream, PngMetadata, ct ?? TestContext.Current.CancellationToken))
             {
                 // Draining the sequence is what forces the call; nothing is asserted per section.
             }
@@ -104,10 +104,29 @@ public class VisionProviderFailureTests
     [Fact]
     public async Task Cancellation_PropagatesRatherThanBeingWrapped()
     {
-        var caught = await ParseAndCatchAsync(new OperationCanceledException());
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        var caught = await ParseAndCatchAsync(new OperationCanceledException(cts.Token), cts.Token);
 
         Assert.IsNotType<VisionDescriptionException>(caught);
         Assert.IsAssignableFrom<OperationCanceledException>(caught);
+    }
+
+    /// <summary>
+    /// An <c>HttpClient</c> timeout arrives as a <see cref="TaskCanceledException"/> while the
+    /// caller's token is not cancelled. Only the caller's own cancellation passes through; a
+    /// timeout is the provider failing, and must not end an ingestion run as if it were cancelled.
+    /// </summary>
+    [Fact]
+    public async Task ATimeout_IsAModelFailure_NotTheCallerCancelling()
+    {
+        var timeout = new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.");
+
+        var caught = await ParseAndCatchAsync(timeout);
+
+        var vision = Assert.IsType<VisionDescriptionException>(caught);
+        Assert.Same(timeout, vision.InnerException);
     }
 
     /// <summary>
@@ -129,6 +148,20 @@ public class VisionProviderFailureTests
 
         Assert.IsNotType<VisionDescriptionException>(caught);
         Assert.Same(budget, caught);
+    }
+
+    /// <summary>
+    /// Any deliberate refusal passes through, not only a blown budget: under the benchmark harness
+    /// the client can be a cache opened refuse-on-miss, and no model was called.
+    /// </summary>
+    [Fact]
+    public async Task ACallRefusal_PropagatesRatherThanBeingWrapped()
+    {
+        var refusal = new CallRefusedException("No cached response; this cache refuses on a miss.");
+
+        var caught = await ParseAndCatchAsync(refusal);
+
+        Assert.Same(refusal, caught);
     }
 
     /// <summary>

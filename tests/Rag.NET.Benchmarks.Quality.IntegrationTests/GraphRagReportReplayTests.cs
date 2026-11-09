@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using Rag.NET.Benchmarks.Quality;
 using Rag.NET.Benchmarks.Quality.GraphExtractions;
 using Rag.NET.Graph;
+using Rag.NET.Models;
 using Xunit;
 
 namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
@@ -86,7 +87,7 @@ public sealed class GraphRagReportReplayTests : IDisposable
         // What the GraphRAG guard does on a machine where the extractions were generated and the
         // reports were not. The message has to distinguish that from an empty cache, because the
         // two are one command apart and nothing else in the run can tell them apart.
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<CallRefusedException>(
             () => DetectAsync(Refuse(), model: null));
 
         Assert.Contains("No cached GraphRAG response", exception.Message, StringComparison.Ordinal);
@@ -105,7 +106,7 @@ public sealed class GraphRagReportReplayTests : IDisposable
         _ = await DetectAsync(Fill(), model);
         var afterFirst = model.Calls;
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<CallRefusedException>(
             () => DetectAsync(Refuse(), model: null, descriptionSuffix: " (revised)"));
 
         Assert.Contains("No cached GraphRAG response", exception.Message, StringComparison.Ordinal);

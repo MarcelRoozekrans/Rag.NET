@@ -486,6 +486,65 @@ public sealed class RaptorIngestionBehavior(
         return result;
     }
 
+    /// <summary>Asks the model for a cluster summary, classifying a failure as a model failure.</summary>
+    /// <remarks>
+    /// Both this and <see cref="EmbedSummaryAsync"/> classify in the order
+    /// <see cref="ModelCallException"/> documents (#930). A <see cref="CallRefusedException"/> passes
+    /// through: under the benchmark harness the client is a cache opened refuse-on-miss, and #504 had
+    /// to revert this wrap because, without the marker, that refusal was relabelled as a failed
+    /// model call when no model was called. Only the caller's own cancellation passes through; an
+    /// <c>HttpClient</c> timeout is the provider failing.
+    /// </remarks>
+    private static async Task<string> SummarizeAsync(
+        IChatClient client, string prompt, int clusterId, int level, CancellationToken ct)
+    {
+        try
+        {
+            var response = await client.GetResponseAsync(
+                [new ChatMessage(ChatRole.User, prompt)], cancellationToken: ct).ConfigureAwait(false);
+            return response.Text ?? string.Empty;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (CallRefusedException) { throw; }
+        catch (ModelCallException) { throw; }
+        catch (Exception ex)
+        {
+            throw new ModelCallException(
+                $"The model could not summarise RAPTOR cluster {clusterId} at level {level}.", ex);
+        }
+    }
+
+    /// <summary>Embeds a cluster summary, classifying a failure as a model failure.</summary>
+    /// <remarks>
+    /// The count check sits inside the wrap on purpose: a generator that answers with no vector
+    /// answered wrongly, and indexing the result would otherwise surface as an index error.
+    /// </remarks>
+    private static async Task<GeneratedEmbeddings<Embedding<float>>> EmbedSummaryAsync(
+        IEmbeddingGenerator<string, Embedding<float>> emb, string summaryText, int clusterId, int level,
+        CancellationToken ct)
+    {
+        try
+        {
+            var embeddings = await emb.GenerateAsync([summaryText], cancellationToken: ct).ConfigureAwait(false);
+            if (embeddings.Count != 1)
+            {
+                throw new InvalidOperationException(
+                    $"Embedding generator returned {embeddings.Count} embeddings for 1 input " +
+                    $"(summary of RAPTOR cluster {clusterId} at level {level}).");
+            }
+
+            return embeddings;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (CallRefusedException) { throw; }
+        catch (ModelCallException) { throw; }
+        catch (Exception ex)
+        {
+            throw new ModelCallException(
+                $"The embedding model failed for the summary of RAPTOR cluster {clusterId} at level {level}.", ex);
+        }
+    }
+
     private async Task<EmbeddedChunk> SummarizeClusterAsync(
         List<EmbeddedChunk> childChunks, int clusterId, DocumentId summaryDocumentId,
         int level, int chunkIndex, IChatClient client,
@@ -494,12 +553,8 @@ public sealed class RaptorIngestionBehavior(
         var concatenated = ConcatenateChunkTexts(childChunks);
         var prompt = options.SummaryPrompt.Replace("{chunks}", concatenated, StringComparison.Ordinal);
 
-        var response = await client.GetResponseAsync(
-            [new ChatMessage(ChatRole.User, prompt)], cancellationToken: ct).ConfigureAwait(false);
-        var summaryText = response.Text ?? string.Empty;
-
-        var summaryEmbeddings = await emb.GenerateAsync(
-            [summaryText], cancellationToken: ct).ConfigureAwait(false);
+        var summaryText = await SummarizeAsync(client, prompt, clusterId, level, ct).ConfigureAwait(false);
+        var summaryEmbeddings = await EmbedSummaryAsync(emb, summaryText, clusterId, level, ct).ConfigureAwait(false);
 
         var childIds = BuildChildIds(childChunks);
         return new EmbeddedChunk

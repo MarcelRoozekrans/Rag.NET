@@ -287,4 +287,74 @@ public class SemanticChunkingStrategyTests
         Assert.IsType<SemanticChunkingStrategy>(strategy);
         Assert.NotNull(options);
     }
+
+    // ── Failure classification (#930) ────────────────────────────────────────
+
+    private static IEmbeddingGenerator<string, Embedding<float>> ThrowingEmbedder(Exception thrown)
+    {
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<EmbeddingGenerationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(_ => throw thrown);
+        return embedder;
+    }
+
+    private static Task<List<TextChunk>> ChunkTwoSentencesAsync(Exception thrown)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = new SemanticChunkingStrategy(
+            ThrowingEmbedder(thrown), new SemanticChunkingOptions { MinChunkSize = 1, MaxChunkSize = 5000 });
+        var section = new DocumentSection
+        {
+            Text = "First sentence. Second sentence.",
+            DocumentId = new DocumentId("doc-1"),
+        };
+
+        return sut.ChunkAsync(section, new ChunkingOptions(), ct).ToListAsync(ct).AsTask();
+    }
+
+    /// <summary>A failing sentence-embedding call is a model failure, not a storage failure.</summary>
+    [Fact]
+    public async Task ChunkAsync_ProviderFailure_SurfacesAsModelCallException()
+    {
+        var provider = new HttpRequestException("HTTP 429 (Too Many Requests)");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => ChunkTwoSentencesAsync(provider));
+
+        Assert.Same(provider, ex.InnerException);
+        Assert.Contains("doc-1", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_CallRefusal_PassesThroughUnwrapped()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => ChunkTwoSentencesAsync(refusal));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_ExistingModelCallException_IsNotWrappedTwice()
+    {
+        var inner = new ModelCallException("inner", new IOException("provider"));
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => ChunkTwoSentencesAsync(inner));
+
+        Assert.Same(inner, ex);
+    }
+
+    /// <summary>A provider timeout, with the caller's token not cancelled, is a model failure.</summary>
+    [Fact]
+    public async Task ChunkAsync_ProviderTimeout_SurfacesAsModelCallException()
+    {
+        var timeout = new TaskCanceledException("HttpClient.Timeout");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => ChunkTwoSentencesAsync(timeout));
+
+        Assert.Same(timeout, ex.InnerException);
+    }
 }

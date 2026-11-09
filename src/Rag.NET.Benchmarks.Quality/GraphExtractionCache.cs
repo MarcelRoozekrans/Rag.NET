@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using Rag.NET.Models;
 
 namespace Rag.NET.Benchmarks.Quality;
 
@@ -280,7 +281,7 @@ public sealed class GraphExtractionCache
     /// run never covered this document" and "the chunking changed under the cache, so every key is
     /// new" — look identical without it.
     /// </remarks>
-    private InvalidOperationException MissingEntry(string key, string prompt) =>
+    private CallRefusedException MissingEntry(string key, string prompt) =>
         new(
             $"No cached GraphRAG response {key} under model \"{_modelIdentity}\", for a prompt " +
             $"starting: {FirstLine(prompt)}\n" +

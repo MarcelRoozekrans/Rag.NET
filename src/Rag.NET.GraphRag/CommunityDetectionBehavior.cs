@@ -251,9 +251,25 @@ public sealed class CommunityDetectionBehavior(
             },
             async (i, token) =>
             {
-                var response = await client.GetResponseAsync(
-                    [new ChatMessage(ChatRole.User, prompts[i])],
-                    cancellationToken: token).ConfigureAwait(false);
+                // Classified in the order ModelCallException documents (#930). A
+                // CallRefusedException passes through: the GraphRAG benchmark replays reports from
+                // a cache opened refuse-on-miss, and #504 had to revert this wrap because, without
+                // the marker, that refusal was relabelled as a failed model call.
+                ChatResponse response;
+                try
+                {
+                    response = await client.GetResponseAsync(
+                        [new ChatMessage(ChatRole.User, prompts[i])],
+                        cancellationToken: token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+                catch (CallRefusedException) { throw; }
+                catch (ModelCallException) { throw; }
+                catch (Exception ex)
+                {
+                    throw new ModelCallException(
+                        $"The model could not write the report for community {communities[i].Id}.", ex);
+                }
 
                 reports[i] = response.Text ?? string.Empty;
             }).ConfigureAwait(false);
@@ -482,7 +498,26 @@ public sealed class CommunityDetectionBehavior(
             reportTexts.Add(communities[i].ReportSummary ?? string.Empty);
         }
 
-        var embeddings = await embedder.GenerateAsync(reportTexts, cancellationToken: ct).ConfigureAwait(false);
+        GeneratedEmbeddings<Embedding<float>> embeddings;
+        try
+        {
+            embeddings = await embedder.GenerateAsync(reportTexts, cancellationToken: ct).ConfigureAwait(false);
+            if (embeddings.Count != reportTexts.Count)
+            {
+                // Inside the wrap on purpose: the generator answered, wrongly, and indexing the
+                // result below would otherwise surface as an index error.
+                throw new InvalidOperationException(
+                    $"Embedding generator returned {embeddings.Count} embeddings for {reportTexts.Count} inputs (community reports).");
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (CallRefusedException) { throw; }
+        catch (ModelCallException) { throw; }
+        catch (Exception ex)
+        {
+            throw new ModelCallException(
+                $"The embedding model failed for {communities.Count} community reports.", ex);
+        }
 
         for (int i = 0; i < communities.Count; i++)
         {
