@@ -100,7 +100,7 @@
 
 - [ ] **Step 2: Verify that the docs build and the fence compiles**
 
-  Run: `dotnet test tests/Rag.NET.RepoConventions.Tests`, which holds the docs guards. Then run pack-validate the way `ci.yml` does: `dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version=0.0.0-local`, followed by `dotnet test tests/Rag.NET.PackageValidation.Tests -c Release`.
+  Run: `dotnet test tests/Rag.NET.RepoConventions.Tests`, which holds the docs guards. Then run pack-validate the way `ci.yml` does: `dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$(dotnet dotnet-gitversion /output json /showvariable SemVer)"` after `dotnet tool restore`, followed by `dotnet test tests/Rag.NET.PackageValidation.Tests -c Release`.
   Expected: both pass.
 
 - [ ] **Step 3: Commit**
