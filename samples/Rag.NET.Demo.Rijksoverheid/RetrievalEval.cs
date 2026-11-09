@@ -19,7 +19,9 @@ internal static class RetrievalEval
 
     internal sealed record Variant(string Name, RetrievalOptions Options);
 
-    private sealed record Score(double Hit1, double Hit5, double Recall5, double Mrr10);
+    // FirstRank is the 0-based rank of the first answer page, -1 when none is in the results;
+    // Top1 is the page ranked first, or null when retrieval returned nothing.
+    private sealed record Score(double Hit1, double Hit5, double Recall5, double Mrr10, int FirstRank, string? Top1);
 
     public static async Task<IReadOnlyList<Question>> LoadAsync(string path)
     {
@@ -71,7 +73,8 @@ internal static class RetrievalEval
         IRagPipeline pipeline,
         IReadOnlyList<Question> questions,
         IReadOnlyList<Variant> variants,
-        IReadOnlySet<string> ingestedUrls)
+        IReadOnlySet<string> ingestedUrls,
+        string? poolPath = null)
     {
         // A question whose answer page was never ingested measures the crawl, not retrieval.
         var answerable = questions
@@ -86,6 +89,8 @@ internal static class RetrievalEval
             .ToList();
 
         var perVariant = new Dictionary<string, List<Score>>(StringComparer.Ordinal);
+        // Per question: every page some variant put in its top 5, with the text of its best chunk.
+        var pool = answerable.Select(_ => new Dictionary<string, PoolEntry>(StringComparer.Ordinal)).ToList();
         foreach (var variant in variants)
         {
             var scores = new List<Score>(answerable.Count);
@@ -96,11 +101,13 @@ internal static class RetrievalEval
                 if (!result.IsSuccess)
                 {
                     Console.WriteLine($"  [{variant.Name}] retrieval failed for \"{question.Vraag}\": {result.Error}");
-                    scores.Add(new Score(0, 0, 0, 0));
+                    scores.Add(new Score(0, 0, 0, 0, -1, null));
                     continue;
                 }
 
-                scores.Add(ScoreOne(RankedPages(result.Value), expected[i]));
+                var ranked = RankedPages(result.Value);
+                scores.Add(ScoreOne(ranked, expected[i]));
+                AddToPool(pool[i], result.Value, variant.Name);
             }
 
             perVariant[variant.Name] = scores;
@@ -109,6 +116,72 @@ internal static class RetrievalEval
 
         PrintTable(perVariant, variants[0].Name);
         PrintMisses(answerable, perVariant[variants[0].Name], variants[0].Name);
+        PrintMovers(answerable, perVariant, variants[0].Name);
+
+        if (poolPath is not null)
+        {
+            await WritePoolAsync(poolPath, answerable, expected, pool);
+        }
+    }
+
+    private sealed record PoolEntry(string Text, List<string> Variants);
+
+    private sealed record PoolPage(string Url, bool Labelled, IReadOnlyList<string> Variants, string Text);
+
+    private sealed record PoolQuestion(string Vraag, IReadOnlyList<PoolPage> Pages);
+
+    private static void AddToPool(
+        Dictionary<string, PoolEntry> pool,
+        IReadOnlyList<Rag.NET.Models.SearchResult> results,
+        string variant)
+    {
+        // Results are in rank order, so the first chunk seen of a page is its best one.
+        var pages = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var r in results)
+        {
+            var url = r.Chunk.DocumentId.Value;
+            if (!pages.Add(url)) continue;
+            if (pages.Count > 5) break;
+
+            if (!pool.TryGetValue(url, out var entry))
+            {
+                entry = new PoolEntry(r.Chunk.Text, []);
+                pool[url] = entry;
+            }
+
+            entry.Variants.Add(variant);
+        }
+    }
+
+    /// <summary>
+    /// Writes the top-5 pool for judging which unlabelled pages also answer their question. Judging
+    /// the whole pool rather than one variant's results keeps the added labels fair to every variant.
+    /// </summary>
+    private static async Task WritePoolAsync(
+        string path,
+        List<Question> questions,
+        List<List<string>> expected,
+        List<Dictionary<string, PoolEntry>> pool)
+    {
+        var output = questions
+            .Select((q, i) => new PoolQuestion(
+                q.Vraag,
+                pool[i]
+                    .Select(kv => new PoolPage(kv.Key, expected[i].Contains(kv.Key, StringComparer.Ordinal), kv.Value.Variants, kv.Value.Text))
+                    .OrderBy(page => page.Labelled)
+                    .ToList()))
+            .ToList();
+
+        await using var stream = File.Create(path);
+        await JsonSerializer.SerializeAsync(stream, output, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        });
+
+        var unlabelled = output.Sum(q => q.Pages.Count(page => !page.Labelled));
+        Console.WriteLine($"\nTop-5 pool written to {Path.GetFullPath(path)}: {unlabelled} unlabelled pages to judge.");
     }
 
     /// <summary>Page URLs in rank order, each at the rank of its first chunk.</summary>
@@ -132,7 +205,9 @@ internal static class RetrievalEval
             Hit1: firstRank == 0 ? 1 : 0,
             Hit5: firstRank is >= 0 and < 5 ? 1 : 0,
             Recall5: (double)inTop5 / expected.Count,
-            Mrr10: firstRank is >= 0 and < TopK ? 1.0 / (firstRank + 1) : 0);
+            Mrr10: firstRank is >= 0 and < TopK ? 1.0 / (firstRank + 1) : 0,
+            FirstRank: firstRank,
+            Top1: ranked.Count > 0 ? ranked[0] : null);
     }
 
     private static void PrintTable(Dictionary<string, List<Score>> perVariant, string baseline)
@@ -169,4 +244,38 @@ internal static class RetrievalEval
             Console.WriteLine($"  - {q.Vraag}  →  {string.Join(", ", q.Urls)}");
         }
     }
+
+    /// <summary>
+    /// Per variant, the questions it ranks differently from the baseline: where the first answer
+    /// page sits in each, and what the variant put first when that was not an answer page. The
+    /// better/worse counts say how many moved; this says which, so a loss can be read.
+    /// </summary>
+    private static void PrintMovers(List<Question> questions, Dictionary<string, List<Score>> perVariant, string baseline)
+    {
+        var baseScores = perVariant[baseline];
+        foreach (var (name, scores) in perVariant)
+        {
+            if (string.Equals(name, baseline, StringComparison.Ordinal)) continue;
+
+            var moved = Enumerable.Range(0, questions.Count)
+                .Where(i => scores[i].Mrr10 != baseScores[i].Mrr10)
+                .OrderBy(i => scores[i].Mrr10 > baseScores[i].Mrr10 ? 0 : 1)
+                .ToList();
+            if (moved.Count == 0) continue;
+
+            Console.WriteLine($"\n{name} vs {baseline} (rank of the first answer page, 1-based; - = not in the top {TopK}):");
+            foreach (var i in moved)
+            {
+                var arrow = scores[i].Mrr10 > baseScores[i].Mrr10 ? "better" : "worse ";
+                Console.WriteLine($"  {arrow} {Rank(baseScores[i])} -> {Rank(scores[i])}  {questions[i].Vraag}");
+                if (scores[i].FirstRank != 0 && scores[i].Top1 is { } top1)
+                {
+                    Console.WriteLine($"           {name} ranked first: {top1}");
+                }
+            }
+        }
+    }
+
+    private static string Rank(Score s) =>
+        s.FirstRank is >= 0 and < TopK ? (s.FirstRank + 1).ToString(CultureInfo.InvariantCulture) : "-";
 }

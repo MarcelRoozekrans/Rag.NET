@@ -176,7 +176,11 @@ try
         var questionsPath = Path.Combine(AppContext.BaseDirectory, "eval", "vragen.json");
         var questions = await RetrievalEval.LoadAsync(questionsPath);
         var ingestedUrls = result.Ingested.Select(o => o.Id.Value).ToHashSet(StringComparer.Ordinal);
-        await RetrievalEval.RunAsync(pipeline, questions, RetrievalEval.Variants(rerankerRegistered), ingestedUrls);
+        // --pool <file> also writes every page any variant ranked in its top 5, for judging which
+        // unlabelled ones answer their question too.
+        var poolIndex = Array.IndexOf(args, "--pool");
+        var poolPath = poolIndex >= 0 && poolIndex + 1 < args.Length ? args[poolIndex + 1] : null;
+        await RetrievalEval.RunAsync(pipeline, questions, RetrievalEval.Variants(rerankerRegistered), ingestedUrls, poolPath);
         if (!rerankerRegistered)
         {
             Console.WriteLine("\nReranker variants skipped: set COHERE_API_KEY to include them.");
