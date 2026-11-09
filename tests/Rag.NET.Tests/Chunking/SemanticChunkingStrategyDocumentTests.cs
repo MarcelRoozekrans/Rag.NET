@@ -175,4 +175,63 @@ public class SemanticChunkingStrategyDocumentTests
         Assert.Equal("Only one section here.", chunks[0].Text);
         Assert.Equal(new DocumentId("doc1"), chunks[0].DocumentId);
     }
+
+    // ── Failure classification (#930) ────────────────────────────────────────
+
+    private static IEmbeddingGenerator<string, Embedding<float>> ThrowingEmbedder(Exception thrown)
+    {
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<EmbeddingGenerationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(_ => throw thrown);
+        return embedder;
+    }
+
+    private static Task<List<TextChunk>> ChunkTwoSectionsAsync(Exception thrown)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var strategy = new SemanticChunkingStrategy(
+            ThrowingEmbedder(thrown), new SemanticChunkingOptions { MinChunkSize = 1 });
+        var sections = new[]
+        {
+            Section("doc1", "Alpha text here."),
+            Section("doc1", "Beta text there."),
+        };
+
+        return strategy.ChunkDocumentAsync(ToAsync(sections), new ChunkingOptions(), ct).ToListAsync(ct).AsTask();
+    }
+
+    /// <summary>A failing section-embedding call is a model failure, not a storage failure.</summary>
+    [Fact]
+    public async Task ChunkDocumentAsync_ProviderFailure_SurfacesAsModelCallException()
+    {
+        var provider = new HttpRequestException("HTTP 429 (Too Many Requests)");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => ChunkTwoSectionsAsync(provider));
+
+        Assert.Same(provider, ex.InnerException);
+        Assert.Contains("doc1", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ChunkDocumentAsync_CallRefusal_PassesThroughUnwrapped()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => ChunkTwoSectionsAsync(refusal));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task ChunkDocumentAsync_ExistingModelCallException_IsNotWrappedTwice()
+    {
+        var inner = new ModelCallException("inner", new IOException("provider"));
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => ChunkTwoSectionsAsync(inner));
+
+        Assert.Same(inner, ex);
+    }
 }

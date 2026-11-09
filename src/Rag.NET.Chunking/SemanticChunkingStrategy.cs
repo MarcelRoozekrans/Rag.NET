@@ -38,6 +38,36 @@ public sealed partial class SemanticChunkingStrategy(
         return sentences;
     }
 
+    /// <summary>
+    /// Embeds the units the breakpoints are computed over, classifying a failure as a model failure
+    /// (#930) in the order <see cref="ModelCallException"/> documents.
+    /// </summary>
+    /// <remarks>
+    /// Without this, a failing chunking embedder reached <c>PipelineIngestor</c>'s catch-all and was
+    /// reported as <c>StorageFailed</c>. Cancellation and a <see cref="CallRefusedException"/> pass
+    /// through untouched — no model was called — and an embedder that already threw
+    /// <see cref="ModelCallException"/> is not wrapped twice. Kept out of the iterators because
+    /// <c>yield return</c> cannot sit inside a <c>try</c> with a <c>catch</c>.
+    /// </remarks>
+    private static async Task<GeneratedEmbeddings<Embedding<float>>> EmbedAsync(
+        IEmbeddingGenerator<string, Embedding<float>> embedder,
+        IEnumerable<string> texts,
+        string what,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await embedder.GenerateAsync(texts, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (CallRefusedException) { throw; }
+        catch (ModelCallException) { throw; }
+        catch (Exception ex)
+        {
+            throw new ModelCallException($"The semantic-chunking embedding model failed for {what}.", ex);
+        }
+    }
+
     internal static double CosineSimilarity(ReadOnlySpan<float> a, ReadOnlySpan<float> b)
     {
         double dot = 0, normA = 0, normB = 0;
@@ -79,7 +109,9 @@ public sealed partial class SemanticChunkingStrategy(
         cancellationToken.ThrowIfCancellationRequested();
 
         var activeEmbedder = _options.ChunkingEmbedder ?? _embedder;
-        var embeddings = await activeEmbedder.GenerateAsync(sentences, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var embeddings = await EmbedAsync(
+            activeEmbedder, sentences, $"the sentences of document '{section.DocumentId.Value}'", cancellationToken)
+            .ConfigureAwait(false);
 
         var similarities = ComputeConsecutiveSimilarities(sentences, embeddings);
         var groups = GroupSentencesByBreakpoints(sentences, similarities);
@@ -125,7 +157,8 @@ public sealed partial class SemanticChunkingStrategy(
 
         var activeEmbedder = _options.ChunkingEmbedder ?? _embedder;
         var texts = sectionList.ConvertAll(s => s.Text);
-        var embeddings = await activeEmbedder.GenerateAsync(texts, cancellationToken: cancellationToken)
+        var embeddings = await EmbedAsync(
+            activeEmbedder, texts, $"the sections of document '{sectionList[0].DocumentId.Value}'", cancellationToken)
             .ConfigureAwait(false);
 
         var groups = GroupSectionsByBreakpoints(sectionList, embeddings);
