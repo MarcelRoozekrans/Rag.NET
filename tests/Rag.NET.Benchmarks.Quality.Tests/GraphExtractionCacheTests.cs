@@ -1,4 +1,5 @@
 using Rag.NET.Benchmarks.Quality;
+using Rag.NET.Models;
 using Xunit;
 
 namespace Rag.NET.Benchmarks.Quality.Tests;
@@ -169,7 +170,7 @@ public sealed class GraphExtractionCacheTests : IDisposable
         var reports = Refuse(subdirectory: GraphExtractionCache.ReportsDirectoryName);
         var generator = new RecordingGenerator("must never be produced");
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<CallRefusedException>(
             () => reports.GetOrAddAsync(Prompt, generator.GenerateAsync, cancellationToken: Ct));
 
         Assert.Contains(
@@ -192,7 +193,7 @@ public sealed class GraphExtractionCacheTests : IDisposable
         var key = Path.GetFileNameWithoutExtension(entry);
         File.Delete(entry);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<CallRefusedException>(
             () => Refuse(subdirectory: GraphExtractionCache.ReportsDirectoryName)
                 .GetOrAddAsync(Prompt, Explode, cancellationToken: Ct));
 

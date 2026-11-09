@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Rag.NET.Models;
 
 namespace Rag.NET.Benchmarks.Quality;
 
@@ -215,7 +216,7 @@ public sealed class EmbeddingCache
 
         if (missing > 0)
         {
-            throw new InvalidOperationException(
+            throw new CallRefusedException(
                 $"{missing} of the {texts.Count} texts to prefetch have no entry under " +
                 $"'{_directory}' (identity '{_modelIdentity}'): the cache is cold. Timed spans " +
                 "serve vectors from memory and never embed — embedding here would reintroduce " +
@@ -248,7 +249,7 @@ public sealed class EmbeddingCache
 
         if (missing > 0)
         {
-            throw new InvalidOperationException(
+            throw new CallRefusedException(
                 $"{missing} of the {texts.Count} texts in this batch were never prefetched. " +
                 "Every text a timed span embeds must be covered by the prefetch; serving it " +
                 "from disk or an embedder here would put I/O back inside the span.");

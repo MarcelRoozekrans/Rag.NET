@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using Rag.NET.Models;
 
 namespace Rag.NET.Benchmarks.Quality;
 
@@ -188,7 +189,7 @@ public sealed class HypotheticalCache
     }
 
     /// <summary>The refuse-on-miss failure, naming the key so the gap is findable and fillable.</summary>
-    private InvalidOperationException MissingEntry(string key, string query, int hypothesisIndex) =>
+    private CallRefusedException MissingEntry(string key, string query, int hypothesisIndex) =>
         new(
             $"No cached hypothetical {key} — hypothesis {hypothesisIndex} of query \"{query}\" " +
             $"under model \"{_modelIdentity}\". This cache was opened refuse-on-miss because the " +

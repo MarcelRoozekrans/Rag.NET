@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Rag.NET.Benchmarks.Quality;
+using Rag.NET.Models;
 
 namespace Rag.NET.Benchmarks.Quality.GraphExtractions;
 
@@ -264,7 +265,7 @@ public sealed class CachedGraphRagClient : IChatClient
     {
         if (_inner is null)
         {
-            throw new InvalidOperationException(
+            throw new CallRefusedException(
                 "The cached GraphRAG client was constructed without a model, so a cache miss " +
                 "cannot be filled. A refuse-on-miss cache should have thrown before reaching here; " +
                 "a fill-mode cache was opened without a client to fill it from.");
@@ -414,7 +415,7 @@ public sealed class CachedGraphRagClient : IChatClient
         ChatResponseFormatText => "responseFormat=text",
         ChatResponseFormatJson json => FormattableString.Invariant(
             $"responseFormat=json;schemaName={json.SchemaName};schema={json.Schema?.ToString() ?? "none"}"),
-        _ => throw new InvalidOperationException(
+        _ => throw new CallRefusedException(
             $"ChatOptions.ResponseFormat is a {format.GetType().Name}, which this cache has no " +
             "rendering for. Add one rather than letting a request reach the model unkeyed -- two " +
             "materially different requests would otherwise share one cache entry."),
@@ -473,7 +474,7 @@ public sealed class CachedGraphRagClient : IChatClient
         }
     }
 
-    private static InvalidOperationException Unkeyable(string field, string reason) =>
+    private static CallRefusedException Unkeyable(string field, string reason) =>
         new(
             "ChatOptions." + field + " was set, but CachedGraphRagClient.RenderOptionsKey does not " +
             "render it into the cache key, and " + reason + ". Sending it to the model unkeyed risks " +
