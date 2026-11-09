@@ -1,34 +1,52 @@
 # Session State
 
-**Last updated:** 2026-11-09 — **#928 fixed (#935) and #930 layer 2 fixed (#936), both green
-and waiting for the operator's merge; #930 layer 1 waits on a design decision.**
+**Last updated:** 2026-11-09 — **#930 layer 1 is built and green as #941, waiting for the
+operator's merge. #935 and #936 merged and shipped in 1.4.1.**
 
-**NEXT ACTION: design #930 layer 1, option 1 (chosen by the operator on 2026-11-09), on a fresh
-branch from main.** Start with brainstorming: the marker's shape (base exception or interface,
-where it lives in Abstractions), which refusals carry it (`BudgetExceededException`, the
-benchmark caches' refuse-on-miss throws), and the call sites to wrap (`EmbeddingBehavior.cs:89`
-and `:124`, `SemanticChunkingStrategy.cs:82` and `:128`, `LateChunkingStrategy.cs:115`, and the
-`RaptorIngestionBehavior` and `CommunityDetectionBehavior` wraps #504 reverted). Read
-`ModelCallException`'s remarks first; they record why the earlier wraps were reverted. The design
-goes to the operator before building. Separately, the operator merges #935, then #936.
+**NEXT ACTION: after the operator merges #941, confirm its `feat` commit appears in the
+release-please PR's changelog** (a green workflow does not prove it was counted), then pick the next
+item from the open decisions below. Work on a fresh branch from main. The operator merges; the agent
+does not.
 
-- **#935** (this branch, `chore/state-after-934`): `after_n_builds: 2` for Codecov's status and
-  comment. Verified on its own run: Windows uploaded at 08:05:53 and Ubuntu at 08:10:25, and
-  `codecov/project` was first posted at 08:10:47, green. Nothing was posted in between.
-- **#936** (`fix/ingest-error-passthrough`, from main): `IngestFromProviderAsync` passes the
-  pipeline's own error through instead of re-wrapping it as `StorageFailed`. Content fetch maps
-  to `HttpFailed` or `TransportFailed`, and an `HttpClient` timeout no longer escapes the run as
-  a cancellation. It lacks #935, so it reproduced #928 live: `codecov/project` red at 08:17
-  (−3.93%, one upload in), green at 08:23 (+0.00%). If #935 merges first, rebasing #936 is
-  not needed for correctness.
-- **#930 layer 1:** four options are on the issue (comment of 2026-11-09). The recommendation is
-  option 1: a marker for deliberate refusals, so call-site wraps can let them through, then wrap
-  `EmbeddingBehavior`, the semantic and late chunkers, and re-apply #504's reverted chat wraps.
-  The blocker #504 recorded applies here too: the benchmark `EmbeddingCache` refuses with a plain
-  `InvalidOperationException` (`EmbeddingCache.cs:251`), and `CostTrackingEmbeddingGenerator`
-  throws `BudgetExceededException`.
+- **#941** (`feat/call-refused-marker`): adds `CallRefusedException` in `Rag.NET.Models` as the base
+  for deliberate refusals; `BudgetExceededException` derives from it and the benchmark caches'
+  refuse-on-miss throws use it. Every ingestion-path model call that propagates is wrapped:
+  - **The wrap order:** the caller's own cancellation passes through, a refusal passes through, an
+    existing `ModelCallException` is not wrapped twice, and everything else becomes
+    `ModelCallException`, which reaches the caller as `RagError.ModelCallFailed`.
+  - **Wrapped:** `EmbeddingBehavior`, `SemanticChunkingStrategy`, RAPTOR summaries and their
+    embeddings, community reports and their embeddings, graph entity and relationship embeddings,
+    and video frame descriptions.
+  - **Also in it:**
+    - An `HttpClient` timeout, a `TaskCanceledException` with the caller's token not cancelled,
+      is now a model failure. Before, it ended a provider run as if the caller had cancelled.
+    - Embedding wraps check the vector count.
+    - The retry predicate, `FallbackChatClient.IsTransient` and the image parser exempt the marker.
 
-The demo work below is done; the operator merges, the agent does not.
+  Design and plan: `docs/plans/2026-11-09-call-refused-marker-*.md`. The late chunker needed no wrap:
+  it degrades locally. Every test project passed locally, twice, apart from the known local-only E2E
+  failure below; all 15 CI checks passed. On 2026-11-09 the branch was updated from main, so CI re-ran.
+
+**Open decisions, each filed:**
+- **#937:** a deliberate refusal that reaches `PipelineIngestor` still maps to `StorageFailed`. The fix
+  is a `RagError` case, which breaks exhaustive switches.
+- **#938:** components that degrade on a model failure also swallow a refusal: proposition, resume and
+  late chunking, LLM metadata extraction, tag ingestion, sparse embedding, the sanitisers, mind-map
+  extraction. A blown budget does not stop them. The fix is one `catch (CallRefusedException) { throw; }`
+  each, but it changes behaviour.
+- **#932:** `AskAsync` cannot enable MMR or switch off HyDE, multi-query or reranking per call. Needs an
+  API decision.
+- **#926:** the ONNX reranker docs recommend a model it cannot load.
+- **#927:** robots.txt support covers only part of RFC 9309.
+
+**Host note:** the BEIR cache (`~/.cache/ragnet-beir`) is not on the Linux agents host, so 119 tests in
+`Rag.NET.Benchmarks.Quality.IntegrationTests` skip there. They are not unprovisioned; the cache lives on
+the Windows workstation.
+
+**Local-only note:** `Rag.NET.E2ETests` `WhatIsMyAddress_WithReporterSettings_*` fails every time
+against the local Ollama model; CI does not run it, cause not investigated.
+
+**Rijksoverheid demo (#931, #933, #934), for reference.**
 
 **What changed the picture.** Under the original labels dense scored Hit@5 0.850 / MRR 0.680,
 and three runs disagreed on which variant led. The per-question list showed variants losing
@@ -44,9 +62,6 @@ Recall@5 by design. Dense stays. Run-to-run noise comes mostly from the crawl: e
 1,008–1,021 pages. Revisit with more questions, or a reranker once a Cohere key exists (#926 for
 the ONNX one).
 
-**Found on the way:** #932, `AskAsync` cannot enable MMR or switch off HyDE, multi-query or
-reranking per call; `RagOptions` carries only eight retrieval fields. Needs an API decision.
-
 **What 1.4.0 (#925) shipped:** `SitemapOptions.IncludedUrlPrefixes`, `RespectRobotsTxt` (default
 true — a behaviour change for existing sitemap walks), `MinimumRequestInterval`;
 `WebCrawlerOptions.IncludedUrlPrefixes` and `MinimumRequestInterval`; fixes for sitemap URLs
@@ -57,16 +72,6 @@ yielded twice and for a dropped connection ending a crawl. All 74 packages on nu
 1,209 shards; its ~330 FAQ answer pages are **not in the sitemap**, so the sample crawls first
 and uses the sitemap for the rest. 54 FAQ index pages (titles only) are kept out of the index.
 One FAQ answer can be published under up to four theme paths — why `mmr` is a variant.
-
-**Open issues from this work:** #926 (ONNX reranker docs recommend a model it cannot load —
-needs a docs-vs-SentencePiece decision), #927 (robots.txt covers part of RFC 9309), #928
-(`codecov/project` goes red until the second CI leg uploads — two-line `after_n_builds` fix),
-#930 (a failed embedding call is reported as `StorageFailed`, twice over — layer 2 mechanical,
-layer 1 a design call).
-
-**Local-only note:** `Rag.NET.E2ETests` `WhatIsMyAddress_WithReporterSettings_*` fails every time
-against the local Ollama model; CI does not run it, cause not investigated.
-
 ---
 
 **Last updated:** 2026-09-16 — **the documentation site was publishing half of itself, and the
