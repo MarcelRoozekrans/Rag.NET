@@ -80,9 +80,8 @@ decorator around a client. It is never a provider failure, and it is never retri
 
 Call sites:
 
-- `EmbeddingBehavior`: both `Embedder.GenerateAsync` calls (`:89` and `:124`). The "generator
-  returned N embeddings for M inputs" check sits outside the wrap and keeps its own exception, since
-  the model was not the problem there... **see "Left to the builder"**.
+- `EmbeddingBehavior`: both `Embedder.GenerateAsync` calls (`:89` and `:124`). For the "generator returned N
+  embeddings for M inputs" check, see "Left to the builder".
 - `SemanticChunkingStrategy` (`:82`, `:128`) and `LateChunkingStrategy` (`:115`).
 - `RaptorIngestionBehavior`: the summary chat call (`:497`) and its embedding (`:501`).
 - `CommunityDetectionBehavior`: the report chat call (`:254`).
