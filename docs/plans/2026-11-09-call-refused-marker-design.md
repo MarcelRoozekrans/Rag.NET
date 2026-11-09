@@ -5,7 +5,7 @@
 ## Intent
 
 A failed embedding call during ingestion is reported as `RagError.StorageFailed`. The same is true
-of the semantic and late chunkers, and of RAPTOR and community detection, whose wraps #508 reverted.
+of the semantic chunker, and of RAPTOR and community detection, whose wraps #508 reverted.
 `StorageFailed` sends an operator to inspect a vector store that was never asked to do anything.
 
 #508 recorded why those call sites cannot just be wrapped. A call-site `catch` cannot tell a
@@ -61,7 +61,8 @@ decorator around a client. It is never a provider failure, and it is never retri
 - The benchmark caches' refuse-on-miss throws, where no model was called:
   - `EmbeddingCache` when the prefetch finds a cold cache (`:218`) or a text was never prefetched (`:251`)
   - `GraphExtractionCache.MissingEntry` and `HypotheticalCache.MissingEntry`
-  - `CachedGraphRagClient` when no model was given to fill a miss (`:267`)
+  - `CachedGraphRagClient` when no model was given to fill a miss (`:267`), and when it refuses an
+    unkeyable request (`Unkeyable` at `:476`, and an unrenderable response format at `:417`)
 
   `Rag.NET.Benchmarks.Quality` gains a `ProjectReference` to `Rag.NET.Abstractions`. It is not
   packable, so nothing outside the repo sees the change.
@@ -82,7 +83,11 @@ Call sites:
 
 - `EmbeddingBehavior`: both `Embedder.GenerateAsync` calls (`:89` and `:124`). For the "generator returned N
   embeddings for M inputs" check, see "Left to the builder".
-- `SemanticChunkingStrategy` (`:82`, `:128`) and `LateChunkingStrategy` (`:115`).
+- `SemanticChunkingStrategy` (`:82`, `:128`).
+- **Not** `LateChunkingStrategy`. #930 listed it, but planning found that it catches every
+  generator failure and falls back to unembedded token windows, so nothing propagates. It degrades
+  locally, like the components `ModelCallException`'s remarks list. Degrading components that
+  swallow a refusal are tracked in #938.
 - `RaptorIngestionBehavior`: the summary chat call (`:497`) and its embedding (`:501`).
 - `CommunityDetectionBehavior`: the report chat call (`:254`).
 
@@ -90,6 +95,8 @@ Call sites:
 
 - `ImageDocumentParser` catches `CallRefusedException` instead of `BudgetExceededException`, so a
   cache refusal also passes through it.
+- The default retry predicate in `ResilienceBuilderExtensions` (`:213`) excludes any
+  `CallRefusedException`, as it excludes a blown budget today.
 - `FallbackChatClient.IsTransient` returns false for any `CallRefusedException`, not only a blown
   budget. A cache refusal must not fall back to the next provider either.
 - `ModelCallException`'s remarks are rewritten: the seam now exists, and the list of throwing
