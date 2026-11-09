@@ -176,7 +176,11 @@ try
         var questionsPath = Path.Combine(AppContext.BaseDirectory, "eval", "vragen.json");
         var questions = await RetrievalEval.LoadAsync(questionsPath);
         var ingestedUrls = result.Ingested.Select(o => o.Id.Value).ToHashSet(StringComparer.Ordinal);
-        await RetrievalEval.RunAsync(pipeline, questions, RetrievalEval.Variants(rerankerRegistered), ingestedUrls);
+        // --pool <file> also writes every page any variant ranked in its top 5, for judging which
+        // unlabelled ones answer their question too.
+        var poolIndex = Array.IndexOf(args, "--pool");
+        var poolPath = poolIndex >= 0 && poolIndex + 1 < args.Length ? args[poolIndex + 1] : null;
+        await RetrievalEval.RunAsync(pipeline, questions, RetrievalEval.Variants(rerankerRegistered), ingestedUrls, poolPath);
         if (!rerankerRegistered)
         {
             Console.WriteLine("\nReranker variants skipped: set COHERE_API_KEY to include them.");
@@ -187,10 +191,10 @@ try
 
     // --- Ask ---
     // Dense retrieval, the top 5 chunks. Measured with --eval on the full theme (README,
-    // "Results"): hybrid ranked 7 of 40 questions worse than dense and 3 better; HyDE, MMR and
-    // hybrid + HyDE each moved about as many questions up as down. None beat dense by more than
-    // noise, and HyDE would add a chat call before every answer. HyDE stays unregistered in chat
-    // mode for that reason, which is what keeps it off here.
+    // "Results"): dense puts an answer page in its top 5 for 39 of 40 questions. Hybrid ranks
+    // more questions worse than better in every run; HyDE gains a few, within chance, at the cost
+    // of a chat call before every answer. HyDE stays unregistered in chat mode for that reason,
+    // which is what keeps it off here.
     var chatOptions = new RagOptions { TopK = 5, UseHybridSearch = false };
 
     Console.WriteLine("\nStel een vraag over zorg en gezondheid (of 'quit'):\n");

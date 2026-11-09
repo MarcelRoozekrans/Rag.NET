@@ -14,7 +14,9 @@
     "urls": [
       "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/achttien-jaar-worden/18-jaar-regelzaken-op-een-rij",
       "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/achttien-jaar-worden/18-jaar-regelzaken-op-een-rij/vraag-en-antwoord/achttien-jaar-worden/checklist-bij-18-jaar-worden",
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/achttien-jaar-worden/vraag-en-antwoord/achttien-jaar-worden/checklist-bij-18-jaar-worden"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/achttien-jaar-worden/vraag-en-antwoord/achttien-jaar-worden/checklist-bij-18-jaar-worden",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zorgverzekering/vraag-en-antwoord/achttien-jaar-worden/checklist-bij-18-jaar-worden",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/achttien-jaar-worden"
     ]
   },
   {
@@ -26,7 +28,8 @@
   {
     "vraag": "Is een glaasje alcohol voor mijn 15-jarige echt zo erg?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/alcohol/jongeren-en-alcohol"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/alcohol/jongeren-en-alcohol",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/alcohol/schade-door-alcoholgebruik-beperken"
     ]
   },
   {
@@ -38,7 +41,8 @@
   {
     "vraag": "Mag ik zelf het asbestdak van mijn schuur vervangen?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/asbest/asbestregels"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/asbest/asbestregels",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/asbest/asbestbeleid"
     ]
   },
   {
@@ -50,7 +54,8 @@
   {
     "vraag": "Is het coronavaccin veilig als ik zwanger ben?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/coronavirus-vaccinatie/veiligheid-coronavaccin/biontech-pfizer"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/coronavirus-vaccinatie/veiligheid-coronavaccin/biontech-pfizer",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/coronavirus-vaccinatie/veiligheid-coronavaccin"
     ]
   },
   {
@@ -70,7 +75,8 @@
   {
     "vraag": "Wie mag er bij mijn medische gegevens en moet ik daar toestemming voor geven?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/digitale-gegevens-in-de-zorg/medische-gegevens-bekijken-en-delen"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/digitale-gegevens-in-de-zorg/medische-gegevens-bekijken-en-delen",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/rechten-van-patient-en-privacy/uw-medisch-dossier/toestemming-geven-aan-zorgverleners-voor-delen-medisch-dossier"
     ]
   },
   {
@@ -100,13 +106,16 @@
   {
     "vraag": "Hoeveel mensen in Nederland zijn eenzaam?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/eenzaamheid/aanpak-eenzaamheid"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/eenzaamheid/aanpak-eenzaamheid",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/eenzaamheid"
     ]
   },
   {
     "vraag": "Moet ik eerst naar de huisarts als ik psychische klachten heb, of kan ik direct naar de ggz?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/geestelijke-gezondheidszorg/psychische-hulp-huisarts-of-ggz"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/geestelijke-gezondheidszorg/psychische-hulp-huisarts-of-ggz",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/geestelijke-gezondheidszorg/psychische-hulp-huisarts-of-ggz/vraag-en-antwoord/geestelijke-gezondheidszorg/waar-vind-ik-hulp-bij-psychische-problemen",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/geestelijke-gezondheidszorg/vraag-en-antwoord/geestelijke-gezondheidszorg/waar-vind-ik-hulp-bij-psychische-problemen"
     ]
   },
   {
@@ -118,13 +127,15 @@
   {
     "vraag": "Mijn zoon heeft gedragsproblemen, wie regelt de hulp voor hem?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/jeugdhulp/jeugdhulp-bij-gemeenten"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/jeugdhulp/jeugdhulp-bij-gemeenten",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/jeugdhulp/vraag-en-antwoord/jeugdhulp/hulp-vinden-voor-kind-4-18-jaar"
     ]
   },
   {
     "vraag": "Hoe vaak wordt een gastouder gecontroleerd?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/kinderopvang/gastouderopvang"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/kinderopvang/gastouderopvang",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/kinderopvang/kwaliteitseisen-kinderopvang-en-peuterspeelzalen"
     ]
   },
   {
@@ -138,14 +149,23 @@
     "vraag": "Hoe zet ik in het donorregister dat ik geen donor wil zijn?",
     "urls": [
       "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/orgaandonatie-en-weefseldonatie/actieve-donorregistratie",
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/achttien-jaar-worden/vraag-en-antwoord/orgaandonatie-en-weefseldonatie/hoe-laat-ik-me-registreren-als-orgaandonor"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/achttien-jaar-worden/vraag-en-antwoord/orgaandonatie-en-weefseldonatie/hoe-laat-ik-me-registreren-als-orgaandonor",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/orgaandonatie-en-weefseldonatie/vraag-en-antwoord/orgaandonatie-en-weefseldonatie/hoe-laat-ik-me-registreren-als-orgaandonor",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/orgaandonatie-en-weefseldonatie/vraag-en-antwoord/orgaandonatie-en-weefseldonatie/keuze-donorregister-wijzigen-kan-dat"
     ]
   },
   {
     "vraag": "Mijn vriend en ik zijn niet getrouwd, krijgt hij automatisch gezag als hij onze baby erkent?",
     "urls": [
       "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/ouderlijk-gezag/gezamenlijk-gezag-door-erkenning-vanaf-2023",
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/ouderlijk-gezag/vraag-en-antwoord/ouderlijk-gezag/wanneer-krijg-ik-automatisch-gezag-over-een-kind"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/ouderlijk-gezag/vraag-en-antwoord/ouderlijk-gezag/wanneer-krijg-ik-automatisch-gezag-over-een-kind",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/ouderlijk-gezag/vraag-en-antwoord/ouderlijk-gezag/wat-doen-zodat-erkenning-kind-niet-tot-gezamenlijk-gezag-leidt",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/trouwen-samenlevingscontract-en-geregistreerd-partnerschap/vraag-en-antwoord/ouderlijk-gezag/wanneer-krijg-ik-automatisch-gezag-over-een-kind",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/ouderlijk-gezag/gezamenlijk-gezag-door-erkenning-vanaf-2023/vraag-en-antwoord/ouderlijk-gezag/wanneer-krijg-ik-automatisch-gezag-over-een-kind",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/ouderlijk-gezag/vraag-en-antwoord/ouderlijk-gezag/wanneer-krijg-ik-niet-automatisch-gezamenlijk-gezag-door-erkenning-kind",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/trouwen-samenlevingscontract-en-geregistreerd-partnerschap/vraag-en-antwoord/ouderlijk-gezag/wanneer-erken-ik-een-kind-en-wanneer-vraag-ik-ouderlijk-gezag-aan",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/ouderlijk-gezag/gezamenlijk-gezag-door-erkenning-vanaf-2023/vraag-en-antwoord/ouderlijk-gezag/wanneer-erken-ik-een-kind-en-wanneer-vraag-ik-ouderlijk-gezag-aan",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/ouderlijk-gezag/vraag-en-antwoord/ouderlijk-gezag/wanneer-erken-ik-een-kind-en-wanneer-vraag-ik-ouderlijk-gezag-aan"
     ]
   },
   {
@@ -169,13 +189,15 @@
   {
     "vraag": "Zijn smaakjes bij e-sigaretten verboden?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/roken/regels-vapes"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/roken/regels-vapes",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/roken/roken-ontmoedigen"
     ]
   },
   {
     "vraag": "Waar dienen jodiumtabletten voor bij een kernongeval?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/straling/jodiumtabletten"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/straling/jodiumtabletten",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/straling/vraag-en-antwoord/straling/werking-van-jodiumpillen"
     ]
   },
   {
@@ -183,7 +205,9 @@
     "urls": [
       "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/verpleeghuizen-en-zorginstellingen/wet-langdurige-zorg-wlz",
       "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/dementie/vraag-en-antwoord/verpleeghuizen-en-zorginstellingen/checklist-verhuizen-naar-verpleeghuis",
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/verpleeghuizen-en-zorginstellingen/vraag-en-antwoord/verpleeghuizen-en-zorginstellingen/checklist-verhuizen-naar-verpleeghuis"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/verpleeghuizen-en-zorginstellingen/vraag-en-antwoord/verpleeghuizen-en-zorginstellingen/checklist-verhuizen-naar-verpleeghuis",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/ouderenzorg/vraag-en-antwoord/verpleeghuizen-en-zorginstellingen/checklist-verhuizen-naar-verpleeghuis",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/verpleeghuizen-en-zorginstellingen/wet-langdurige-zorg-wlz/vraag-en-antwoord/verpleeghuizen-en-zorginstellingen/checklist-verhuizen-naar-verpleeghuis"
     ]
   },
   {
@@ -195,20 +219,33 @@
       "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/palliatieve-zorg/vraag-en-antwoord/zorg-en-ondersteuning-thuis/ik-heb-zorg-en-ondersteuning-nodig-wat-moet-ik-weten-en-regelen",
       "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zorg-en-ondersteuning-thuis/vraag-en-antwoord/zorg-en-ondersteuning-thuis/ik-heb-zorg-en-ondersteuning-nodig-wat-moet-ik-weten-en-regelen",
       "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/beschermd-wonen-en-maatschappelijke-opvang/beleid-beschermd-wonen/vraag-en-antwoord/zorg-en-ondersteuning-thuis/ondersteuning-gemeente-wmo-2015",
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zorg-en-ondersteuning-thuis/vraag-en-antwoord/zorg-en-ondersteuning-thuis/ondersteuning-gemeente-wmo-2015"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zorg-en-ondersteuning-thuis/vraag-en-antwoord/zorg-en-ondersteuning-thuis/ondersteuning-gemeente-wmo-2015",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zorg-en-ondersteuning-thuis/vraag-en-antwoord/zorg-en-ondersteuning-thuis/mijn-partner-heeft-zorg-en-ondersteuning-nodig-wat-moet-ik-regelen-en-weten",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/eerstelijnszorg/vraag-en-antwoord/zorg-en-ondersteuning-thuis/mijn-partner-heeft-zorg-en-ondersteuning-nodig-wat-moet-ik-regelen-en-weten",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/geestelijke-gezondheidszorg/vraag-en-antwoord/zorg-en-ondersteuning-thuis/mijn-partner-heeft-zorg-en-ondersteuning-nodig-wat-moet-ik-regelen-en-weten",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zorg-en-ondersteuning-thuis/vraag-en-antwoord/zorg-en-ondersteuning-thuis/mijn-ouder-heeft-zorg-en-ondersteuning-nodig-wat-moet-ik-regelen-en-weten",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/dementie/vraag-en-antwoord/zorg-en-ondersteuning-thuis/mijn-ouder-heeft-zorg-en-ondersteuning-nodig-wat-moet-ik-regelen-en-weten",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/geestelijke-gezondheidszorg/vraag-en-antwoord/zorg-en-ondersteuning-thuis/mijn-ouder-heeft-zorg-en-ondersteuning-nodig-wat-moet-ik-regelen-en-weten"
     ]
   },
   {
     "vraag": "Moet mijn kind ook een zorgverzekering hebben?",
     "urls": [
       "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zorgverzekering/zorgverzekeringsstelsel-in-nederland",
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/achttien-jaar-worden/vraag-en-antwoord/zorgverzekering/ben-ik-verplicht-een-zorgverzekering-af-te-sluiten"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/achttien-jaar-worden/vraag-en-antwoord/zorgverzekering/ben-ik-verplicht-een-zorgverzekering-af-te-sluiten",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zorgverzekering/vraag-en-antwoord/zorgverzekering/ben-ik-verplicht-een-zorgverzekering-af-te-sluiten"
     ]
   },
   {
     "vraag": "Hoeveel verlof krijg ik als mijn vrouw bevalt?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zwangerschap-en-geboorte/geboorteverlof"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zwangerschap-en-geboorte/geboorteverlof",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zwangerschap-en-geboorte/geboorteverlof/vraag-en-antwoord/zwangerschap-en-geboorte/checklist-kind-krijgen",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zwangerschap-en-geboorte/vraag-en-antwoord/zwangerschap-en-geboorte/informatie-over-kind-krijgen-in-nederlandse-gebarentaal-ngt",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/ouderlijk-gezag/vraag-en-antwoord/zwangerschap-en-geboorte/checklist-kind-krijgen",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zwangerschap-en-geboorte/geboorteverlof/vraag-en-antwoord/zwangerschap-en-geboorte/hoeveel-dagen-vrij-krijg-ik-als-partner-bij-de-geboorte-van-mijn-kind",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/zwangerschap-en-geboorte/vraag-en-antwoord/zwangerschap-en-geboorte/hoeveel-dagen-vrij-krijg-ik-als-partner-bij-de-geboorte-van-mijn-kind",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/aangifte-geboorte-en-naamskeuze-kind/vraag-en-antwoord/zwangerschap-en-geboorte/checklist-kind-krijgen"
     ]
   },
   {
@@ -221,31 +258,38 @@
   {
     "vraag": "Hoeveel mantelzorgers zijn er in Nederland?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/mantelzorg/hulp-voor-toenemend-aantal-mantelzorgers"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/mantelzorg/hulp-voor-toenemend-aantal-mantelzorgers",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/mantelzorg"
     ]
   },
   {
     "vraag": "Wat is een pgb?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/persoonsgebonden-budget-pgb/persoonsgebonden-budget-op-maat"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/persoonsgebonden-budget-pgb/persoonsgebonden-budget-op-maat",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/persoonsgebonden-budget-pgb",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/persoonsgebonden-budget-pgb/ontwikkelingen-pgb"
     ]
   },
   {
     "vraag": "Ik wil meedoen aan een proef met een nieuw medicijn, is dat veilig?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/medisch-wetenschappelijk-onderzoek/veilig-deelnemen-aan-medisch-wetenschappelijk-onderzoek"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/medisch-wetenschappelijk-onderzoek/veilig-deelnemen-aan-medisch-wetenschappelijk-onderzoek",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/medisch-wetenschappelijk-onderzoek/veilig-deelnemen-aan-medisch-wetenschappelijk-onderzoek/vraag-en-antwoord/medisch-wetenschappelijk-onderzoek/wat-moet-ik-weten-als-ik-mee-wil-doen-aan-medisch-wetenschappelijk-onderzoek",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/medisch-wetenschappelijk-onderzoek/vraag-en-antwoord/medisch-wetenschappelijk-onderzoek/wat-moet-ik-weten-als-ik-mee-wil-doen-aan-medisch-wetenschappelijk-onderzoek"
     ]
   },
   {
     "vraag": "Wie weet welke pacemaker of heupprothese ik heb gekregen als er problemen mee zijn?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/medische-hulpmiddelen/registratie-van-implantaten"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/medische-hulpmiddelen/registratie-van-implantaten",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/medische-hulpmiddelen/vraag-en-antwoord/medische-hulpmiddelen/wat-moet-ik-doen-als-ik-klachten-heb-over-mijn-stent-borstprothese-of-een-ander-implantaat"
     ]
   },
   {
     "vraag": "Wat is palliatieve zorg?",
     "urls": [
-      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/palliatieve-zorg/verbeteren-van-de-palliatieve-zorg"
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/palliatieve-zorg/verbeteren-van-de-palliatieve-zorg",
+      "https://www.rijksoverheid.nl/themas/familie-zorg-en-gezondheid/palliatieve-zorg"
     ]
   },
   {
