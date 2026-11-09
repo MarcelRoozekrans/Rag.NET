@@ -159,9 +159,26 @@ public partial class VideoDocumentParser(
             new TextContent(prompt),
         ]);
 
-        var response = await activeClient
-            .GetResponseAsync([message], cancellationToken: ct)
-            .ConfigureAwait(false);
+        // Classified the way ImageDocumentParser classifies its call (#930): the caller's own
+        // cancellation and a deliberate refusal pass through untouched, and anything else -- an
+        // HttpClient timeout included -- is the provider failing. Before this, a failed frame
+        // description reached PipelineIngestor's catch-all and was reported as StorageFailed.
+        ChatResponse response;
+        try
+        {
+            response = await activeClient
+                .GetResponseAsync([message], cancellationToken: ct)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (CallRefusedException) { throw; }
+        catch (ModelCallException) { throw; }
+        catch (Exception ex)
+        {
+            throw new VisionDescriptionException(
+                $"The vision model could not describe the frame at {ts}s of '{fileName}': {ex.Message}",
+                fileName, ex);
+        }
 
         return response.Text ?? string.Empty;
     }
