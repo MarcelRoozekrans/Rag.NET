@@ -3,7 +3,14 @@
 **Last updated:** 2026-11-09 — **#928 fixed (#935) and #930 layer 2 fixed (#936), both green
 and waiting for the operator's merge; #930 layer 1 waits on a design decision.**
 
-**NEXT ACTION: the operator merges #935, then #936, and picks a layer 1 option on #930.**
+**NEXT ACTION: design #930 layer 1, option 1 (chosen by the operator on 2026-11-09), on a fresh
+branch from main.** Start with brainstorming: the marker's shape (base exception or interface,
+where it lives in Abstractions), which refusals carry it (`BudgetExceededException`, the
+benchmark caches' refuse-on-miss throws), and the call sites to wrap (`EmbeddingBehavior.cs:89`
+and `:124`, `SemanticChunkingStrategy.cs:82` and `:128`, `LateChunkingStrategy.cs:115`, and the
+`RaptorIngestionBehavior` and `CommunityDetectionBehavior` wraps #504 reverted). Read
+`ModelCallException`'s remarks first; they record why the earlier wraps were reverted. The design
+goes to the operator before building. Separately, the operator merges #935, then #936.
 
 - **#935** (this branch, `chore/state-after-934`): `after_n_builds: 2` for Codecov's status and
   comment. Verified on its own run: Windows uploaded at 08:05:53 and Ubuntu at 08:10:25, and
