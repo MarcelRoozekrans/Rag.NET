@@ -1,17 +1,25 @@
 # Session State
 
-**Last updated:** 2026-11-09 — **rijksoverheid.nl demo finished (#931, #933, #934 merged);
-next up are #928, then #930.**
+**Last updated:** 2026-11-09 — **#928 fixed (#935) and #930 layer 2 fixed (#936), both green
+and waiting for the operator's merge; #930 layer 1 waits on a design decision.**
 
-**NEXT ACTION: fix #928 on a fresh branch from main, then #930 layer 2.** The operator chose
-this order on 2026-11-09.
+**NEXT ACTION: the operator merges #935, then #936, and picks a layer 1 option on #930.**
 
-- **#928:** `codecov/project` goes red on every PR until the second `build-test` leg uploads.
-  The fix is to make Codecov wait for both uploads (`after_n_builds` in the Codecov config).
-  Verify on the PR itself that `codecov/project` no longer fails after the first upload.
-- **#930:** a failed embedding call is reported as `StorageFailed`, twice over. Layer 2 is
-  mechanical; layer 1 is a design call for the operator, so propose it with options rather
-  than build it.
+- **#935** (this branch, `chore/state-after-934`): `after_n_builds: 2` for Codecov's status and
+  comment. Verified on its own run: Windows uploaded at 08:05:53 and Ubuntu at 08:10:25, and
+  `codecov/project` was first posted at 08:10:47, green. Nothing was posted in between.
+- **#936** (`fix/ingest-error-passthrough`, from main): `IngestFromProviderAsync` passes the
+  pipeline's own error through instead of re-wrapping it as `StorageFailed`. Content fetch maps
+  to `HttpFailed` or `TransportFailed`, and an `HttpClient` timeout no longer escapes the run as
+  a cancellation. It lacks #935, so it reproduced #928 live: `codecov/project` red at 08:17
+  (−3.93%, one upload in), green at 08:23 (+0.00%). If #935 merges first, rebasing #936 is
+  not needed for correctness.
+- **#930 layer 1:** four options are on the issue (comment of 2026-11-09). The recommendation is
+  option 1: a marker for deliberate refusals, so call-site wraps can let them through, then wrap
+  `EmbeddingBehavior`, the semantic and late chunkers, and re-apply #504's reverted chat wraps.
+  The blocker #504 recorded applies here too: the benchmark `EmbeddingCache` refuses with a plain
+  `InvalidOperationException` (`EmbeddingCache.cs:251`), and `CostTrackingEmbeddingGenerator`
+  throws `BudgetExceededException`.
 
 The demo work below is done; the operator merges, the agent does not.
 
