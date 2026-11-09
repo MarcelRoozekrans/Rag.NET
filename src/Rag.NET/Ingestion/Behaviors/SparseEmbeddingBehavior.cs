@@ -44,6 +44,11 @@ public sealed class SparseEmbeddingBehavior : IIngestionBehavior
         {
             throw;
         }
+        // A deliberate refusal is not a model failure: it fails the document instead of degrading it (#938).
+        catch (CallRefusedException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             ctx.SparseVectors = null;

@@ -233,4 +233,27 @@ public class LlmMetadataExtractionBehaviorTests
 
         Assert.Empty(chunk.Metadata);
     }
+
+    // ── Refusal ───────────────────────────────────────────────────────────────
+
+    /// <summary>A deliberate refusal is not a failed extraction: it fails the document (#938).</summary>
+    [Fact]
+    public async Task HandleAsync_CallRefusal_PropagatesUnwrapped()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ChatResponse>>(_ => throw refusal);
+        var sut = new LlmMetadataExtractionBehavior
+        {
+            ChatClient = chatClient,
+            ExtractionOptions = new LlmMetadataExtractionOptions()
+        };
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            () => sut.HandleAsync(MakeContext(MakeChunk("some text")), ct, StubNext).AsTask());
+
+        Assert.Same(refusal, ex);
+    }
 }

@@ -43,6 +43,8 @@ public sealed class TagIngestionBehavior : IIngestionBehavior
                 TagIndex.Add(key, value, embeddings[0].Vector);
             }
             catch (OperationCanceledException) { throw; }
+            // A deliberate refusal is not a model failure: it fails the document instead of degrading it (#938).
+            catch (CallRefusedException) { throw; }
             catch (Exception ex)
             {
                 Logger?.LogWarning(ex,
