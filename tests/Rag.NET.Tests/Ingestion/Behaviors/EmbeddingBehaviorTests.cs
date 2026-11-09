@@ -207,8 +207,10 @@ public class EmbeddingBehaviorTests
         ctx.Chunks.Add(MakeChunk(0, "a"));
         ctx.Chunks.Add(MakeChunk(1, "b"));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        // The generator answered, wrongly: a model failure, with the count error as its cause.
+        var wrapped = await Assert.ThrowsAsync<ModelCallException>(() =>
             sut.HandleAsync(ctx, ct, Next).AsTask());
+        var ex = Assert.IsType<InvalidOperationException>(wrapped.InnerException);
 
         Assert.Contains("returned 1", ex.Message, StringComparison.Ordinal);
         Assert.Contains("2 inputs", ex.Message, StringComparison.Ordinal);
@@ -327,8 +329,10 @@ public class EmbeddingBehaviorTests
             ctx.Chunks.Add(MakeChunk(i, $"c{i}"));
         }
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var wrapped = await Assert.ThrowsAsync<ModelCallException>(() =>
             sut.HandleAsync(ctx, ct, Next).AsTask());
+        Assert.Contains("batch 2/2", wrapped.Message, StringComparison.Ordinal);
+        var ex = Assert.IsType<InvalidOperationException>(wrapped.InnerException);
 
         Assert.Contains("returned 1", ex.Message, StringComparison.Ordinal);
         Assert.Contains("2 inputs", ex.Message, StringComparison.Ordinal);
@@ -477,5 +481,115 @@ public class EmbeddingBehaviorTests
 
             current = observed;
         }
+    }
+
+    // ── Failure classification (#930) ────────────────────────────────────────
+
+    /// <summary>
+    /// Four pending chunks: batch size 4 takes the single-call path, batch size 2 the batched one.
+    /// Every classification below must hold on both, because they are separate call sites.
+    /// </summary>
+    public static TheoryData<int> BothPaths => new() { 4, 2 };
+
+    private static IEmbeddingGenerator<string, Embedding<float>> ThrowingEmbedder(Exception thrown)
+    {
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<EmbeddingGenerationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(_ => throw thrown);
+        return embedder;
+    }
+
+    private static IngestionContext FourPendingChunks(int batchSize)
+    {
+        var ctx = MakeContext(options: new IngestionOptions
+        {
+            EmbedBatchSize = batchSize,
+            MaxConcurrentEmbeddingBatches = 1,
+        });
+        for (var i = 0; i < 4; i++)
+        {
+            ctx.Chunks.Add(MakeChunk(i, $"c{i}"));
+        }
+
+        return ctx;
+    }
+
+    /// <summary>
+    /// A provider failure is a model failure. Before this it reached <c>PipelineIngestor</c>'s
+    /// catch-all and was reported as <c>StorageFailed</c>.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(BothPaths))]
+    public async Task HandleAsync_ProviderFailure_SurfacesAsModelCallException(int batchSize)
+    {
+        var provider = new HttpRequestException("HTTP 429 (Too Many Requests)");
+        var sut = new EmbeddingBehavior { Embedder = ThrowingEmbedder(provider) };
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() =>
+            sut.HandleAsync(FourPendingChunks(batchSize), TestContext.Current.CancellationToken, Next).AsTask());
+
+        Assert.Same(provider, ex.InnerException);
+        Assert.Contains("doc-1", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>A blown budget called no model, so it must not be reported as a model failure.</summary>
+    [Theory]
+    [MemberData(nameof(BothPaths))]
+    public async Task HandleAsync_CallRefusal_PassesThroughUnwrapped(int batchSize)
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var sut = new EmbeddingBehavior { Embedder = ThrowingEmbedder(refusal) };
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() =>
+            sut.HandleAsync(FourPendingChunks(batchSize), TestContext.Current.CancellationToken, Next).AsTask());
+
+        Assert.Same(refusal, ex);
+    }
+
+    /// <summary>An embedder that already classified its failure must not be wrapped a second time.</summary>
+    [Theory]
+    [MemberData(nameof(BothPaths))]
+    public async Task HandleAsync_ExistingModelCallException_IsNotWrappedTwice(int batchSize)
+    {
+        var inner = new ModelCallException("inner", new IOException("provider"));
+        var sut = new EmbeddingBehavior { Embedder = ThrowingEmbedder(inner) };
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() =>
+            sut.HandleAsync(FourPendingChunks(batchSize), TestContext.Current.CancellationToken, Next).AsTask());
+
+        Assert.Same(inner, ex);
+    }
+
+    [Theory]
+    [MemberData(nameof(BothPaths))]
+    public async Task HandleAsync_Cancellation_PassesThrough(int batchSize)
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        var sut = new EmbeddingBehavior { Embedder = ThrowingEmbedder(new OperationCanceledException(cts.Token)) };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            sut.HandleAsync(FourPendingChunks(batchSize), cts.Token, Next).AsTask());
+    }
+
+    /// <summary>
+    /// An <c>HttpClient</c> timeout arrives as a <see cref="TaskCanceledException"/> while the
+    /// caller's token is not cancelled. It is a failed model call, not the caller cancelling, and
+    /// must not abort a whole provider ingestion run as one (the shape #936 fixed for content fetch).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(BothPaths))]
+    public async Task HandleAsync_ProviderTimeout_SurfacesAsModelCallException(int batchSize)
+    {
+        var timeout = new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.");
+        var sut = new EmbeddingBehavior { Embedder = ThrowingEmbedder(timeout) };
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() =>
+            sut.HandleAsync(FourPendingChunks(batchSize), TestContext.Current.CancellationToken, Next).AsTask());
+
+        Assert.Same(timeout, ex.InnerException);
     }
 }

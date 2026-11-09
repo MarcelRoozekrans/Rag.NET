@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Rag.NET.Benchmarks.Quality.GraphExtractions;
+using Rag.NET.Models;
 using Xunit;
 
 namespace Rag.NET.Benchmarks.Quality.Tests;
@@ -115,6 +116,25 @@ public sealed class CachedGraphRagClientOptionsTests : IDisposable
     /// invariant is unchanged; only the field standing in for it moved.</b>
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// A fill-mode cache with no model to fill it from refuses rather than calling anything: no
+    /// model exists, so a call-site wrap must not report this as a failed model call.
+    /// </summary>
+    [Fact]
+    public async Task AMissWithNoModelToFillIt_IsADeliberateRefusal()
+    {
+        var cache = new GraphExtractionCache(
+            RootFor(nameof(AMissWithNoModelToFillIt_IsADeliberateRefusal)),
+            "openai/gpt-4o-mini@t0.0",
+            GraphExtractionCacheMode.Fill);
+        using var client = new CachedGraphRagClient(cache, inner: null, temperature: 0f);
+
+        var ex = await Assert.ThrowsAsync<CallRefusedException>(() => client.GetResponseAsync(
+            [new ChatMessage(ChatRole.User, "q")], options: null, Ct));
+
+        Assert.Contains("without a model", ex.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task AResponseAffectingOptionNotInTheKey_ThrowsRatherThanSharingAnEntry()
     {
@@ -125,7 +145,7 @@ public sealed class CachedGraphRagClientOptionsTests : IDisposable
             GraphExtractionCacheMode.Fill);
         using var client = new CachedGraphRagClient(cache, inner, temperature: 0f);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => client.GetResponseAsync(
+        var ex = await Assert.ThrowsAsync<CallRefusedException>(() => client.GetResponseAsync(
             [new ChatMessage(ChatRole.User, "q")],
             new ChatOptions { StopSequences = ["STOP"] },
             Ct));

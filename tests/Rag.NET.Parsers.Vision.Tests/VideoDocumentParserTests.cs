@@ -25,6 +25,14 @@ file sealed class FakeVideoDocumentParser(
         Task.FromResult($"Scene at {timestampSeconds}s");
 }
 
+// Exposes the real DescribeFrameAsync, so the provider-failure handling is tested without FFmpeg.
+file sealed class FrameDescribingVideoParser(IChatClient chatClient)
+    : VideoDocumentParser(chatClient, new VideoDescriptionOptions())
+{
+    public Task<string> DescribeAsync(CancellationToken ct) =>
+        DescribeFrameAsync([1, 2, 3], "clip.mp4", 1.5, ct);
+}
+
 public class VideoDocumentParserTests
 {
     private static readonly DocumentMetadata Mp4Metadata = new()
@@ -169,6 +177,63 @@ public class VideoDocumentParserTests
         Assert.Equal(50, opts.MaxScenes);
         Assert.True(opts.SanitiseOutput);
         Assert.NotEmpty(opts.Prompt);
+    }
+
+    // ── Provider failures (#930) ─────────────────────────────────────────────
+
+    private static Task<string> DescribeWithProviderThrowingAsync(Exception thrown, CancellationToken? ct = null)
+    {
+        var client = Substitute.For<IChatClient>();
+        client
+            .GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ChatResponse>>(_ => throw thrown);
+
+        return new FrameDescribingVideoParser(client).DescribeAsync(ct ?? TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// A failing frame description was the one vision call left unwrapped: it reached
+    /// <c>PipelineIngestor</c> as <c>StorageFailed</c>. It now fails the way the image parser does.
+    /// </summary>
+    [Fact]
+    public async Task DescribeFrame_ProviderFailure_SurfacesAsVisionDescriptionException()
+    {
+        var provider = new HttpRequestException("HTTP 429 (Too Many Requests)");
+
+        var ex = await Assert.ThrowsAsync<VisionDescriptionException>(() => DescribeWithProviderThrowingAsync(provider));
+
+        Assert.Same(provider, ex.InnerException);
+        Assert.Equal("clip.mp4", ex.FileName);
+    }
+
+    [Fact]
+    public async Task DescribeFrame_ProviderTimeout_SurfacesAsVisionDescriptionException()
+    {
+        var timeout = new TaskCanceledException("HttpClient.Timeout");
+
+        var ex = await Assert.ThrowsAsync<VisionDescriptionException>(() => DescribeWithProviderThrowingAsync(timeout));
+
+        Assert.Same(timeout, ex.InnerException);
+    }
+
+    [Fact]
+    public async Task DescribeFrame_CallRefusal_PassesThroughUnwrapped()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => DescribeWithProviderThrowingAsync(refusal));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task DescribeFrame_CallerCancellation_PassesThrough()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => DescribeWithProviderThrowingAsync(new OperationCanceledException(cts.Token), cts.Token));
     }
 }
 

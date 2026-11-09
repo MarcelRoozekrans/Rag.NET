@@ -221,6 +221,138 @@ public class GraphEntityExtractionBehaviorTests : IAsyncDisposable
 
     // ── Helpers ─────────────────────────────────────────────────────────────
 
+    // ── Failure classification (#930) ────────────────────────────────────────
+
+    /// <summary>
+    /// Extracts one entity ("Tech company") and one relationship ("developed"), with an embedder
+    /// that throws <paramref name="thrown"/> for the batch containing <paramref name="failingText"/>
+    /// and embeds everything else.
+    /// </summary>
+    private async Task RunWithEmbedderFailingOnAsync(string failingText, Exception thrown, CancellationToken? ct = null)
+    {
+        SetupChatClient(ValidJson);
+        _embedder
+            .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var texts = callInfo.Arg<IEnumerable<string>>()!.ToList();
+                if (texts.Contains(failingText))
+                    throw thrown;
+                return Task.FromResult<GeneratedEmbeddings<Embedding<float>>>(
+                    new(texts.Select(_ => new Embedding<float>(new[] { 1f, 0f })).ToList()));
+            });
+        var sut = new GraphEntityExtractionBehavior(
+            _chatClient, _embedder, _graphStore, new GraphRagOptions { GleaningPasses = 0 });
+
+        await sut.HandleAsync(CreateContext(), ct ?? TestContext.Current.CancellationToken,
+            (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+    }
+
+    /// <summary>
+    /// Extracts one entity and one relationship, with an embedder that answers the batch containing
+    /// <paramref name="shortText"/> with no vectors at all.
+    /// </summary>
+    private async Task RunWithEmbedderShortOnAsync(string shortText)
+    {
+        SetupChatClient(ValidJson);
+        _embedder
+            .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var texts = callInfo.Arg<IEnumerable<string>>()!.ToList();
+                return Task.FromResult<GeneratedEmbeddings<Embedding<float>>>(texts.Contains(shortText)
+                    ? new()
+                    : new(texts.Select(_ => new Embedding<float>(new[] { 1f, 0f })).ToList()));
+            });
+        var sut = new GraphEntityExtractionBehavior(
+            _chatClient, _embedder, _graphStore, new GraphRagOptions { GleaningPasses = 0 });
+
+        await sut.HandleAsync(CreateContext(), TestContext.Current.CancellationToken,
+            (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+    }
+
+    /// <summary>
+    /// The extraction chat call degrades locally, but the embedding calls after it propagated, and a
+    /// failing embedder was reported as <c>StorageFailed</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("Tech company", "entities")]
+    [InlineData("developed", "relationships")]
+    public async Task EmbeddingFailure_SurfacesAsModelCallException(string failingText, string stage)
+    {
+        var provider = new HttpRequestException("HTTP 429 (Too Many Requests)");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(
+            () => RunWithEmbedderFailingOnAsync(failingText, provider));
+
+        Assert.Same(provider, ex.InnerException);
+        Assert.Contains(stage, ex.Message, StringComparison.Ordinal);
+        Assert.Contains("test-doc", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Tech company")]
+    [InlineData("developed")]
+    public async Task EmbeddingRefusal_PassesThroughUnwrapped(string failingText)
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            () => RunWithEmbedderFailingOnAsync(failingText, refusal));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Theory]
+    [InlineData("Tech company")]
+    [InlineData("developed")]
+    public async Task EmbeddingTimeout_SurfacesAsModelCallException(string failingText)
+    {
+        var timeout = new TaskCanceledException("HttpClient.Timeout");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(
+            () => RunWithEmbedderFailingOnAsync(failingText, timeout));
+
+        Assert.Same(timeout, ex.InnerException);
+    }
+
+    [Theory]
+    [InlineData("Tech company")]
+    [InlineData("developed")]
+    public async Task EmbeddingCallerCancellation_PassesThrough(string failingText)
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => RunWithEmbedderFailingOnAsync(failingText, new OperationCanceledException(cts.Token), cts.Token));
+    }
+
+    [Theory]
+    [InlineData("Tech company")]
+    [InlineData("developed")]
+    public async Task EmbeddingExistingModelCallException_IsNotWrappedTwice(string failingText)
+    {
+        var inner = new ModelCallException("inner", new IOException("provider"));
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(
+            () => RunWithEmbedderFailingOnAsync(failingText, inner));
+
+        Assert.Same(inner, ex);
+    }
+
+    /// <summary>A short result is a model failure, not an index error from reading past it.</summary>
+    [Theory]
+    [InlineData("Tech company")]
+    [InlineData("developed")]
+    public async Task EmbeddingWrongVectorCount_SurfacesAsModelCallException(string shortText)
+    {
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => RunWithEmbedderShortOnAsync(shortText));
+
+        var count = Assert.IsType<InvalidOperationException>(ex.InnerException);
+        Assert.Contains("0 embeddings for 1 input", count.Message, StringComparison.Ordinal);
+    }
+
     private static IngestionContext CreateContext()
     {
         var ctx = new IngestionContext

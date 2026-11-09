@@ -147,6 +147,8 @@ services.AddRagNet(rag =>
 
 Before each call the decorator checks the recorded spend of the current UTC day and month against the configured limits and throws `BudgetExceededException` (carrying `Window`, `Limit`, and `Spend`) once a limit is reached. After each call it records token usage and cost to the ledger. For streaming calls the gate — like the rate limiter's permit — fires on **first enumeration**, not when `GetStreamingResponseAsync` returns. Every registered surface is decorated; at least one must be registered before the call. Repeat calls are idempotent (first configuration wins; decorators never stack).
 
+`BudgetExceededException` derives from `CallRefusedException`, the marker for a call refused on purpose. Components that report a provider failure as `ModelCallException` let a refusal through as itself, so a blown budget is never reported as a model failure. During ingestion it does not have a `RagError` case of its own yet ([#937](https://github.com/MarcelRoozekrans/Rag.NET/issues/937)): `IngestAsync` returns `RagError.StorageFailed` whose `Inner` is the `BudgetExceededException`. Check `Inner is CallRefusedException` to tell it apart from a real storage failure. Steps that fall back when their model call fails, such as proposition chunking and LLM metadata extraction, currently swallow a blown budget along with real failures and carry on in degraded form ([#938](https://github.com/MarcelRoozekrans/Rag.NET/issues/938)).
+
 Things to know:
 
 - **Prices are user-supplied.** There is no built-in price table — provider prices churn too fast to ship. All monetary values (prices, limits, ledger totals, the `ragnet.llm.cost` counter) share whatever currency you quote the prices in.
@@ -190,7 +192,7 @@ services.AddRagNet(rag =>
 });
 ```
 
-The resolved `IChatClient` is `CostTracking(RateLimited(Fallback(providers)))`. **Why this order:** cheapest gate first — a blown budget throws before consuming a rate permit, and a throttled call waits before starting a fallback sequence (so retries against secondary providers don't multiply your request rate). A `BudgetExceededException` is pinned as **non-transient** by type, so even a fallback chain nested *outside* the budget gate would never treat a blown budget as a provider failure to retry. Each decorator answers `GetService` for its own type, so the stack is probeable layer by layer.
+The resolved `IChatClient` is `CostTracking(RateLimited(Fallback(providers)))`. **Why this order:** cheapest gate first — a blown budget throws before consuming a rate permit, and a throttled call waits before starting a fallback sequence (so retries against secondary providers don't multiply your request rate). A `BudgetExceededException` is pinned as **non-transient** by type, so even a fallback chain nested *outside* the budget gate would never treat a blown budget as a provider failure to retry. The pin is on its base class, `CallRefusedException`, so any deliberate refusal (a blown budget, or a cache that refuses a miss) is treated the same way. Each decorator answers `GetService` for its own type, so the stack is probeable layer by layer.
 
 One estimation caveat specific to this example: the chain mixes OpenAI and Anthropic providers, but estimation (used whenever a provider omits usage counts) is always `cl100k_base` — an OpenAI tokenizer — so estimated entries for the Anthropic fallback leg can deviate systematically from Anthropic's own token accounting.
 
@@ -208,7 +210,7 @@ It follows the same ordering rule as the decorators above — it wraps whatever 
 
 Registering *one* of the two surfaces afterwards used to slip through that check: finding the other one satisfied it, and the late surface was skipped in silence — a retried store and unretried embedding calls, with nothing to see. Since [#195](https://github.com/MarcelRoozekrans/Rag.NET/issues/195) that is caught when the RAG pipeline is resolved, and the exception names the call and the surface it missed. The same check covers `UseRateLimiting` and `UseCostBudgeting`, whose decorators are equally dead if a later registration replaces the surface they wrapped.
 
-Cancellation is never retried: the caller's token flows into every attempt and the default retry predicate excludes `OperationCanceledException`, so a cancelled call fails on its first attempt. `BudgetExceededException` is excluded for the same reason — it is a deliberate kill switch, not a provider blip. Supply a `configure` delegate to replace the default policy; a custom pipeline owns its own predicates and should exclude both too.
+Cancellation is never retried: the caller's token flows into every attempt and the default retry predicate excludes `OperationCanceledException`, so a cancelled call fails on its first attempt. Any `CallRefusedException`, `BudgetExceededException` included, is excluded for the same reason: it is a deliberate refusal, not a provider blip. Supply a `configure` delegate to replace the default policy; a custom pipeline owns its own predicates and should exclude both too.
 
 **Where it sits in the stack.** `UseRateLimiting` and `UseCostBudgeting` decorate the same embedding surface, so call `ConfigureResilience` *after* them to make retry the outermost layer:
 

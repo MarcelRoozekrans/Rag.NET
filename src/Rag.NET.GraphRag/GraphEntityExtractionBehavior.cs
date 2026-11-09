@@ -300,6 +300,42 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         return weight;
     }
 
+    /// <summary>
+    /// Embeds entity or relationship descriptions, classifying a failure as a model failure (#930)
+    /// in the order <see cref="ModelCallException"/> documents.
+    /// </summary>
+    /// <remarks>
+    /// The extraction chat call degrades locally (see <see cref="ExtractAsync"/>), but these calls
+    /// propagated, so a failing embedder reached <c>PipelineIngestor</c>'s catch-all and was reported
+    /// as <c>StorageFailed</c>. The caller's cancellation and a <see cref="CallRefusedException"/> pass
+    /// through untouched; a timeout is translated; and an existing <see cref="ModelCallException"/> is not
+    /// wrapped twice.
+    /// </remarks>
+    private async Task<GeneratedEmbeddings<Embedding<float>>> EmbedAsync(
+        List<string> texts, string what, CancellationToken ct)
+    {
+        try
+        {
+            var generated = await _embedder.GenerateAsync(texts, cancellationToken: ct).ConfigureAwait(false);
+            if (generated.Count != texts.Count)
+            {
+                // Inside the wrap on purpose: the generator answered, wrongly, and indexing the
+                // result would otherwise surface as an index error.
+                throw new InvalidOperationException(
+                    $"Embedding generator returned {generated.Count} embeddings for {texts.Count} inputs ({what}).");
+            }
+
+            return generated;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (CallRefusedException) { throw; }
+        catch (ModelCallException) { throw; }
+        catch (Exception ex)
+        {
+            throw new ModelCallException($"The embedding model failed for {what}.", ex);
+        }
+    }
+
     private async Task EmbedEntitiesAsync(
         IngestionContext ctx, List<GraphEntity> entities, CancellationToken ct)
     {
@@ -309,7 +345,9 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         for (var i = 0; i < entities.Count; i++)
             entityTexts.Add(entities[i].Description);
 
-        var entityEmbeddings = await _embedder.GenerateAsync(entityTexts, cancellationToken: ct).ConfigureAwait(false);
+        var entityEmbeddings = await EmbedAsync(
+            entityTexts, $"{entities.Count} graph entities of document '{ctx.Metadata.DocumentId.Value}'", ct)
+            .ConfigureAwait(false);
 
         for (int i = 0; i < entities.Count; i++)
         {
@@ -342,7 +380,9 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         for (var i = 0; i < relationships.Count; i++)
             relTexts.Add(relationships[i].Description);
 
-        var relEmbeddings = await _embedder.GenerateAsync(relTexts, cancellationToken: ct).ConfigureAwait(false);
+        var relEmbeddings = await EmbedAsync(
+            relTexts, $"{relationships.Count} graph relationships of document '{ctx.Metadata.DocumentId.Value}'", ct)
+            .ConfigureAwait(false);
 
         for (int i = 0; i < relationships.Count; i++)
         {

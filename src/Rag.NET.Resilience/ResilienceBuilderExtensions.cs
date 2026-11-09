@@ -54,8 +54,9 @@ public static class ResilienceBuilderExtensions
     /// Cancellation passes through untouched: the caller's token flows into every attempt and the
     /// default retry predicate excludes <see cref="OperationCanceledException"/>, so a cancelled
     /// call (and, deliberately, an <c>HttpClient</c> timeout surfacing as
-    /// <see cref="TaskCanceledException"/>) is never retried. <see cref="BudgetExceededException"/>
-    /// is excluded for the same reason — it is a kill switch, not a provider blip. A custom
+    /// <see cref="TaskCanceledException"/>) is never retried. Any <see cref="CallRefusedException"/>,
+    /// <see cref="BudgetExceededException"/> among them, is excluded for the same reason — it is a
+    /// deliberate refusal, not a provider blip. A custom
     /// <paramref name="configure"/> owns its own predicates and should exclude both too.
     /// </para>
     /// <para>
@@ -204,13 +205,14 @@ public static class ResilienceBuilderExtensions
             //     OperationCanceledException is never a transient failure, so it is excluded
             //     here rather than relying on Polly's internal token check (which only covers
             //     an already-signalled token).
-            // (2) BudgetExceededException is a deliberate kill switch, not a provider blip;
-            //     retrying it would burn the back-off budget on a call that cannot succeed
-            //     (the same non-transient-by-type pin FallbackChatClient applies).
+            // (2) A CallRefusedException -- a blown budget, a refuse-on-miss cache -- is a
+            //     deliberate refusal, not a provider blip; retrying it would burn the back-off
+            //     budget on a call that cannot succeed. Same non-transient-by-type pin as
+            //     FallbackChatClient.
             ShouldHandle = static args => ValueTask.FromResult(
                 args.Outcome.Exception is not null
                     and not OperationCanceledException
-                    and not BudgetExceededException),
+                    and not CallRefusedException),
         });
     }
 

@@ -268,10 +268,11 @@ public sealed class FallbackChatClient(
 
     internal static bool IsTransient(Exception ex)
     {
-        // A blown budget must NEVER trigger provider fallback — retrying against the next
-        // client would keep spending past the limit. Pinned by type (not message wording)
-        // so the exception text can evolve freely.
-        if (ex is BudgetExceededException)
+        // A deliberate refusal must NEVER trigger provider fallback — retrying a blown budget
+        // against the next client would keep spending past the limit, and a refuse-on-miss
+        // cache called no model at all. Pinned by type (not message wording) so the exception
+        // text can evolve freely; BudgetExceededException is a CallRefusedException.
+        if (ex is CallRefusedException)
             return false;
 
         if (ex is OperationCanceledException or TaskCanceledException or TimeoutException)

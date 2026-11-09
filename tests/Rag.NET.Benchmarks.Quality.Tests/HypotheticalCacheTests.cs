@@ -1,4 +1,5 @@
 using Rag.NET.Benchmarks.Quality;
+using Rag.NET.Models;
 using Xunit;
 
 namespace Rag.NET.Benchmarks.Quality.Tests;
@@ -243,7 +244,7 @@ public sealed class HypotheticalCacheTests : IDisposable
         var generator = new RecordingGenerator("must never be produced");
         var cache = Refuse();
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<CallRefusedException>(
             () => cache.GetOrAddAsync(Query, 2, generator.GenerateAsync, Ct));
 
         Assert.Contains(key, exception.Message, StringComparison.Ordinal);

@@ -157,7 +157,7 @@ public sealed class HydeAblationRowTests : IDisposable
 
         var row = new HydeAblationRow(RefuseCache(), hypothesisCount: 3);
 
-        var failure = await Assert.ThrowsAsync<InvalidOperationException>(
+        var failure = await Assert.ThrowsAsync<CallRefusedException>(
             () => RetrieveAsync(row, "zebra quartz", topK: 3));
 
         Assert.Contains("hypothesis 2", failure.Message, StringComparison.Ordinal);

@@ -1,4 +1,5 @@
 using Rag.NET.Benchmarks.Quality;
+using Rag.NET.Models;
 using Xunit;
 
 namespace Rag.NET.Benchmarks.Quality.Tests;
@@ -260,7 +261,7 @@ public sealed class EmbeddingCacheTests : IDisposable
             .GetOrAddAsync([Text], new RecordingEmbedder(1f).EmbedAsync, Ct);
 
         var cache = new EmbeddingCache(_root, "model-a");
-        var exception = Assert.Throws<InvalidOperationException>(
+        var exception = Assert.Throws<CallRefusedException>(
             () => cache.Prefetch([Text, "never embedded", "also never embedded"]));
 
         Assert.Contains("2 of the 3", exception.Message, StringComparison.Ordinal);
@@ -280,7 +281,7 @@ public sealed class EmbeddingCacheTests : IDisposable
         // "other" IS on disk — refusing anyway is the point. After a prefetch, a lookup that
         // fell back to disk would put file I/O back inside the timed span the prefetch exists
         // to keep it out of.
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<CallRefusedException>(
             () => cache.GetOrAddAsync(["other"], Explode, Ct));
 
         Assert.Contains("1 of the 1", exception.Message, StringComparison.Ordinal);

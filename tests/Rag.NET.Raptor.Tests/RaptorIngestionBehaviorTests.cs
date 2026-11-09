@@ -292,4 +292,192 @@ public class RaptorIngestionBehaviorTests
         Assert.NotEmpty(levels);
         Assert.Contains(2, levels);
     }
+
+    // ── Failure classification (#930, re-applying the wrap #504 reverted) ─────
+
+    private static RaptorOptions OneLevel() => new()
+    {
+        TreeScope = RaptorTreeScope.PerDocument,
+        MinChunksForRaptor = 2,
+        ReducedDimensionality = 2,
+        MaxTreeDepth = 1,
+    };
+
+    private static ValueTask<IngestionResult> Next(IngestionContext c, CancellationToken _) =>
+        ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count });
+
+    /// <summary>Runs one RAPTOR level whose summary chat call throws <paramref name="thrown"/>.</summary>
+    private Task RunWithFailingChatAsync(Exception thrown, CancellationToken? ct = null)
+    {
+        _helpers.ChatClient
+            .GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ChatResponse>>(_ => throw thrown);
+        _helpers.SetupEmbedder(8);
+        var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, OneLevel());
+
+        return sut.HandleAsync(
+            _helpers.CreateContext(chunkCount: 6, embeddingDims: 8), ct ?? TestContext.Current.CancellationToken, Next).AsTask();
+    }
+
+    /// <summary>
+    /// Runs one RAPTOR level whose summary embedding throws <paramref name="thrown"/>. The leaf
+    /// chunks arrive already embedded, so the summary is the only text this embedder sees.
+    /// </summary>
+    private Task RunWithFailingSummaryEmbedderAsync(Exception thrown, CancellationToken? ct = null) =>
+        RunWithSummaryEmbedderAsync(_ => throw thrown, ct);
+
+    private Task RunWithSummaryEmbedderAsync(
+        Func<NSubstitute.Core.CallInfo, Task<GeneratedEmbeddings<Embedding<float>>>> answer,
+        CancellationToken? ct = null)
+    {
+        _helpers.SetupChatClient("Summary of cluster");
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder
+            .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(answer);
+        var sut = new RaptorIngestionBehavior(_helpers.ChatClient, embedder, OneLevel());
+
+        return sut.HandleAsync(
+            _helpers.CreateContext(chunkCount: 6, embeddingDims: 8), ct ?? TestContext.Current.CancellationToken, Next).AsTask();
+    }
+
+    [Fact]
+    public async Task SummaryChatFailure_SurfacesAsModelCallException()
+    {
+        var provider = new HttpRequestException("HTTP 429 (Too Many Requests)");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => RunWithFailingChatAsync(provider));
+
+        Assert.Same(provider, ex.InnerException);
+        Assert.Contains("summarise", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SummaryChat_BlownBudget_PassesThroughUnwrapped()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => RunWithFailingChatAsync(refusal));
+
+        Assert.Same(refusal, ex);
+    }
+
+    /// <summary>
+    /// The regression #504 hit: under the benchmark harness the chat client is a cache opened
+    /// refuse-on-miss, and its refusal was relabelled as a failed model call when no model was called.
+    /// </summary>
+    [Fact]
+    public async Task SummaryChat_CacheRefusal_PassesThroughAsThatExactType()
+    {
+        var refusal = new CallRefusedException("No cached response; this cache refuses on a miss.");
+
+        var ex = await Assert.ThrowsAsync<CallRefusedException>(() => RunWithFailingChatAsync(refusal));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task SummaryEmbeddingFailure_SurfacesAsModelCallException()
+    {
+        var provider = new HttpRequestException("HTTP 503 (Service Unavailable)");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => RunWithFailingSummaryEmbedderAsync(provider));
+
+        Assert.Same(provider, ex.InnerException);
+        Assert.Contains("embedding", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SummaryEmbedding_BlownBudget_PassesThroughUnwrapped()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => RunWithFailingSummaryEmbedderAsync(refusal));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task SummaryEmbedding_CacheRefusal_PassesThroughAsThatExactType()
+    {
+        var refusal = new CallRefusedException("Never prefetched; this cache refuses on a miss.");
+
+        var ex = await Assert.ThrowsAsync<CallRefusedException>(() => RunWithFailingSummaryEmbedderAsync(refusal));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task SummaryChat_ProviderTimeout_SurfacesAsModelCallException()
+    {
+        var timeout = new TaskCanceledException("HttpClient.Timeout");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => RunWithFailingChatAsync(timeout));
+
+        Assert.Same(timeout, ex.InnerException);
+    }
+
+    [Fact]
+    public async Task SummaryEmbedding_ProviderTimeout_SurfacesAsModelCallException()
+    {
+        var timeout = new TaskCanceledException("HttpClient.Timeout");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => RunWithFailingSummaryEmbedderAsync(timeout));
+
+        Assert.Same(timeout, ex.InnerException);
+    }
+
+    [Fact]
+    public async Task SummaryChat_CallerCancellation_PassesThrough()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => RunWithFailingChatAsync(new OperationCanceledException(cts.Token), cts.Token));
+    }
+
+    [Fact]
+    public async Task SummaryEmbedding_CallerCancellation_PassesThrough()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => RunWithFailingSummaryEmbedderAsync(new OperationCanceledException(cts.Token), cts.Token));
+    }
+
+    [Fact]
+    public async Task SummaryChat_ExistingModelCallException_IsNotWrappedTwice()
+    {
+        var inner = new ModelCallException("inner", new IOException("provider"));
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => RunWithFailingChatAsync(inner));
+
+        Assert.Same(inner, ex);
+    }
+
+    [Fact]
+    public async Task SummaryEmbedding_ExistingModelCallException_IsNotWrappedTwice()
+    {
+        var inner = new ModelCallException("inner", new IOException("provider"));
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => RunWithFailingSummaryEmbedderAsync(inner));
+
+        Assert.Same(inner, ex);
+    }
+
+    /// <summary>
+    /// An embedder that answers with no vector for the summary answered wrongly: a model failure,
+    /// not an <see cref="ArgumentOutOfRangeException"/> from indexing an empty result.
+    /// </summary>
+    [Fact]
+    public async Task SummaryEmbedding_WrongVectorCount_SurfacesAsModelCallException()
+    {
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => RunWithSummaryEmbedderAsync(
+            _ => Task.FromResult(new GeneratedEmbeddings<Embedding<float>>())));
+
+        var count = Assert.IsType<InvalidOperationException>(ex.InnerException);
+        Assert.Contains("0 embeddings for 1 input", count.Message, StringComparison.Ordinal);
+    }
 }
