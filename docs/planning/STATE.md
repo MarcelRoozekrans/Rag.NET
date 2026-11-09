@@ -1,12 +1,38 @@
 # Session State
 
-**Last updated:** 2026-11-09 — **#932 is built as #946, waiting for CI and the operator's merge.
-#941 shipped in 1.5.0; its `feat` commit is in the 1.5.0 changelog.**
+**Last updated:** 2026-11-09 (evening) — **main is red; #949 fixes it. #938 is built as #950.
+#946 is waiting for #949.** The operator merges; the agent does not.
 
-**NEXT ACTION: watch #946's CI (ci-watch Wait stage) and report it, then start #938 on a fresh
-branch from main.** #938 was blocked on #941, and #941 is merged. When the operator merges #946,
-confirm its `feat` commits appear in the release-please PR's changelog. The operator merges; the
-agent does not.
+**NEXT ACTION, in this order:**
+1. **#949** (`fix/za0601-linq-in-loops`, `chore`): `main` stopped building when Renovate merged #852
+   (ZeroAlloc.Analyzers 1.12.0). Its rule ZA0601 flags LINQ inside a loop, and the build treats it
+   as an error. #949 rewrites the three affected loops. Its only red check is
+   `build-test (ubuntu-latest)`, which failed on the Service Bus dead-letter flake (#246, reopened
+   with this occurrence). It needs that job re-run, or the operator merges past it.
+2. After #949 merges, update **#946** (`feat/ask-retrieval-options`, #932) and **#950**
+   (`fix/refusal-fails-document`, #938) from main and watch their CI. #946's last run
+   (head 516f7a85) was green apart from build-test, which failed only on ZA0601 in files it does
+   not touch. #950 will fail build-test the same way until then.
+3. When the operator merges #946 (`feat`) or #950 (`fix`), confirm the commit appears in the
+   release-please PR's changelog. #950's title carries the release note: budget-limited
+   ingestion now stops when the budget is spent.
+
+- **#950** (#938): a `CallRefusedException` now fails the document at every ingestion site that
+  degrades on a model failure:
+  - the proposition, late and résumé chunkers;
+  - the metadata, tag and sparse behaviours;
+  - mind-map extraction;
+  - both LLM chunk sanitisers;
+  - and, added after review, `ContainerEntryDispatcher` (zip and email entries) and the reindex
+    sparse step.
+
+  Until #937 the failure is reported as `StorageFailed`. All 79 test projects passed locally,
+  except the known local E2E failures; pack-validate passed 34/34; a fresh reviewer's findings are
+  all fixed. Design and plan: `docs/plans/2026-11-09-refusal-fails-document-*.md`.
+- **#948** (new): the query path has the same swallowing catch in seven components (HyDE, CRAG,
+  adaptive retrieval, the hypothetical-document generator, the abstractive compressor, the
+  confidence scorer, the LLM query sanitiser). Kept out of #938 by decision.
+- **#947** (this STATE update) is green, docs only, and BEHIND main.
 
 **Decisions taken on 2026-11-09, each recorded as a comment on its issue:**
 - **#938:** a deliberate refusal fails the document. Add `catch (CallRefusedException) { throw; }`
@@ -17,8 +43,7 @@ agent does not.
 
   The full list is the one `ModelCallException`'s remarks give for "catch locally and degrade",
   plus the two in the issue's comment. It ships as `fix:`, with a CHANGELOG note that
-  budget-limited ingestion now stops when the budget is spent. Next in line; start with
-  brainstorming, which here means a short design.
+  budget-limited ingestion now stops when the budget is spent. **Built as #950.**
 - **#937:** `RagError.CallRefused` waits for the next major release, the way `ModelCallFailed`
   arrived as a `feat!` in #508.
 - **#926:** support SentencePiece in the ONNX reranker with a `TokenizerPath` option, using
