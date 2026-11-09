@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.4.0...v1.4.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **data-providers:** report a failed provider entry with its real error, not StorageFailed ([#936](https://github.com/MarcelRoozekrans/Rag.NET/issues/936)) ([6e0f132](https://github.com/MarcelRoozekrans/Rag.NET/commit/6e0f13240d968f395372d298d716a630db660e27)), closes [#930](https://github.com/MarcelRoozekrans/Rag.NET/issues/930)
+
 ## [1.4.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.3.10...v1.4.0) (2026-11-08)
 
 
