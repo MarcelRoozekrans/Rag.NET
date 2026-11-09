@@ -90,8 +90,10 @@ public sealed class EmbeddingBehavior : IIngestionBehavior
     /// </para>
     /// <para>
     /// The order of the catches is the contract <see cref="ModelCallException"/> documents.
-    /// Cancellation and a <see cref="CallRefusedException"/> — a blown budget, a cache that refuses
-    /// a miss — pass through untouched: no model was called, so neither is a model failure. An
+    /// The caller's cancellation and a <see cref="CallRefusedException"/> — a blown budget, a cache
+    /// that refuses a miss — pass through untouched: neither is a model failure. A cancellation the
+    /// caller did not ask for, such as an <c>HttpClient</c> timeout, is the provider failing, so it
+    /// is translated rather than allowed to end an ingestion run as if the caller had cancelled. An
     /// embedder that already threw <see cref="ModelCallException"/> is not wrapped twice. A wrong
     /// vector count is inside the wrap on purpose: the generator answered, and answered wrongly.
     /// </para>
@@ -113,7 +115,7 @@ public sealed class EmbeddingBehavior : IIngestionBehavior
 
             return generated;
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (CallRefusedException) { throw; }
         catch (ModelCallException) { throw; }
         catch (Exception ex)

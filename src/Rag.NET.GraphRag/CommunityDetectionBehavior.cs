@@ -262,7 +262,7 @@ public sealed class CommunityDetectionBehavior(
                         [new ChatMessage(ChatRole.User, prompts[i])],
                         cancellationToken: token).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException) { throw; }
+                catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
                 catch (CallRefusedException) { throw; }
                 catch (ModelCallException) { throw; }
                 catch (Exception ex)
@@ -502,8 +502,15 @@ public sealed class CommunityDetectionBehavior(
         try
         {
             embeddings = await embedder.GenerateAsync(reportTexts, cancellationToken: ct).ConfigureAwait(false);
+            if (embeddings.Count != reportTexts.Count)
+            {
+                // Inside the wrap on purpose: the generator answered, wrongly, and indexing the
+                // result below would otherwise surface as an index error.
+                throw new InvalidOperationException(
+                    $"Embedding generator returned {embeddings.Count} embeddings for {reportTexts.Count} inputs (community reports).");
+            }
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (CallRefusedException) { throw; }
         catch (ModelCallException) { throw; }
         catch (Exception ex)

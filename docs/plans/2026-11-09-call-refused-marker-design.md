@@ -73,7 +73,10 @@ decorator around a client. It is never a provider failure, and it is never retri
 
 **The wrap, at each call site.** In this order:
 
-1. `OperationCanceledException`: rethrow.
+1. `OperationCanceledException` when the caller's token is cancelled: rethrow. Changed after the
+   final review: an `HttpClient` timeout arrives as a `TaskCanceledException` with the caller's
+   token not cancelled, and an unfiltered rethrow let it end a whole provider ingestion run as a
+   cancellation, the shape #936 fixed for content fetch. It is now translated like any other failure.
 2. `CallRefusedException`: rethrow.
 3. `ModelCallException`: rethrow, so a wrap nested inside another wrap does not wrap twice.
 4. Anything else: throw `ModelCallException` with a message that names the stage and the document,
@@ -90,6 +93,10 @@ Call sites:
   swallow a refusal are tracked in #938.
 - `RaptorIngestionBehavior`: the summary chat call (`:497`) and its embedding (`:501`).
 - `CommunityDetectionBehavior`: the report chat call (`:254`) and the report embedding (`:485`).
+- `VideoDocumentParser.DescribeFrameAsync`: translated to `VisionDescriptionException`, as the image
+  parser does. Found in the final review.
+- Every embedding wrap checks that the generator returned one vector per input, inside the wrap, so a
+  short result is a model failure rather than an index error reported as `StorageFailed`.
 - `GraphEntityExtractionBehavior`: the entity and relationship embedding calls (`:312`, `:345`).
   Its extraction chat call degrades locally, but these two propagated. Added during
   implementation; #930's survey missed them.

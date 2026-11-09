@@ -44,8 +44,8 @@ public sealed partial class SemanticChunkingStrategy(
     /// </summary>
     /// <remarks>
     /// Without this, a failing chunking embedder reached <c>PipelineIngestor</c>'s catch-all and was
-    /// reported as <c>StorageFailed</c>. Cancellation and a <see cref="CallRefusedException"/> pass
-    /// through untouched — no model was called — and an embedder that already threw
+    /// reported as <c>StorageFailed</c>. The caller's cancellation and a
+    /// <see cref="CallRefusedException"/> pass through untouched; a timeout is translated; and an embedder that already threw
     /// <see cref="ModelCallException"/> is not wrapped twice. Kept out of the iterators because
     /// <c>yield return</c> cannot sit inside a <c>try</c> with a <c>catch</c>.
     /// </remarks>
@@ -59,7 +59,7 @@ public sealed partial class SemanticChunkingStrategy(
         {
             return await embedder.GenerateAsync(texts, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (CallRefusedException) { throw; }
         catch (ModelCallException) { throw; }
         catch (Exception ex)

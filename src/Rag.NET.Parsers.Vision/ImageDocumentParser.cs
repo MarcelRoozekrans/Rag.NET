@@ -70,9 +70,11 @@ public partial class ImageDocumentParser(
                 .GetResponseAsync([message], cancellationToken: ct)
                 .ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // The caller's token, not a provider failure. Never reclassified.
+            // The caller's token, not a provider failure. Never reclassified. A cancellation the
+            // caller did not ask for -- an HttpClient timeout arrives as TaskCanceledException --
+            // is the provider failing, and falls through to be translated below.
             throw;
         }
         catch (CallRefusedException)

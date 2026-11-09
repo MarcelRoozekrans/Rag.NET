@@ -234,4 +234,15 @@ public class SemanticChunkingStrategyDocumentTests
 
         Assert.Same(inner, ex);
     }
+
+    /// <summary>A provider timeout, with the caller's token not cancelled, is a model failure.</summary>
+    [Fact]
+    public async Task ChunkDocumentAsync_ProviderTimeout_SurfacesAsModelCallException()
+    {
+        var timeout = new TaskCanceledException("HttpClient.Timeout");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => ChunkTwoSectionsAsync(timeout));
+
+        Assert.Same(timeout, ex.InnerException);
+    }
 }

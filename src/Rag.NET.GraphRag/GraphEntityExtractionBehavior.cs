@@ -307,8 +307,8 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
     /// <remarks>
     /// The extraction chat call degrades locally (see <see cref="ExtractAsync"/>), but these calls
     /// propagated, so a failing embedder reached <c>PipelineIngestor</c>'s catch-all and was reported
-    /// as <c>StorageFailed</c>. Cancellation and a <see cref="CallRefusedException"/> pass through
-    /// untouched — no model was called — and an existing <see cref="ModelCallException"/> is not
+    /// as <c>StorageFailed</c>. The caller's cancellation and a <see cref="CallRefusedException"/> pass
+    /// through untouched; a timeout is translated; and an existing <see cref="ModelCallException"/> is not
     /// wrapped twice.
     /// </remarks>
     private async Task<GeneratedEmbeddings<Embedding<float>>> EmbedAsync(
@@ -316,9 +316,18 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
     {
         try
         {
-            return await _embedder.GenerateAsync(texts, cancellationToken: ct).ConfigureAwait(false);
+            var generated = await _embedder.GenerateAsync(texts, cancellationToken: ct).ConfigureAwait(false);
+            if (generated.Count != texts.Count)
+            {
+                // Inside the wrap on purpose: the generator answered, wrongly, and indexing the
+                // result would otherwise surface as an index error.
+                throw new InvalidOperationException(
+                    $"Embedding generator returned {generated.Count} embeddings for {texts.Count} inputs ({what}).");
+            }
+
+            return generated;
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (CallRefusedException) { throw; }
         catch (ModelCallException) { throw; }
         catch (Exception ex)

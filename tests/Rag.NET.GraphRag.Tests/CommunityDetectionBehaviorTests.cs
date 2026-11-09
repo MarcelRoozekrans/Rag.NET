@@ -658,16 +658,20 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
         await sut.HandleAsync(CreateContext(), ct, Next);
     }
 
-    private async Task RunWithFailingReportEmbedderAsync(Exception thrown)
+    private Task RunWithFailingReportEmbedderAsync(Exception thrown, CancellationToken? ct = null) =>
+        RunWithReportEmbedderAsync(_ => throw thrown, ct ?? TestContext.Current.CancellationToken);
+
+    private async Task RunWithReportEmbedderAsync(
+        Func<NSubstitute.Core.CallInfo, Task<GeneratedEmbeddings<Embedding<float>>>> answer, CancellationToken ct)
     {
         await PopulateGraphStore();
         SetupChatClient("Report text");
         _embedder
             .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
-            .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(_ => throw thrown);
+            .Returns(answer);
         var sut = new CommunityDetectionBehavior(_chatClient, _embedder, _graphStore, new GraphRagOptions { Enabled = true });
 
-        await sut.HandleAsync(CreateContext(), TestContext.Current.CancellationToken, Next);
+        await sut.HandleAsync(CreateContext(), ct, Next);
     }
 
     [Fact]
@@ -738,6 +742,70 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
         var ex = await Assert.ThrowsAsync<CallRefusedException>(() => RunWithFailingReportEmbedderAsync(refusal));
 
         Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task ReportChat_ProviderTimeout_SurfacesAsModelCallException()
+    {
+        var timeout = new TaskCanceledException("HttpClient.Timeout");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(
+            () => RunWithFailingReportChatAsync(timeout, TestContext.Current.CancellationToken));
+
+        Assert.Same(timeout, ex.InnerException);
+    }
+
+    [Fact]
+    public async Task ReportChat_ExistingModelCallException_IsNotWrappedTwice()
+    {
+        var inner = new ModelCallException("inner", new IOException("provider"));
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(
+            () => RunWithFailingReportChatAsync(inner, TestContext.Current.CancellationToken));
+
+        Assert.Same(inner, ex);
+    }
+
+    [Fact]
+    public async Task ReportEmbedding_ProviderTimeout_SurfacesAsModelCallException()
+    {
+        var timeout = new TaskCanceledException("HttpClient.Timeout");
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => RunWithFailingReportEmbedderAsync(timeout));
+
+        Assert.Same(timeout, ex.InnerException);
+    }
+
+    [Fact]
+    public async Task ReportEmbedding_CallerCancellation_PassesThrough()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => RunWithFailingReportEmbedderAsync(new OperationCanceledException(cts.Token), cts.Token));
+    }
+
+    [Fact]
+    public async Task ReportEmbedding_ExistingModelCallException_IsNotWrappedTwice()
+    {
+        var inner = new ModelCallException("inner", new IOException("provider"));
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => RunWithFailingReportEmbedderAsync(inner));
+
+        Assert.Same(inner, ex);
+    }
+
+    /// <summary>A short result is a model failure, not an index error from reading past it.</summary>
+    [Fact]
+    public async Task ReportEmbedding_WrongVectorCount_SurfacesAsModelCallException()
+    {
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() => RunWithReportEmbedderAsync(
+            _ => Task.FromResult(new GeneratedEmbeddings<Embedding<float>>()),
+            TestContext.Current.CancellationToken));
+
+        var count = Assert.IsType<InvalidOperationException>(ex.InnerException);
+        Assert.Contains("0 embeddings for", count.Message, StringComparison.Ordinal);
     }
 
     private static IngestionContext CreateContext()

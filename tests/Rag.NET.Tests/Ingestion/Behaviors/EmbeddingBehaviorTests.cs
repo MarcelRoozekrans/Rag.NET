@@ -574,4 +574,22 @@ public class EmbeddingBehaviorTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             sut.HandleAsync(FourPendingChunks(batchSize), cts.Token, Next).AsTask());
     }
+
+    /// <summary>
+    /// An <c>HttpClient</c> timeout arrives as a <see cref="TaskCanceledException"/> while the
+    /// caller's token is not cancelled. It is a failed model call, not the caller cancelling, and
+    /// must not abort a whole provider ingestion run as one (the shape #936 fixed for content fetch).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(BothPaths))]
+    public async Task HandleAsync_ProviderTimeout_SurfacesAsModelCallException(int batchSize)
+    {
+        var timeout = new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.");
+        var sut = new EmbeddingBehavior { Embedder = ThrowingEmbedder(timeout) };
+
+        var ex = await Assert.ThrowsAsync<ModelCallException>(() =>
+            sut.HandleAsync(FourPendingChunks(batchSize), TestContext.Current.CancellationToken, Next).AsTask());
+
+        Assert.Same(timeout, ex.InnerException);
+    }
 }
