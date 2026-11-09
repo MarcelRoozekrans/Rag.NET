@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
@@ -92,10 +93,7 @@ public sealed class RagPipeline(
         using var scope = logger?.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal) { ["query_hash"] = PipelineRetriever.HashQuery(query) });
 
         var opts = options ?? new RagOptions();
-        var retrievalResult = await retriever.RetrieveAsync(query, BuildRetrievalOptions(opts), cancellationToken).ConfigureAwait(false);
-        if (!retrievalResult.IsSuccess)
-            throw new InvalidOperationException($"Retrieval failed: {retrievalResult.Error}");
-        var sources = retrievalResult.Value;
+        var sources = await RetrieveForAskAsync(query, opts, activity, cancellationToken).ConfigureAwait(false);
 
         return await answerEngine.AskAsync(query, sources, opts, cancellationToken).ConfigureAwait(false);
     }
@@ -113,10 +111,7 @@ public sealed class RagPipeline(
         using var scope = logger?.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal) { ["query_hash"] = PipelineRetriever.HashQuery(query) });
 
         var opts = options ?? new RagOptions();
-        var retrievalResult = await retriever.RetrieveAsync(query, BuildRetrievalOptions(opts), cancellationToken).ConfigureAwait(false);
-        if (!retrievalResult.IsSuccess)
-            throw new InvalidOperationException($"Retrieval failed: {retrievalResult.Error}");
-        var sources = retrievalResult.Value;
+        var sources = await RetrieveForAskAsync(query, opts, activity, cancellationToken).ConfigureAwait(false);
 
         await foreach (var update in answerEngine.AskStreamingAsync(query, sources, opts, cancellationToken).ConfigureAwait(false))
         {
@@ -126,6 +121,36 @@ public sealed class RagPipeline(
 
     public Task DeleteAsync(string documentId, CancellationToken cancellationToken = default)
         => ingestor.DeleteAsync(documentId, cancellationToken);
+
+    // Failures raised here happen before the retriever's or answer engine's own spans could record
+    // them, so the query span carries the error.
+    private async Task<IReadOnlyList<SearchResult>> RetrieveForAskAsync(
+        string query,
+        RagOptions options,
+        Activity? activity,
+        CancellationToken cancellationToken)
+    {
+        RetrievalOptions retrievalOptions;
+        try
+        {
+            retrievalOptions = BuildRetrievalOptions(options);
+        }
+        catch (ArgumentException ex)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
+
+        var retrievalResult = await retriever.RetrieveAsync(query, retrievalOptions, cancellationToken).ConfigureAwait(false);
+        if (!retrievalResult.IsSuccess)
+        {
+            var message = $"Retrieval failed: {retrievalResult.Error}";
+            activity?.SetStatus(ActivityStatusCode.Error, message);
+            throw new InvalidOperationException(message);
+        }
+
+        return retrievalResult.Value;
+    }
 
     private static RetrievalOptions BuildRetrievalOptions(RagOptions options)
     {
