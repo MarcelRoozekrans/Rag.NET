@@ -1,11 +1,19 @@
 # Session State
 
-**Last updated:** 2026-11-09 — **rijksoverheid.nl demo: the eval's answer lists were
-incomplete; with them fixed, dense still stays the chat default.**
+**Last updated:** 2026-11-09 — **rijksoverheid.nl demo finished (#931, #933, #934 merged);
+next up are #928, then #930.**
 
-**NEXT ACTION: the operator merges the `feat/demo-eval-movers` PR.** #933 (dense as the chat
-default) is merged. This PR makes `--eval` list the questions each variant moves, adds
-`--pool <file>`, and adds 44 judged answer pages to `eval/vragen.json`.
+**NEXT ACTION: fix #928 on a fresh branch from main, then #930 layer 2.** The operator chose
+this order on 2026-11-09.
+
+- **#928:** `codecov/project` goes red on every PR until the second `build-test` leg uploads.
+  The fix is to make Codecov wait for both uploads (`after_n_builds` in the Codecov config).
+  Verify on the PR itself that `codecov/project` no longer fails after the first upload.
+- **#930:** a failed embedding call is reported as `StorageFailed`, twice over. Layer 2 is
+  mechanical; layer 1 is a design call for the operator, so propose it with options rather
+  than build it.
+
+The demo work below is done; the operator merges, the agent does not.
 
 **What changed the picture.** Under the original labels dense scored Hit@5 0.850 / MRR 0.680,
 and three runs disagreed on which variant led. The per-question list showed variants losing
