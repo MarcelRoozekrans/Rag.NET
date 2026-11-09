@@ -127,15 +127,30 @@ public sealed class RagPipeline(
     public Task DeleteAsync(string documentId, CancellationToken cancellationToken = default)
         => ingestor.DeleteAsync(documentId, cancellationToken);
 
-    private static RetrievalOptions BuildRetrievalOptions(RagOptions opts) => new()
+    private static RetrievalOptions BuildRetrievalOptions(RagOptions options)
     {
-        TopK = opts.TopK,
-        MaxContextTokens = opts.MaxContextTokens,
-        MinScore = opts.MinScore,
-        MetadataFilter = opts.MetadataFilter,
-        UseHybridSearch = opts.UseHybridSearch,
-        UseLostInTheMiddleReordering = opts.UseLostInTheMiddleReordering,
-        UseRedundancyFilter = opts.UseRedundancyFilter,
-        RedundancyThreshold = opts.RedundancyThreshold,
-    };
+        if (options.Retrieval is { } retrieval)
+        {
+            var assigned = options.AssignedRetrievalFields;
+            if (assigned.Count > 0)
+                throw new ArgumentException(
+                    $"RagOptions.Retrieval was set together with {string.Join(", ", assigned)}. "
+                    + "Retrieval replaces those fields; set their values on RagOptions.Retrieval instead.",
+                    nameof(options));
+
+            return retrieval;
+        }
+
+        return new RetrievalOptions
+        {
+            TopK = options.TopK,
+            MaxContextTokens = options.MaxContextTokens,
+            MinScore = options.MinScore,
+            MetadataFilter = options.MetadataFilter,
+            UseHybridSearch = options.UseHybridSearch,
+            UseLostInTheMiddleReordering = options.UseLostInTheMiddleReordering,
+            UseRedundancyFilter = options.UseRedundancyFilter,
+            RedundancyThreshold = options.RedundancyThreshold,
+        };
+    }
 }
