@@ -33,6 +33,9 @@
   adaptive retrieval, the hypothetical-document generator, the abstractive compressor, the
   confidence scorer, the LLM query sanitiser). Kept out of #938 by decision.
 - **#947** (this STATE update) is green, docs only, and BEHIND main.
+- **#951** (new, needs a decision): Renovate's GitHub App has an `always` bypass on the `Main`
+  ruleset, which is how #852 merged after a CI run that started zero jobs. The fix is a ruleset
+  change: drop the bypass, or set it to `pull_request`.
 
 **Decisions taken on 2026-11-09, each recorded as a comment on its issue:**
 - **#938:** a deliberate refusal fails the document. Add `catch (CallRefusedException) { throw; }`
