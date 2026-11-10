@@ -272,11 +272,14 @@ public sealed class WebCrawlerDataProviderTests
         // No page twice, under either spelling. Stated per-crawl so a failure names which one.
         foreach (var (label, crawl) in new[] { ("with slash", withSlash), ("without", withoutSlash) })
         {
-            var duplicated = crawl
-                .GroupBy(PathOf, StringComparer.Ordinal)
-                .Where(g => g.Count() > 1)
-                .Select(g => g.Key)
-                .ToList();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var duplicatedSet = new HashSet<string>(StringComparer.Ordinal);
+            var duplicated = new List<string>();
+            foreach (var entry in crawl)
+            {
+                var path = PathOf(entry);
+                if (!seen.Add(path) && duplicatedSet.Add(path)) duplicated.Add(path);
+            }
 
             Assert.True(
                 duplicated.Count == 0,

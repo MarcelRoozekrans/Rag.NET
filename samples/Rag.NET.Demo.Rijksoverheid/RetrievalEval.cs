@@ -220,17 +220,37 @@ internal static class RetrievalEval
         Console.WriteLine("|---|---:|---:|---:|---:|---:|");
         foreach (var (name, scores) in perVariant)
         {
-            var better = scores.Where((s, i) => s.Mrr10 > baseMrr[i]).Count();
-            var worse = scores.Where((s, i) => s.Mrr10 < baseMrr[i]).Count();
+            var row = Summarise(scores, baseMrr);
             Console.WriteLine(string.Format(inv,
                 "| {0} | {1:0.000} | {2:0.000} | {3:0.000} | {4:0.000} | {5} |",
                 name,
-                scores.Average(s => s.Hit1),
-                scores.Average(s => s.Hit5),
-                scores.Average(s => s.Recall5),
-                scores.Average(s => s.Mrr10),
-                string.Equals(name, baseline, StringComparison.Ordinal) ? "—" : $"{better} / {worse}"));
+                row.Hit1,
+                row.Hit5,
+                row.Recall5,
+                row.Mrr10,
+                string.Equals(name, baseline, StringComparison.Ordinal) ? "—" : $"{row.Better} / {row.Worse}"));
         }
+    }
+
+    /// <summary>One variant's table row: mean scores, and how many questions beat or trail the baseline's MRR.</summary>
+    private static (double Hit1, double Hit5, double Recall5, double Mrr10, int Better, int Worse) Summarise(
+        List<Score> scores, List<double> baseMrr)
+    {
+        double hit1 = 0, hit5 = 0, recall5 = 0, mrr10 = 0;
+        int better = 0, worse = 0;
+        for (var i = 0; i < scores.Count; i++)
+        {
+            var s = scores[i];
+            hit1 += s.Hit1;
+            hit5 += s.Hit5;
+            recall5 += s.Recall5;
+            mrr10 += s.Mrr10;
+            if (s.Mrr10 > baseMrr[i]) better++;
+            else if (s.Mrr10 < baseMrr[i]) worse++;
+        }
+
+        var n = scores.Count;
+        return (hit1 / n, hit5 / n, recall5 / n, mrr10 / n, better, worse);
     }
 
     private static void PrintMisses(List<Question> questions, List<Score> scores, string name)
@@ -257,10 +277,7 @@ internal static class RetrievalEval
         {
             if (string.Equals(name, baseline, StringComparison.Ordinal)) continue;
 
-            var moved = Enumerable.Range(0, questions.Count)
-                .Where(i => scores[i].Mrr10 != baseScores[i].Mrr10)
-                .OrderBy(i => scores[i].Mrr10 > baseScores[i].Mrr10 ? 0 : 1)
-                .ToList();
+            var moved = Moved(scores, baseScores);
             if (moved.Count == 0) continue;
 
             Console.WriteLine($"\n{name} vs {baseline} (rank of the first answer page, 1-based; - = not in the top {TopK}):");
@@ -276,6 +293,23 @@ internal static class RetrievalEval
         }
     }
 
+    /// <summary>
+    /// The questions whose MRR differs from the baseline, the ones the variant improved first,
+    /// each group in question order.
+    /// </summary>
+    private static List<int> Moved(List<Score> scores, List<Score> baseScores)
+    {
+        var better = new List<int>();
+        var worse = new List<int>();
+        for (var i = 0; i < scores.Count; i++)
+        {
+            if (scores[i].Mrr10 > baseScores[i].Mrr10) better.Add(i);
+            else if (scores[i].Mrr10 < baseScores[i].Mrr10) worse.Add(i);
+        }
+
+        better.AddRange(worse);
+        return better;
+    }
     private static string Rank(Score s) =>
         s.FirstRank is >= 0 and < TopK ? (s.FirstRank + 1).ToString(CultureInfo.InvariantCulture) : "-";
 }
