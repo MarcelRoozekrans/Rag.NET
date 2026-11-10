@@ -54,6 +54,8 @@ public sealed partial class PropositionChunkingStrategy(
                 propositions = await ExtractPropositionsAsync(activeClient, passage, docId.Value, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { throw; }
+            // A deliberate refusal is not a model failure: it fails the document instead of degrading it (#938).
+            catch (CallRefusedException) { throw; }
             catch (Exception ex)
             {
                 LogPropositionExtractionFailure(_logger, docId.Value, ex);

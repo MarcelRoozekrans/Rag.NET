@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Graph;
+using Rag.NET.Models;
 
 namespace Rag.NET.GraphRag;
 
@@ -39,7 +40,8 @@ public sealed partial class MindMapExtractor
     /// Extract a mind-map tree from <paramref name="text"/>. If an IGraphStore was provided,
     /// nodes are written as GraphEntity (Type = "mind_map_node") and edges as GraphRelationship
     /// (Description = "has_subtopic"), all tagged with <paramref name="documentId"/>.
-    /// Returns an empty root node on LLM or parse failure (never throws).
+    /// Returns an empty root node on LLM or parse failure. A deliberate refusal
+    /// (<see cref="CallRefusedException"/>) and cancellation propagate instead.
     /// </summary>
     public async Task<MindMapNode> ExtractAsync(string text, string documentId, CancellationToken ct)
     {
@@ -57,6 +59,11 @@ public sealed partial class MindMapExtractor
             responseText = response.Text;
         }
         catch (OperationCanceledException)
+        {
+            throw;
+        }
+        // A deliberate refusal is not a model failure: it fails the document instead of degrading it (#938).
+        catch (CallRefusedException)
         {
             throw;
         }

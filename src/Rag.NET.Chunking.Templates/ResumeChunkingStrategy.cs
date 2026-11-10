@@ -40,6 +40,8 @@ public sealed partial class ResumeChunkingStrategy(
                 LlmJsonExtractor.Extract(response.Text ?? string.Empty, LlmJsonPayloadKind.Object));
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the document instead of degrading it (#938).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             LogResumeParseFailure(_logger, id.Value, ex);

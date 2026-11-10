@@ -123,4 +123,25 @@ public class ResumeChunkingStrategyTests
         var fallback = Assert.Single(chunks);
         Assert.Contains("Full resume text.", fallback.Text, StringComparison.Ordinal);
     }
+
+    /// <summary>A deliberate refusal is not a failed call: no full-text fallback, the document fails (#938).</summary>
+    [Fact]
+    public async Task ChunkAsync_CallRefusal_PropagatesUnwrapped()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ChatResponse>>(_ => Task.FromException<ChatResponse>(refusal));
+        var sut = new ResumeChunkingStrategy(client, new ResumeChunkingOptions());
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(async () =>
+        {
+            await foreach (var _ in sut.ChunkDocumentAsync(ToAsync(ResumeDoc()), new ChunkingOptions(), ct))
+            {
+            }
+        });
+
+        Assert.Same(refusal, ex);
+    }
 }

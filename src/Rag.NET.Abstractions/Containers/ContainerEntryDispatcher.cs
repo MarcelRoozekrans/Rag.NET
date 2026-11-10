@@ -130,6 +130,12 @@ public static class ContainerEntryDispatcher
         {
             throw;
         }
+        // A deliberate refusal is not an entry that failed: it fails the container instead of
+        // dropping the entry and reporting success (#938).
+        catch (CallRefusedException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             Contain(parser, entryName, log, ex);
@@ -155,7 +161,8 @@ public static class ContainerEntryDispatcher
     /// <para>
     /// <see cref="OperationCanceledException"/> is rethrown. Cancellation is the caller's decision
     /// about the whole parse, not a failure of this entry, and swallowing it would turn a cancelled
-    /// ingestion into a silently partial one.
+    /// ingestion into a silently partial one. A <see cref="CallRefusedException"/> is rethrown for
+    /// the same reason: a spent budget is a stop for the whole document, not a broken entry (#938).
     /// </para>
     /// </remarks>
     private static async ValueTask<DocumentSection?> MoveNextOrContainAsync(
@@ -169,6 +176,12 @@ public static class ContainerEntryDispatcher
             return await enumerator.MoveNextAsync().ConfigureAwait(false) ? enumerator.Current : null;
         }
         catch (OperationCanceledException)
+        {
+            throw;
+        }
+        // A deliberate refusal is not an entry that failed: it fails the container instead of
+        // dropping the entry and reporting success (#938).
+        catch (CallRefusedException)
         {
             throw;
         }

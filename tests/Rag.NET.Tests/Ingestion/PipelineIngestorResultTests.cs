@@ -112,6 +112,49 @@ public class PipelineIngestorResultTests
     }
 
     /// <summary>
+    /// A refusal inside a behaviour that degrades on a model failure fails the document, rather
+    /// than letting it be ingested without what the refused call would have produced (#938).
+    /// </summary>
+    /// <remarks>
+    /// <see cref="RagError.StorageFailed"/> is what a refusal maps to until a case of its own
+    /// exists (#937); what this pins is that the result is a failure carrying the refusal.
+    /// </remarks>
+    [Fact]
+    public async Task IngestAsync_RefusalInsideADegradingBehaviour_FailsTheDocument()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var sparse = new SparseEmbeddingBehavior
+        {
+            VectorStore = Substitute.For<IVectorStore, ISparseSearchable>(),
+            SparseGenerator = new RefusingSparseGenerator(refusal),
+        };
+        var pipeline = new Pipeline<IngestionContext, IngestionResult>((ctx, ct) =>
+        {
+            var chunk = new TextChunk { Text = "a chunk", DocumentId = ctx.Metadata.DocumentId, ChunkIndex = 0 };
+            ctx.Chunks.Add(chunk);
+            ctx.EmbeddedChunks.Add(new EmbeddedChunk { Chunk = chunk, Embedding = new float[] { 1f } });
+            return sparse.HandleAsync(ctx, ct, static (c, _) =>
+                ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 1 }));
+        });
+        var sut = CreateSut(pipeline);
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "f.txt" };
+
+        var result = await sut.IngestAsync(
+            new MemoryStream([1]), metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.StorageFailed>(result.Error);
+        Assert.Same(refusal, error.Inner);
+    }
+
+    /// <summary>A sparse generator that refuses every call.</summary>
+    private sealed class RefusingSparseGenerator(Exception refusal) : ISparseEmbeddingGenerator
+    {
+        public ValueTask<SparseVector> GenerateAsync(string text, CancellationToken cancellationToken = default) =>
+            throw refusal;
+    }
+
+    /// <summary>
     /// The marker is caught polymorphically, so a package-specific subclass — the shape
     /// <c>VisionDescriptionException</c> takes — maps too.
     /// </summary>

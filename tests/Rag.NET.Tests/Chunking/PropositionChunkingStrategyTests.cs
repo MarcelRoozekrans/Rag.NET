@@ -341,4 +341,21 @@ public class PropositionChunkingStrategyTests
             await sut.ChunkDocumentAsync(
                 ToAsync([Section("Text.")]), new ChunkingOptions(), cts.Token).ToListAsync(cts.Token));
     }
+
+    /// <summary>A deliberate refusal is not a failed call: no passage fallback, the document fails (#938).</summary>
+    [Fact]
+    public async Task ChunkAsync_CallRefusal_PropagatesUnwrapped()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var chat = Substitute.For<IChatClient>();
+        chat.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ChatResponse>>(_ => Task.FromException<ChatResponse>(refusal));
+        var sut = MakeSut(chat);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(async () =>
+            await sut.ChunkDocumentAsync(ToAsync([Section("Some passage text.")]), new ChunkingOptions(), ct).ToListAsync(ct));
+
+        Assert.Same(refusal, ex);
+    }
 }

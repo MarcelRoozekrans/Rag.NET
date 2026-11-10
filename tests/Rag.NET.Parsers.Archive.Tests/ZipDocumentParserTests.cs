@@ -330,6 +330,32 @@ public class ZipDocumentParserTests
         Assert.Equal([0, 1, 2], sections.Select(s => s.SectionIndex));
     }
 
+    /// <summary>
+    /// A deliberate refusal is not an entry that failed to parse. A spent cost budget refusing an
+    /// image description inside the archive fails the archive, rather than ingesting it without that
+    /// entry and reporting success (#938).
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ARefusalInsideAnEntryParserFailsTheArchive(bool throwBeforeEnumerating)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var parser = new ZipDocumentParser(
+            [new ThrowingParser("text/html", failure: refusal, throwBeforeEnumerating: throwBeforeEnumerating),
+             new RecordingParser("text/plain")]);
+
+        using var stream = new MemoryStream(ZipFixtureBuilder.Archive(
+            ("first.txt", Encoding.UTF8.GetBytes("first")),
+            ("bad.html", Encoding.UTF8.GetBytes(PageText))));
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            async () => await parser.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct));
+
+        Assert.Same(refusal, ex);
+    }
+
     // ── The entry-count bound ────────────────────────────────────────────────
 
     /// <summary>
