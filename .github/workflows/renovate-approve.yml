@@ -1,0 +1,18 @@
+name: Renovate approve
+
+# Approves the Renovate PRs the shared preset auto-merges, so GitHub's native
+# auto-merge can merge them once the required checks pass. This replaces the
+# Renovate app's bypass on the Main ruleset. See the reusable workflow for the
+# gate, and MarcelRoozekrans/Rag.NET#951 for why.
+
+on:
+  pull_request_target:
+    types: [auto_merge_enabled, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  approve:
+    uses: ZeroAlloc-Net/.github/.github/workflows/renovate-approve.yml@main
