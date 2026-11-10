@@ -136,4 +136,28 @@ public sealed class GrpcRagPipelineIntegrationTests : IAsyncLifetime
         Assert.Equal(0, first.Chunk.ChunkIndex);
         Assert.Equal(0.9, first.Score);
     }
+
+    [Fact]
+    public async Task AskAsync_WithRetrieval_ThrowsNotSupported()
+    {
+        var options = new RagOptions { Retrieval = new RetrievalOptions { UseMmr = true } };
+
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(
+            () => _grpcRagPipeline.AskAsync("q", options, TestContext.Current.CancellationToken));
+
+        Assert.Contains(nameof(RagOptions.Retrieval), ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AskStreamingAsync_WithRetrieval_ThrowsNotSupported()
+    {
+        var options = new RagOptions { Retrieval = new RetrievalOptions { UseMmr = true } };
+
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(async () =>
+        {
+            await foreach (var _ in _grpcRagPipeline.AskStreamingAsync("q", options, TestContext.Current.CancellationToken)) { }
+        });
+
+        Assert.Contains(nameof(RagOptions.Retrieval), ex.Message, StringComparison.Ordinal);
+    }
 }

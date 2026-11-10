@@ -1010,27 +1010,9 @@ var results = await pipeline.RetrieveAsync("compliance obligations", new Retriev
 
 ## Using retrieval options with `AskAsync`
 
-`RagOptions` mirrors all `RetrievalOptions` properties and adds chat-specific settings:
+`AskAsync` and `AskStreamingAsync` take a `RagOptions`, which sets retrieval in one of two ways.
 
-```csharp
-public sealed class RagOptions
-{
-    public int TopK                          { get; set; } = 5;
-    public double MinScore                   { get; set; } = 0.0;
-    public bool UseHybridSearch              { get; set; }
-    public bool UseLostInTheMiddleReordering { get; set; }
-    public bool UseRedundancyFilter          { get; set; }
-    public float RedundancyThreshold         { get; set; } = 0.95f;
-    public IDictionary<string, MetadataValue>? MetadataFilter  { get; set; }
-    public string? SystemPrompt              { get; set; }
-    public float? Temperature                { get; set; }
-    public IList<ChatMessage>? ConversationHistory { get; set; }
-}
-```
-
-> **Note:** `RagOptions` does not expose `UseMultiQuery`, `UseReranking`, or `CandidateCount`. To control these per call, use `RetrieveAsync` directly.
-
-The retrieval-related properties are forwarded verbatim to an internal `RetrievalOptions` before the chat call:
+**The short form** is eight fields on `RagOptions` itself: `TopK`, `MaxContextTokens`, `MinScore`, `UseHybridSearch`, `UseLostInTheMiddleReordering`, `UseRedundancyFilter`, `RedundancyThreshold` and `MetadataFilter`. They are copied into a new `RetrievalOptions`, and every other retrieval option keeps its default:
 
 ```csharp
 var response = await pipeline.AskAsync("What is our refund policy?", new RagOptions
@@ -1042,6 +1024,25 @@ var response = await pipeline.AskAsync("What is our refund policy?", new RagOpti
     Temperature     = 0.2f,
 });
 ```
+
+**The full form** is `RagOptions.Retrieval`, which takes a complete `RetrievalOptions` and passes it to the retriever unchanged. Use it for anything the short form cannot reach, such as MMR, or switching HyDE, multi-query or reranking off for one call when the component is registered:
+
+```csharp
+var response = await pipeline.AskAsync("What is our refund policy?", new RagOptions
+{
+    Retrieval = new RetrievalOptions
+    {
+        TopK     = 10,
+        UseMmr   = true,
+        UseHyde  = false,
+    },
+    SystemPrompt = "You are a customer support assistant. Answer based on the provided context only.",
+});
+```
+
+The two forms do not mix. If `Retrieval` is set and any of the eight short-form fields was assigned, even to its default value as in `TopK = 5`, the call throws `ArgumentException` before any retrieval runs. Move those values into `Retrieval`.
+
+The remote clients, `HttpRagPipeline` and `GrpcRagPipeline`, cannot send `Retrieval` to the server yet, so they throw `NotSupportedException` when it is set ([#944](https://github.com/MarcelRoozekrans/Rag.NET/issues/944)).
 
 ### What the model actually receives
 
