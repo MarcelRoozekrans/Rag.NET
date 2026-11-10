@@ -1,7 +1,7 @@
 # Session State
 
-**Last updated:** 2026-11-10 — **v1.6.0 is released and published; main is green.** No PR of
-ours is open. The operator merges; the agent does not.
+**Last updated:** 2026-11-10 — **v1.6.0 is released and published; #951 is done.** No PR of
+ours is open apart from this state update. The operator merges; the agent does not.
 
 **Shipped in v1.6.0** (release PR #954, tag `v1.6.0`; the release CI run published 148 packages to
 nuget.org):
@@ -12,17 +12,27 @@ nuget.org):
   **#908** (Meziantou.Analyzer 3.0.321; its new rule MA0244 needed three `InlineData` spend values
   passed as strings in `CostTrackingChatClientTests`).
 
-**NEXT ACTION, in this order:**
-1. **#951**, decided 2026-11-09 (see the issue's comment): remove the Renovate app (Integration
-   2740) from the `Main` ruleset's bypass actors, auto-approve its non-major PRs, and turn
-   `platformAutomerge` back on in the shared `ZeroAlloc-Net/.github` preset. `bypass_mode:
-   pull_request` does NOT fix it: it still bypasses every rule when the actor merges a PR, which
-   is how #852 landed. Order: (a) approve workflow plus the repo setting that lets Actions approve
-   PRs; (b) `platformAutomerge: true` in the preset; (c) only then drop the bypass, or Renovate
-   stops merging. The preset and the bypass are shared with the other ZeroAlloc-Net repos.
-2. Pick the next item with the operator: #948 (the query path's swallowing catches), #944
-   (remote clients drop `RagOptions`, needs a wire-format decision), #945 (`ShallowCopy` drops
-   three fields), #926, #927, or #246.
+**#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
+the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
+- ZeroAlloc-Net/.github#65 added the reusable `renovate-approve` workflow; #68 skips a run whose
+  commit has been superseded. Each repo calls it from `.github/workflows/renovate-approve.yml`
+  (here #956). It approves only a renovate[bot] PR, on an event renovate[bot] sent, with native
+  auto-merge enabled.
+- ZeroAlloc-Net/.github#66 set `platformAutomerge: true`.
+- "Allow auto-merge" was off here and in Minos.NET; it is now on in all 14. Without it Renovate
+  cannot enable native auto-merge and the PRs sit unmerged.
+- First run on the new path: #940, approved by `github-actions`, merged natively 13 s after its
+  last required check.
+- Integration 2740 is off every `Main` ruleset; the admin role's bypass stays.
+- Not changed: ZeroAlloc-Net/.github's own `Main` ruleset still lists 2740. That repo uses a
+  different preset (`MarcelRoozekrans/renovate-config`) and has no required checks.
+- Something pushes "Merge branch 'main'" commits under the operator's name onto Renovate branches
+  at about Renovate's run times. Renovate then treats the PR as edited and stops touching it, so
+  auto-merge is never enabled. Asked the operator on 2026-11-10; not yet identified.
+
+**NEXT ACTION:** pick the next item with the operator: #948 (the query path's swallowing catches),
+#944 (remote clients drop `RagOptions`, needs a wire-format decision), #945 (`ShallowCopy` drops
+three fields), #926, #927, or #246.
 
 - **#246** (Service Bus dead-letter flake) recurred on #949's ubuntu build on 2026-11-09: a
   `MessageLockLost` with 300 s of lock left. Still open; recorded on the issue.
