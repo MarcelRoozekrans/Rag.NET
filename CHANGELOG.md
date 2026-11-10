@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.5.0...v1.6.0) (2026-11-10)
+
+
+### Features
+
+* **core:** let AskAsync take full RetrievalOptions through RagOptions.Retrieval ([#946](https://github.com/MarcelRoozekrans/Rag.NET/issues/946)) ([0ce125a](https://github.com/MarcelRoozekrans/Rag.NET/commit/0ce125a64f372f9a87d8526f8cde2ad922f327f9))
+
+
+### Bug Fixes
+
+* **ingestion:** stop a document when a call is refused, instead of ingesting it degraded ([#950](https://github.com/MarcelRoozekrans/Rag.NET/issues/950)) ([68a00b2](https://github.com/MarcelRoozekrans/Rag.NET/commit/68a00b2f041c391feca3c7c923e9cb77adab15f1))
+
 ## [1.5.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.4.1...v1.5.0) (2026-11-09)
 
 
