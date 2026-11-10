@@ -88,9 +88,9 @@ public class ReindexStaleTests
         var dataManager = Substitute.For<IRagDataManager>();
         foreach (var (docId, texts) in docs)
         {
-            var chunks = texts
-                .Select((t, i) => new TextChunk { Text = t, DocumentId = new DocumentId(docId), ChunkIndex = i })
-                .ToList();
+            var chunks = new List<TextChunk>(texts.Length);
+            for (var i = 0; i < texts.Length; i++)
+                chunks.Add(new TextChunk { Text = texts[i], DocumentId = new DocumentId(docId), ChunkIndex = i });
             dataManager.GetChunksAsync(docId, Arg.Any<CancellationToken>())
                 .Returns((IReadOnlyList<TextChunk>)chunks);
         }
