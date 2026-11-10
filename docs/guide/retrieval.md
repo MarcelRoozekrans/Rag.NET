@@ -284,7 +284,7 @@ var results = await pipeline.RetrieveAsync("ISO 27001 compliance checklist", new
 
 - `RetrievalOptions.UseSparseSearch` — `null` (default) follows `UseHybridSearch`; `false` disables the sparse arm per call. `true` without `UseHybridSearch` has no effect: sparse search only participates in the ensemble.
 - The sparse arm runs only when an `ISparseEmbeddingGenerator` is registered **and** the store implements `ISparseSearchable` (Qdrant with `enableSparseVectors: true`, PgVector with `enableSparseVectors: true`, Pinecone with `EnableSparseVectors = true`, or `InMemoryVectorStore`). Otherwise hybrid search behaves exactly as the two-arm dense+BM25 fusion above.
-- Degraded, never broken: sparse encoding or search failures are logged and the remaining arms serve the request; sparse ingestion failures fall back to dense-only storage.
+- Degraded, never broken: sparse encoding or search failures are logged and the remaining arms serve the request; sparse ingestion failures fall back to dense-only storage. A deliberate refusal, such as a spent cost budget, is not a failure: it fails the document ([#938](https://github.com/MarcelRoozekrans/Rag.NET/issues/938)).
 - Qdrant sparse mode uses deterministic point ids derived from `(DocumentId, ChunkIndex)`, making chunk upserts idempotent. Collections created without sparse support must be recreated to enable it.
 - PgVector sparse mode stores SPLADE weights in a `sparsevec` column on the same `rag_chunks` rows and searches them server-side; it needs **pgvector 0.7.0+**, caps `OnnxSpladeOptions.TopTerms` at 1000 while its sparse HNSW index exists, and — unlike Pinecone — has no dense/sparse write-ordering contract. The `sparsevec` column's dimension is fixed at first initialize, so changing to an encoder with a different vocabulary means dropping the column and re-ingesting. See [Vector stores — PgVector](vector-stores.md#sparse-vectors-splade).
 - Qdrant is the most exercised path; Pinecone's sparse *write* path is covered by construction only (Pinecone Local rejects sparse writes, so it is untested against a live serverless index — see [Vector stores — Pinecone](vector-stores.md#sparse-vectors-splade-2)).
@@ -1010,27 +1010,9 @@ var results = await pipeline.RetrieveAsync("compliance obligations", new Retriev
 
 ## Using retrieval options with `AskAsync`
 
-`RagOptions` mirrors all `RetrievalOptions` properties and adds chat-specific settings:
+`AskAsync` and `AskStreamingAsync` take a `RagOptions`, which sets retrieval in one of two ways.
 
-```csharp
-public sealed class RagOptions
-{
-    public int TopK                          { get; set; } = 5;
-    public double MinScore                   { get; set; } = 0.0;
-    public bool UseHybridSearch              { get; set; }
-    public bool UseLostInTheMiddleReordering { get; set; }
-    public bool UseRedundancyFilter          { get; set; }
-    public float RedundancyThreshold         { get; set; } = 0.95f;
-    public IDictionary<string, MetadataValue>? MetadataFilter  { get; set; }
-    public string? SystemPrompt              { get; set; }
-    public float? Temperature                { get; set; }
-    public IList<ChatMessage>? ConversationHistory { get; set; }
-}
-```
-
-> **Note:** `RagOptions` does not expose `UseMultiQuery`, `UseReranking`, or `CandidateCount`. To control these per call, use `RetrieveAsync` directly.
-
-The retrieval-related properties are forwarded verbatim to an internal `RetrievalOptions` before the chat call:
+**The short form** is eight fields on `RagOptions` itself: `TopK`, `MaxContextTokens`, `MinScore`, `UseHybridSearch`, `UseLostInTheMiddleReordering`, `UseRedundancyFilter`, `RedundancyThreshold` and `MetadataFilter`. They are copied into a new `RetrievalOptions`, and every other retrieval option keeps its default:
 
 ```csharp
 var response = await pipeline.AskAsync("What is our refund policy?", new RagOptions
@@ -1042,6 +1024,25 @@ var response = await pipeline.AskAsync("What is our refund policy?", new RagOpti
     Temperature     = 0.2f,
 });
 ```
+
+**The full form** is `RagOptions.Retrieval`, which takes a complete `RetrievalOptions` and passes it to the retriever unchanged. Use it for anything the short form cannot reach, such as MMR, or switching HyDE, multi-query or reranking off for one call when the component is registered:
+
+```csharp
+var response = await pipeline.AskAsync("What is our refund policy?", new RagOptions
+{
+    Retrieval = new RetrievalOptions
+    {
+        TopK     = 10,
+        UseMmr   = true,
+        UseHyde  = false,
+    },
+    SystemPrompt = "You are a customer support assistant. Answer based on the provided context only.",
+});
+```
+
+The two forms do not mix. If `Retrieval` is set and any of the eight short-form fields was assigned, even to its default value as in `TopK = 5`, the call throws `ArgumentException` before any retrieval runs. Move those values into `Retrieval`.
+
+The remote clients, `HttpRagPipeline` and `GrpcRagPipeline`, cannot send `Retrieval` to the server yet, so they throw `NotSupportedException` when it is set ([#944](https://github.com/MarcelRoozekrans/Rag.NET/issues/944)).
 
 ### What the model actually receives
 

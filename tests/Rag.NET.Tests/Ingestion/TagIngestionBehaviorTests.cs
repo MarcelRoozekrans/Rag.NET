@@ -97,4 +97,22 @@ public class TagIngestionBehaviorTests
         Assert.True(nextCalled);
         index.DidNotReceive().Add(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ReadOnlyMemory<float>>());
     }
+
+    /// <summary>A deliberate refusal is not a failed embedding: it fails the document (#938).</summary>
+    [Fact]
+    public async Task HandleAsync_CallRefusal_PropagatesUnwrapped()
+    {
+        var ct       = TestContext.Current.CancellationToken;
+        var refusal  = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var index    = Substitute.For<ITagIndex>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+                .ThrowsAsync(refusal);
+        var sut = new TagIngestionBehavior { TagIndex = index, Embedder = embedder };
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => sut.HandleAsync(
+            MakeCtx(new(StringComparer.Ordinal) { ["dept"] = "finance" }), ct, NullNext).AsTask());
+
+        Assert.Same(refusal, ex);
+    }
 }

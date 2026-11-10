@@ -59,4 +59,19 @@ public class LlmPiiChunkSanitiserTests
         var sut = new LlmPiiChunkSanitiser(client, NullLogger<LlmPiiChunkSanitiser>.Instance);
         Assert.Throws<OperationCanceledException>(() => sut.Sanitise("text", Meta));
     }
+
+    /// <summary>A deliberate refusal is not a failed call: no regex fallback, the document fails (#938).</summary>
+    [Fact]
+    public void Sanitise_CallRefusal_PropagatesUnwrapped()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+              .Returns<Task<ChatResponse>>(_ => Task.FromException<ChatResponse>(refusal));
+        var sut = new LlmPiiChunkSanitiser(client, NullLogger<LlmPiiChunkSanitiser>.Instance);
+
+        var ex = Assert.Throws<BudgetExceededException>(() => sut.Sanitise("Contact alice@example.com for help.", Meta));
+
+        Assert.Same(refusal, ex);
+    }
 }

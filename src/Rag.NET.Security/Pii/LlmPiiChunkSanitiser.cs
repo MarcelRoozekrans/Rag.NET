@@ -11,7 +11,8 @@ namespace Rag.NET.Security;
 /// Detects and redacts PII from chunk text using an LLM call.
 /// Runs after <see cref="PiiChunkSanitiser"/> when both are registered.
 /// Falls back to <see cref="PiiChunkSanitiser"/> (default options) on LLM failure.
-/// Never throws — returns original (or regex-sanitised) text on failure.
+/// Returns original (or regex-sanitised) text on failure. A deliberate refusal
+/// (<see cref="CallRefusedException"/>) and cancellation propagate instead.
 /// </summary>
 public sealed partial class LlmPiiChunkSanitiser(
     IChatClient chatClient,
@@ -54,6 +55,8 @@ public sealed partial class LlmPiiChunkSanitiser(
             return _fallback.Sanitise(text, metadata);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the document instead of degrading it (#938).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             LogLlmFailed(_logger, ex);

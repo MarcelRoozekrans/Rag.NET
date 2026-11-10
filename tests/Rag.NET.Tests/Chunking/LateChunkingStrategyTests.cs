@@ -302,4 +302,20 @@ public class LateChunkingStrategyTests
         var chunk = Assert.Single(chunks);
         Assert.Null(chunk.Embedding);
     }
+
+    /// <summary>A deliberate refusal is not a failed call: no unembedded fallback, the document fails (#938).</summary>
+    [Fact]
+    public async Task ChunkAsync_CallRefusal_PropagatesUnwrapped()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var sut = MakeSut(
+            new FakeTokenEmbeddingGenerator(failure: refusal),
+            new LateChunkingOptions { WindowSizeTokens = 4, OverlapTokens = 1 });
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(async () =>
+            await sut.ChunkAsync(Section("alpha bravo charlie delta echo"), new ChunkingOptions(), ct).ToListAsync(ct));
+
+        Assert.Same(refusal, ex);
+    }
 }

@@ -81,6 +81,8 @@ public sealed class LlmMetadataExtractionBehavior : IIngestionBehavior
             return Result<IReadOnlyDictionary<string, string>>.Success(parsed);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the document instead of degrading it (#938).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             return Result<IReadOnlyDictionary<string, string>>.Failure(ex.ToString());

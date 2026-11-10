@@ -353,6 +353,27 @@ public class GraphEntityExtractionBehaviorTests : IAsyncDisposable
         Assert.Contains("0 embeddings for 1 input", count.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The extraction chat call degrades only on an unparseable reply, so a deliberate refusal
+    /// already fails the document. Pinned so a broader catch added later cannot swallow it (#938).
+    /// </summary>
+    [Fact]
+    public async Task HandleAsync_ChatCallRefusal_PropagatesUnwrapped()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        _chatClient.GetResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ChatResponse>>(_ => throw refusal);
+        SetupEmbedder(4);
+        var sut = new GraphEntityExtractionBehavior(_chatClient, _embedder, _graphStore, new GraphRagOptions { GleaningPasses = 0 });
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => sut.HandleAsync(
+            CreateContext(), TestContext.Current.CancellationToken,
+            (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 })).AsTask());
+
+        Assert.Same(refusal, ex);
+    }
+
     private static IngestionContext CreateContext()
     {
         var ctx = new IngestionContext

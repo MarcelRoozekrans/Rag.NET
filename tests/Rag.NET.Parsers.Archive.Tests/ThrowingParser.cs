@@ -14,7 +14,19 @@ namespace Rag.NET.Parsers.Archive.Tests;
 /// How many sections to yield before throwing. Zero is the plain case; a non-zero value is the one a
 /// naive containment gets wrong, since those sections have already reached the caller.
 /// </param>
-internal sealed class ThrowingParser(string contentType, int sectionsBeforeThrow = 0) : IDocumentParser
+/// <param name="failure">
+/// The exception to throw instead of the default <see cref="InvalidOperationException"/>, for a test
+/// about how a particular kind of failure is treated.
+/// </param>
+/// <param name="throwBeforeEnumerating">
+/// Throw from <see cref="ParseAsync"/> itself, before an enumerator exists, rather than from the
+/// first <c>MoveNextAsync</c> — the other of the two places the dispatcher contains a failure.
+/// </param>
+internal sealed class ThrowingParser(
+    string contentType,
+    int sectionsBeforeThrow = 0,
+    Exception? failure = null,
+    bool throwBeforeEnumerating = false) : IDocumentParser
 {
     /// <summary>The message of the exception thrown, so a test can tell it from any other failure.</summary>
     public const string FailureMessage = "this entry's parser failed";
@@ -25,10 +37,22 @@ internal sealed class ThrowingParser(string contentType, int sectionsBeforeThrow
     public bool CanParse(string candidate) =>
         candidate.Equals(contentType, StringComparison.OrdinalIgnoreCase);
 
-    public async IAsyncEnumerable<DocumentSection> ParseAsync(
+    public IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,
         DocumentMetadata metadata,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
+    {
+        if (throwBeforeEnumerating)
+            throw Failure();
+
+        return ParseSectionsAsync(metadata, cancellationToken);
+    }
+
+    private Exception Failure() => failure ?? new InvalidOperationException(FailureMessage);
+
+    private async IAsyncEnumerable<DocumentSection> ParseSectionsAsync(
+        DocumentMetadata metadata,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         for (int i = 0; i < sectionsBeforeThrow; i++)
         {
@@ -42,6 +66,6 @@ internal sealed class ThrowingParser(string contentType, int sectionsBeforeThrow
         }
 
         await Task.Yield();
-        throw new InvalidOperationException(FailureMessage);
+        throw Failure();
     }
 }

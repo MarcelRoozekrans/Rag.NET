@@ -224,4 +224,20 @@ public class SparseEmbeddingBehaviorTests
         await ((ISparseSearchable)store).DidNotReceive().StoreSparseAsync(
             Arg.Any<IReadOnlyList<(EmbeddedChunk Chunk, SparseVector Sparse)>>(), Arg.Any<CancellationToken>());
     }
+
+    /// <summary>A deliberate refusal is not a failed encoder: it fails the document (#938).</summary>
+    [Fact]
+    public async Task HandleAsync_CallRefusal_PropagatesUnwrapped()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var store = Substitute.For<IVectorStore, ISparseSearchable>();
+        var generator = new FakeSparseGenerator(_ => throw refusal);
+        var sut = new SparseEmbeddingBehavior { VectorStore = store, SparseGenerator = generator };
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            () => sut.HandleAsync(MakeContext(), ct, Next).AsTask());
+
+        Assert.Same(refusal, ex);
+    }
 }

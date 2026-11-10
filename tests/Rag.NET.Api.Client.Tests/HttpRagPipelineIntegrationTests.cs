@@ -172,4 +172,28 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
         Assert.Contains("Hello", deltas, StringComparer.Ordinal);
         Assert.Contains(" World", deltas, StringComparer.Ordinal);
     }
+
+    [Fact]
+    public async Task AskAsync_WithRetrieval_ThrowsNotSupported()
+    {
+        var options = new RagOptions { Retrieval = new RetrievalOptions { UseMmr = true } };
+
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(
+            () => _httpRagPipeline.AskAsync("q", options, TestContext.Current.CancellationToken));
+
+        Assert.Contains(nameof(RagOptions.Retrieval), ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AskStreamingAsync_WithRetrieval_ThrowsNotSupported()
+    {
+        var options = new RagOptions { Retrieval = new RetrievalOptions { UseMmr = true } };
+
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(async () =>
+        {
+            await foreach (var _ in _httpRagPipeline.AskStreamingAsync("q", options, TestContext.Current.CancellationToken)) { }
+        });
+
+        Assert.Contains(nameof(RagOptions.Retrieval), ex.Message, StringComparison.Ordinal);
+    }
 }

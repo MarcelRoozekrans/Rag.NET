@@ -339,6 +339,31 @@ public class ReindexStaleTests
         Assert.Equal((CurrentModel, 3), versionStore.Rows["doc-1"]);
     }
 
+    /// <summary>
+    /// A deliberate refusal from the sparse generator is not a sparse failure to shrug off: the
+    /// document is reported as failed and its version is not stamped, so a later run retries it
+    /// rather than treating it as reindexed without sparse vectors (#938).
+    /// </summary>
+    [Fact]
+    public async Task SparseRefusal_FailsTheDocument()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var versionStore = new FakeVersionStore();
+        versionStore.Rows["doc-1"] = ("legacy-model", 3);
+        var vectorStore = Substitute.For<IVectorStore, ISparseSearchable>();
+        var sparseGenerator = new FakeSparseGenerator(
+            _ => throw new BudgetExceededException(CostWindow.Day, 1m, 1m));
+        var dataManager = MakeDataManager(("doc-1", ["a"]));
+
+        var result = await Pipeline().ReindexStaleAsync(
+            versionStore, CurrentEmbedder(), vectorStore, dataManager,
+            sparseGenerator: sparseGenerator, cancellationToken: ct);
+
+        Assert.Empty(result.Reindexed);
+        Assert.Equal("doc-1", Assert.Single(result.Failed).DocumentId);
+        Assert.Equal(("legacy-model", 3), versionStore.Rows["doc-1"]);
+    }
+
     [Fact]
     public async Task EmbedBatchSize_Honored_ForLargeDocuments()
     {

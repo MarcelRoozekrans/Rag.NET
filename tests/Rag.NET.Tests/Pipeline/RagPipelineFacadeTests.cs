@@ -8,6 +8,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using Rag.NET.Retrieval;
+using Rag.NET.Tests.Models.Options;
 using Xunit;
 using ZeroAlloc.Results;
 
@@ -184,6 +185,7 @@ public class RagPipelineFacadeTests
         var opts = new RagOptions
         {
             TopK = 7,
+            MaxContextTokens = 1234,
             MinScore = 0.5,
             UseHybridSearch = true,
             UseLostInTheMiddleReordering = true,
@@ -198,6 +200,7 @@ public class RagPipelineFacadeTests
             Arg.Is<RetrievalOptions?>(r =>
                 r != null &&
                 r.TopK == 7 &&
+                r.MaxContextTokens == 1234 &&
                 r.MinScore == 0.5 &&
                 r.UseHybridSearch &&
                 r.UseLostInTheMiddleReordering &&
@@ -256,6 +259,90 @@ public class RagPipelineFacadeTests
             Arg.Is<IList<ChatMessage>>(msgs =>
                 msgs!.Any(m => m.Role == ChatRole.System && m.Text == "Custom prompt")),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    private void ArrangeEmptyRetrievalAndAnswers(CancellationToken ct)
+    {
+        _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(
+                (IReadOnlyList<SearchResult>)new List<SearchResult>())));
+        _answerEngine.AskAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<RagOptions?>(), ct)
+            .Returns(new RagResponse { Answer = "a", Sources = [] });
+        _answerEngine.AskStreamingAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<RagOptions?>(), ct)
+            .Returns(EmptyStreamingUpdates());
+    }
+
+    [Fact]
+    public async Task AskAsync_WithRetrieval_PassesInstanceUnchanged()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ArrangeEmptyRetrievalAndAnswers(ct);
+        var retrieval = new RetrievalOptions { UseMmr = true, UseHyde = false, TopK = 9 };
+
+        await _sut.AskAsync("q", new RagOptions { Retrieval = retrieval }, ct);
+
+        _ = await _retriever.Received(1).RetrieveAsync(
+            "q", Arg.Is<RetrievalOptions?>(r => ReferenceEquals(r, retrieval)), ct);
+    }
+
+    [Fact]
+    public async Task AskStreamingAsync_WithRetrieval_PassesInstanceUnchanged()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ArrangeEmptyRetrievalAndAnswers(ct);
+        var retrieval = new RetrievalOptions { UseMmr = true, UseHyde = false, TopK = 9 };
+
+        await foreach (var _ in _sut.AskStreamingAsync("q", new RagOptions { Retrieval = retrieval }, ct)) { }
+
+        _ = await _retriever.Received(1).RetrieveAsync(
+            "q", Arg.Is<RetrievalOptions?>(r => ReferenceEquals(r, retrieval)), ct);
+    }
+
+    [Theory]
+    [MemberData(nameof(RagOptionsRetrievalFieldCases.Names), MemberType = typeof(RagOptionsRetrievalFieldCases))]
+    public async Task AskAsync_RetrievalWithShortFormField_Throws(string name)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ArrangeEmptyRetrievalAndAnswers(ct);
+        var opts = RagOptionsRetrievalFieldCases.WithFieldAtDefault(name);
+        opts.Retrieval = new RetrievalOptions();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _sut.AskAsync("q", opts, ct));
+
+        Assert.Equal("options", ex.ParamName);
+        Assert.Contains(name, ex.Message, StringComparison.Ordinal);
+        _ = await _retriever.DidNotReceiveWithAnyArgs().RetrieveAsync(default!, default, ct);
+    }
+
+    [Theory]
+    [MemberData(nameof(RagOptionsRetrievalFieldCases.Names), MemberType = typeof(RagOptionsRetrievalFieldCases))]
+    public async Task AskStreamingAsync_RetrievalWithShortFormField_Throws(string name)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        ArrangeEmptyRetrievalAndAnswers(ct);
+        var opts = RagOptionsRetrievalFieldCases.WithFieldAtDefault(name);
+        opts.Retrieval = new RetrievalOptions();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(async () =>
+        {
+            await foreach (var _ in _sut.AskStreamingAsync("q", opts, ct)) { }
+        });
+
+        Assert.Equal("options", ex.ParamName);
+        Assert.Contains(name, ex.Message, StringComparison.Ordinal);
+        _ = await _retriever.DidNotReceiveWithAnyArgs().RetrieveAsync(default!, default, ct);
+    }
+
+    [Fact]
+    public async Task AskAsync_RetrievalWithTwoShortFormFields_MessageNamesBoth()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var opts = new RagOptions { TopK = 3, MinScore = 0.4, Retrieval = new RetrievalOptions() };
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => _sut.AskAsync("q", opts, ct));
+
+        Assert.Contains(nameof(RagOptions.TopK), ex.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(RagOptions.MinScore), ex.Message, StringComparison.Ordinal);
     }
 
     private static async IAsyncEnumerable<ChatResponseUpdate> StreamingChatUpdatesFrom(params ChatResponseUpdate[] items)

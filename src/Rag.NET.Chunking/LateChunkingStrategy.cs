@@ -45,6 +45,8 @@ public sealed partial class LateChunkingStrategy(
                 chunks = await ChunkSectionAsync(section, chunkIndex, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { throw; }
+            // A deliberate refusal is not a model failure: it fails the document instead of degrading it (#938).
+            catch (CallRefusedException) { throw; }
             catch (TokenEmbeddingContractException ex)
             {
                 // A broken matrix is a generator BUG, not a transient failure — log at Error.
