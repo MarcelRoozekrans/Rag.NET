@@ -41,9 +41,9 @@ public class CostTrackingChatClientTests
     // ── Pre-call gate ────────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData(9.99, false)] // under: proceeds
-    [InlineData(10.00, true)] // at: blocked
-    [InlineData(10.01, true)] // over: blocked
+    [InlineData("9.99", false)] // under: proceeds
+    [InlineData("10.00", true)] // at: blocked
+    [InlineData("10.01", true)] // over: blocked
     public async Task GetResponseAsync_DailyLimitGate(decimal spend, bool blocked)
     {
         var ledger = new FakeCostLedger { DaySpend = spend };
