@@ -41,15 +41,13 @@ public sealed class PineconeContainerFixture : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        try
-        {
-            await _container.DisposeAsync();
-        }
-        finally
-        {
-            if (_portLock is not null)
-                await _portLock.DisposeAsync();
-        }
+        await _container.DisposeAsync();
+
+        // Released only after the container is gone. If removing it throws, the lock stays held
+        // until this process ends, so a waiting process cannot start on ports the container may
+        // still own.
+        if (_portLock is not null)
+            await _portLock.DisposeAsync();
     }
 
     private static async Task<FileStream> AcquirePortLockAsync(CancellationToken cancellationToken)
@@ -60,10 +58,16 @@ public sealed class PineconeContainerFixture : IAsyncLifetime
         {
             try
             {
+                // The file is never deleted: removing it on close races with a waiting process that
+                // opens it at the same moment, and on Windows that surfaces as an access error.
                 return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None,
-                    bufferSize: 1, FileOptions.DeleteOnClose);
+                    bufferSize: 1, FileOptions.None);
             }
-            catch (IOException) when (DateTime.UtcNow < deadline)
+            // Only contention is retried. A missing directory, drive or an over-long path will not
+            // fix itself, so those propagate at once instead of waiting out the deadline.
+            catch (IOException ex) when (
+                ex is not (DirectoryNotFoundException or DriveNotFoundException or PathTooLongException)
+                && DateTime.UtcNow < deadline)
             {
                 await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
             }
