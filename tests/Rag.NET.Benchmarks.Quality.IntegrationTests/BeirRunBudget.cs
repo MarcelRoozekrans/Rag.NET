@@ -1249,7 +1249,7 @@ public static class BeirRunBudget
         would pay. The nightly keeps SciFact and ArguAna PARITY (~15-20 min cold, all four cases),
         which is the published number this milestone exists to protect.
         To run this case:
-          {OptInVariable}={cost.Dataset} tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe {Selector(cost)}
+          {OptInVariable}={cost.Dataset} tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe {Selector(cost)}
         Build the project first; the runner does not build. `dotnet test --filter` is NOT the
         command: Directory.Build.targets raises RAGNET0001 for a VSTest filter under
         Microsoft.Testing.Platform, which every test project uses since phase 6.2.41.
