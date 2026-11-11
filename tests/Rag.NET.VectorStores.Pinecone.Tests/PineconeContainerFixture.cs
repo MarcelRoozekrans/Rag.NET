@@ -13,25 +13,87 @@ namespace Rag.NET.Pinecone.Tests;
 /// ports — a dynamic mapping would break the advertised host:port. Consequence: at
 /// most ten indexes may exist at once (tests clean up after themselves) and the suite
 /// needs ports 5080–5090 free on the host.
+/// <para>
+/// This test project multi-targets, and <c>dotnet test</c> runs the target frameworks as
+/// separate processes at the same time, so both would race for those fixed ports. The
+/// fixture therefore holds an exclusive lock file for as long as the container lives, which
+/// makes a second process wait until the first has released the ports.
+/// </para>
 /// </summary>
 public sealed class PineconeContainerFixture : IAsyncLifetime
 {
     private const int ControlPlanePort = 5080;
     private const int LastIndexPort = 5090;
 
+    private static readonly TimeSpan LockTimeout = TimeSpan.FromMinutes(15);
+
     private readonly IContainer _container = BuildContainer();
+    private FileStream? _portLock;
 
     /// <summary>Control-plane endpoint, e.g. <c>http://localhost:5080</c>.</summary>
     public Uri Endpoint { get; } = new($"http://localhost:{ControlPlanePort}");
 
     public async ValueTask InitializeAsync()
     {
+        _portLock = await AcquirePortLockAsync(TestContext.Current.CancellationToken);
         await _container.StartAsync(TestContext.Current.CancellationToken);
     }
 
     public async ValueTask DisposeAsync()
     {
         await _container.DisposeAsync();
+
+        // Released only after the container is gone. If removing it throws, the lock stays held
+        // until this process ends, so a waiting process cannot start on ports the container may
+        // still own.
+        if (_portLock is not null)
+            await _portLock.DisposeAsync();
+    }
+
+    private static async Task<FileStream> AcquirePortLockAsync(CancellationToken cancellationToken)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "ragnet-pinecone-local-ports.lock");
+        var deadline = DateTime.UtcNow + LockTimeout;
+        while (true)
+        {
+            try
+            {
+                // The file is never deleted: removing it on close races with a waiting process that
+                // opens it at the same moment, and on Windows that surfaces as an access error.
+                var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None,
+                    bufferSize: 1, FileOptions.None);
+                MakeLockFileShareable(path);
+                return stream;
+            }
+            // Only contention is retried. A missing directory, drive or an over-long path will not
+            // fix itself, so those propagate at once instead of waiting out the deadline.
+            catch (IOException ex) when (
+                ex is not (DirectoryNotFoundException or DriveNotFoundException or PathTooLongException)
+                && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            }
+        }
+    }
+
+    // The host ports are shared by every user of the machine, so the lock file must be openable by
+    // all of them: with a umask of 022 the creating user would otherwise lock everyone else out for
+    // good. Only the owner may change the mode, and a file somebody else created is already usable.
+    private static void MakeLockFileShareable(string path)
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+        try
+        {
+            File.SetUnixFileMode(path,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite
+                | UnixFileMode.GroupRead | UnixFileMode.GroupWrite
+                | UnixFileMode.OtherRead | UnixFileMode.OtherWrite);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Not the owner: the mode was set by whoever created the file.
+        }
     }
 
     private static IContainer BuildContainer()

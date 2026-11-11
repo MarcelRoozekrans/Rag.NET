@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <TargetFrameworks />
+    <TargetFramework>net11.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <!-- The one-time GraphRAG extraction generation tool, and the home of the ingestion driver the
          GraphRAG guard replays through. It lives under benchmarks/ for the reason the HyDE

@@ -640,7 +640,7 @@ something that errors before a test starts.
 takes a comma-separated list of dataset names, so only the ones you name opt in:
 
 ```bash
-RAGNET_BEIR_LONG_RUNS=arguana   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class "*BeirParityTests"
+RAGNET_BEIR_LONG_RUNS=arguana   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class "*BeirParityTests"
 ```
 
 **This narrows cost, not test selection, and the difference matters.** No filter the native runner
@@ -653,7 +653,7 @@ narrowing.
 where the unit counts on this page came from:
 
 ```bash
-tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -method "*Chunking_SplitsEveryCorpusIntoMoreUnitsThanDocuments*"
+tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -method "*Chunking_SplitsEveryCorpusIntoMoreUnitsThanDocuments*"
 ```
 
 The runner does not build; build the project first. It also prints each test's **skip reason**,

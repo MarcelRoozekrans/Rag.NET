@@ -18,3 +18,7 @@ jobs:
     uses: MarcelRoozekrans/ci-baseline/.github/workflows/baseline.yml@v1
     with:
       solution: Rag.NET.slnx
+      # The solution multi-targets net10.0 and net11.0, so the audit restore needs both SDKs.
+      dotnet-version: |
+        10.0.x
+        11.0.x

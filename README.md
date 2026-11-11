@@ -357,7 +357,7 @@ Score interpretation: 1.0 = semantically identical, 0.0 = completely unrelated. 
 
 The [samples/Rag.NET.Sample](samples/Rag.NET.Sample) project is an interactive console app that demonstrates the full pipeline. It supports both **Ollama** (local) and **OpenAI** providers, uses Testcontainers to spin up a pgvector database automatically, and provides a Q&A loop with streaming responses.
 
-**Prerequisites:** Docker (for Testcontainers PostgreSQL)
+**Prerequisites:** the .NET 11 SDK (the sample targets net11.0 only; the libraries also build for net10.0), and Docker (for Testcontainers PostgreSQL)
 
 ```bash
 # Using Ollama (default)

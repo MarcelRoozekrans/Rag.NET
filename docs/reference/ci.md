@@ -363,7 +363,7 @@ the job's presence report also prints the variable as unset, so a log reader is 
 were off rather than left to infer it from a test count. To run one:
 
 ```bash
-RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
   -class "*BeirRealChunkingTests"   # every dataset; see "Selecting one dataset"
 ```
 
@@ -384,7 +384,7 @@ comparability rule requires anyway. To measure both .NET entrants twice:
 ```bash
 for i in 1 2; do
   RAGNET_BEIR_LONG_RUNS=1 RAGNET_BEIR_RUN_INDEX=$i \
-    tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+    tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
     -class "*BeirComparisonControlTests"
 done
 ```
@@ -405,7 +405,7 @@ a dump the data cannot support — below `2` it **throws** rather than skipping,
 one-run table to fall back to:
 
 ```bash
-RAGNET_COST_MATRIX_RUNS=3 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+RAGNET_COST_MATRIX_RUNS=3 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
   -method "*DumpsTheGatedCostMatrix*"
 ```
 
@@ -492,7 +492,7 @@ echo "5d3e70fd0c9ff14b9b5169a51e957b7a9c74897afd0a35ce4bd318150c1d4d4a  $dir/mod
 echo "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3  $dir/vocab.txt"  | sha256sum -c -
 
 RAGNET_ONNX_RERANK_MODEL="$dir/model.onnx" RAGNET_ONNX_RERANK_VOCAB="$dir/vocab.txt" \
-RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
   -method "*UnderCrossEncoderRerank*"   # every dataset; see "Selecting one dataset"
 ```
 
@@ -524,7 +524,7 @@ echo "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3  $dir/voc
 
 RAGNET_ONNX_SPLADE_MODEL="$dir/model.onnx" RAGNET_ONNX_SPLADE_VOCAB="$dir/vocab.txt" \
 RAGNET_BEIR_LONG_RUNS=scifact \
-  tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+  tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
   -method '*NdcgAt10_UnderSplade_*' -showLiveOutput
 ```
 
@@ -541,7 +541,7 @@ inputs, and the fact dumps the .NET-side vector for each one (the full procedure
 
 ```bash
 RAGNET_IDENTITY_BATTERY_DIR="$RAGNET_BEIR_CACHE/identity-battery" \
-  tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+  tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
   -method "*DumpsEachBatteryInputsVector*"
 ```
 
@@ -565,12 +565,12 @@ budget cell like the rest of the graph work):
 # Pilot: 100 stratified queries, all three arms, generating what the cache lacks (~$1 derived).
 RAGNET_GRAPHRAG_ANSWERS_GENERATE=1 RAGNET_GRAPHRAG_ANSWERS_MAX_QUERIES=100 \
 RAGNET_GRAPHRAG_ANSWERS_ARMS=dense,local,global \
-RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
   -class "*BeirGraphRagAnswerTests"
 
 # Full run, all 2,255 judged and 301 null queries; drop GENERATE to replay only, which is what the pin checks.
 RAGNET_GRAPHRAG_ANSWERS_GENERATE=1 \
-RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
+RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
   -class "*BeirGraphRagAnswerTests"
 ```
 
@@ -613,10 +613,10 @@ The pilot is six queries and costs about a hundredth of a cent.
 
 ```bash
 # Pilot: six queries, generating what the cache lacks.
-RAGNET_SELF_QUERY_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirSelfQueryPilotTests
+RAGNET_SELF_QUERY_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirSelfQueryPilotTests
 
 # Replay, which is what a re-run should do: drop the variable and the same six come from cache.
-tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirSelfQueryPilotTests
+tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirSelfQueryPilotTests
 ```
 
 **These invoke the built executable rather than `dotnet test --filter`**, which the xunit v3
@@ -639,10 +639,10 @@ of the articles produced a titled root with children.
 
 ```bash
 # Generating what the cache lacks.
-RAGNET_MIND_MAP_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMindMapTests -showLiveOutput
+RAGNET_MIND_MAP_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMindMapTests -showLiveOutput
 
 # Replay, free.
-tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMindMapTests -showLiveOutput
+tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMindMapTests -showLiveOutput
 ```
 
 ### Conversation memory, `RAGNET_CONVERSATION_MEMORY_GENERATE`
@@ -660,10 +660,10 @@ reached no model returns correctly-trimmed histories and looks like success.
 
 ```bash
 # Generating what the cache lacks.
-RAGNET_CONVERSATION_MEMORY_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.ConversationMemoryExerciseTests -showLiveOutput
+RAGNET_CONVERSATION_MEMORY_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.ConversationMemoryExerciseTests -showLiveOutput
 
 # Replay, free.
-tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.ConversationMemoryExerciseTests -showLiveOutput
+tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.ConversationMemoryExerciseTests -showLiveOutput
 ```
 
 ### Deep research, `RAGNET_DEEP_RESEARCH_GENERATE`
@@ -685,10 +685,10 @@ the loop expanded at least one page before its figure is read.
 
 ```bash
 # The measured cell, generating what the cache lacks.
-RAGNET_BEIR_LONG_RUNS=scifact RAGNET_DEEP_RESEARCH_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirDeepResearchTests -showLiveOutput
+RAGNET_BEIR_LONG_RUNS=scifact RAGNET_DEEP_RESEARCH_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirDeepResearchTests -showLiveOutput
 
 # Replay, free, and reproduce the pinned 0.70219.
-RAGNET_BEIR_LONG_RUNS=scifact   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirDeepResearchTests -showLiveOutput
+RAGNET_BEIR_LONG_RUNS=scifact   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirDeepResearchTests -showLiveOutput
 ```
 
 ### Metadata extraction, `RAGNET_METADATA_EXTRACTION_GENERATE`
@@ -709,17 +709,17 @@ pass `1` here: it means every dataset.
 
 ```bash
 # Pilot: 120 chunks, generating what the cache lacks.
-RAGNET_METADATA_EXTRACTION_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMetadataExtractionPilotTests
+RAGNET_METADATA_EXTRACTION_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMetadataExtractionPilotTests
 
 # Replay: drop the variable and the same 120 come from cache, free.
-tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMetadataExtractionPilotTests
+tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMetadataExtractionPilotTests
 
 # The measured run, both arms. Resumable: every reply is cached as it arrives, so an
 # interrupted run replays what it already paid for and spends only on the remainder.
-RAGNET_BEIR_LONG_RUNS=scifact,fiqa RAGNET_METADATA_EXTRACTION_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMetadataExtractionTests -showLiveOutput
+RAGNET_BEIR_LONG_RUNS=scifact,fiqa RAGNET_METADATA_EXTRACTION_GENERATE=1   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMetadataExtractionTests -showLiveOutput
 
 # Replay both arms from cache, free, and reproduce the pinned coverage figures.
-RAGNET_BEIR_LONG_RUNS=scifact,fiqa   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMetadataExtractionTests -showLiveOutput
+RAGNET_BEIR_LONG_RUNS=scifact,fiqa   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirMetadataExtractionTests -showLiveOutput
 ```
 
 As with the self-query gate above, these invoke the built executable with `-class` rather than
@@ -1173,7 +1173,7 @@ syntax):
 ```bash
 dotnet build tests/Rag.NET.Benchmarks.Quality.IntegrationTests -c Release
 
-./tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirDeepResearchTests
+./tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class Rag.NET.Benchmarks.Quality.IntegrationTests.BeirDeepResearchTests
 ```
 
 #### Selecting one dataset
@@ -1198,7 +1198,7 @@ So the cost *is* narrowable for every cell the budget gates: a row for a dataset
 skips, and the run pays for the one you asked for.
 
 ```bash
-RAGNET_BEIR_LONG_RUNS=arguana   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net10.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class "*BeirRealChunkingTests"
+RAGNET_BEIR_LONG_RUNS=arguana   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe   -class "*BeirRealChunkingTests"
 ```
 
 **The filter-level limitation above is unchanged and still true**: no filter selects a theory data

@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <TargetFrameworks />
+    <TargetFramework>net11.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <!-- The one-time HyDE hypothetical generation tool. It lives under benchmarks/ so the one
          LLM-provider package it needs stays out of every shipped project: src/ carries only

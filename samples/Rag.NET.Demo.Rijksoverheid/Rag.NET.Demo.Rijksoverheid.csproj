@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <TargetFrameworks />
+    <TargetFramework>net11.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <!-- Not shippable: a demo, not a package. PackabilityTests guards it. -->
     <IsPackable>false</IsPackable>

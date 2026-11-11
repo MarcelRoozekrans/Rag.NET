@@ -90,7 +90,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       # The second deliberate divergence from the house file: a cold restore across this dependency
       # graph costs minutes on every run. Keyed on every csproj plus Directory.Build.props, which
@@ -363,7 +365,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v6
@@ -547,7 +551,9 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: |
+            10.0.x
+            11.0.x
 
       # Character-identical to pack-validate's derive step, for the same reason as the pack
       # step below: the version 6.3 publishes must be derived by a command that has run green
