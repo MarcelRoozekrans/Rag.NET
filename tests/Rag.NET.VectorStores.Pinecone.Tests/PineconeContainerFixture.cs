@@ -13,25 +13,61 @@ namespace Rag.NET.Pinecone.Tests;
 /// ports — a dynamic mapping would break the advertised host:port. Consequence: at
 /// most ten indexes may exist at once (tests clean up after themselves) and the suite
 /// needs ports 5080–5090 free on the host.
+/// <para>
+/// This test project multi-targets, and <c>dotnet test</c> runs the target frameworks as
+/// separate processes at the same time, so both would race for those fixed ports. The
+/// fixture therefore holds an exclusive lock file for as long as the container lives, which
+/// makes a second process wait until the first has released the ports.
+/// </para>
 /// </summary>
 public sealed class PineconeContainerFixture : IAsyncLifetime
 {
     private const int ControlPlanePort = 5080;
     private const int LastIndexPort = 5090;
 
+    private static readonly TimeSpan LockTimeout = TimeSpan.FromMinutes(15);
+
     private readonly IContainer _container = BuildContainer();
+    private FileStream? _portLock;
 
     /// <summary>Control-plane endpoint, e.g. <c>http://localhost:5080</c>.</summary>
     public Uri Endpoint { get; } = new($"http://localhost:{ControlPlanePort}");
 
     public async ValueTask InitializeAsync()
     {
+        _portLock = await AcquirePortLockAsync(TestContext.Current.CancellationToken);
         await _container.StartAsync(TestContext.Current.CancellationToken);
     }
 
     public async ValueTask DisposeAsync()
     {
-        await _container.DisposeAsync();
+        try
+        {
+            await _container.DisposeAsync();
+        }
+        finally
+        {
+            if (_portLock is not null)
+                await _portLock.DisposeAsync();
+        }
+    }
+
+    private static async Task<FileStream> AcquirePortLockAsync(CancellationToken cancellationToken)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "ragnet-pinecone-local-ports.lock");
+        var deadline = DateTime.UtcNow + LockTimeout;
+        while (true)
+        {
+            try
+            {
+                return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None,
+                    bufferSize: 1, FileOptions.DeleteOnClose);
+            }
+            catch (IOException) when (DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            }
+        }
     }
 
     private static IContainer BuildContainer()
