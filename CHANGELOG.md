@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.6.0...v1.7.0) (2026-11-11)
+
+
+### Features
+
+* add net11.0 target ([#961](https://github.com/MarcelRoozekrans/Rag.NET/issues/961)) ([5a6d1d6](https://github.com/MarcelRoozekrans/Rag.NET/commit/5a6d1d654a3c976594f95da8df5da631f0badad7))
+
 ## [1.6.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.5.0...v1.6.0) (2026-11-10)
 
 
