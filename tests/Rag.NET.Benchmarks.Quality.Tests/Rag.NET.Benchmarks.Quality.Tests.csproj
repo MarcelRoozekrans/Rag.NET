@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <TargetFrameworks />
+    <TargetFramework>net11.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <!-- No tier properties on purpose. Nothing here starts a container, and nothing here reads a
          RAGNET_ variable: BeirDatasetCache resolves RAGNET_BEIR_CACHE inside

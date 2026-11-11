@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <TargetFrameworks />
+    <TargetFramework>net11.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <!-- A project of its own rather than a file in Rag.NET.Benchmarks.Quality.Tests, and the split
          is the whole point. BeirParityTests reads RAGNET_ONNX_EMBED_MODEL,

@@ -6,7 +6,7 @@ sidebar_position: 3
 
 # Getting Started
 
-This page walks through a complete end-to-end setup: installing packages, wiring up DI, ingesting a document, and running your first question-answer call. All code assumes .NET 10 and the `Microsoft.Extensions.AI` ecosystem.
+This page walks through a complete end-to-end setup: installing packages, wiring up DI, ingesting a document, and running your first question-answer call. All code assumes .NET 10 or later and the `Microsoft.Extensions.AI` ecosystem.
 
 ```mermaid
 flowchart LR

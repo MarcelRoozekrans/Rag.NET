@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
     <!-- Workaround for .NET 10 SDK 10.0.104 regression (tracked upstream):
          MSB3492 ("Could not read existing cache file") fires during the CLI's
          question-build pre-check. TreatWarningsAsErrors escalates it to an error,
