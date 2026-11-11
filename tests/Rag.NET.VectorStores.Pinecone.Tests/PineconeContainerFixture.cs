@@ -60,8 +60,10 @@ public sealed class PineconeContainerFixture : IAsyncLifetime
             {
                 // The file is never deleted: removing it on close races with a waiting process that
                 // opens it at the same moment, and on Windows that surfaces as an access error.
-                return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None,
+                var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None,
                     bufferSize: 1, FileOptions.None);
+                MakeLockFileShareable(path);
+                return stream;
             }
             // Only contention is retried. A missing directory, drive or an over-long path will not
             // fix itself, so those propagate at once instead of waiting out the deadline.
@@ -71,6 +73,26 @@ public sealed class PineconeContainerFixture : IAsyncLifetime
             {
                 await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
             }
+        }
+    }
+
+    // The host ports are shared by every user of the machine, so the lock file must be openable by
+    // all of them: with a umask of 022 the creating user would otherwise lock everyone else out for
+    // good. Only the owner may change the mode, and a file somebody else created is already usable.
+    private static void MakeLockFileShareable(string path)
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+        try
+        {
+            File.SetUnixFileMode(path,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite
+                | UnixFileMode.GroupRead | UnixFileMode.GroupWrite
+                | UnixFileMode.OtherRead | UnixFileMode.OtherWrite);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Not the owner: the mode was set by whoever created the file.
         }
     }
 
