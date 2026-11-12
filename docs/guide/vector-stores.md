@@ -442,6 +442,18 @@ services.AddRagNet(rag => rag
         vectorDimensions: 1536));
 ```
 
+The credential is either an `AzureKeyCredential` or a `TokenCredential` (Microsoft Entra ID, e.g.
+managed identity). For example, with `Azure.Identity`:
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseAzureAISearch(
+        endpoint:         new Uri("https://my-search.search.windows.net"),
+        indexName:        "my-rag-index",
+        credential:       new DefaultAzureCredential(),
+        vectorDimensions: 1536));
+```
+
 ### Vector recall: `KNearestNeighborsCount`
 
 The vector arm's `k` — how many nearest neighbours Azure retrieves before ranking — is configurable

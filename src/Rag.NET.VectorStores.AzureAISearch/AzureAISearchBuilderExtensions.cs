@@ -1,4 +1,5 @@
 using Azure;
+using Azure.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 
@@ -11,6 +12,39 @@ public static class AzureAISearchBuilderExtensions
         Uri endpoint,
         string indexName,
         AzureKeyCredential credential,
+        int vectorDimensions = 1536,
+        Action<AzureAISearchOptions>? configure = null)
+        where TBuilder : IRagBuilder
+    {
+        var options = new AzureAISearchOptions();
+        configure?.Invoke(options);
+        ValidateConfigured(options, nameof(configure));
+
+        var store = new AzureAISearchVectorStore(
+            endpoint, indexName, credential, vectorDimensions, clientOptions: null, options);
+        builder.Services.AddSingleton<IVectorStore>(store);
+        builder.Services.AddSingleton<IHybridSearchable>(store);
+        builder.Services.AddSingleton<ICollectionManageable>(store);
+        return builder;
+    }
+
+    /// <summary>
+    /// Registers the Azure AI Search vector store, authenticating with a <see cref="TokenCredential"/>
+    /// (Microsoft Entra ID) instead of an API key.
+    /// </summary>
+    /// <typeparam name="TBuilder">The builder type.</typeparam>
+    /// <param name="builder">The RAG builder.</param>
+    /// <param name="endpoint">The search service endpoint.</param>
+    /// <param name="indexName">The index the store reads and writes.</param>
+    /// <param name="credential">The token credential used to authenticate.</param>
+    /// <param name="vectorDimensions">The embedding width the index is created with.</param>
+    /// <param name="configure">Optional callback to configure <see cref="AzureAISearchOptions"/>.</param>
+    /// <returns>The same builder, for chaining.</returns>
+    public static TBuilder UseAzureAISearch<TBuilder>(
+        this TBuilder builder,
+        Uri endpoint,
+        string indexName,
+        TokenCredential credential,
         int vectorDimensions = 1536,
         Action<AzureAISearchOptions>? configure = null)
         where TBuilder : IRagBuilder
