@@ -123,6 +123,28 @@ public class CacheBehaviorInnerFailureTests
         Assert.Equal(1, calls);
     }
 
+    [Theory]
+    [MemberData(nameof(Behaviors))]
+    public async Task InnerCancellationNotFromCaller_PropagatesWithoutRerunning(string kind)
+    {
+        // An HttpClient timeout surfaces as a TaskCanceledException while the caller's token is
+        // not cancelled. It is the pipeline's failure, so it must not run the pipeline again.
+        var (sut, ctx) = Create(kind, RealCache());
+        var timeout = new TaskCanceledException("request timed out");
+        var calls = 0;
+
+        var ex = await Assert.ThrowsAsync<TaskCanceledException>(async () => await sut.HandleAsync(
+            ctx, TestContext.Current.CancellationToken,
+            (_, _) =>
+            {
+                Interlocked.Increment(ref calls);
+                return ValueTask.FromException<IReadOnlyList<SearchResult>>(timeout);
+            }));
+
+        Assert.Same(timeout, ex);
+        Assert.Equal(1, calls);
+    }
+
     /// <summary>A cache that fails without ever invoking the factory.</summary>
     private sealed class ThrowingHybridCache(Exception exception) : HybridCache
     {
