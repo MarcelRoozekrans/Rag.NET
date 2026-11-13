@@ -43,12 +43,12 @@ public sealed class DeepResearchRetriever : IRetriever
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _inner.RetrieveAsync(query, options, cancellationToken).ConfigureAwait(false);
-        if (!result.IsSuccess)
-            return result;
-
         try
         {
+            var result = await _inner.RetrieveAsync(query, options, cancellationToken).ConfigureAwait(false);
+            if (!result.IsSuccess)
+                return result;
+
             return await ResearchAsync(query, options, result.Value, cancellationToken).ConfigureAwait(false);
         }
         catch (CallRefusedException ex)

@@ -461,4 +461,19 @@ public class DeepResearchRetrieverTests
         Assert.False(result.IsSuccess);
         Assert.Same(refusal, Assert.IsType<RagError.StorageFailed>(result.Error).Inner);
     }
+
+    [Fact]
+    public async Task InitialRetrievalRefusalThrown_FailsTheQuery()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var inner = Substitute.For<IRetriever>();
+        inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct).ThrowsAsync(refusal);
+
+        var sut = new DeepResearchRetriever(inner, Substitute.For<IChatClient>(), new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.False(result.IsSuccess);
+        Assert.Same(refusal, Assert.IsType<RagError.StorageFailed>(result.Error).Inner);
+    }
 }
