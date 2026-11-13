@@ -64,4 +64,27 @@ public class ContextualCompressionRetrievalBehaviorTests
         Assert.Null(result[0].CompressedText);
         Assert.Equal("t", result[0].Chunk.Text);
     }
+
+    [Fact]
+    public async Task HandleAsync_CompressorRefusal_Propagates()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var pipelineResults = new List<SearchResult>
+        {
+            new() { Chunk = new TextChunk { Text = "t", DocumentId = new DocumentId("d"), ChunkIndex = 0 }, Score = 0.5 },
+        };
+        var compressor = Substitute.For<IContextualCompressor>();
+#pragma warning disable EPS06 // ValueTask struct copy — intentional test double setup via NSubstitute
+        compressor.CompressAsync(Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new ValueTask<IReadOnlyList<SearchResult>>(Task.FromException<IReadOnlyList<SearchResult>>(refusal)));
+#pragma warning restore EPS06
+        var sut = new ContextualCompressionRetrievalBehavior { Compressor = compressor };
+        var ctx = new RetrievalContext { Query = "q", Options = new RetrievalOptions() };
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(async () => await sut.HandleAsync(
+            ctx, ct, (_, _) => ValueTask.FromResult<IReadOnlyList<SearchResult>>(pipelineResults)));
+
+        Assert.Same(refusal, ex);
+    }
 }

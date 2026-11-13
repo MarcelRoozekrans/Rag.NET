@@ -36,6 +36,8 @@ public sealed class ContextualCompressionRetrievalBehavior : IRetrievalBehavior
             return await Compressor.CompressAsync(results, ctx.Query, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             RagPipelineLog.ContextualCompressionFailed(ctx.Logger, ctx.Query, ex);

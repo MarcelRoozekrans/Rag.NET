@@ -34,8 +34,10 @@ namespace Rag.NET.Security;
 /// <c>QuerySanitiserPipelineDecoratorTests.RetrieveAsync_ForwardsTheQueryUnsanitised</c>.
 /// </para>
 /// <para>
-/// <b>Fails open.</b> A sanitiser that throws returns the original query and logs, so a broken
-/// sanitiser degrades the defence rather than the pipeline.
+/// <b>The sanitisers fail open; this decorator does not catch.</b> The built-in sanitisers catch
+/// their own failures, return the original query and log, so a broken sanitiser degrades the
+/// defence rather than the pipeline. A deliberate refusal of the LLM sanitiser's model call, such
+/// as a spent cost budget, is the exception: it propagates and fails the request (#948).
 /// </para>
 /// </remarks>
 /// <param name="inner">The pipeline being decorated.</param>
@@ -67,11 +69,13 @@ public sealed class QuerySanitiserPipelineDecorator(
         CancellationToken cancellationToken = default)
         => inner.RetrieveAsync(query, options, cancellationToken);
 
-    public Task<RagResponse> AskAsync(
+    // Async so a sanitiser that throws, such as one whose model call was refused, faults the
+    // returned task instead of throwing at the call site.
+    public async Task<RagResponse> AskAsync(
         string query,
         RagOptions? options = null,
         CancellationToken cancellationToken = default)
-        => inner.AskAsync(SanitiseQuery(query), options, cancellationToken);
+        => await inner.AskAsync(SanitiseQuery(query), options, cancellationToken).ConfigureAwait(false);
 
     public async IAsyncEnumerable<RagStreamingUpdate> AskStreamingAsync(
         string query,

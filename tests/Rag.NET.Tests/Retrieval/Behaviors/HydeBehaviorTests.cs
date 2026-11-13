@@ -181,6 +181,67 @@ public class HydeBehaviorTests
     }
 
     [Fact]
+    public async Task GeneratorRefuses_PropagatesInsteadOfRetrievingWithoutHyde()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var generator = Substitute.For<IHypotheticalDocumentGenerator>();
+        generator.GenerateManyAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(refusal);
+
+        var sut = new HydeBehavior
+        {
+            HydeGenerator = generator,
+            Embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>(),
+            HydeOptions = new HydeOptions { HypothesisCount = 3 },
+        };
+        var nextCalled = false;
+        Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next =
+            (_, _) =>
+            {
+                nextCalled = true;
+                return ValueTask.FromResult<IReadOnlyList<SearchResult>>([]);
+            };
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            async () => await sut.HandleAsync(MakeCtx(new RetrievalOptions { UseHyde = true }), ct, next));
+
+        Assert.Same(refusal, ex);
+        Assert.False(nextCalled);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task DownstreamFailure_PropagatesWithoutRerunningThePipeline(int hypothesisCount)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var generator = Substitute.For<IHypotheticalDocumentGenerator>();
+        generator.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("hypothesis");
+        generator.GenerateManyAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<string> { "hypothesis a", "hypothesis b" });
+        var sut = new HydeBehavior
+        {
+            HydeGenerator = generator,
+            Embedder = EmbedderReturning([1f, 0f], [0f, 1f]),
+            HydeOptions = new HydeOptions { HypothesisCount = hypothesisCount },
+        };
+        var failure = new InvalidOperationException("vector store down");
+        var calls = 0;
+        Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next = (_, _) =>
+        {
+            calls++;
+            return ValueTask.FromException<IReadOnlyList<SearchResult>>(failure);
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await sut.HandleAsync(MakeCtx(new RetrievalOptions { UseHyde = true }), ct, next));
+
+        Assert.Same(failure, ex);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
     public async Task ZeroNormAverage_FallsBackToFirstDocTextOverride()
     {
         var ct = TestContext.Current.CancellationToken;

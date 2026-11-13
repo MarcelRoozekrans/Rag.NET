@@ -6,6 +6,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
 using ZeroAlloc.Results;
+using NSubstitute.ExceptionExtensions;
 
 namespace Rag.NET.Tests.AnswerGeneration;
 
@@ -383,5 +384,70 @@ public class FlareAnswerEngineTests
         Assert.Contains("End your reply with exactly", system.Text, StringComparison.Ordinal);
         Assert.Contains("exactly one sentence", system.Text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("<DONE>", system.Text, StringComparison.Ordinal);
+    }
+
+    // ── A deliberate refusal fails the answer instead of being treated as a failed step (#948) ──
+
+    [Fact]
+    public async Task AskAsync_ScorerRefusal_Propagates()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        ScriptChat("A fact.", "<DONE>");
+        _scorer.ThrowThis = refusal;
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => CreateSut().AskAsync(
+            "q", [MakeSource("ctx")], cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task AskAsync_LookaheadRefusalThrown_Propagates()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        ScriptChat("Fact one.", "<DONE>");
+        _scorer.Script(0.0, 0.9);
+        _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(refusal);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => CreateSut().AskAsync(
+            "q", [MakeSource("ctx")], cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task AskAsync_LookaheadRefusalReturnedAsFailure_Propagates()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        ScriptChat("Fact one.", "<DONE>");
+        _scorer.Script(0.0, 0.9);
+        _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(refusal)));
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => CreateSut().AskAsync(
+            "q", [MakeSource("ctx")], cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task AskStreamingAsync_LookaheadRefusal_Propagates()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        ScriptChat("Fact one.", "<DONE>");
+        _scorer.Script(0.0, 0.9);
+        _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(refusal);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(async () =>
+        {
+            await foreach (var _ in CreateSut().AskStreamingAsync(
+                "q", [MakeSource("ctx")], cancellationToken: TestContext.Current.CancellationToken))
+            {
+            }
+        });
+
+        Assert.Same(refusal, ex);
     }
 }

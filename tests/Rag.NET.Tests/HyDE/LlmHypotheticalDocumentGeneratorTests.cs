@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using NSubstitute;
 using Rag.NET.HyDE;
+using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
 
@@ -226,5 +227,43 @@ public class LlmHypotheticalDocumentGeneratorTests
         var docs = await sut.GenerateManyAsync("what is rag?", 3, TestContext.Current.CancellationToken);
 
         Assert.Equal(["seq-doc-1", "seq-doc-3"], docs);
+    }
+
+    // ── A deliberate refusal is not a partial failure (#948) ──
+
+    [Fact]
+    public async Task GenerateManyAsync_RethrowsRefusal_EvenWhenOtherHypothesesSucceed()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var callCount = 0;
+        _chatClient
+            .GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                var n = Interlocked.Increment(ref callCount);
+                if (n == 2)
+                    return Task.FromException<ChatResponse>(refusal);
+                return Task.FromResult(new ChatResponse([new ChatMessage(ChatRole.Assistant, $"hypothesis-{n}")]));
+            });
+
+        var sut = new LlmHypotheticalDocumentGenerator(_chatClient, new HydeOptions());
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            () => sut.GenerateManyAsync("what is rag?", 3, TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task DefaultGenerateManyAsync_RethrowsRefusal_EvenWhenOtherHypothesesSucceed()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        Rag.NET.Abstractions.IHypotheticalDocumentGenerator sut =
+            new SingleDocOnlyGenerator(n => n == 2 ? throw refusal : $"seq-doc-{n}");
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            () => sut.GenerateManyAsync("what is rag?", 3, TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
     }
 }

@@ -26,6 +26,8 @@ public sealed class MultiQueryBehavior : IRetrievalBehavior
             variants = await QueryExpander.ExpandAsync(ctx.Query, variantCount, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             RagPipelineLog.QueryExpansionFailed(ctx.Logger, ctx.Query, ex);
@@ -59,6 +61,8 @@ public sealed class MultiQueryBehavior : IRetrievalBehavior
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             RagPipelineLog.QueryRetrievalFailed(ctx.Logger, query, ex);

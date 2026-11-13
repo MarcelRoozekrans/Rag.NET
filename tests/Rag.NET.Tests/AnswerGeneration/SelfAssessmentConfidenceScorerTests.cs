@@ -3,6 +3,7 @@ using NSubstitute;
 using Rag.NET.AnswerGeneration;
 using Rag.NET.Models;
 using Xunit;
+using NSubstitute.ExceptionExtensions;
 
 namespace Rag.NET.Tests.AnswerGeneration;
 
@@ -185,5 +186,19 @@ public class SelfAssessmentConfidenceScorerTests
         var userText = string.Join("\n", captured!.Where(m => m.Role == ChatRole.User).Select(m => m.Text));
         Assert.Contains("compressed view", userText, StringComparison.Ordinal);
         Assert.DoesNotContain("raw chunk text", userText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ScoreAsync_RethrowsRefusal()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<ChatResponse>(_ => throw refusal);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(async () => await _sut.ScoreAsync(
+            "s", "p", [MakeSource("ctx")], TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
     }
 }

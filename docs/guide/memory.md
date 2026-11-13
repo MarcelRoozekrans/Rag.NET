@@ -163,6 +163,7 @@ Each stored exchange is a single `TextChunk`:
 | Condition | Behaviour |
 |-----------|-----------|
 | Vector store search fails | Logged as warning; history unchanged; inner pipeline called normally |
+| Query embedding or `StoreAsync` embedding refused (`CallRefusedException`, such as a spent cost budget) | Propagates: the request fails instead of continuing without memory ([#948](https://github.com/MarcelRoozekrans/Rag.NET/issues/948)) |
 | `StoreAsync` embedding fails | Logged as warning; exchange not persisted (non-fatal) |
 | `StoreAsync` store write fails | Logged as warning; exchange not persisted (non-fatal) |
 | All results below `MinScore` (similarity-scaled store) | No prefix injected; inner pipeline called normally |

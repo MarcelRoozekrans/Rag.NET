@@ -97,6 +97,8 @@ public sealed class ConversationMemoryPipeline : IConversationMemory
         {
             throw;
         }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             RagPipelineLog.ConversationSummaryFailed(_logger, ex);

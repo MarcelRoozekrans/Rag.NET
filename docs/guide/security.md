@@ -273,7 +273,9 @@ targets role-switch phrases (`ignore previous instructions`, `you are now`, `act
 **They fail open.** If sanitisation throws — a regex timeout on a pathological input, an LLM call
 failing — the original text is returned unchanged and the failure is logged. A sanitiser that threw
 would take the whole request down; one that returns unsanitised text does not, and says so in the
-log. The `Use*Llm*` variants resolve `IChatClient` from DI and throw at container resolution if none
+log. A deliberate refusal of the LLM variants' model call, such as a spent cost budget
+(`CallRefusedException`), is not a failure and is not swallowed: it fails the request
+([#948](https://github.com/MarcelRoozekrans/Rag.NET/issues/948)). The `Use*Llm*` variants resolve `IChatClient` from DI and throw at container resolution if none
 is registered.
 
 ### `UseQuerySanitiser` does not apply to `RetrieveAsync`

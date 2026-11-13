@@ -1,4 +1,5 @@
 using System.Runtime.ExceptionServices;
+using Rag.NET.Models;
 
 namespace Rag.NET.Abstractions;
 
@@ -21,6 +22,8 @@ public interface IHypotheticalDocumentGenerator
     /// Partial failures are tolerated: as long as at least one generation succeeds, the surviving
     /// documents are returned (so the result may contain fewer than <paramref name="count"/> entries).
     /// When every generation fails with an exception, the last exception is rethrown.
+    /// A deliberate refusal (<see cref="CallRefusedException"/>, such as a spent cost
+    /// budget) is not a partial failure: it propagates at once, even when other generations succeeded (#948).
     /// Empty responses are dropped; a non-throwing model that returns only empty text yields an empty list.
     /// </summary>
     /// <remarks>
@@ -48,6 +51,8 @@ public interface IHypotheticalDocumentGenerator
                     docs.Add(doc);
             }
             catch (OperationCanceledException) { throw; }
+            // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+            catch (CallRefusedException) { throw; }
             catch (Exception ex)
             {
                 lastFailure = ex;
