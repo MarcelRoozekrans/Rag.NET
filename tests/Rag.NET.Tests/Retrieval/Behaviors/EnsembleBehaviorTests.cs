@@ -1284,4 +1284,26 @@ public class EnsembleBehaviorTests
 
         Assert.NotEmpty(output);
     }
+
+    [Fact]
+    public async Task HandleAsync_SparseEncoderRefusal_Propagates()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var (store, embedder, bm25) = MakeSparseCapableArms(
+            [MakeResult("doc-dense", 0, 0.9)], [MakeResult("doc-sparse", 0, 4.0)]);
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = new FakeSparseGenerator(_ => throw refusal),
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            async () => await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException()));
+
+        Assert.Same(refusal, ex);
+    }
 }

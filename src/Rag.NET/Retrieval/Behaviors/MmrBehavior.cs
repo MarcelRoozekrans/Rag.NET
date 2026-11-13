@@ -38,6 +38,8 @@ public sealed class MmrBehavior : IRetrievalBehavior
             return selected;
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             RagPipelineLog.MmrSelectionFailed(ctx.Logger, ctx.Query, ex);

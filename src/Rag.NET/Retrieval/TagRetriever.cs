@@ -44,7 +44,18 @@ public sealed class TagRetriever : IRetriever
         if (!effective.UseTagRetrieval)
             return await _inner.RetrieveAsync(query, effective, cancellationToken).ConfigureAwait(false);
 
-        var merged = await TryInjectTagFilterAsync(query, effective, cancellationToken).ConfigureAwait(false);
+        RetrievalOptions merged;
+        try
+        {
+            merged = await TryInjectTagFilterAsync(query, effective, cancellationToken).ConfigureAwait(false);
+        }
+        catch (CallRefusedException ex)
+        {
+            // A refusal fails the query the way the inner pipeline reports one: as StorageFailed
+            // with the refusal inside, until #937 gives it a case of its own (#948).
+            return Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(ex));
+        }
+
         return await _inner.RetrieveAsync(query, merged, cancellationToken).ConfigureAwait(false);
     }
 
@@ -80,6 +91,8 @@ public sealed class TagRetriever : IRetriever
             return options with { MetadataFilter = filter };
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Tag filter injection failed; proceeding without tag filter");

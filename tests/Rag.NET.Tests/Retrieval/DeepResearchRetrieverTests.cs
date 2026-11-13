@@ -405,4 +405,60 @@ public class DeepResearchRetrieverTests
             0.9,
             result.Value[0].Score);
     }
+
+    [Fact]
+    public async Task SufficiencyCheckRefusal_FailsTheQuery()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0)));
+        chatClient
+            .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(refusal);
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.False(result.IsSuccess);
+        Assert.Same(refusal, Assert.IsType<RagError.StorageFailed>(result.Error).Inner);
+    }
+
+    [Fact]
+    public async Task SubQueryRefusalThrown_FailsTheQuery()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        inner.RetrieveAsync("q",    Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0)));
+        inner.RetrieveAsync("sub1", Arg.Any<RetrievalOptions?>(), ct).ThrowsAsync(refusal);
+        ReturnInsufficientThenSufficient(chatClient, "sub1");
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.False(result.IsSuccess);
+        Assert.Same(refusal, Assert.IsType<RagError.StorageFailed>(result.Error).Inner);
+    }
+
+    [Fact]
+    public async Task SubQueryRefusalReturnedAsFailure_FailsTheQuery()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        inner.RetrieveAsync("q",    Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0)));
+        inner.RetrieveAsync("sub1", Arg.Any<RetrievalOptions?>(), ct)
+             .Returns(Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(refusal)));
+        ReturnInsufficientThenSufficient(chatClient, "sub1");
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.False(result.IsSuccess);
+        Assert.Same(refusal, Assert.IsType<RagError.StorageFailed>(result.Error).Inner);
+    }
 }
