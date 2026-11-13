@@ -20,7 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Http" />
+    <!-- The shared framework, as Rag.NET.Mcp.AspNetCore and Rag.NET.Diagnostics.AspNetCore use.
+         This referenced the legacy Microsoft.AspNetCore.Http 2.3.x package until 1.7.1: every
+         release of it, 2.3.14 included, depends on a Microsoft.AspNetCore.WebUtilities inside
+         GHSA-6527-9fp8-r4x6, so it shipped a vulnerable dependency to every consumer. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
 </Project>
