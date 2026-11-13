@@ -1,16 +1,22 @@
 # Session State
 
-**Last updated:** 2026-11-10 — **v1.6.0 is released and published; #951 is done.** No PR of
-ours is open apart from this state update. The operator merges; the agent does not.
+**Last updated:** 2026-11-13 — **main is green again; release PR #977 (1.7.1) waits for the
+operator.** The operator merges release PRs; the agent does not.
 
-**Shipped in v1.6.0** (release PR #954, tag `v1.6.0`; the release CI run published 148 packages to
-nuget.org):
-- **#946** (`feat`, #932): `RagOptions.Retrieval` takes a full `RetrievalOptions`.
-- **#950** (`fix`, #938): a `CallRefusedException` fails the document at every ingestion site
-  that degrades on a model failure. Until #937 the failure reports as `StorageFailed`.
-- Also on main since v1.5.0: **#949** (ZA0601 rewrites after Renovate's #852 broke the build) and
-  **#908** (Meziantou.Analyzer 3.0.321; its new rule MA0244 needed three `InlineData` spend values
-  passed as strings in `CostTrackingChatClientTests`).
+**v1.7.0 was never published.** Its release run failed on NU1902: advisory GHSA-6527-9fp8-r4x6
+(published 2026-11-10) covers `Microsoft.AspNetCore.WebUtilities` <= 2.3.13, and main went red at
+the v1.7.0 release commit. `build-test (ubuntu-latest)` failed and `publish-nuget` was skipped. The
+v1.7.0 tag and GitHub release exist, but nuget.org has no 1.7.0. **1.7.1 is the release that ships
+those changes**, including the net11.0 target from #961.
+- **#976** (`fix`, merged 2026-11-13): `Rag.NET.Security.AspNetCore` now uses the
+  `Microsoft.AspNetCore.App` framework reference, as its sibling ASP.NET Core packages do. Its legacy
+  `Microsoft.AspNetCore.Http` 2.3.x reference pulled a vulnerable WebUtilities in every version.
+  WireMock.Net went from 2.30.0 to 2.31.0, which depends on the fixed 2.3.14. The operator chose the
+  framework reference over pinning WebUtilities.
+- After merging #977, watch the release run and confirm that `publish-nuget` succeeds.
+- The nine non-major Renovate PRs (#965 to #972, #975) were approved and on auto-merge, held only
+  by main being red. They should rebase and merge on their own; check that they did.
+- External PR **#973** (StefH, `feat(azureaisearch)`: TokenCredential auth) is open and unreviewed.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
@@ -30,7 +36,8 @@ the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
   at about Renovate's run times. Renovate then treats the PR as edited and stops touching it, so
   auto-merge is never enabled. Asked the operator on 2026-11-10; not yet identified.
 
-**NEXT ACTION:** pick the next item with the operator: #948 (the query path's swallowing catches),
+**NEXT ACTION:** after #977 is released, pick the next item with the operator: #973 (external
+PR), or #948 (the query path's swallowing catches),
 #944 (remote clients drop `RagOptions`, needs a wire-format decision), #945 (`ShallowCopy` drops
 three fields), #926, #927, or #246.
 
