@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Caching.Hybrid;
 using Rag.NET.Caching;
 using Rag.NET.Logging;
@@ -34,7 +35,16 @@ public sealed class EmbeddingCacheBehavior : IRetrievalBehavior
                 cacheKey,
                 async ct2 =>
                 {
-                    var inner = await next(ctx, ct2).ConfigureAwait(false);
+                    IReadOnlyList<SearchResult> inner;
+                    try
+                    {
+                        inner = await next(ctx, ct2).ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        throw new InnerPipelineException(ex);
+                    }
+
                     return inner as List<SearchResult> ?? inner.ToList();
                 },
                 new HybridCacheEntryOptions { Expiration = CachingOptions.EmbeddingTtl },
@@ -43,6 +53,12 @@ public sealed class EmbeddingCacheBehavior : IRetrievalBehavior
             return results ?? [];
         }
         catch (OperationCanceledException) { throw; }
+        // The pipeline failed, not the cache: rethrow its exception rather than run it again.
+        catch (InnerPipelineException wrapped)
+        {
+            ExceptionDispatchInfo.Throw(wrapped.InnerException!);
+            throw;
+        }
         catch (Exception ex)
         {
             RagPipelineLog.EmbeddingCacheFailed(ctx.Logger, ctx.Query, ex);
