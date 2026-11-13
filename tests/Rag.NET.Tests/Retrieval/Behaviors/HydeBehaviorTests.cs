@@ -181,6 +181,36 @@ public class HydeBehaviorTests
     }
 
     [Fact]
+    public async Task GeneratorRefuses_PropagatesInsteadOfRetrievingWithoutHyde()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var generator = Substitute.For<IHypotheticalDocumentGenerator>();
+        generator.GenerateManyAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(refusal);
+
+        var sut = new HydeBehavior
+        {
+            HydeGenerator = generator,
+            Embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>(),
+            HydeOptions = new HydeOptions { HypothesisCount = 3 },
+        };
+        var nextCalled = false;
+        Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next =
+            (_, _) =>
+            {
+                nextCalled = true;
+                return ValueTask.FromResult<IReadOnlyList<SearchResult>>([]);
+            };
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            async () => await sut.HandleAsync(MakeCtx(new RetrievalOptions { UseHyde = true }), ct, next));
+
+        Assert.Same(refusal, ex);
+        Assert.False(nextCalled);
+    }
+
+    [Fact]
     public async Task ZeroNormAverage_FallsBackToFirstDocTextOverride()
     {
         var ct = TestContext.Current.CancellationToken;

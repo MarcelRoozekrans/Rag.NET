@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.Models.Options;
 using System.Runtime.ExceptionServices;
+using Rag.NET.Models;
 
 namespace Rag.NET.HyDE;
 
@@ -60,7 +61,7 @@ internal sealed partial class LlmHypotheticalDocumentGenerator(
 
     /// <summary>
     /// One throttled LLM call. Non-cancellation failures are returned, not thrown, so a single
-    /// bad call cannot fault the whole batch; cancellation always propagates.
+    /// bad call cannot fault the whole batch; cancellation and a deliberate refusal always propagate.
     /// </summary>
     private async Task<(string? Text, Exception? Failure)> GenerateOneAsync(
         string prompt, ChatOptions chatOptions, SemaphoreSlim throttle, CancellationToken cancellationToken)
@@ -73,6 +74,8 @@ internal sealed partial class LlmHypotheticalDocumentGenerator(
             return (response.Text, null);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             return (null, ex);
