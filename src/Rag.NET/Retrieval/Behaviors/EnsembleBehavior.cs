@@ -233,13 +233,16 @@ public sealed class EnsembleBehavior : IRetrievalBehavior
         {
             denseResults = await denseTask.ConfigureAwait(false);
         }
-        catch (Exception) when (sparseTask is not null)
+        catch (Exception ex) when (sparseTask is not null
+            && ex is not CallRefusedException
+            && !(ex is OperationCanceledException && ct.IsCancellationRequested))
         {
             // Observe the sparse arm before the dense failure propagates. A refusal there must win:
             // a dense failure can be recovered one level up (MultiQuery skips the variant), and the
             // refusal would be lost with it (#948). Any other sparse outcome leaves the dense
-            // failure as the one reported.
-            await ThrowIfRefusedAsync(sparseTask).ConfigureAwait(false);
+            // failure as the one reported. The caller's cancellation and a dense refusal skip this
+            // and propagate at once, and the wait honours the caller's token.
+            await ThrowIfRefusedAsync(sparseTask, ct).ConfigureAwait(false);
             throw;
         }
 
@@ -262,13 +265,15 @@ public sealed class EnsembleBehavior : IRetrievalBehavior
     }
 
     /// <summary>
-    /// Waits for the sparse arm without throwing, then rethrows the refusal it ended with, if any.
+    /// Waits for the sparse arm without throwing on its outcome, then rethrows the refusal it ended
+    /// with, if any. The wait itself throws when <paramref name="ct"/> is cancelled.
     /// Reading <see cref="Task.Exception"/> observes any other fault, which the dense failure
     /// outranks.
     /// </summary>
-    private static async Task ThrowIfRefusedAsync(Task<IReadOnlyList<SearchResult>?> sparseTask)
+    private static async Task ThrowIfRefusedAsync(
+        Task<IReadOnlyList<SearchResult>?> sparseTask, CancellationToken ct)
     {
-        _ = await Task.WhenAny(sparseTask).ConfigureAwait(false);
+        _ = await Task.WhenAny(sparseTask).WaitAsync(ct).ConfigureAwait(false);
         if (sparseTask.Exception?.InnerException is CallRefusedException refusal)
             ExceptionDispatchInfo.Throw(refusal);
     }

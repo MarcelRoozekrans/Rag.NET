@@ -1354,4 +1354,34 @@ public class EnsembleBehaviorTests
 
         Assert.Same(denseFailure, ex);
     }
+
+    [Fact]
+    public async Task HandleAsync_DenseCancelledWhileSparsePending_PropagatesCancellationWithoutWaiting()
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var (store, embedder, bm25) = MakeSparseCapableArms([], []);
+        store.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                cts.Cancel();
+                return Task.FromCanceled<IReadOnlyList<SearchResult>>(cts.Token);
+            });
+        // A sparse store that ignores the token: it never completes.
+        var neverCompletes = new TaskCompletionSource<IReadOnlyList<SearchResult>>();
+        ((ISparseSearchable)store).SearchSparseAsync(Arg.Any<SparseVector>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(neverCompletes.Task);
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = new FakeSparseGenerator(_ => MakeSparse()),
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var handle = sut.HandleAsync(ctx, cts.Token, (_, _) => throw new InvalidOperationException()).AsTask();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => handle.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+    }
 }
