@@ -1,18 +1,22 @@
 # Session State
 
-**Last updated:** 2026-11-13 (afternoon) — **next: fix #246, the Service Bus dead-letter flake.**
-Start from a fresh branch `fix/246-servicebus-deadletter-flake` off main. Release PR #977 (1.7.1)
-still waits for the operator. The operator merges release PRs; the agent does not.
+**Last updated:** 2026-11-13 (evening) — **next: #948, the query path's swallowing catches.**
+Start from a fresh branch off main. Release PR #977 (1.7.1) still waits for the operator. The
+operator merges release PRs; the agent does not.
 
-**#246 is the next item (operator's choice, 2026-11-13).** It hit CI twice on 2026-11-13, both on
-`build-test (ubuntu-latest)` in unrelated PRs: Renovate #965 (net11.0, run 43442278373) and #973
-(net10.0, run 43459999551). Both are recorded on the issue. The test is
-`ServiceBusIngestionIntegrationTests.PermanentFailure_LandsInTheDeadLetterQueueWithItsReason`.
-Each time the dead-letter settle threw `MessageLockLost` with the full 300 s lock left and
-`deliveryCount=1` afterwards: the first delivery never counted. The test's own diagnostic says
-LockDuration is ruled out, which is what #246 was twice "fixed" for before. Read the issue's whole
-history before designing anything. The operator was asked to re-run the failed jobs on #973 and
-#965; the agent does not re-run checks.
+**#246 has a root cause and a fix in PR #982** (`fix/246-servicebus-deadletter-flake`, CI green,
+BEHIND main, waiting for the operator to merge; it closes #246). The Service Bus emulator
+(2.0.1, the newest tag) faults the whole queue entity on the first receive from a fresh
+dead-letter sub-queue: "Cannot add the same item 'S.SP-SequenceNumber:1' more than once". That
+force-detaches every link, so the pending settle surfaces as `MessageLockLost` with the full lock
+left. Reproduced locally at about one in three cold starts with four emulators in parallel, never
+on a warm emulator. The test now peeks the dead-letter sub-queue instead: 32/32 full-project
+cold-start runs green. The emulator side is upstream as
+Azure/azure-service-bus-emulator-installer#157; our evidence was posted there on 2026-11-13
+with the operator's approval. Nothing further to track in this repo.
+
+**#973 and #965** are still red only on the #246 flake. Once #982 merges, they need a fresh run
+on an up-to-date branch; ask the operator, the agent does not re-run checks.
 
 **v1.7.0 was never published.** Its release run failed on NU1902 (GHSA-6527-9fp8-r4x6 in
 `Microsoft.AspNetCore.WebUtilities` <= 2.3.13), fixed by **#976**. **1.7.1 is the release that ships
@@ -32,7 +36,7 @@ those changes**, including the net11.0 target from #961.
   merge one at a time under the strict up-to-date rule as Renovate rebases them. #965 failed on
   #246. Check them again.
 
-**Queue after #246:** #948 (the query path's swallowing catches), #944 (remote clients drop
+**Queue:** #948 (the query path's swallowing catches), #944 (remote clients drop
 `RagOptions`, needs a wire-format decision), #945 (`ShallowCopy` drops three fields), #926, #927.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
@@ -53,7 +57,7 @@ the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
   at about Renovate's run times. Renovate then treats the PR as edited and stops touching it, so
   auto-merge is never enabled. Asked the operator on 2026-11-10; not yet identified.
 
-**NEXT ACTION:** fix #246 on `fix/246-servicebus-deadletter-flake` (see the top of this file).
+**NEXT ACTION:** #948 (see the top of this file). #982 waits for the operator's merge.
 
 - **#246** (Service Bus dead-letter flake) recurred on #949's ubuntu build on 2026-11-09: a
   `MessageLockLost` with 300 s of lock left. Still open; recorded on the issue.
