@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
 using Rag.NET.Logging;
@@ -227,7 +228,21 @@ public sealed class EnsembleBehavior : IRetrievalBehavior
             bm25Hits = null;
         }
 
-        var denseResults = await denseTask.ConfigureAwait(false);
+        IReadOnlyList<SearchResult> denseResults;
+        try
+        {
+            denseResults = await denseTask.ConfigureAwait(false);
+        }
+        catch (Exception) when (sparseTask is not null)
+        {
+            // Observe the sparse arm before the dense failure propagates. A refusal there must win:
+            // a dense failure can be recovered one level up (MultiQuery skips the variant), and the
+            // refusal would be lost with it (#948). Any other sparse outcome leaves the dense
+            // failure as the one reported.
+            await ThrowIfRefusedAsync(sparseTask).ConfigureAwait(false);
+            throw;
+        }
+
         var sparseResults = sparseTask is null ? null : await sparseTask.ConfigureAwait(false);
 
         // Dense-only: preserve the store's native scores instead of re-scoring one list by RRF.
@@ -244,6 +259,18 @@ public sealed class EnsembleBehavior : IRetrievalBehavior
             rankings.Add((sparseResults, ensembleOpts.SparseWeight));
 
         return RrfMerger.MergeMany(rankings, opts.TopK, ensembleOpts.K);
+    }
+
+    /// <summary>
+    /// Waits for the sparse arm without throwing, then rethrows the refusal it ended with, if any.
+    /// Reading <see cref="Task.Exception"/> observes any other fault, which the dense failure
+    /// outranks.
+    /// </summary>
+    private static async Task ThrowIfRefusedAsync(Task<IReadOnlyList<SearchResult>?> sparseTask)
+    {
+        _ = await Task.WhenAny(sparseTask).ConfigureAwait(false);
+        if (sparseTask.Exception?.InnerException is CallRefusedException refusal)
+            ExceptionDispatchInfo.Throw(refusal);
     }
 
     /// <summary>
