@@ -7,6 +7,7 @@ using Rag.NET.DependencyInjection;
 using Rag.NET.Memory;
 using Rag.NET.Models.Options;
 using Xunit;
+using Rag.NET.Models;
 
 namespace Rag.NET.Tests.Memory;
 
@@ -258,5 +259,20 @@ public class ConversationMemoryTests
         var memory = provider.GetService<IConversationMemory>();
         Assert.NotNull(memory);
         Assert.IsType<ConversationMemoryPipeline>(memory);
+    }
+
+    [Fact]
+    public async Task Summary_LlmRefusal_Propagates()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(refusal);
+        var sut = new ConversationMemoryPipeline(new ConversationMemoryOptions { MaxExchanges = 1, UseSummary = true }, chatClient);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => sut.ProcessAsync(MakeExchanges(3), ct));
+
+        Assert.Same(refusal, ex);
     }
 }
