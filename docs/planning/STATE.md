@@ -1,9 +1,17 @@
 # Session State
 
-**Last updated:** 2026-11-13 (night) — **next: #945, `ShallowCopy` drops three fields.** Start
-from a fresh branch off main; read the issue and its comments first. #944 needs a wire-format
-decision from the operator before it can start. Release PR #977 (1.7.1) still waits for the
-operator. The operator merges release PRs; the agent does not.
+**Last updated:** 2026-11-13 (late night). **Next:** #944, which needs the operator's wire-format
+decision first. Otherwise take #926 or #927. Release PR #977 (1.7.1) still waits for the operator,
+who merges release PRs; the agent does not.
+
+**#945 is built: PR #985** (`fix/945-shallowcopy-fields`, CI green, CodeRabbit approved, BEHIND
+main, waiting for the operator to merge). It closes #945. `RagOptions` gains an internal `Copy()`
+(`MemberwiseClone`, assignment record included), `Rag.NET.Security` joins Abstractions'
+`InternalsVisibleTo`, and reflection tests in `Rag.NET.Tests` cover every public property through
+`Copy()` and the decorator. Verified: 78 test projects green locally, pack-validate 68/68.
+`Rag.NET.E2ETests` (RequiresLlm, nightly only) was stopped unfinished: CPU Ollama ran at
+0.5 tokens/s on the loaded agents host. Once #985 merges, confirm its `fix:` appears in the
+release-please PR.
 
 **#948 is built: PR #983** (`fix/948-query-path-refusals`, CI green, CodeRabbit approved, BLOCKED
 only on the operator's approval: the `Main` ruleset's `require_extra_approval_for_unattributed_changes`).
@@ -53,7 +61,7 @@ those changes**, including the net11.0 target from #961.
   merge one at a time under the strict up-to-date rule as Renovate rebases them. #965 failed on
   #246. Check them again.
 
-**Queue:** #945 (`ShallowCopy` drops three fields), #944 (remote clients drop
+**Queue:** #944 (remote clients drop
 `RagOptions`, needs a wire-format decision), #926, #927.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
@@ -74,7 +82,7 @@ the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
   at about Renovate's run times. Renovate then treats the PR as edited and stops touching it, so
   auto-merge is never enabled. Asked the operator on 2026-11-10; not yet identified.
 
-**NEXT ACTION:** #945 (see the top of this file). #982 and #983 wait for the operator's merge.
+**NEXT ACTION:** see the top of this file. #982, #983 and #985 wait for the operator's merge.
 
 - **#246** (Service Bus dead-letter flake) recurred on #949's ubuntu build on 2026-11-09: a
   `MessageLockLost` with 300 s of lock left. Still open; recorded on the issue.
