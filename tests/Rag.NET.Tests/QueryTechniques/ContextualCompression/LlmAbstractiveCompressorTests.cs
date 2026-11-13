@@ -133,4 +133,20 @@ public class LlmAbstractiveCompressorTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await sut.CompressAsync(new List<SearchResult> { MakeResult("c") }, "q", cts.Token));
     }
+
+    [Fact]
+    public async Task CompressAsync_RethrowsRefusal()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var chat = Substitute.For<IChatClient>();
+        chat.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<ChatResponse>(refusal));
+        var sut = new LlmAbstractiveCompressor(chat, DefaultOpts(), NullLogger<LlmAbstractiveCompressor>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(async () => await sut.CompressAsync(
+            new List<SearchResult> { MakeResult("Long original chunk. Some are relevant.") }, "q",
+            TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
+    }
 }
