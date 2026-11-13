@@ -42,8 +42,9 @@ namespace Rag.NET.Models;
 /// extraction, both LLM sanitisers, core's own metadata extraction, tag ingestion and sparse
 /// embedding — catch locally and degrade, so their failures never reach <c>PipelineIngestor</c>.
 /// Each of those catches rethrows a <see cref="CallRefusedException"/> first, so a deliberate
-/// refusal fails the document instead of being ingested in degraded form (#938). The same
-/// degrading catches on the query path do not yet; that is tracked as #948.
+/// refusal fails the document instead of being ingested in degraded form (#938). The query path's
+/// degrading catches — HyDE, query expansion, reranking, compression, the answer engines and the
+/// rest — do the same, so a refusal fails the query instead of answering it degraded (#948).
 /// </para>
 /// <para>
 /// <b>A call-site <c>catch</c> cannot tell a provider failure from a decorator's refusal by
