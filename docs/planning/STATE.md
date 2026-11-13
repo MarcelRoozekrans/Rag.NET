@@ -1,22 +1,39 @@
 # Session State
 
-**Last updated:** 2026-11-13 — **main is green again; release PR #977 (1.7.1) waits for the
-operator.** The operator merges release PRs; the agent does not.
+**Last updated:** 2026-11-13 (afternoon) — **next: fix #246, the Service Bus dead-letter flake.**
+Start from a fresh branch `fix/246-servicebus-deadletter-flake` off main. Release PR #977 (1.7.1)
+still waits for the operator. The operator merges release PRs; the agent does not.
 
-**v1.7.0 was never published.** Its release run failed on NU1902: advisory GHSA-6527-9fp8-r4x6
-(published 2026-11-10) covers `Microsoft.AspNetCore.WebUtilities` <= 2.3.13, and main went red at
-the v1.7.0 release commit. `build-test (ubuntu-latest)` failed and `publish-nuget` was skipped. The
-v1.7.0 tag and GitHub release exist, but nuget.org has no 1.7.0. **1.7.1 is the release that ships
+**#246 is the next item (operator's choice, 2026-11-13).** It hit CI twice on 2026-11-13, both on
+`build-test (ubuntu-latest)` in unrelated PRs: Renovate #965 (net11.0, run 43442278373) and #973
+(net10.0, run 43459999551). Both are recorded on the issue. The test is
+`ServiceBusIngestionIntegrationTests.PermanentFailure_LandsInTheDeadLetterQueueWithItsReason`.
+Each time the dead-letter settle threw `MessageLockLost` with the full 300 s lock left and
+`deliveryCount=1` afterwards: the first delivery never counted. The test's own diagnostic says
+LockDuration is ruled out, which is what #246 was twice "fixed" for before. Read the issue's whole
+history before designing anything. The operator was asked to re-run the failed jobs on #973 and
+#965; the agent does not re-run checks.
+
+**v1.7.0 was never published.** Its release run failed on NU1902 (GHSA-6527-9fp8-r4x6 in
+`Microsoft.AspNetCore.WebUtilities` <= 2.3.13), fixed by **#976**. **1.7.1 is the release that ships
 those changes**, including the net11.0 target from #961.
-- **#976** (`fix`, merged 2026-11-13): `Rag.NET.Security.AspNetCore` now uses the
-  `Microsoft.AspNetCore.App` framework reference, as its sibling ASP.NET Core packages do. Its legacy
-  `Microsoft.AspNetCore.Http` 2.3.x reference pulled a vulnerable WebUtilities in every version.
-  WireMock.Net went from 2.30.0 to 2.31.0, which depends on the fixed 2.3.14. The operator chose the
-  framework reference over pinning WebUtilities.
-- After merging #977, watch the release run and confirm that `publish-nuget` succeeds.
-- The nine non-major Renovate PRs (#965 to #972, #975) were approved and on auto-merge, held only
-  by main being red. They should rebase and merge on their own; check that they did.
-- External PR **#973** (StefH, `feat(azureaisearch)`: TokenCredential auth) is open and unreviewed.
+- After the operator merges #977, watch the release run for tag v1.7.1 and confirm that
+  `publish-nuget` succeeds. Report a failure with its log lines; do not re-run it.
+- **#978** (state handoff) merged 2026-11-13 as d6514840.
+- **#973** (StefH, `feat(azureaisearch)`: TokenCredential auth): the operator chose to have the
+  agent push fixes to the contributor's branch. Commit 7a399aa3 shares one private constructor and
+  one registration helper between the key and token paths, adds `AzureAISearchTokenCredentialTests`
+  (bearer header sent, no api-key; DI registration and validation), and documents that the service
+  must have API access control set to role-based or both. The package README example uses a
+  `tokenCredential` variable because Azure.Identity is outside the package closure that
+  `PackageReadmeTests` resolves against. CodeRabbit approved head 9ba52296, auto-merge is on, and
+  only the #246 flake is red. Confirm it merged.
+- Renovate: of #965 to #972 and #975, only #971 had merged by 16:00. The rest were BEHIND and
+  merge one at a time under the strict up-to-date rule as Renovate rebases them. #965 failed on
+  #246. Check them again.
+
+**Queue after #246:** #948 (the query path's swallowing catches), #944 (remote clients drop
+`RagOptions`, needs a wire-format decision), #945 (`ShallowCopy` drops three fields), #926, #927.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
@@ -36,10 +53,7 @@ the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
   at about Renovate's run times. Renovate then treats the PR as edited and stops touching it, so
   auto-merge is never enabled. Asked the operator on 2026-11-10; not yet identified.
 
-**NEXT ACTION:** after #977 is released, pick the next item with the operator: #973 (external
-PR), or #948 (the query path's swallowing catches),
-#944 (remote clients drop `RagOptions`, needs a wire-format decision), #945 (`ShallowCopy` drops
-three fields), #926, #927, or #246.
+**NEXT ACTION:** fix #246 on `fix/246-servicebus-deadletter-flake` (see the top of this file).
 
 - **#246** (Service Bus dead-letter flake) recurred on #949's ubuntu build on 2026-11-09: a
   `MessageLockLost` with 300 s of lock left. Still open; recorded on the issue.
