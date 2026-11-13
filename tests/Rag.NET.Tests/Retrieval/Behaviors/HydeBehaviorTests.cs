@@ -210,6 +210,37 @@ public class HydeBehaviorTests
         Assert.False(nextCalled);
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task DownstreamFailure_PropagatesWithoutRerunningThePipeline(int hypothesisCount)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var generator = Substitute.For<IHypotheticalDocumentGenerator>();
+        generator.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("hypothesis");
+        generator.GenerateManyAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<string> { "hypothesis a", "hypothesis b" });
+        var sut = new HydeBehavior
+        {
+            HydeGenerator = generator,
+            Embedder = EmbedderReturning([1f, 0f], [0f, 1f]),
+            HydeOptions = new HydeOptions { HypothesisCount = hypothesisCount },
+        };
+        var failure = new InvalidOperationException("vector store down");
+        var calls = 0;
+        Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next = (_, _) =>
+        {
+            calls++;
+            return ValueTask.FromException<IReadOnlyList<SearchResult>>(failure);
+        };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await sut.HandleAsync(MakeCtx(new RetrievalOptions { UseHyde = true }), ct, next));
+
+        Assert.Same(failure, ex);
+        Assert.Equal(1, calls);
+    }
+
     [Fact]
     public async Task ZeroNormAverage_FallsBackToFirstDocTextOverride()
     {
