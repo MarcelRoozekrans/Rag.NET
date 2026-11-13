@@ -8,6 +8,11 @@ using Xunit;
 
 namespace Rag.NET.Security.Tests;
 
+file sealed class ThrowingQuerySanitiser(Exception exception) : IQuerySanitiser
+{
+    public string Sanitise(string query) => throw exception;
+}
+
 file sealed class CapturingQuerySanitiser : IQuerySanitiser
 {
     public string? LastQuery { get; private set; }
@@ -122,5 +127,18 @@ public class QuerySanitiserPipelineDecoratorTests
             await Task.Yield();
             yield break;
         }
+    }
+
+    [Fact]
+    public async Task AskAsync_SanitiserRefusal_FaultsTheTaskInsteadOfThrowingAtTheCallSite()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var inner = Substitute.For<IRagPipeline>();
+        var sut = new QuerySanitiserPipelineDecorator(inner, [new ThrowingQuerySanitiser(refusal)]);
+
+        var task = sut.AskAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Same(refusal, await Assert.ThrowsAsync<BudgetExceededException>(() => task));
+        await inner.DidNotReceive().AskAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>());
     }
 }
