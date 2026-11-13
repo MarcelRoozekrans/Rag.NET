@@ -60,6 +60,8 @@ public sealed partial class LlmAbstractiveCompressor(
             return source with { CompressedText = text.Trim() };
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             LogCompressionFailed(_logger, source.Chunk.DocumentId.Value, ex);

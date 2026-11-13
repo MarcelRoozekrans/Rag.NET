@@ -6,6 +6,7 @@ using Rag.NET.AnswerGeneration;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
+using NSubstitute.ExceptionExtensions;
 
 namespace Rag.NET.Tests.AnswerGeneration;
 
@@ -402,5 +403,23 @@ public class MapReduceAnswerEngineTests
         await _chatClient.Received(2).GetResponseAsync(
             Arg.Is<IList<ChatMessage>>(msgs => msgs!.All(m => m.Role != ChatRole.System)),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAsync_MapStepRefusal_Propagates()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var sources = new List<SearchResult> { MakeSource("chunk A", "doc-1"), MakeSource("chunk B", "doc-2") };
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(
+                x => throw refusal,
+                x => ChatReply("partial answer"),
+                x => ChatReply("final answer"));
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            () => _sut.AskAsync("What?", sources, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
     }
 }

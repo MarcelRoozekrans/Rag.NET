@@ -1284,4 +1284,104 @@ public class EnsembleBehaviorTests
 
         Assert.NotEmpty(output);
     }
+
+    [Fact]
+    public async Task HandleAsync_SparseEncoderRefusal_Propagates()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var (store, embedder, bm25) = MakeSparseCapableArms(
+            [MakeResult("doc-dense", 0, 0.9)], [MakeResult("doc-sparse", 0, 4.0)]);
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = new FakeSparseGenerator(_ => throw refusal),
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            async () => await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException()));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task HandleAsync_DenseFailsAndSparseRefuses_PropagatesTheRefusal()
+    {
+        // A dense failure is recoverable one level up (MultiQuery skips the variant), a refusal is
+        // not: when both arms fail, the refusal must win, or it is lost with the dense error.
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var (store, embedder, bm25) = MakeSparseCapableArms([], [MakeResult("doc-sparse", 0, 4.0)]);
+        store.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<SearchResult>>(new InvalidOperationException("dense store down")));
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = new FakeSparseGenerator(_ => throw refusal),
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            async () => await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException()));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task HandleAsync_DenseFailsAndSparseSucceeds_PropagatesTheDenseFailure()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var denseFailure = new InvalidOperationException("dense store down");
+        var (store, embedder, bm25) = MakeSparseCapableArms([], [MakeResult("doc-sparse", 0, 4.0)]);
+        store.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IReadOnlyList<SearchResult>>(denseFailure));
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = new FakeSparseGenerator(_ => MakeSparse()),
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException()));
+
+        Assert.Same(denseFailure, ex);
+    }
+
+    [Fact]
+    public async Task HandleAsync_DenseCancelledWhileSparsePending_PropagatesCancellationWithoutWaiting()
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var (store, embedder, bm25) = MakeSparseCapableArms([], []);
+        store.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                cts.Cancel();
+                return Task.FromCanceled<IReadOnlyList<SearchResult>>(cts.Token);
+            });
+        // A sparse store that ignores the token: it never completes.
+        var neverCompletes = new TaskCompletionSource<IReadOnlyList<SearchResult>>();
+        ((ISparseSearchable)store).SearchSparseAsync(Arg.Any<SparseVector>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(neverCompletes.Task);
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = new FakeSparseGenerator(_ => MakeSparse()),
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var handle = sut.HandleAsync(ctx, cts.Token, (_, _) => throw new InvalidOperationException()).AsTask();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => handle.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+    }
 }

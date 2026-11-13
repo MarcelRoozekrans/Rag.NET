@@ -191,4 +191,22 @@ public class TagRetrieverTests
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
             => Entries.Add((logLevel, formatter(state, exception)));
     }
+
+    [Fact]
+    public async Task EmbeddingRefusal_FailsTheQuery_WithoutCallingInner()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+                .ThrowsAsync(refusal);
+        var inner = PassthroughInner();
+        var sut = new TagRetriever(inner, Substitute.For<ITagIndex>(), embedder, new TagRetrievalOptions());
+
+        var result = await sut.RetrieveAsync("query", new RetrievalOptions { UseTagRetrieval = true }, ct);
+
+        Assert.False(result.IsSuccess);
+        Assert.Same(refusal, Assert.IsType<RagError.StorageFailed>(result.Error).Inner);
+        _ = await inner.DidNotReceive().RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>());
+    }
 }

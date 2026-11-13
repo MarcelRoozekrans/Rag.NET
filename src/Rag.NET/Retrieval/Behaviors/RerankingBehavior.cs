@@ -43,6 +43,8 @@ public sealed class RerankingBehavior : IRetrievalBehavior
             return results;
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             RagPipelineLog.RerankingFailed(ctx.Logger, ctx.Query, ex);
