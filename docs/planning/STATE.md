@@ -1,8 +1,25 @@
 # Session State
 
-**Last updated:** 2026-11-13 (evening) — **next: #948, the query path's swallowing catches.**
-Start from a fresh branch off main. Release PR #977 (1.7.1) still waits for the operator. The
-operator merges release PRs; the agent does not.
+**Last updated:** 2026-11-13 (night) — **next: #945, `ShallowCopy` drops three fields.** Start
+from a fresh branch off main; read the issue and its comments first. #944 needs a wire-format
+decision from the operator before it can start. Release PR #977 (1.7.1) still waits for the
+operator. The operator merges release PRs; the agent does not.
+
+**#948 is built: PR #983** (`fix/948-query-path-refusals`, CI green, CodeRabbit approved, BLOCKED
+only on the operator's approval: the `Main` ruleset's `require_extra_approval_for_unattributed_changes`).
+It closes #948. Do not merge it; confirm it merged and that its `fix:` appears in the release-please PR.
+- A deliberate refusal now fails the query at 24 degrading catches on the query path. Until #937:
+  `RetrieveAsync` returns `StorageFailed` with the refusal as `Inner`; `AskAsync` throws
+  `InvalidOperationException` with it as `InnerException` (now set for any retrieval failure).
+- Also fixed in it: the embedding and result cache behaviours and `HydeBehavior` ran the rest of
+  the pipeline twice when a later step failed; the ensemble lost a sparse-arm refusal behind a
+  dense failure; `QuerySanitiserPipelineDecorator.AskAsync` threw synchronously.
+- Rulings the operator may want to check: `TagRetriever` and `DeepResearchRetriever` return the
+  refusal as a failed result instead of throwing; DeepResearch sub-queries and FLARE's lookahead
+  stop on a failed result that is a refusal; a refusal now fails `PersistentConversationMemory.StoreAsync`.
+- Verified: 69 unit-test projects green locally, 10,165 tests; pack-validate 68/68 when packed with
+  the GitVersion SemVer. Packing with any other version fails `EveryPackageCarriesTheVersionGitVersionDerives`.
+- Design and plan: `docs/plans/2026-11-13-refusal-fails-query-{design,implementation}.md`.
 
 **#246 has a root cause and a fix in PR #982** (`fix/246-servicebus-deadletter-flake`, CI green,
 BEHIND main, waiting for the operator to merge; it closes #246). The Service Bus emulator
@@ -36,8 +53,8 @@ those changes**, including the net11.0 target from #961.
   merge one at a time under the strict up-to-date rule as Renovate rebases them. #965 failed on
   #246. Check them again.
 
-**Queue:** #948 (the query path's swallowing catches), #944 (remote clients drop
-`RagOptions`, needs a wire-format decision), #945 (`ShallowCopy` drops three fields), #926, #927.
+**Queue:** #945 (`ShallowCopy` drops three fields), #944 (remote clients drop
+`RagOptions`, needs a wire-format decision), #926, #927.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
@@ -57,7 +74,7 @@ the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
   at about Renovate's run times. Renovate then treats the PR as edited and stops touching it, so
   auto-merge is never enabled. Asked the operator on 2026-11-10; not yet identified.
 
-**NEXT ACTION:** #948 (see the top of this file). #982 waits for the operator's merge.
+**NEXT ACTION:** #945 (see the top of this file). #982 and #983 wait for the operator's merge.
 
 - **#246** (Service Bus dead-letter flake) recurred on #949's ubuntu build on 2026-11-09: a
   `MessageLockLost` with 300 s of lock left. Still open; recorded on the issue.
