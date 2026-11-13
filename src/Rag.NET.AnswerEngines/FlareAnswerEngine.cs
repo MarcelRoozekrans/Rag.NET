@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -192,6 +193,8 @@ public sealed class FlareAnswerEngine : IAnswerEngine
             return await _scorer.ScoreAsync(sentence, partialAnswer, context, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             AnswerEngineLog.FlareScorerThrew(_logger, ex);
@@ -226,6 +229,11 @@ public sealed class FlareAnswerEngine : IAnswerEngine
             var result = await _retriever.RetrieveAsync(lookaheadQuery, retrievalOptions, cancellationToken).ConfigureAwait(false);
             if (!result.IsSuccess)
             {
+                // The retriever reports a refusal as a failed result, not an exception; keeping the
+                // sentence like any failed lookahead would swallow it (#948).
+                if (result.Error is RagError.StorageFailed { Inner: CallRefusedException refusal })
+                    ExceptionDispatchInfo.Throw(refusal);
+
                 AnswerEngineLog.FlareLookaheadFailed(_logger, result.Error.GetType().Name);
                 return null;
             }
@@ -241,6 +249,8 @@ public sealed class FlareAnswerEngine : IAnswerEngine
             return MergeSources(context, result.Value);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             AnswerEngineLog.FlareLookaheadThrew(_logger, ex);
