@@ -58,7 +58,7 @@
     <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.31.1" />
     <PackageVersion Include="Microsoft.ML.Tokenizers" Version="1.0.3" />
     <PackageVersion Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" Version="1.0.3" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.1" />
     <PackageVersion Include="Microsoft.SemanticKernel" Version="1.78.0" />
     <PackageVersion Include="Microsoft.SemanticKernel.Connectors.InMemory" Version="1.74.0-preview" />
     <!-- 18.0.x is the last line on Microsoft.Testing.Platform v1, which xunit.v3 3.x runs on. 18.1 and
