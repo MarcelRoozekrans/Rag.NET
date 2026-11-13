@@ -17,10 +17,9 @@ namespace Rag.NET.Tests.Retrieval;
 /// </summary>
 public class RefusalFailsQueryTests
 {
-    [Fact]
-    public async Task RetrieveAsync_HydeRefusal_FailsTheQuery()
+    private static (IRagPipeline Pipeline, IVectorStore Store) BuildPipelineWithRefusingHyde(
+        BudgetExceededException refusal, bool withChatClient)
     {
-        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
         var services = new ServiceCollection();
         var vectorStore = Substitute.For<IVectorStore>();
         var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
@@ -28,6 +27,8 @@ public class RefusalFailsQueryTests
         services.AddSingleton(vectorStore);
         services.AddSingleton(embedder);
         services.AddSingleton(hydeGenerator);
+        if (withChatClient)
+            services.AddSingleton(Substitute.For<IChatClient>());
 
         hydeGenerator.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).ThrowsAsync(refusal);
         embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
@@ -36,7 +37,28 @@ public class RefusalFailsQueryTests
             .Returns(new List<SearchResult>());
 
         services.AddRagNet();
-        var pipeline = services.BuildServiceProvider().GetRequiredService<IRagPipeline>();
+        return (services.BuildServiceProvider().GetRequiredService<IRagPipeline>(), vectorStore);
+    }
+
+    [Fact]
+    public async Task AskAsync_HydeRefusal_ThrowsWithTheRefusalAsInnerException()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var (pipeline, _) = BuildPipelineWithRefusingHyde(refusal, withChatClient: true);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => pipeline.AskAsync(
+            "query",
+            new RagOptions { Retrieval = new RetrievalOptions { UseHyde = true } },
+            TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex.InnerException);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_HydeRefusal_FailsTheQuery()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var (pipeline, vectorStore) = BuildPipelineWithRefusingHyde(refusal, withChatClient: false);
 
         var result = await pipeline.RetrieveAsync(
             "query", new RetrievalOptions { UseHyde = true }, TestContext.Current.CancellationToken);
