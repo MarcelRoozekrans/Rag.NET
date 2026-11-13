@@ -14,19 +14,12 @@ public static class AzureAISearchBuilderExtensions
         AzureKeyCredential credential,
         int vectorDimensions = 1536,
         Action<AzureAISearchOptions>? configure = null)
-        where TBuilder : IRagBuilder
-    {
-        var options = new AzureAISearchOptions();
-        configure?.Invoke(options);
-        ValidateConfigured(options, nameof(configure));
-
-        var store = new AzureAISearchVectorStore(
-            endpoint, indexName, credential, vectorDimensions, clientOptions: null, options);
-        builder.Services.AddSingleton<IVectorStore>(store);
-        builder.Services.AddSingleton<IHybridSearchable>(store);
-        builder.Services.AddSingleton<ICollectionManageable>(store);
-        return builder;
-    }
+        where TBuilder : IRagBuilder =>
+        Register(
+            builder,
+            configure,
+            options => new AzureAISearchVectorStore(
+                endpoint, indexName, credential, vectorDimensions, clientOptions: null, options));
 
     /// <summary>
     /// Registers the Azure AI Search vector store, authenticating with a <see cref="TokenCredential"/>
@@ -47,14 +40,28 @@ public static class AzureAISearchBuilderExtensions
         TokenCredential credential,
         int vectorDimensions = 1536,
         Action<AzureAISearchOptions>? configure = null)
+        where TBuilder : IRagBuilder =>
+        Register(
+            builder,
+            configure,
+            options => new AzureAISearchVectorStore(
+                endpoint, indexName, credential, vectorDimensions, clientOptions: null, options));
+
+    /// <summary>
+    /// Runs <c>configure</c>, validates the result and registers the store under each interface it
+    /// serves: the part every credential overload shares.
+    /// </summary>
+    private static TBuilder Register<TBuilder>(
+        TBuilder builder,
+        Action<AzureAISearchOptions>? configure,
+        Func<AzureAISearchOptions, AzureAISearchVectorStore> createStore)
         where TBuilder : IRagBuilder
     {
         var options = new AzureAISearchOptions();
         configure?.Invoke(options);
         ValidateConfigured(options, nameof(configure));
 
-        var store = new AzureAISearchVectorStore(
-            endpoint, indexName, credential, vectorDimensions, clientOptions: null, options);
+        var store = createStore(options);
         builder.Services.AddSingleton<IVectorStore>(store);
         builder.Services.AddSingleton<IHybridSearchable>(store);
         builder.Services.AddSingleton<ICollectionManageable>(store);

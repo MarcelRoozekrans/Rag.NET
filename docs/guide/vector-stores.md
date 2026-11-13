@@ -454,6 +454,11 @@ services.AddRagNet(rag => rag
         vectorDimensions: 1536));
 ```
 
+The service must accept tokens: under **Settings → Keys**, set API access control to
+*Role-based access control* or *Both*. With the default, API keys only, every token request is
+refused whatever roles the identity holds. The identity needs *Search Index Data Contributor* and,
+because the store creates or updates its index on first use, *Search Service Contributor*.
+
 ### Vector recall: `KNearestNeighborsCount`
 
 The vector arm's `k` — how many nearest neighbours Azure retrieves before ranking — is configurable

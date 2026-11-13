@@ -39,16 +39,24 @@ rag.UseAzureAISearch(
     vectorDimensions: 1536);
 ```
 
-With Microsoft Entra ID (requires the `Azure.Identity` package and the *Search Index Data
-Contributor* and *Search Service Contributor* roles):
+With Microsoft Entra ID, pass any `TokenCredential`, such as `DefaultAzureCredential` from the
+`Azure.Identity` package:
 
 ```csharp
 rag.UseAzureAISearch(
     endpoint:         new Uri("https://my-search.search.windows.net"),
     indexName:        "my-rag-index",
-    credential:       new DefaultAzureCredential(),
+    credential:       tokenCredential,
     vectorDimensions: 1536);
 ```
+
+Token authentication needs two things on the Azure side:
+
+- The search service accepts tokens. Under **Settings → Keys**, API access control must be
+  *Role-based access control* or *Both*. The default is API keys only, and then every token
+  request is refused, whatever roles are assigned.
+- The identity holds *Search Index Data Contributor*, to read and write documents, and *Search
+  Service Contributor*, because the store creates or updates its index on first use.
 
 ## Example
 

@@ -72,17 +72,17 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         int vectorDimensions,
         SearchClientOptions? clientOptions,
         AzureAISearchOptions? options)
+        : this(
+            clientOptions is null
+                ? new SearchIndexClient(endpoint, credential)
+                : new SearchIndexClient(endpoint, credential, clientOptions),
+            clientOptions is null
+                ? new SearchClient(endpoint, indexName, credential)
+                : new SearchClient(endpoint, indexName, credential, clientOptions),
+            indexName,
+            vectorDimensions,
+            options)
     {
-        _indexClient = clientOptions is null
-            ? new SearchIndexClient(endpoint, credential)
-            : new SearchIndexClient(endpoint, credential, clientOptions);
-        _searchClient = clientOptions is null
-            ? new SearchClient(endpoint, indexName, credential)
-            : new SearchClient(endpoint, indexName, credential, clientOptions);
-        _indexName = indexName;
-        _vectorDimensions = vectorDimensions;
-        _kNearestNeighborsCount = options?.KNearestNeighborsCount;
-        _semanticRankingEnabled = options?.EnableSemanticRanking ?? false;
     }
 
     /// <summary>Creates the store authenticating with a <see cref="TokenCredential"/> (Microsoft Entra ID).</summary>
@@ -117,13 +117,32 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         int vectorDimensions,
         SearchClientOptions? clientOptions,
         AzureAISearchOptions? options)
+        : this(
+            clientOptions is null
+                ? new SearchIndexClient(endpoint, credential)
+                : new SearchIndexClient(endpoint, credential, clientOptions),
+            clientOptions is null
+                ? new SearchClient(endpoint, indexName, credential)
+                : new SearchClient(endpoint, indexName, credential, clientOptions),
+            indexName,
+            vectorDimensions,
+            options)
     {
-        _indexClient = clientOptions is null
-            ? new SearchIndexClient(endpoint, credential)
-            : new SearchIndexClient(endpoint, credential, clientOptions);
-        _searchClient = clientOptions is null
-            ? new SearchClient(endpoint, indexName, credential)
-            : new SearchClient(endpoint, indexName, credential, clientOptions);
+    }
+
+    /// <summary>
+    /// The one place the store's state is set, whichever credential built the two clients, so the
+    /// key and token paths cannot drift apart.
+    /// </summary>
+    private AzureAISearchVectorStore(
+        SearchIndexClient indexClient,
+        SearchClient searchClient,
+        string indexName,
+        int vectorDimensions,
+        AzureAISearchOptions? options)
+    {
+        _indexClient = indexClient;
+        _searchClient = searchClient;
         _indexName = indexName;
         _vectorDimensions = vectorDimensions;
         _kNearestNeighborsCount = options?.KNearestNeighborsCount;
