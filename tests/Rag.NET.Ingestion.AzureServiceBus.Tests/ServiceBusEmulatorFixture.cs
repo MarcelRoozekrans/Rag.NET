@@ -50,10 +50,11 @@ public sealed class ServiceBusEmulatorFixture : IAsyncLifetime
     // the mechanism and neither PT1M nor PT5M was ever load-bearing. #246 was closed as completed
     // by this change and stayed closed for a month while still failing; it is open again.
     //
-    // The value is left at PT5M rather than reverted. It is harmless — far beyond any of these
-    // tests' Bound, so a real hang still fails on the timeout rather than being masked — and
-    // changing it now would be a third guess at a mechanism that is still unknown. What is under
-    // investigation is recorded on #246 and instrumented in ServiceBusIngestionIntegrationTests.
+    // The mechanism was found on 2026-11-13: the emulator faults the whole queue entity on the
+    // first receive from a fresh dead-letter sub-queue, which force-detaches the receiver's link.
+    // See PeekDeadLetterAsync in ServiceBusIngestionIntegrationTests. The value is left at PT5M:
+    // it is harmless, far beyond any of these tests' Bound, so a real hang still fails on the
+    // timeout rather than being masked.
     private const string ConfigJson = $$"""
         {
           "UserConfig": {

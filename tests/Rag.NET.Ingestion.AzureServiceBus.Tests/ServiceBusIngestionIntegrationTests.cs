@@ -1,5 +1,5 @@
-using System.Globalization;
 using Azure.Messaging.ServiceBus;
+using Microsoft.Extensions.Logging;
 using Rag.NET.Ingestion.AzureServiceBus.Settlement;
 using Xunit;
 
@@ -29,20 +29,24 @@ public sealed class ServiceBusIngestionIntegrationTests(ServiceBusEmulatorFixtur
     private static string Payload(string documentId, string content = "hello from the broker") =>
         $$"""{ "documentId": "{{documentId}}", "content": "{{content}}" }""";
 
-    private async Task SendAsync(string queue, string body, string? sessionId, CancellationToken ct)
+    private async Task SendAsync(
+        string queue, string body, string? sessionId, CancellationToken ct, string? messageId = null)
     {
         await using var client = new ServiceBusClient(fixture.ConnectionString);
         await using var sender = client.CreateSender(queue);
         var message = new ServiceBusMessage(body);
         if (sessionId is not null)
             message.SessionId = sessionId;
+        if (messageId is not null)
+            message.MessageId = messageId;
         await sender.SendMessageAsync(message, ct);
     }
 
     private AzureServiceBusIngestionTrigger Trigger(
-        FakeIngestor ingestor, string queue, bool sessions = false) =>
+        FakeIngestor ingestor, string queue, bool sessions = false,
+        ILogger<AzureServiceBusIngestionTrigger>? logger = null) =>
         new(new ServiceBusClient(fixture.ConnectionString), ingestor, queue,
-            new ServiceBusIngestionOptions { SessionsEnabled = sessions });
+            new ServiceBusIngestionOptions { SessionsEnabled = sessions }, logger);
 
     /// <summary>
     /// Whether the queue still holds a message carrying <paramref name="marker"/> in its body.
@@ -124,24 +128,29 @@ public sealed class ServiceBusIngestionIntegrationTests(ServiceBusEmulatorFixtur
         var ct = TestContext.Current.CancellationToken;
         // A documentId with no content: a payload defect that no redelivery can fix. The id is
         // present purely so this test can recognise its own message in a shared dead-letter
-        // sub-queue and assert that this document never reached the pipeline.
+        // sub-queue and assert that this document never reached the pipeline. It doubles as the
+        // MessageId, which is what the trigger's dead-letter log names.
         var documentId = $"reject-{Guid.NewGuid():N}";
         await SendAsync(ServiceBusEmulatorFixture.QueueName,
-            $$"""{ "documentId": "{{documentId}}" }""", null, ct);
+            $$"""{ "documentId": "{{documentId}}" }""", null, ct, messageId: documentId);
 
         var ingestor = FakeIngestor.Succeeding();
-        await using var sut = Trigger(ingestor, ServiceBusEmulatorFixture.QueueName);
+        var deadLettered = new DeadLetterSignal(documentId);
+        await using var sut = Trigger(ingestor, ServiceBusEmulatorFixture.QueueName, logger: deadLettered);
         await sut.StartAsync(ct);
-
-        ServiceBusReceivedMessage? dead;
         try
         {
-            dead = await ReceiveDeadLetterAsync(documentId, ct);
+            // The handler logs the decision before it settles. StopAsync below waits for the
+            // in-flight handler, so once it returns the dead-letter has been acknowledged by the
+            // broker: no polling, no sleep.
+            await deadLettered.Task.WaitAsync(Bound, ct);
         }
         finally
         {
             await sut.StopAsync(ct);
         }
+
+        var dead = await PeekDeadLetterAsync(documentId, ct);
 
         Assert.NotNull(dead);
         Assert.Equal(DeadLetterReasons.MissingRequiredField, dead.DeadLetterReason);
@@ -181,196 +190,84 @@ public sealed class ServiceBusIngestionIntegrationTests(ServiceBusEmulatorFixtur
     }
 
     /// <summary>
-    /// Pulls this test's own message out of the shared dead-letter sub-queue, holding the locks
-    /// on anything else it finds so the same strays are not handed back on the next receive,
-    /// then releasing them untouched.
+    /// Finds this test's own message in the shared dead-letter sub-queue by peeking it.
     /// </summary>
-    private async Task<ServiceBusReceivedMessage?> ReceiveDeadLetterAsync(
+    /// <remarks>
+    /// <para>
+    /// <b>Peek, never receive.</b> Receiving from the dead-letter sub-queue trips a defect in the
+    /// Service Bus emulator, and that defect is #246. The first receive-mode read of a queue's
+    /// dead-letter sub-queue, shortly after the first dead-letter on a freshly started emulator,
+    /// makes the emulator add the same sequence number to its dead-letter cursor twice. Its log
+    /// says <c>Cannot add the same item 'S.SP-SequenceNumber:1' more than once</c>, and it then
+    /// faults and aborts the whole queue entity. Every link on the queue is force-detached,
+    /// including the receiver that has just been handed the message. The settle that follows
+    /// sees its link close mid-disposition, which the SDK reports as <c>MessageLockLost</c> with
+    /// the full lock remaining. The broker reloads the entity and the message comes back at
+    /// <c>deliveryCount</c> 1.
+    /// </para>
+    /// <para>
+    /// Measured on 2026-11-13 against emulator 2.0.1 (the newest tag), cold start, four emulators
+    /// in parallel: a receive failed 21 times in 64 runs and every failure carried that
+    /// emulator log line. A receive five seconds later failed 0 times in 16, and a peek right
+    /// after the dead-letter failed 0 times in 16. The emulator is closed source; the defect is
+    /// reported upstream as Azure/azure-service-bus-emulator-installer#157.
+    /// </para>
+    /// <para>
+    /// A peek reads the same <c>DeadLetterReason</c> and <c>DeadLetterErrorDescription</c>
+    /// without a receive link or a lock. Rag.NET never reads its own dead-letter sub-queue, so
+    /// receiving from it was never the behaviour under test. This avoids the emulator defect; it
+    /// does not fix it. A product test that has to receive from a dead-letter sub-queue on this
+    /// emulator would hit the same fault.
+    /// </para>
+    /// </remarks>
+    private async Task<ServiceBusReceivedMessage?> PeekDeadLetterAsync(
         string documentId, CancellationToken ct)
     {
         await using var client = new ServiceBusClient(fixture.ConnectionString);
         await using var deadLetters = client.CreateReceiver(
             ServiceBusEmulatorFixture.QueueName,
             new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
+        var peeked = await deadLetters.PeekMessagesAsync(PeekDepth, fromSequenceNumber: 0, ct);
 
-        var strays = new List<ServiceBusReceivedMessage>();
-        try
-        {
-            while (true)
-            {
-                var message = await deadLetters.ReceiveMessageAsync(Bound, ct);
-                if (message is null)
-                    return null;
-
-                if (message.Body.ToString().Contains(documentId, StringComparison.Ordinal))
-                {
-                    await CompleteCarryingLockStateAsync(deadLetters, message, strays.Count, ct);
-                    return message;
-                }
-
-                strays.Add(message);
-            }
-        }
-        finally
-        {
-            foreach (var stray in strays)
-                await deadLetters.AbandonMessageAsync(stray, propertiesToModify: null, ct);
-        }
-    }
-    /// <summary>
-    /// Settles <paramref name="message"/>, and on failure rethrows carrying the lock state the
-    /// broker saw — the evidence #246 has never had.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Why this exists.</b> <see href="https://github.com/MarcelRoozekrans/Rag.NET/issues/246">#246</see>
-    /// is an intermittent <c>MessageLockLost</c> on this call. It has been diagnosed twice as lock
-    /// expiry and "fixed" twice by raising the queue's <c>LockDuration</c>, most recently from
-    /// <c>PT1M</c> to <c>PT5M</c>. **Both fixes were inert**: instrumenting this line on 2026-09-12
-    /// showed the lock carrying its <b>full 300 seconds</b> at the moment of the call, on every
-    /// observed run. A lock with five minutes left has not expired, so expiry was never the
-    /// mechanism.
-    /// </para>
-    /// <para>
-    /// <b>Why a permanent diagnostic rather than a fix.</b> The mechanism is still unknown. The
-    /// failure reproduced once in twenty local runs and could not be caught again — not by
-    /// re-running, not by running the full project, and not under eight-way CPU pressure. Guessing
-    /// a third time is how the first two fixes happened. The exception's own wording names the two
-    /// remaining candidates — the message was "already removed from the queue", or "received by a
-    /// different receiver instance" — and distinguishing them needs the state at the moment of
-    /// failure, which is what this captures.
-    /// </para>
-    /// <para>
-    /// <b>Silent unless it fires.</b> Nothing is written on the passing path, so test output stays
-    /// pristine. Since phase 6.2.42 CI dumps a failing project's log, so the next occurrence in CI
-    /// arrives with this context attached rather than costing another investigation.
-    /// </para>
-    /// <para>
-    /// <b>Known limit.</b> The caller's <c>finally</c> abandons strays, and an exception there
-    /// would replace this one. Left alone deliberately: <c>strays</c> was empty on every observed
-    /// run, so the masking path has never been seen, and widening this change to cover a
-    /// hypothetical would be the same over-reach as the two previous fixes.
-    /// </para>
-    /// </remarks>
-    /// <param name="receiver">The dead-letter receiver holding the lock.</param>
-    /// <param name="message">The message to settle.</param>
-    /// <param name="strayCount">How many other messages this receiver is holding locks on.</param>
-    /// <param name="ct">The cancellation token.</param>
-    private async Task CompleteCarryingLockStateAsync(
-        ServiceBusReceiver receiver,
-        ServiceBusReceivedMessage message,
-        int strayCount,
-        CancellationToken ct)
-    {
-        var attemptedAt = DateTimeOffset.UtcNow;
-        try
-        {
-            await receiver.CompleteMessageAsync(message, ct);
-        }
-        catch (ServiceBusException ex)
-        {
-            var afterwards = await DescribeWhatTheBrokerStillHoldsAsync(message, ct);
-
-            throw new InvalidOperationException(
-                $"Settling the dead-lettered message failed with {ex.Reason}. Lock state at the " +
-                $"attempt, recorded for #246: lockedUntil={message.LockedUntil:O} " +
-                $"attemptedAt={attemptedAt:O} " +
-                $"lockRemaining={(message.LockedUntil - attemptedAt).TotalSeconds.ToString("F1", CultureInfo.InvariantCulture)}s " +
-                $"deliveryCount={message.DeliveryCount} lockToken={message.LockToken} " +
-                $"sequenceNumber={message.SequenceNumber} enqueuedTime={message.EnqueuedTime:O} " +
-                $"straysHeld={strayCount}. " +
-                "A positive lockRemaining rules out expiry and therefore rules out LockDuration " +
-                "as the mechanism, which is what #246 was twice fixed for. " + afterwards,
-                ex);
-        }
+        return peeked.FirstOrDefault(
+            m => m.Body.ToString().Contains(documentId, StringComparison.Ordinal));
     }
 
     /// <summary>
-    /// Re-reads the dead-letter sub-queue after a failed settle and names which branch it implies.
+    /// Completes when the trigger logs that it dead-lettered the message with the given id.
     /// </summary>
-    /// <param name="message">The message whose settle failed.</param>
-    /// <param name="ct">The cancellation token.</param>
-    /// <returns>A sentence for the failure message.</returns>
     /// <remarks>
-    /// <para>
-    /// <b>The discriminator #246 has been missing.</b> The SDK's own wording names two remaining
-    /// causes once expiry is excluded — the message "has already been removed from the queue", or it
-    /// "was received by a different receiver instance" — and the state at the moment of failure
-    /// cannot tell them apart. What comes back <i>afterwards</i> can:
-    /// </para>
-    /// <list type="bullet">
-    /// <item>Same sequence number, <c>deliveryCount</c> 1: the first delivery never counted. The
-    /// lock was issued against state the broker then rewrote, which is the "already removed"
-    /// branch — consistent with the receive being satisfied by the dead-letter transfer itself,
-    /// 104 ms after it, on the run captured 2026-09-14.</item>
-    /// <item>Same sequence number, <c>deliveryCount</c> 2: the first delivery was real and the lock
-    /// was genuinely revoked. The "different receiver" branch.</item>
-    /// <item>Nothing at all: the complete <b>landed</b> and only its acknowledgement was lost. Every
-    /// lock-directed fix would then have been aimed at the wrong thing three times over.</item>
-    /// </list>
-    /// <para>
-    /// <b>A fresh client, not the failing receiver.</b> If the original link is what went wrong,
-    /// asking it is asking the suspect. This opens its own connection so the answer is about the
-    /// broker's state rather than about one link's health.
-    /// </para>
-    /// <para>
-    /// <b>Never masks the real failure.</b> Everything here is inside a catch-all that degrades to
-    /// a note. A diagnostic that throws while explaining a throw destroys the evidence it exists to
-    /// capture — which is exactly what the known limit on the stray-abandon path warns about.
-    /// Anything it does receive is abandoned, so the probe leaves the queue as it found it.
-    /// </para>
+    /// Keyed on the message id rather than on any dead-letter log, for the same reason
+    /// <see cref="FakeIngestor.WaitFor"/> is keyed: the queue is shared, so an unkeyed signal
+    /// could wake on a sibling test's message.
     /// </remarks>
-    private async Task<string> DescribeWhatTheBrokerStillHoldsAsync(
-        ServiceBusReceivedMessage message, CancellationToken ct)
+    private sealed class DeadLetterSignal(string messageId) : ILogger<AzureServiceBusIngestionTrigger>
     {
-        try
-        {
-            await using var client = new ServiceBusClient(fixture.ConnectionString);
-            await using var receiver = client.CreateReceiver(
-                ServiceBusEmulatorFixture.QueueName,
-                new ServiceBusReceiverOptions { SubQueue = SubQueue.DeadLetter });
+        private readonly TaskCompletionSource _deadLettered =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            var again = await receiver.ReceiveMessageAsync(ProbeBound, ct);
-            if (again is null)
+        public Task Task => _deadLettered.Task;
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (!string.Equals(eventId.Name, "message_dead_lettered", StringComparison.Ordinal))
+                return;
+            if (state is IReadOnlyList<KeyValuePair<string, object?>> fields &&
+                fields.Any(f => string.Equals(f.Key, "MessageId", StringComparison.Ordinal) &&
+                    string.Equals(f.Value as string, messageId, StringComparison.Ordinal)))
             {
-                return "AFTERWARDS the dead-letter sub-queue handed back nothing within " +
-                    $"{ProbeBound.TotalSeconds.ToString("F0", CultureInfo.InvariantCulture)}s, " +
-                    "which points at the complete having LANDED and only its acknowledgement being " +
-                    "lost — not at a lock problem at all.";
+                _deadLettered.TrySetResult();
             }
-
-            var same = again.SequenceNumber == message.SequenceNumber;
-            await receiver.AbandonMessageAsync(again, propertiesToModify: null, ct);
-
-            var reading = (same, again.DeliveryCount) switch
-            {
-                (true, 1) => "the first delivery NEVER COUNTED, so the lock was issued against " +
-                    "state the broker then rewrote — the \"already removed\" branch",
-                (true, _) => "the first delivery was REAL and the lock was revoked — the " +
-                    "\"different receiver\" branch",
-                (false, _) => "a DIFFERENT message came back, so this says nothing about the one " +
-                    "that failed and the probe needs to key on the document id",
-            };
-
-            return $"AFTERWARDS sequenceNumber={again.SequenceNumber} " +
-                $"deliveryCount={again.DeliveryCount} sameMessage={same}: {reading}.";
         }
-        // CA1031 and ERP022 both object, and both are right in general: this repository does not
-        // swallow exceptions, and a catch-all that returns a string is the shape that hides
-        // defects. Suppressed here, narrowly, because the alternative is worse in exactly the way
-        // #246 has already suffered twice. This runs only while an exception is being constructed;
-        // if it throws, it replaces the captured lock state — the one piece of evidence four weeks
-        // of this issue lacked — with a failure about the diagnostic. The exception is not
-        // discarded either: the whole of it, type, message and stack, goes into the returned text
-        // and therefore into the failure a human reads.
-#pragma warning disable CA1031, ERP022
-        catch (Exception probeFailure)
-        {
-            return "AFTERWARDS could not be read: the probe itself failed with " + probeFailure;
-        }
-#pragma warning restore CA1031, ERP022
     }
-
-    /// <summary>How long the after-the-fact probe waits. Short: the test has already failed.</summary>
-    private static readonly TimeSpan ProbeBound = TimeSpan.FromSeconds(10);
 }
