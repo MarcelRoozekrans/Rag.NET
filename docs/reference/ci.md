@@ -96,7 +96,7 @@ Nine projects contain tests that need credentials or large local assets:
 | `Rag.NET.Parsers.Audio.Tests` | `RAGNET_WHISPER_MODEL_DIR` | a local cache directory, **not a secret**; supplied by the fenced Whisper procedure below |
 | `Rag.NET.Parsers.Vision.IntegrationTests` | `OPENROUTER_API_KEY` | repository secret, already configured for the LLM tier and now supplied here too — see below |
 | `Rag.NET.Parsers.Pdf.Tests` | `RAGNET_TESSDATA` | repository secret in the nightly (where it reaches nothing — see below); supplied locally by the fenced OCR procedure below |
-| `Rag.NET.Reranking.Onnx.Tests` | `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB` for the English telemetry test, plus `RAGNET_ONNX_RERANK_TOKENIZER` and `RAGNET_ONNX_RERANK_XLMR_MODEL` | never supplied by any job; provisionable by the fenced XLM-RoBERTa procedure below |
+| `Rag.NET.Reranking.Onnx.Tests` | `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB` for the English telemetry test, plus `RAGNET_ONNX_RERANK_TOKENIZER` and `RAGNET_ONNX_RERANK_XLMR_MODEL` | never supplied by any job; the first two by the fenced cross-encoder procedure below, the last two by the fenced XLM-RoBERTa procedure |
 
 Each of those tests calls `Assert.Skip` when its variable is absent, so the projects are safe
 anywhere and skip on a normal developer machine. They declare
@@ -509,7 +509,10 @@ Dutch ranking check and the SentencePiece tokenizer parity check in `Rag.NET.Rer
 read `RAGNET_ONNX_RERANK_XLMR_MODEL` and `RAGNET_ONNX_RERANK_TOKENIZER`. CI does not provision them:
 the model is about 2.3 GB, and no unattended job reads it. `model.onnx` keeps its weights in
 `model.onnx.data`, so both files must sit in the same directory. If a checksum fails, do **not**
-edit the checksum to match — check whether upstream republished the revision first.
+edit the checksum to match — check whether upstream republished the revision first. The files go
+under `$RAGNET_MODELS_DIR`, or `.reranker-models` in the current directory when it is unset. The
+English telemetry test in the same project reads the cross-encoder variables from the procedure
+above; it skips in this run unless those are set too.
 
 ```bash
 # BAAI/bge-reranker-v2-m3 (tokenizer) and EmbeddedLLM/bge-reranker-v2-m3-onnx-o3-cpu (model),
@@ -520,7 +523,7 @@ edit the checksum to match — check whether upstream republished the revision f
 set -euo pipefail
 tok_revision=953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
 model_revision=c46cc14e4748b2332899dfe5e6dcd4750caf7cef
-dir="$RAGNET_MODELS_DIR/bge-reranker-v2-m3"
+dir="${RAGNET_MODELS_DIR:-$PWD/.reranker-models}/bge-reranker-v2-m3"
 mkdir -p "$dir"
 curl -fsSL -o "$dir/sentencepiece.bpe.model" "https://huggingface.co/BAAI/bge-reranker-v2-m3/resolve/$tok_revision/sentencepiece.bpe.model"
 curl -fsSL -o "$dir/model.onnx"      "https://huggingface.co/EmbeddedLLM/bge-reranker-v2-m3-onnx-o3-cpu/resolve/$model_revision/model.onnx"
