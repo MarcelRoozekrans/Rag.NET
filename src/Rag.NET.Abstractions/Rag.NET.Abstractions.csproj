@@ -49,6 +49,11 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>Rag.NET.Evaluation.Ragas</_Parameter1>
     </AssemblyAttribute>
+    <!-- For RagOptions.Copy: PromptHardeningAnswerEngineDecorator copies the caller's options to
+         add its system message, and a hand-written copy dropped properties (#945). -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Security</_Parameter1>
+    </AssemblyAttribute>
     <!-- The next five exist for LlmJsonExtractor: every assembly that parses structured JSON
          out of a chat-model response routes through that one internal helper rather than
          growing its own fence-stripping copy (the copies drifted, and the drift shipped a

@@ -63,6 +63,8 @@ public sealed partial class ExtractiveCompressor(
             queryEmbedding = qResult[0];
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             LogQueryEmbeddingFailed(_logger, ex);
@@ -107,6 +109,8 @@ public sealed partial class ExtractiveCompressor(
                 : source with { CompressedText = compressed };
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             LogCompressionFailed(_logger, source.Chunk.DocumentId.Value, ex);

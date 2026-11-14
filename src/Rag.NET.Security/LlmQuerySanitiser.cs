@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
+using Rag.NET.Models;
 
 namespace Rag.NET.Security;
 
@@ -40,6 +41,8 @@ public sealed partial class LlmQuerySanitiser(
             return query;
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             LogLlmFailed(_logger, ex);

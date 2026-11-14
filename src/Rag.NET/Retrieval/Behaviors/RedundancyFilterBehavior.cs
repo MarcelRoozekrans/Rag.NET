@@ -26,6 +26,8 @@ public sealed class RedundancyFilterBehavior : IRetrievalBehavior
             return filtered;
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             RagPipelineLog.RedundancyFilteringFailed(ctx.Logger, ctx.Query, ex);
