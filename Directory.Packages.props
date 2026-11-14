@@ -101,8 +101,8 @@
     <PackageVersion Include="Whisper.net.Runtime" Version="1.9.1" />
     <PackageVersion Include="WireMock.Net" Version="2.31.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
-    <PackageVersion Include="xunit.v3" Version="4.0.2" />
-    <PackageVersion Include="xunit.v3.extensibility.core" Version="4.0.2" />
+    <PackageVersion Include="xunit.v3" Version="4.0.3" />
+    <PackageVersion Include="xunit.v3.extensibility.core" Version="4.0.3" />
     <PackageVersion Include="ZeroAlloc.Analyzers" Version="1.12.0" />
     <PackageVersion Include="ZeroAlloc.Inject" Version="1.11.6" />
     <PackageVersion Include="ZeroAlloc.Inject.Generator" Version="1.11.6" />
