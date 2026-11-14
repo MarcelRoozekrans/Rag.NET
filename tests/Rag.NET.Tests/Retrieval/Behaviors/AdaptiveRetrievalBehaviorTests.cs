@@ -199,4 +199,21 @@ public class AdaptiveRetrievalBehaviorTests
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => sut.HandleAsync(ctx, TestContext.Current.CancellationToken, NextReturning([])).AsTask());
     }
+
+    [Fact]
+    public async Task HandleAsync_LlmRefusal_Propagates()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(refusal);
+        var sut = new AdaptiveRetrievalBehavior { ChatClient = chatClient };
+        var ctx = MakeCtx(new RetrievalOptions { UseAdaptiveRetrieval = true });
+        ctx = ctx with { Query = "retrieval augmented generation semantic vector database embedding storage" };
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(
+            async () => await sut.HandleAsync(ctx, TestContext.Current.CancellationToken, CapturingCtx(out _)));
+
+        Assert.Same(refusal, ex);
+    }
 }

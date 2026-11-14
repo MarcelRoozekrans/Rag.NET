@@ -146,7 +146,15 @@ public sealed class RagPipeline(
         {
             var message = $"Retrieval failed: {retrievalResult.Error}";
             activity?.SetStatus(ActivityStatusCode.Error, message);
-            throw new InvalidOperationException(message);
+            // Carry the cause, so a caller can tell a refusal such as a spent budget from a broken
+            // store without parsing the message (#948).
+            throw new InvalidOperationException(message, retrievalResult.Error switch
+            {
+                RagError.StorageFailed e => e.Inner,
+                RagError.ModelCallFailed e => e.Inner,
+                RagError.TransportFailed e => e.Inner,
+                _ => null,
+            });
         }
 
         return retrievalResult.Value;

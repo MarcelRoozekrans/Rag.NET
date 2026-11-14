@@ -174,4 +174,45 @@ public class ExtractiveCompressorTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await sut.CompressAsync(sources, "cats", cts.Token));
     }
+
+    [Fact]
+    public async Task CompressAsync_QueryEmbeddingRefusal_Propagates()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(_ =>
+                Task.FromException<GeneratedEmbeddings<Embedding<float>>>(refusal));
+        var sut = new ExtractiveCompressor(
+            embedder, new ContextualCompressionOptions { KeepTopSentences = 2 }, NullLogger<ExtractiveCompressor>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(async () => await sut.CompressAsync(
+            new List<SearchResult> { MakeResult("Cats purr. Rockets fly.") }, "cats", TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task CompressAsync_SourceEmbeddingRefusal_Propagates()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var calls = 0;
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(ci =>
+            {
+                if (Interlocked.Increment(ref calls) > 1)
+                    return Task.FromException<GeneratedEmbeddings<Embedding<float>>>(refusal);
+                var inputs = ci.Arg<IEnumerable<string>>()!.ToList();
+                return Task.FromResult(new GeneratedEmbeddings<Embedding<float>>(
+                    inputs.Select(_ => new Embedding<float>(new[] { 1f, 0f, 0f })).ToList()));
+            });
+        var sut = new ExtractiveCompressor(
+            embedder, new ContextualCompressionOptions { KeepTopSentences = 2 }, NullLogger<ExtractiveCompressor>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(async () => await sut.CompressAsync(
+            new List<SearchResult> { MakeResult("Cats purr. Rockets fly.") }, "cats", TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
+    }
 }

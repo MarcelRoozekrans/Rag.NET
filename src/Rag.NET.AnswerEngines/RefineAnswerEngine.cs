@@ -95,6 +95,8 @@ public sealed class RefineAnswerEngine(
             {
                 throw;
             }
+            // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+            catch (CallRefusedException) { throw; }
             catch (Exception ex)
             {
                 AnswerEngineLog.RefineStepFailed(logger, source.Chunk.DocumentId.ToString(), ex);

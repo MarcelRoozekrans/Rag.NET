@@ -21,53 +21,62 @@ public sealed class HydeBehavior : IRetrievalBehavior
         if (!ctx.Options.UseHyde || HydeGenerator is null)
             return await next(ctx, ct).ConfigureAwait(false);
 
+        // Only building the HyDE context is guarded: a failure there degrades to the plain query.
+        // `next` runs outside the try, so a failure further down the pipeline propagates once
+        // instead of being taken for a HyDE failure and run a second time (#948).
+        RetrievalContext continued;
         try
         {
-            var count = HydeOptions?.HypothesisCount ?? 1;
-            if (count > 1 && Embedder is not null)
-            {
-                var (vector, doc) = await TryBuildAveragedEmbeddingAsync(ctx, count, ct).ConfigureAwait(false);
-                if (vector is { } averaged)
-                {
-                    return await next(
-                        ctx with { Options = ctx.Options with { UseHyde = false, EmbeddingOverride = averaged } },
-                        ct).ConfigureAwait(false);
-                }
-
-                // Averaging was not possible — fall back to the single-doc text path with an
-                // already-generated hypothesis (no extra LLM call), or the plain query if none.
-                return await ContinueWithTextAsync(ctx, doc, ct, next).ConfigureAwait(false);
-            }
-
-            var single = await HydeGenerator.GenerateAsync(ctx.Query, ct).ConfigureAwait(false);
-            return await ContinueWithTextAsync(ctx, single, ct, next).ConfigureAwait(false);
+            continued = await BuildHydeContextAsync(ctx, ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             RagPipelineLog.HydeGenerationFailed(ctx.Logger, ctx.Query, ex);
-            return await next(ctx with { Options = ctx.Options with { UseHyde = false } }, ct).ConfigureAwait(false);
+            continued = ctx with { Options = ctx.Options with { UseHyde = false } };
         }
+
+        return await next(continued, ct).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Continues the pipeline with <paramref name="doc"/> as the embedding-text override.
+    /// Generates the hypothesis or hypotheses and returns the context the rest of the pipeline
+    /// runs with. Generation and embedding failures propagate to <see cref="HandleAsync"/>.
+    /// </summary>
+    private async Task<RetrievalContext> BuildHydeContextAsync(RetrievalContext ctx, CancellationToken ct)
+    {
+        var count = HydeOptions?.HypothesisCount ?? 1;
+        if (count > 1 && Embedder is not null)
+        {
+            var (vector, doc) = await TryBuildAveragedEmbeddingAsync(ctx, count, ct).ConfigureAwait(false);
+            if (vector is { } averaged)
+                return ctx with { Options = ctx.Options with { UseHyde = false, EmbeddingOverride = averaged } };
+
+            // Averaging was not possible — fall back to the single-doc text path with an
+            // already-generated hypothesis (no extra LLM call), or the plain query if none.
+            return WithTextOverride(ctx, doc);
+        }
+
+        var single = await HydeGenerator!.GenerateAsync(ctx.Query, ct).ConfigureAwait(false);
+        return WithTextOverride(ctx, single);
+    }
+
+    /// <summary>
+    /// Returns the context with <paramref name="doc"/> as the embedding-text override.
     /// A null/whitespace document (the model produced nothing usable) is never propagated as an
     /// override — the pipeline falls through to embedding the plain query instead, with a log entry.
     /// </summary>
-    private static async ValueTask<IReadOnlyList<SearchResult>> ContinueWithTextAsync(
-        RetrievalContext ctx, string? doc, CancellationToken ct,
-        Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next)
+    private static RetrievalContext WithTextOverride(RetrievalContext ctx, string? doc)
     {
         if (string.IsNullOrWhiteSpace(doc))
         {
             RagPipelineLog.HydeAveragingUnavailable(ctx.Logger, "all-hypotheses-empty", ctx.Query);
-            return await next(ctx with { Options = ctx.Options with { UseHyde = false } }, ct).ConfigureAwait(false);
+            return ctx with { Options = ctx.Options with { UseHyde = false } };
         }
 
-        return await next(
-            ctx with { Options = ctx.Options with { UseHyde = false, EmbeddingTextOverride = doc } },
-            ct).ConfigureAwait(false);
+        return ctx with { Options = ctx.Options with { UseHyde = false, EmbeddingTextOverride = doc } };
     }
 
     /// <summary>
@@ -86,7 +95,7 @@ public sealed class HydeBehavior : IRetrievalBehavior
             RagPipelineLog.HydePartialHypotheses(ctx.Logger, docs.Count, count, ctx.Query);
 
         if (docs.Count == 0)
-            return (null, null); // ContinueWithTextAsync logs "all-hypotheses-empty".
+            return (null, null); // WithTextOverride logs "all-hypotheses-empty".
 
         if (docs.Count == 1)
         {
