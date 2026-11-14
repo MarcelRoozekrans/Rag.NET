@@ -137,4 +137,96 @@ public sealed class RobotsTxtTests
         const string robots = "﻿User-agent: *\r\nDisallow: /x\r\n";
         Assert.True(Blocked(robots, "/x"));
     }
+
+    // ── * and $ ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void StarMatchesAnyRun()
+    {
+        const string robots = "User-agent: *\nDisallow: /*.pdf\n";
+
+        Assert.True(Blocked(robots, "/a/b.pdf"));
+        Assert.True(Blocked(robots, "/a.pdf?x=1"));
+        Assert.False(Blocked(robots, "/a.html"));
+    }
+
+    [Fact]
+    public void DollarAnchorsTheEnd()
+    {
+        const string robots = "User-agent: *\nDisallow: /*.pdf$\n";
+
+        Assert.True(Blocked(robots, "/a.pdf"));
+        Assert.False(Blocked(robots, "/a.pdf?x=1"));
+    }
+
+    [Fact]
+    public void DrupalStyleAllow()
+    {
+        const string robots = "User-agent: *\nDisallow: /core/\nAllow: /core/*.css$\n";
+
+        Assert.False(Blocked(robots, "/core/misc/a.css"));
+        Assert.True(Blocked(robots, "/core/misc/a.js"));
+    }
+
+    [Fact]
+    public void DollarInsideAPattern_IsLiteral()
+    {
+        const string robots = "User-agent: *\nDisallow: /a$b\n";
+
+        Assert.True(Blocked(robots, "/a$b"));
+        Assert.False(Blocked(robots, "/a"));
+    }
+
+    [Fact]
+    public void LongestMatchCountsPatternOctets()
+    {
+        const string robots = "User-agent: *\nDisallow: /*\nAllow: /page\n";
+
+        Assert.False(Blocked(robots, "/page"));
+        Assert.True(Blocked(robots, "/other"));
+    }
+
+    [Fact]
+    public void ManyStars_FinishQuickly()
+    {
+        const string robots = "User-agent: *\nDisallow: /*a*a*a*a*a*a*a*a*b\n";
+        var path = "/" + new string('a', 2000);
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var blocked = Blocked(robots, path);
+
+        Assert.False(blocked);
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1), $"Took {stopwatch.Elapsed.TotalMilliseconds} ms.");
+    }
+
+    // ── Percent-encoding ────────────────────────────────────────────────────
+
+    [Fact]
+    public void PercentEncodedUnreserved_IsDecoded()
+    {
+        Assert.True(Blocked("User-agent: *\nDisallow: /foo/bar/baz\n", "/foo/bar/%62%61%7A"));
+        Assert.True(Blocked("User-agent: *\nDisallow: /foo/bar/%62az\n", "/foo/bar/baz"));
+    }
+
+    [Fact]
+    public void PercentEncodedReserved_StaysEncoded()
+    {
+        Assert.False(Blocked("User-agent: *\nDisallow: /a/b\n", "/a%2Fb"));
+    }
+
+    [Fact]
+    public void NonAsciiInRule_IsEncoded()
+    {
+        Assert.True(Blocked("User-agent: *\nDisallow: /foo/bar/\u30C4\n", "/foo/bar/%E3%83%84"));
+        Assert.True(Blocked("User-agent: *\nDisallow: /foo/bar/%e3%83%84\n", "/foo/bar/%E3%83%84"));
+    }
+
+    [Fact]
+    public void EncodedStarInRule_MatchesALiteralStar()
+    {
+        const string robots = "User-agent: *\nDisallow: /file-%2A.html\n";
+
+        Assert.True(Blocked(robots, "/file-*.html"));
+        Assert.False(Blocked(robots, "/file-x.html"));
+    }
 }

@@ -76,9 +76,9 @@ internal sealed class RobotsTxt
             {
                 lastWasAgent = false;
                 if (current is null || value.Length == 0) continue;
-                current.Rules.Add(new Rule(
-                    Allow: key.Equals("allow", StringComparison.OrdinalIgnoreCase),
-                    Pattern: value));
+                current.Rules.Add(Rule.Create(
+                    allow: key.Equals("allow", StringComparison.OrdinalIgnoreCase),
+                    value: value));
             }
 
             // Any other record (Sitemap, Host, unknown) neither ends nor breaks a group.
@@ -143,17 +143,18 @@ internal sealed class RobotsTxt
     {
         if (_rules.Count == 0) return false;
 
-        var target = new Uri(url).PathAndQuery;
-        if (target.Length == 0) target = "/";
-        if (string.Equals(target, "/robots.txt", StringComparison.Ordinal)) return false;
+        var pathAndQuery = new Uri(url).PathAndQuery;
+        if (pathAndQuery.Length == 0) pathAndQuery = "/";
+        if (string.Equals(pathAndQuery, "/robots.txt", StringComparison.Ordinal)) return false;
 
+        var target = Normalise(pathAndQuery, isPattern: false);
         Rule? best = null;
         foreach (var rule in _rules)
         {
-            if (!Matches(rule.Pattern, target)) continue;
+            if (!rule.Matches(target)) continue;
             if (best is null
-                || rule.Pattern.Length > best.Pattern.Length
-                || (rule.Pattern.Length == best.Pattern.Length && rule.Allow))
+                || rule.Length > best.Length
+                || (rule.Length == best.Length && rule.Allow))
             {
                 best = rule;
             }
@@ -162,10 +163,109 @@ internal sealed class RobotsTxt
         return best is { Allow: false };
     }
 
-    private static bool Matches(string pattern, string target) =>
-        target.StartsWith(pattern, StringComparison.Ordinal);
+    /// <summary>
+    /// Brings a URL's path and query, or a rule's value, to the one form RFC 9309 2.2.2 compares:
+    /// non-ASCII as UTF-8 <c>%XX</c>, <c>%XX</c> of an unreserved character decoded, every other
+    /// <c>%XX</c> with upper-case hex. In a URL a literal <c>*</c> or <c>$</c> is encoded, so only
+    /// a rule's own <c>*</c> is a wildcard (2.2.3); in a rule a <c>$</c> is literal unless it ends
+    /// the rule, which <see cref="Rule.Create"/> strips first.
+    /// </summary>
+    internal static string Normalise(string text, bool isPattern)
+    {
+        var builder = new System.Text.StringBuilder(text.Length);
+        Span<byte> utf8 = stackalloc byte[4];
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (c == '%' && i + 2 < text.Length
+                && Uri.IsHexDigit(text[i + 1]) && Uri.IsHexDigit(text[i + 2]))
+            {
+                var octet = (char)Convert.ToByte(text.Substring(i + 1, 2), 16);
+                if (IsUnreserved(octet)) builder.Append(octet);
+                else AppendEscaped(builder, (byte)octet);
+                i += 2;
+            }
+            else if (c > 0x7F)
+            {
+                var length = char.IsHighSurrogate(c) && i + 1 < text.Length ? 2 : 1;
+                var written = System.Text.Encoding.UTF8.GetBytes(text.AsSpan(i, length), utf8);
+                foreach (var b in utf8[..written]) AppendEscaped(builder, b);
+                i += length - 1;
+            }
+            else if (c == '$' || (c == '*' && !isPattern))
+            {
+                AppendEscaped(builder, (byte)c);
+            }
+            else
+            {
+                builder.Append(c);
+            }
+        }
 
-    private sealed record Rule(bool Allow, string Pattern);
+        return builder.ToString();
+    }
+
+    private static bool IsUnreserved(char c) =>
+        c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '-' or '.' or '_' or '~';
+
+    private static void AppendEscaped(System.Text.StringBuilder builder, byte octet) =>
+        builder.Append('%').Append(octet.ToString("X2", System.Globalization.CultureInfo.InvariantCulture));
+
+    /// <summary>One <c>allow</c> or <c>disallow</c> line, its value normalised.</summary>
+    /// <param name="Allow">Whether the line is <c>allow</c>.</param>
+    /// <param name="Pattern">The normalised value, without an end anchor; <c>*</c> is a wildcard.</param>
+    /// <param name="Anchored">Whether the value ended in <c>$</c>.</param>
+    private sealed record Rule(bool Allow, string Pattern, bool Anchored)
+    {
+        /// <summary>The octets the rule has, for "the most specific match" (2.2.2).</summary>
+        public int Length => Pattern.Length + (Anchored ? 1 : 0);
+
+        public static Rule Create(bool allow, string value)
+        {
+            var anchored = value.EndsWith('$');
+            var body = anchored ? value[..^1] : value;
+            return new Rule(allow, Normalise(body, isPattern: true), anchored);
+        }
+
+        /// <summary>
+        /// Whether the rule matches from the first octet of <paramref name="target"/>: to its end
+        /// when anchored, else as a prefix. An iterative wildcard walk that retries from the last
+        /// <c>*</c> on a mismatch: no recursion, at most target-times-pattern steps.
+        /// </summary>
+        public bool Matches(string target)
+        {
+            int t = 0, p = 0, star = -1, resume = 0;
+            while (t < target.Length)
+            {
+                if (p < Pattern.Length && Pattern[p] == '*')
+                {
+                    star = p++;
+                    resume = t;
+                }
+                else if (p < Pattern.Length && Pattern[p] == target[t])
+                {
+                    p++;
+                    t++;
+                }
+                else if (!Anchored && p == Pattern.Length)
+                {
+                    return true;
+                }
+                else if (star >= 0)
+                {
+                    p = star + 1;
+                    t = ++resume;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            while (p < Pattern.Length && Pattern[p] == '*') p++;
+            return p == Pattern.Length;
+        }
+    }
 
     private sealed class Group
     {
