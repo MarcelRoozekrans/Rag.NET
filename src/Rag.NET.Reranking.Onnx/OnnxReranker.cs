@@ -35,11 +35,15 @@ public sealed class OnnxReranker : IReranker, IDisposable
         // Feed only what the export declares: XLM-RoBERTa exports usually take no token_type_ids, and
         // ONNX Runtime rejects an input the graph does not have.
         var declared = _session.InputMetadata.Keys.ToHashSet(StringComparer.Ordinal);
-        var unsupported = declared.FirstOrDefault(name => Array.IndexOf(SuppliedInputs, name) < 0);
-        if (unsupported is not null || !declared.Contains("input_ids"))
+        var unsupported = declared
+            .Where(name => Array.IndexOf(SuppliedInputs, name) < 0)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        if (unsupported.Length > 0 || !declared.Contains("input_ids"))
         {
-            var problem = unsupported is not null
-                ? $"declares input '{unsupported}'"
+            var problem = unsupported.Length > 0
+                ? $"declares {(unsupported.Length == 1 ? "input" : "inputs")} " +
+                  string.Join(", ", unsupported.Select(name => $"'{name}'"))
                 : "does not declare input 'input_ids'";
             _session.Dispose();
             throw new InvalidOperationException(
