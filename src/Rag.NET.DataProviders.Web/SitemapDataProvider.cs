@@ -111,6 +111,8 @@ public sealed class SitemapDataProvider : IFileContentProvider
         {
             await _throttle.WaitAsync(ct).ConfigureAwait(false);
             robots = await RobotsTxt.LoadAsync(_httpClient, uri, ct).ConfigureAwait(false);
+            // One throttle for every host: a Crawl-delay from any of them slows them all (#927).
+            if (robots.CrawlDelay is { } crawlDelay) _throttle.RaiseTo(crawlDelay);
             robotsByHost[origin] = robots;
         }
 

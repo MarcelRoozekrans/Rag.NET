@@ -48,6 +48,7 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
         {
             await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
             robots = await RobotsTxt.LoadAsync(_httpClient, seedUri, cancellationToken).ConfigureAwait(false);
+            if (robots.CrawlDelay is { } crawlDelay) _throttle.RaiseTo(crawlDelay);
         }
 
         var visited = new HashSet<string>(StringComparer.Ordinal);

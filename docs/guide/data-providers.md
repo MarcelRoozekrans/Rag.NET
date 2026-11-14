@@ -697,8 +697,16 @@ Where the index is partitioned by section, prune the irrelevant sections with
 Each page URL is yielded once per walk. Large sites do list a page in two shards, and the
 ingestion pipeline does not drop repeats, so each copy used to be fetched and embedded again.
 
-`RespectRobotsTxt` is on by default, as it is for the crawler. It reads the `User-agent: *`
-group's `Disallow` prefixes; a missing robots.txt allows everything.
+`RespectRobotsTxt` is on by default, as it is for the crawler. Both read robots.txt per
+RFC 9309. The rules come from the group that names the product token in the `HttpClient`'s
+default `User-Agent` (`MyBot` in `MyBot/1.0`), or from the `User-agent: *` group when no group
+names it. `Allow` and `Disallow` rules may use `*` and `$`. Each rule is matched
+case-sensitively against the path and query, and the longest match wins. A missing or
+unreachable robots.txt allows everything.
+
+A site's `Crawl-delay` raises `MinimumRequestInterval` to its value, and never lowers it. The
+sitemap walker uses one interval for every host it visits, so a delay from one host slows the
+whole walk.
 
 ### Web — RSS / Atom feed
 
@@ -735,6 +743,9 @@ var faq = new WebCrawlerDataProvider("https://www.example.gov/themes/health/faq"
 
 Prefixes are matched against the normalised page id (no fragment, no trailing slash), so leave
 the trailing slash off when the seed itself should match.
+
+robots.txt is read the same way as for the sitemap walker above, from the seed's host. Its
+`Crawl-delay` raises `MinimumRequestInterval` and never lowers it.
 
 **Page ids are normalised.** Each crawled page's id is its URL with the fragment and any trailing
 slash removed, so `https://site/`, `https://site` and `https://site#top` are one page rather than

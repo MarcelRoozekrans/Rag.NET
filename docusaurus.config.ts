@@ -139,6 +139,10 @@ const config: Config = {
     },
     mermaid: {
       theme: { light: 'neutral', dark: 'dark' },
+      // Mermaid 12 made ELK and the `neo` look the defaults and cut flowchart label wrapping from
+      // 200px to 120px, which re-lays out, restyles and re-wraps every diagram on this site. These
+      // keep the layout, style and label width the diagrams were written for.
+      options: { layout: 'dagre', look: 'classic', flowchart: { wrappingWidth: 200 } },
     },
   } satisfies Preset.ThemeConfig,
 };
