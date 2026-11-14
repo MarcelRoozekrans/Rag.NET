@@ -189,6 +189,19 @@ public sealed class RagOptions
     public bool SkipCompression { get; set; }
 
     /// <summary>
+    /// Returns a shallow copy of this instance: every property, and the record of which short-form
+    /// retrieval fields were assigned. Reference-typed values such as <see cref="ConversationHistory"/>
+    /// are shared with the original, so replace them on the copy rather than mutating them.
+    /// </summary>
+    /// <remarks>
+    /// A decorator that needs to change one property copies the caller's options with this instead
+    /// of listing the properties itself. A hand-written list dropped four of them (issue #945), and
+    /// assigning the short-form fields marked them as set, which would make a call that set only
+    /// <see cref="Retrieval"/> throw.
+    /// </remarks>
+    internal RagOptions Copy() => (RagOptions)MemberwiseClone();
+
+    /// <summary>
     /// The short-form retrieval fields that were assigned, by name, in declaration order. A field
     /// counts once its setter has run, whatever the value.
     /// </summary>
