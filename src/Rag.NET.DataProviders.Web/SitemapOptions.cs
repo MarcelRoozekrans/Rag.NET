@@ -94,14 +94,16 @@ public sealed class SitemapOptions
     public bool ExcludeNestedSitemaps { get; init; } = true;
 
     /// <summary>
-    /// Fetch each page host's <c>/robots.txt</c> and skip page URLs its <c>User-agent: *</c>
-    /// group disallows. Default: <see langword="true"/>.
+    /// Fetch each page host's <c>/robots.txt</c> and skip page URLs it disallows for this crawler.
+    /// Default: <see langword="true"/>.
     /// </summary>
     /// <remarks>
     /// Fetched once per host, the first time a page on that host is about to be yielded; a missing
     /// or unreachable robots.txt allows everything. Sitemap and index URLs themselves are not
     /// checked — the caller asked for them by name. Same rule as
-    /// <see cref="WebCrawlerOptions.RespectRobotsTxt"/>: prefix <c>Disallow</c> paths only.
+    /// <see cref="WebCrawlerOptions.RespectRobotsTxt"/>: RFC 9309 groups and longest-match
+    /// <c>Allow</c>/<c>Disallow</c> with <c>*</c> and <c>$</c>. A host's <c>Crawl-delay</c> raises
+    /// <see cref="MinimumRequestInterval"/> and never lowers it.
     /// </remarks>
     public bool RespectRobotsTxt { get; init; } = true;
 
@@ -110,11 +112,18 @@ public sealed class SitemapOptions
     /// robots.txt and page bodies alike. Default <see cref="TimeSpan.Zero"/>: no spacing.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Shared by every entry the provider yields, so it holds even when ingestion opens page
     /// bodies in parallel (<c>IngestionOptions.MaxDegreeOfParallelism</c> above 1): requests are
     /// serialised and spaced, not merely delayed per caller. Set it when walking a site you do not
     /// operate; one request per second is a common courtesy. Negative values are rejected at
     /// construction.
+    /// </para>
+    /// <para>
+    /// With <see cref="RespectRobotsTxt"/> on, a longer <c>Crawl-delay</c> in any page host's
+    /// robots.txt takes over from this value for the rest of the walk, for every host: there is
+    /// one interval, not one per host.
+    /// </para>
     /// </remarks>
     public TimeSpan MinimumRequestInterval { get; init; } = TimeSpan.Zero;
 
