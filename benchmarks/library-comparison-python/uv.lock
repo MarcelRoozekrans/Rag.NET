@@ -422,7 +422,7 @@ wheels = [
 
 [[package]]
 name = "haystack-ai"
-version = "3.4.1"
+version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -445,9 +445,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5e/76/8924698e18dad371b0f081ad3f6b34d323db541249c0e081351b108eb6da/haystack_ai-3.4.1.tar.gz", hash = "sha256:95b57e672264584a9c437857e4ca4c89bf2137dab80fc972553df491349d811b", size = 543777, upload-time = "2026-10-21T19:10:51.848Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/65/8d/84d94814e67679323a09a148a599d08fd92f10a436a10ecd0ec9b4f5c6a5/haystack_ai-3.5.0.tar.gz", hash = "sha256:afa27213cfa06ddf2283d06cf98e0c66c1f9500ba30196cf67c5b37612d22df5", size = 570805, upload-time = "2026-11-10T12:34:33.741Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/29/b6/60d85784f117fdb26796e4b8ff3425ebc5c14ac8cb66c6162fd5835025b3/haystack_ai-3.4.1-py3-none-any.whl", hash = "sha256:f9093156d534adcf92ef68d03601c11b67f0945e81b00e999504b68bce4fdd80", size = 751565, upload-time = "2026-10-21T19:10:50.167Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/5f/96d140d9748fe6a85321f49b02b68f7791834e8a033babb369f748a77d54/haystack_ai-3.5.0-py3-none-any.whl", hash = "sha256:b0328db32cc7e33867296127afa501b47d20a88b22713c6b33338004f3eeb06c", size = 785673, upload-time = "2026-11-10T12:34:32.015Z" },
 ]
 
 [[package]]
@@ -770,7 +770,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "haystack-ai", specifier = "==3.4.1" },
+    { name = "haystack-ai", specifier = "==3.5.0" },
     { name = "langchain-core", specifier = "==1.7.7" },
     { name = "langchain-text-splitters", specifier = "==1.1.3" },
     { name = "llama-index-core", specifier = "==0.14.25" },
@@ -1042,21 +1042,19 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "2.52.0"
+version = "3.51.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "distro" },
-    { name = "httpx" },
+    { name = "httpx2" },
     { name = "jiter" },
     { name = "pydantic" },
     { name = "sniffio" },
-    { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bb/5a/c45fa035cd72c70ebe67c6e079e3adf871492382634f69e3dff62c43597d/openai-2.52.0.tar.gz", hash = "sha256:7c736d592f81471ce1f734838390983c4d8c8aecff23dcd36e600a58e5032d9c", size = 1098876, upload-time = "2026-07-31T15:13:03.228Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/db/fa/30f098b042a354f685def1d0fe4c817fc4a534233f497fcf5fc29467c58d/openai-3.51.0.tar.gz", hash = "sha256:1cc9b80eb0f1dc15fa45fbc122ba2c99b7e5302548060c01db5719fa6181a6a9", size = 2415149, upload-time = "2026-11-13T21:13:39.771Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a1/ac/ceb40c995df49533ad4dcff6c37f0d85cf14446a212363fc9d2f927e60b4/openai-2.52.0-py3-none-any.whl", hash = "sha256:f97e231d9a8fa69ab55897df1080f02d99913fb0a30e3ee56ea16a1eb6c2d434", size = 1659569, upload-time = "2026-07-31T15:13:01.145Z" },
+    { url = "https://files.pythonhosted.org/packages/52/f9/d3d9ef409ee4e90de64c9b12f15879f56fc845c2eb9cfe6f314b402de7f1/openai-3.51.0-py3-none-any.whl", hash = "sha256:802b7e8c6ff8cf4d59a2a163126c10ce472adf0409ac41fdaadd47c9b4ed091a", size = 2446085, upload-time = "2026-11-13T21:13:37.969Z" },
 ]
 
 [[package]]
