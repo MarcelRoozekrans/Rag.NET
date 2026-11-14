@@ -135,6 +135,48 @@ public sealed class WebCrawlerScopeTests
             $"Three fetches took {stopwatch.Elapsed.TotalMilliseconds} ms; expected at least {interval.TotalMilliseconds * 2} ms.");
     }
 
+    private static Dictionary<string, string> SiteWithRobots(string robots) =>
+        new(s_site, StringComparer.Ordinal) { ["https://example.com/robots.txt"] = robots };
+
+    /// <remarks>#927: a site's Crawl-delay raises the interval; the robots.txt fetch itself is
+    /// the first start, so all three page fetches wait.</remarks>
+    [Fact]
+    public async Task CrawlDelay_SpacesCrawlerFetches()
+    {
+        var delay = TimeSpan.FromMilliseconds(150);
+        var stopwatch = Stopwatch.StartNew();
+
+        var urls = await UrlsAsync(
+            new WebCrawlerOptions { MaxDepth = 1, IncludedUrlPrefixes = ["https://example.com/themes/health/faq"] },
+            new FakeHttpMessageHandler(SiteWithRobots("User-agent: *\nCrawl-delay: 0.15\n")));
+
+        Assert.Equal(3, urls.Count);
+        Assert.True(
+            stopwatch.Elapsed >= delay * 3 - TimeSpan.FromMilliseconds(15),
+            $"Four fetches took {stopwatch.Elapsed.TotalMilliseconds} ms; expected at least {delay.TotalMilliseconds * 3} ms.");
+    }
+
+    [Fact]
+    public async Task CrawlDelay_SmallerThanTheMinimum_DoesNotLowerIt()
+    {
+        var interval = TimeSpan.FromMilliseconds(150);
+        var stopwatch = Stopwatch.StartNew();
+
+        var urls = await UrlsAsync(
+            new WebCrawlerOptions
+            {
+                MaxDepth = 1,
+                IncludedUrlPrefixes = ["https://example.com/themes/health/faq"],
+                MinimumRequestInterval = interval,
+            },
+            new FakeHttpMessageHandler(SiteWithRobots("User-agent: *\nCrawl-delay: 0.01\n")));
+
+        Assert.Equal(3, urls.Count);
+        Assert.True(
+            stopwatch.Elapsed >= interval * 3 - TimeSpan.FromMilliseconds(15),
+            $"Four fetches took {stopwatch.Elapsed.TotalMilliseconds} ms; expected at least {interval.TotalMilliseconds * 3} ms.");
+    }
+
     [Fact]
     public void ANegativeMinimumRequestInterval_IsRejected()
     {

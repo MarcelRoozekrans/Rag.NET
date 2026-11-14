@@ -238,6 +238,38 @@ public sealed class SitemapScopeTests
             $"Three fetches took {stopwatch.Elapsed.TotalMilliseconds} ms; expected at least {interval.TotalMilliseconds * 3} ms.");
     }
 
+    /// <remarks>#927: the Crawl-delay of the page host's robots.txt raises the interval. The
+    /// stopwatch starts before the walk: the robots.txt fetch is the start the first page open
+    /// waits on.</remarks>
+    [Fact]
+    public async Task CrawlDelay_SpacesSitemapPageFetches()
+    {
+        var delay = TimeSpan.FromMilliseconds(150);
+        var responses = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [SitemapUrl] = Sitemap,
+            [RobotsUrl] = "User-agent: *\nCrawl-delay: 0.15\n",
+        };
+        foreach (var path in new[] { "index.html", "themes/health/vaccines", "themes/health/primary-care" })
+        {
+            responses["https://example.com/" + path] = "<html></html>";
+        }
+
+        var sut = new SitemapDataProvider(SitemapUrl, new HttpClient(new FakeHttpMessageHandler(responses)));
+        var stopwatch = Stopwatch.StartNew();
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        for (var i = 0; i < 3; i++)
+        {
+            await using var _ = await entries[i].Value.OpenContentAsync(TestContext.Current.CancellationToken);
+        }
+
+        Assert.True(
+            stopwatch.Elapsed >= delay * 3 - TimeSpan.FromMilliseconds(15),
+            $"robots.txt and three page fetches took {stopwatch.Elapsed.TotalMilliseconds} ms; expected at least {delay.TotalMilliseconds * 3} ms.");
+    }
+
     [Fact]
     public void ANegativeMinimumRequestInterval_IsRejected()
     {
