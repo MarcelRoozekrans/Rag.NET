@@ -112,7 +112,7 @@ public sealed class OnnxReranker : IReranker, IDisposable
         {
             return new XlmRobertaPairTokenizer(tokenizerPath);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not IOException and not UnauthorizedAccessException)
         {
             throw new InvalidDataException(
                 $"TokenizerPath '{tokenizerPath}' is not a SentencePiece model file (sentencepiece.bpe.model).", ex);
