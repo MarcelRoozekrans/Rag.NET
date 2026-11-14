@@ -10,6 +10,8 @@
 **Package manager:** NuGet
 **Framework:** none (a library, not an application)
 **Datastore:** n/a (pluggable — eight vector store packages; the GraphRAG graph store is SQLite)
+**Build:** `dotnet build Rag.NET.slnx -c Release`
+**Test:** `dotnet test Rag.NET.slnx -c Release`
 
 ## Commits
 
