@@ -195,6 +195,25 @@ public sealed class RobotsTxtTests
         Assert.False(Blocked(robots, "/a"));
     }
 
+    /// <summary>
+    /// Each way the segment matcher (#998) can accept or reject: an anchored rule without
+    /// <c>*</c>, a middle piece that is missing, and an anchored last piece that would have to
+    /// reuse octets the first piece already took.
+    /// </summary>
+    [Theory]
+    [InlineData("/a$", "/a", true)]
+    [InlineData("/a$", "/ab", false)]
+    [InlineData("/a*b*c", "/a-b-c", true)]
+    [InlineData("/a*b*c", "/a-c", false)]
+    [InlineData("/a*a$", "/aa", true)]
+    [InlineData("/a*a$", "/a", false)]
+    [InlineData("/x*yz$", "/xyz", true)]
+    [InlineData("/x*yz$", "/xz", false)]
+    public void SegmentMatcher_AcceptsAndRejects(string rule, string path, bool blocked)
+    {
+        Assert.Equal(blocked, Blocked("User-agent: *\nDisallow: " + rule + "\n", path));
+    }
+
     [Fact]
     public void LongestMatchCountsPatternOctets()
     {
