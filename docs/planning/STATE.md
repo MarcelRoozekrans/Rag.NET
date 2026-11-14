@@ -1,7 +1,63 @@
 # Session State
 
-**Last updated:** 2026-11-14, after v1.8.0. **Next:** #944, which needs the operator's wire-format decision
-first. Otherwise take #926 or #927.
+**Last updated:** 2026-11-14. **Next:** #926, once the operator merges **#994** (the Tokenizers 3.0.0
+bump it needs). Branch `feat/onnx-reranker-sentencepiece` from main after that merge, and resume the
+brainstorm at "lay out the approaches" with the findings below. **#999 (#927) and #1000 (#987) are
+open for the operator**; after each merges, sync main and delete its branch (`fix/robots-rfc9309`,
+`chore/docs-npm-alerts`), verifying the squash merge by grep: `ProductTokenOf` for #999,
+`wrappingWidth: 200` in `docusaurus.config.ts` for #1000. With #994 still open and both PRs
+waiting, nothing in the queue is unblocked but #998, which needs the operator's decision.
+
+**#999** (open, closes #927; all CI green, CodeRabbit approved): `RobotsTxt` follows RFC 9309
+section 2.2. Named groups apply first, with the product token taken from the `HttpClient`'s
+default `User-Agent` (operator's choice: no new option). `Allow` and `Disallow` use `*`, `$`
+and longest match, and percent-encoding is normalised. `Crawl-delay` raises
+`MinimumRequestInterval` and never lowers it; the operator approved this with no cap.
+`RequestThrottle.RaiseTo` exists, and every request start is now recorded. Rulings for the
+operator to check:
+- Figure 4 row 2 is unmatched: reserved escapes stay distinct, as in Google's parser.
+- `Crawl-delay` values above `Task.Delay`'s limit (~49.7 days) are held at that limit.
+- The sitemap walker uses one interval for all hosts.
+
+Verified: Web tests 222/222, every other test project green (E2E not run), pack-validate 68/68.
+CONVENTIONS.md now records **Build:** and **Test:** (`dotnet build|test Rag.NET.slnx -c Release`),
+as the operator chose. Design and plan: `docs/plans/2026-11-14-robots-rfc9309-*.md`.
+
+**#998** (filed 2026-11-14, needs a decision): RFC 9309 section 2.3. An unreachable or 5xx
+robots.txt should disallow everything, but today it allows everything. It also covers the 500 KiB
+parse limit and a quadratic matching cost on huge hostile files.
+
+**#994** (open, CI green, 11 checks): `Microsoft.ML.Tokenizers` and `Data.Cl100kBase` 1.0.3 -> 3.0.0,
+and the `renovate.json` rule holding them below 2.0 removed. That rule's revisit condition is met:
+Cl100kBase 3.0.0 ships a `net8.0` group that depends only on Tokenizers, and Tokenizers 3.0.0's
+`net8.0` group has no dependencies. Verified locally: 78 of 79 test projects (E2ETests not run: CPU
+Ollama hung past an hour), Embeddings.Onnx 302/302 and Reranking.Onnx 38/38 with real models (none
+skipped), pack-validate 68/68 from a fresh pack, no nuspec declares `Bcl.Memory`. The operator chose
+a separate PR before #926 on 2026-11-14.
+
+**#926 findings (2026-11-14, probed against BAAI/bge-reranker-v2-m3's own files):**
+- The model's `sentencepiece.bpe.model` is a **Unigram** model despite its name. Tokenizers 1.0.3
+  refuses it (`The model type is not Bpe`); 2.0.1 and 3.0.0 load it with
+  `SentencePieceTokenizer.Create(stream, addBeginningOfSentence: false, addEndOfSentence: false)` and
+  split Dutch as the model's `tokenizer.json` does (`▁hoofd stad`).
+- **Ids are off by one (fairseq offset).** Raw SentencePiece ids are `<unk>`=0, `<s>`=1, `</s>`=2;
+  the model's vocabulary is `<s>`=0, `<pad>`=1, `</s>`=2, `<unk>`=3, and every other piece is raw
+  id + 1 (`▁Wat` 6585 raw, 6586 in `tokenizer.json`). Feeding raw ids scores garbage without failing.
+- **Pair template:** `<s> A </s></s> B </s>` (four special tokens, against BERT's three), per the
+  `TemplateProcessing` post-processor in `tokenizer.json`.
+- XLM-R ONNX exports usually take no `token_type_ids`; feed only the inputs the session declares.
+- The BAAI repo ships no ONNX file. Community exports exist on Hugging Face (search
+  `bge-reranker-v2-m3 onnx`); pick one with a pinned revision for the Dutch ranking check.
+- Open design points for the brainstorm: how `TokenizerPath` and `VocabPath` relate (exclusive, one
+  required); whether the offset and template are fixed XLM-R behaviour or options; where the Dutch
+  sanity check lives (test needing a model env var, like `RAGNET_ONNX_RERANK_MODEL`).
+
+**#944 decided (2026-11-14, recorded on the issue):** breaking change in the next major, with #937.
+One nested options object replaces the flat `TopK`/`UseHybridSearch` fields in JSON and proto
+(`optional` fields, removed numbers reserved); hybrid follows the in-process default; streaming
+moves to POST and the GET endpoint goes. Prompt-shaping fields (`SystemPrompt`, `Temperature`,
+`ConversationHistory`) need a server opt-in, off by default; while off, a request setting one is
+rejected naming the field. The `NotSupportedException` stopgap stays until then.
 
 **Merged on 2026-11-14 at the operator's request**, each squash-merged after a fresh green run on
 an up-to-date branch:
@@ -39,10 +95,14 @@ suite, delete `artifacts/packages` and repack with the GitVersion SemVer: the te
 package. It ships #973, #983, #985, #976 and #986, and the net11.0 target from #961. v1.7.0 was
 never published: its release run failed on NU1902, which #976 fixed.
 
-**#987** tracks five Dependabot alerts in the docs site's npm dependencies (two critical, in
-`tinypool` via `@docusaurus/core`). Build-time only; no shipped package contains them.
+**#1000** (open, closes #987; all CI green, CodeRabbit approved): tinypool 2.2.0 and
+serialize-javascript 7.1.4 by override, and mermaid 12.3.0, which brings katex 0.18. Mermaid 12
+changed its defaults (ELK layout, `neo` look, 120px label wrap); `docusaurus.config.ts` sets
+dagre, classic and 200px. All 26 diagrams render; 20 match main's size, 6 are 2-10% wider. A
+second commit fixes `tsc` on the site, broken by TypeScript 7 since #41. The deepmerge alert
+(no patched release) was dismissed as tolerable risk at the operator's choice on 2026-11-14.
 
-**Queue:** #944 (remote clients drop `RagOptions`, needs a wire-format decision), #926, #927, #987.
+**Queue:** #926 (after #994), #998 (needs the operator's decision). #927 is in #999. #944 waits for the next major release.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
