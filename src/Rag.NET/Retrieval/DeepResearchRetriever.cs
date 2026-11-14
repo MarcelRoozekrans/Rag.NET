@@ -43,10 +43,28 @@ public sealed class DeepResearchRetriever : IRetriever
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _inner.RetrieveAsync(query, options, cancellationToken).ConfigureAwait(false);
-        if (!result.IsSuccess)
-            return result;
+        try
+        {
+            var result = await _inner.RetrieveAsync(query, options, cancellationToken).ConfigureAwait(false);
+            if (!result.IsSuccess)
+                return result;
 
+            return await ResearchAsync(query, options, result.Value, cancellationToken).ConfigureAwait(false);
+        }
+        catch (CallRefusedException ex)
+        {
+            // A refusal fails the query the way the inner pipeline reports one: as StorageFailed
+            // with the refusal inside, until #937 gives it a case of its own (#948).
+            return Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(ex));
+        }
+    }
+
+    private async Task<Result<IReadOnlyList<SearchResult>, RagError>> ResearchAsync(
+        string query,
+        RetrievalOptions? options,
+        IReadOnlyList<SearchResult> initial,
+        CancellationToken cancellationToken)
+    {
         var topK = (options ?? _defaultOptions).TopK;
 
         // Two collections with two jobs, deliberately not one.
@@ -55,10 +73,10 @@ public sealed class DeepResearchRetriever : IRetriever
         // the model has to see everything gathered so far to judge whether more is needed, so it
         // must not be truncated. `rankings` keeps each retrieval's page intact and in its own rank
         // order, because that is the only comparable thing about them (see the fusion below).
-        var chunks = result.Value.ToList();
+        var chunks = initial.ToList();
         var rankings = new List<(IReadOnlyList<SearchResult> Hits, double Weight)>
         {
-            (result.Value, 1.0),
+            (initial, 1.0),
         };
 
         for (int depth = 0; depth < _options.MaxDepth; depth++)
@@ -80,8 +98,16 @@ public sealed class DeepResearchRetriever : IRetriever
                         chunks.AddRange(sub.Value);
                         rankings.Add((sub.Value, 1.0));
                     }
+                    else if (sub.Error is RagError.StorageFailed { Inner: CallRefusedException })
+                    {
+                        // The inner retriever already turned a refusal into a failure; skipping
+                        // it like any failed sub-query would swallow it (#948).
+                        return sub;
+                    }
                 }
                 catch (OperationCanceledException) { throw; }
+                // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+                catch (CallRefusedException) { throw; }
                 catch (Exception ex)
                 {
                     _logger?.LogWarning(ex, "Sub-query retrieval failed for '{SubQuery}'; skipping and continuing", subQuery);
@@ -92,7 +118,7 @@ public sealed class DeepResearchRetriever : IRetriever
         }
 
         return Result<IReadOnlyList<SearchResult>, RagError>.Success(
-            BuildPage(result.Value, rankings, topK));
+            BuildPage(initial, rankings, topK));
     }
 
     /// <summary>
@@ -169,6 +195,8 @@ public sealed class DeepResearchRetriever : IRetriever
                    ?? new SufficiencyResponse(true, []);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (JsonException ex)
         {
             // Fail-open on purpose: deep research is an enhancement over the inner retriever's

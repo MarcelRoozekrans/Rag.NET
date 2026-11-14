@@ -33,7 +33,7 @@ public sealed class PromptHardeningAnswerEngineDecorator(
         if (string.IsNullOrEmpty(options.SystemPrefix))
             return opts ?? new RagOptions();
 
-        var result = opts is null ? new RagOptions() : ShallowCopy(opts);
+        var result = opts is null ? new RagOptions() : opts.Copy();
         var prefixMessage = new ChatMessage(ChatRole.System, options.SystemPrefix);
         var existing = result.ConversationHistory;
         var merged = new List<ChatMessage> { prefixMessage };
@@ -42,21 +42,4 @@ public sealed class PromptHardeningAnswerEngineDecorator(
         result.ConversationHistory = merged;
         return result;
     }
-
-    private static RagOptions ShallowCopy(RagOptions src) => new()
-    {
-        TopK = src.TopK,
-        MinScore = src.MinScore,
-        UseHybridSearch = src.UseHybridSearch,
-        UseLostInTheMiddleReordering = src.UseLostInTheMiddleReordering,
-        UseRedundancyFilter = src.UseRedundancyFilter,
-        RedundancyThreshold = src.RedundancyThreshold,
-        MetadataFilter = src.MetadataFilter,
-        SystemPrompt = src.SystemPrompt,
-        Temperature = src.Temperature,
-        ConversationHistory = src.ConversationHistory,
-        SynthesisStrategy = src.SynthesisStrategy,
-        MapReduceOptions = src.MapReduceOptions,
-        RefineOptions = src.RefineOptions,
-    };
 }

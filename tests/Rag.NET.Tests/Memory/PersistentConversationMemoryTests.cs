@@ -180,4 +180,40 @@ public class PersistentConversationMemoryTests
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             sut.StoreAsync("Hello", "Hi there", new SessionId("session-1"), cts.Token));
     }
+
+    private static IEmbeddingGenerator<string, Embedding<float>> RefusingEmbedder(BudgetExceededException refusal)
+    {
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder
+            .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(refusal);
+        return embedder;
+    }
+
+    [Fact]
+    public async Task ProcessAsync_SearchEmbeddingRefusal_Propagates()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var sut = new PersistentConversationMemory(
+            PassthroughInner(), Substitute.For<IVectorStore>(), RefusingEmbedder(refusal), new PersistentMemoryOptions());
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => sut.ProcessAsync(
+            [new ChatMessage(ChatRole.User, "Hello")], TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
+    }
+
+    [Fact]
+    public async Task StoreAsync_EmbeddingRefusal_Propagates()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var sut = new PersistentConversationMemory(
+            Substitute.For<IConversationMemory>(), Substitute.For<IVectorStore>(), RefusingEmbedder(refusal),
+            new PersistentMemoryOptions());
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => sut.StoreAsync(
+            "Hello", "Hi there", new SessionId("s1"), TestContext.Current.CancellationToken));
+
+        Assert.Same(refusal, ex);
+    }
 }

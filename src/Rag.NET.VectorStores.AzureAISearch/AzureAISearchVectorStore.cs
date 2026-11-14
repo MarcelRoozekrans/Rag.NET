@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Azure;
+using Azure.Core;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
 using Azure.Search.Documents.Indexes.Models;
@@ -71,13 +72,77 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         int vectorDimensions,
         SearchClientOptions? clientOptions,
         AzureAISearchOptions? options)
+        : this(
+            clientOptions is null
+                ? new SearchIndexClient(endpoint, credential)
+                : new SearchIndexClient(endpoint, credential, clientOptions),
+            clientOptions is null
+                ? new SearchClient(endpoint, indexName, credential)
+                : new SearchClient(endpoint, indexName, credential, clientOptions),
+            indexName,
+            vectorDimensions,
+            options)
     {
-        _indexClient = clientOptions is null
-            ? new SearchIndexClient(endpoint, credential)
-            : new SearchIndexClient(endpoint, credential, clientOptions);
-        _searchClient = clientOptions is null
-            ? new SearchClient(endpoint, indexName, credential)
-            : new SearchClient(endpoint, indexName, credential, clientOptions);
+    }
+
+    /// <summary>Creates the store authenticating with a <see cref="TokenCredential"/> (Microsoft Entra ID).</summary>
+    /// <param name="endpoint">The search service endpoint.</param>
+    /// <param name="indexName">The index this store reads and writes.</param>
+    /// <param name="credential">The token credential used to authenticate.</param>
+    /// <param name="vectorDimensions">The embedding width the index is created with.</param>
+    public AzureAISearchVectorStore(
+        Uri endpoint,
+        string indexName,
+        TokenCredential credential,
+        int vectorDimensions = 1536)
+        : this(endpoint, indexName, credential, vectorDimensions, clientOptions: null, options: null)
+    {
+    }
+
+    /// <summary>
+    /// Creates the store authenticating with a <see cref="TokenCredential"/> (Microsoft Entra ID),
+    /// with SDK client options and <see cref="AzureAISearchOptions"/>, the overload <c>UseAzureAISearch</c>
+    /// calls once its <c>configure</c> callback has run.
+    /// </summary>
+    /// <param name="endpoint">The search service endpoint.</param>
+    /// <param name="indexName">The index this store reads and writes.</param>
+    /// <param name="credential">The token credential used to authenticate.</param>
+    /// <param name="vectorDimensions">The embedding width the index is created with.</param>
+    /// <param name="clientOptions">Optional SDK client options.</param>
+    /// <param name="options">Store options, or <see langword="null"/> for their defaults.</param>
+    public AzureAISearchVectorStore(
+        Uri endpoint,
+        string indexName,
+        TokenCredential credential,
+        int vectorDimensions,
+        SearchClientOptions? clientOptions,
+        AzureAISearchOptions? options)
+        : this(
+            clientOptions is null
+                ? new SearchIndexClient(endpoint, credential)
+                : new SearchIndexClient(endpoint, credential, clientOptions),
+            clientOptions is null
+                ? new SearchClient(endpoint, indexName, credential)
+                : new SearchClient(endpoint, indexName, credential, clientOptions),
+            indexName,
+            vectorDimensions,
+            options)
+    {
+    }
+
+    /// <summary>
+    /// The one place the store's state is set, whichever credential built the two clients, so the
+    /// key and token paths cannot drift apart.
+    /// </summary>
+    private AzureAISearchVectorStore(
+        SearchIndexClient indexClient,
+        SearchClient searchClient,
+        string indexName,
+        int vectorDimensions,
+        AzureAISearchOptions? options)
+    {
+        _indexClient = indexClient;
+        _searchClient = searchClient;
         _indexName = indexName;
         _vectorDimensions = vectorDimensions;
         _kNearestNeighborsCount = options?.KNearestNeighborsCount;

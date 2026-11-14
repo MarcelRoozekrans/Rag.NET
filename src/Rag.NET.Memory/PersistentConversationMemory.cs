@@ -123,6 +123,8 @@ public sealed class PersistentConversationMemory(
             await vectorStore.StoreAsync([chunk], cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             logger?.LogWarning(ex, "Failed to persist exchange for session '{SessionId}'; exchange not stored", sessionId);
@@ -142,6 +144,8 @@ public sealed class PersistentConversationMemory(
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) { throw; }
+        // A deliberate refusal is not a model failure: it fails the query instead of degrading it (#948).
+        catch (CallRefusedException) { throw; }
         catch (Exception ex)
         {
             logger?.LogWarning(ex, "Persistent memory search failed for query '{Query}'; skipping prefix injection", query);

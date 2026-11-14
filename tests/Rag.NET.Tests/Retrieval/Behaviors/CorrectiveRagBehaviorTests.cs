@@ -273,4 +273,20 @@ public class CorrectiveRagBehaviorTests
         await webSearch.DidNotReceive().SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
         Assert.Equal("false", ctx.Extensions["crag_triggered"]);
     }
+
+    [Fact]
+    public async Task HandleAsync_LlmScoringRefusal_Propagates()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(refusal);
+        var sut = new CorrectiveRagBehavior { WebSearch = Substitute.For<IWebSearch>(), ChatClient = chatClient };
+        var ctx = MakeCtx(new RetrievalOptions { UseCrag = true, CragScoreThreshold = 0.5f }, query: "specific topic");
+
+        var ex = await Assert.ThrowsAsync<BudgetExceededException>(async () => await sut.HandleAsync(
+            ctx, TestContext.Current.CancellationToken, NextReturning([MakeResult("doc-1", 0, 0.9, text: "specific topic content")])));
+
+        Assert.Same(refusal, ex);
+    }
 }
