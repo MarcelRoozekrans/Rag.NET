@@ -59,6 +59,49 @@ public sealed class XlmRobertaPairTokenizerTests
         Assert.Equal(2L, ids[^1]);
     }
 
+    [Fact]
+    public void FuseUnknownRuns_CollapsesARunIntoOne()
+        => Assert.Equal([5, 0, 7], XlmRobertaPairTokenizer.FuseUnknownRuns([5, 0, 0, 0, 7]));
+
+    [Fact]
+    public void FuseUnknownRuns_KeepsUnknownsSeparatedByAnotherPieceApart()
+        => Assert.Equal([0, 5, 0], XlmRobertaPairTokenizer.FuseUnknownRuns([0, 0, 5, 0, 0]));
+
+    [Fact]
+    public void FuseUnknownRuns_CountsTowardsTheTruncationBudgetAsOne()
+    {
+        // 10 unknowns fuse to 1, so with a budget of 3 for the passage everything fits untruncated.
+        int[] passage = [.. Enumerable.Repeat(0, 10), 8, 9];
+        var ids = XlmRobertaPairTokenizer.BuildFeed(
+            [], XlmRobertaPairTokenizer.FuseUnknownRuns(passage), maxLength: 7).InputIds;
+        Assert.Equal([0L, 2, 2, 3, 9, 10, 2], ids);
+    }
+
+    public static TheoryData<char> DroppedControlCharacters()
+    {
+        var data = new TheoryData<char>();
+        for (var c = '\u0001'; c <= '\u0008'; c++) data.Add(c);
+        data.Add('\u000b');
+        for (var c = '\u000e'; c <= '\u001f'; c++) data.Add(c);
+        data.Add('\u007f');
+        data.Add('\u008f');
+        data.Add('\u009f');
+        return data;
+    }
+
+    [Fact]
+    public void DroppedControlCharacters_AreExactlyThirty()
+        => Assert.Equal(30, DroppedControlCharacters().Count);
+
+    [Theory]
+    [MemberData(nameof(DroppedControlCharacters))]
+    public void StripDroppedControlCharacters_RemovesEachDroppedCharacter(char c)
+        => Assert.Equal("ab", XlmRobertaPairTokenizer.StripDroppedControlCharacters($"a{c}b"));
+
+    [Fact]
+    public void StripDroppedControlCharacters_KeepsTabAndNewline()
+        => Assert.Equal("a\tb\nc\rd\fe", XlmRobertaPairTokenizer.StripDroppedControlCharacters("a\tb\nc\rd\fe"));
+
     /// <summary>
     /// Parity with the model's own tokenizer. Expected ids come from the Hugging Face
     /// <c>tokenizers</c> package loading <c>tokenizer.json</c> of <c>BAAI/bge-reranker-v2-m3</c> at
@@ -79,5 +122,23 @@ public sealed class XlmRobertaPairTokenizerTests
         Assert.Equal(
             [0L, 6586, 83, 8, 35912, 5481, 131, 13666, 32, 2, 2, 21391, 83, 8, 35912, 5481, 131, 13666, 5, 2],
             ids);
+    }
+
+    /// <summary>
+    /// Single-segment parity, with ids recorded from tokenizer.json and cross-checked against the
+    /// reference sentencepiece library. Covers unknown-run fusing and dropped control characters.
+    /// </summary>
+    [Theory]
+    [InlineData("emoji \U0001F99C\U0001F99C test", new long[] { 28, 121505, 6, 3, 3034 })]
+    [InlineData("a \U0001F99C b \U0001F99C\U0001F99C\U0001F99C c", new long[] { 10, 6, 3, 876, 6, 3, 501 })]
+    [InlineData("control\u0001char", new long[] { 6226, 9254 })]
+    [InlineData("x\u0003\u0004y", new long[] { 1022, 53 })]
+    public void EncodeSegment_MatchesTheModelsOwnTokenizer(string text, long[] expected)
+    {
+        var path = Environment.GetEnvironmentVariable("RAGNET_ONNX_RERANK_TOKENIZER");
+        Assert.SkipWhen(string.IsNullOrEmpty(path) || !File.Exists(path),
+            "Set RAGNET_ONNX_RERANK_TOKENIZER to bge-reranker-v2-m3's sentencepiece.bpe.model to run this test.");
+
+        Assert.Equal(expected, new XlmRobertaPairTokenizer(path!).EncodeSegment(text));
     }
 }
