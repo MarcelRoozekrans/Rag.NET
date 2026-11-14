@@ -1,68 +1,48 @@
 # Session State
 
-**Last updated:** 2026-11-13 (late night). **Next:** #944, which needs the operator's wire-format
-decision first. Otherwise take #926 or #927. Release PR #977 (1.7.1) still waits for the operator,
-who merges release PRs; the agent does not.
+**Last updated:** 2026-11-14. **Next:** #944, which needs the operator's wire-format decision
+first. Otherwise take #926 or #927.
 
-**#945 is built: PR #985** (`fix/945-shallowcopy-fields`, CI green, CodeRabbit approved, BEHIND
-main, waiting for the operator to merge). It closes #945. `RagOptions` gains an internal `Copy()`
-(`MemberwiseClone`, assignment record included), `Rag.NET.Security` joins Abstractions'
-`InternalsVisibleTo`, and reflection tests in `Rag.NET.Tests` cover every public property through
-`Copy()` and the decorator. Verified: 78 test projects green locally, pack-validate 68/68.
-`Rag.NET.E2ETests` (RequiresLlm, nightly only) was stopped unfinished: CPU Ollama ran at
-0.5 tokens/s on the loaded agents host. Once #985 merges, confirm its `fix:` appears in the
-release-please PR.
+**Merged on 2026-11-14 at the operator's request**, each squash-merged after a fresh green run on
+an up-to-date branch:
+- **#982** (closes #246) as 809b42fa. The Service Bus emulator 2.0.1 faults the whole queue entity
+  on the first receive from a fresh dead-letter sub-queue ("Cannot add the same item
+  'S.SP-SequenceNumber:1' more than once"), so the test now peeks the sub-queue. Upstream:
+  Azure/azure-service-bus-emulator-installer#157. Nothing further to track here.
+- **#985** (closes #945) as 13ea3247. `RagOptions` gains an internal `Copy()` (`MemberwiseClone`,
+  assignment record included); `Rag.NET.Security` joins Abstractions' `InternalsVisibleTo`.
+  Reflection tests in `Rag.NET.Tests` cover every public property through `Copy()` and the
+  hardening decorator. `Rag.NET.E2ETests` (RequiresLlm, nightly only) was not run locally: CPU
+  Ollama ran at 0.5 tokens/s on the agents host.
+- **#973** (StefH, `feat(azureaisearch)`: TokenCredential auth) as f1ab2c4f. Being a `feat`, it
+  turns the pending release from 1.7.1 into 1.8.0.
+- **#983** (closes #948) was merged by the operator on 2026-11-13 as 1923f5d1; its `fix:` is in the
+  release PR's changelog. #965 merged through Renovate.
 
-**#948 is built: PR #983** (`fix/948-query-path-refusals`, CI green, CodeRabbit approved, BLOCKED
-only on the operator's approval: the `Main` ruleset's `require_extra_approval_for_unattributed_changes`).
-It closes #948. Do not merge it; confirm it merged and that its `fix:` appears in the release-please PR.
-- A deliberate refusal now fails the query at 24 degrading catches on the query path. Until #937:
-  `RetrieveAsync` returns `StorageFailed` with the refusal as `Inner`; `AskAsync` throws
-  `InvalidOperationException` with it as `InnerException` (now set for any retrieval failure).
-- Also fixed in it: the embedding and result cache behaviours and `HydeBehavior` ran the rest of
-  the pipeline twice when a later step failed; the ensemble lost a sparse-arm refusal behind a
-  dense failure; `QuerySanitiserPipelineDecorator.AskAsync` threw synchronously.
-- Rulings the operator may want to check: `TagRetriever` and `DeepResearchRetriever` return the
-  refusal as a failed result instead of throwing; DeepResearch sub-queries and FLARE's lookahead
-  stop on a failed result that is a refusal; a refusal now fails `PersistentConversationMemory.StoreAsync`.
-- Verified: 69 unit-test projects green locally, 10,165 tests; pack-validate 68/68 when packed with
-  the GitVersion SemVer. Packing with any other version fails `EveryPackageCarriesTheVersionGitVersionDerives`.
-- Design and plan: `docs/plans/2026-11-13-refusal-fails-query-{design,implementation}.md`.
+**#948 details** (for the rulings): a deliberate refusal now fails the query at 24 degrading
+catches on the query path. Until #937, `RetrieveAsync` returns `StorageFailed` with the refusal as
+`Inner`; `AskAsync` throws `InvalidOperationException` with it as `InnerException`. Rulings the
+operator may want to check: `TagRetriever` and `DeepResearchRetriever` return the refusal as a
+failed result instead of throwing; DeepResearch sub-queries and FLARE's lookahead stop on a failed
+result that is a refusal; a refusal now fails `PersistentConversationMemory.StoreAsync`. Design
+and plan: `docs/plans/2026-11-13-refusal-fails-query-{design,implementation}.md`.
 
-**#246 has a root cause and a fix in PR #982** (`fix/246-servicebus-deadletter-flake`, CI green,
-BEHIND main, waiting for the operator to merge; it closes #246). The Service Bus emulator
-(2.0.1, the newest tag) faults the whole queue entity on the first receive from a fresh
-dead-letter sub-queue: "Cannot add the same item 'S.SP-SequenceNumber:1' more than once". That
-force-detaches every link, so the pending settle surfaces as `MessageLockLost` with the full lock
-left. Reproduced locally at about one in three cold starts with four emulators in parallel, never
-on a warm emulator. The test now peeks the dead-letter sub-queue instead: 32/32 full-project
-cold-start runs green. The emulator side is upstream as
-Azure/azure-service-bus-emulator-installer#157; our evidence was posted there on 2026-11-13
-with the operator's approval. Nothing further to track in this repo.
-
-**#973 and #965** are still red only on the #246 flake. Once #982 merges, they need a fresh run
-on an up-to-date branch; ask the operator, the agent does not re-run checks.
+**Local pack-validate needs a fresh pack.** `EveryPackageCarriesTheVersionGitVersionDerives`
+fails when the packages disagree with each other or with the derived version's MajorMinorPatch. A
+directory packed consistently on another branch, with the same MajorMinorPatch but another
+prerelease label, makes it skip instead. A skipped run validates nothing. Repack with the
+GitVersion SemVer immediately before running the suite.
 
 **v1.7.0 was never published.** Its release run failed on NU1902 (GHSA-6527-9fp8-r4x6 in
-`Microsoft.AspNetCore.WebUtilities` <= 2.3.13), fixed by **#976**. **1.7.1 is the release that ships
-those changes**, including the net11.0 target from #961.
-- After the operator merges #977, watch the release run for tag v1.7.1 and confirm that
-  `publish-nuget` succeeds. Report a failure with its log lines; do not re-run it.
-- **#978** (state handoff) merged 2026-11-13 as d6514840.
-- **#973** (StefH, `feat(azureaisearch)`: TokenCredential auth): the operator chose to have the
-  agent push fixes to the contributor's branch. Commit 7a399aa3 shares one private constructor and
-  one registration helper between the key and token paths, adds `AzureAISearchTokenCredentialTests`
-  (bearer header sent, no api-key; DI registration and validation), and documents that the service
-  must have API access control set to role-based or both. The package README example uses a
-  `tokenCredential` variable because Azure.Identity is outside the package closure that
-  `PackageReadmeTests` resolves against. CodeRabbit approved head 9ba52296, auto-merge is on, and
-  only the #246 flake is red. Confirm it merged.
-- Renovate: of #965 to #972 and #975, only #971 had merged by 16:00. The rest were BEHIND and
-  merge one at a time under the strict up-to-date rule as Renovate rebases them. #965 failed on
-  #246. Check them again.
+`Microsoft.AspNetCore.WebUtilities` <= 2.3.13), fixed by **#976**. The next release ships those
+changes, including the net11.0 target from #961. The operator asked for the release PR to be
+merged last, after the PRs above; then watch the release run and confirm that `publish-nuget`
+succeeds. Report a failure with its log lines; do not re-run it.
 
-**Queue:** #944 (remote clients drop
-`RagOptions`, needs a wire-format decision), #926, #927.
+**#987** tracks five Dependabot alerts in the docs site's npm dependencies (two critical, in
+`tinypool` via `@docusaurus/core`). Build-time only; no shipped package contains them.
+
+**Queue:** #944 (remote clients drop `RagOptions`, needs a wire-format decision), #926, #927, #987.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
@@ -82,10 +62,8 @@ the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
   at about Renovate's run times. Renovate then treats the PR as edited and stops touching it, so
   auto-merge is never enabled. Asked the operator on 2026-11-10; not yet identified.
 
-**NEXT ACTION:** see the top of this file. #982, #983 and #985 wait for the operator's merge.
+**NEXT ACTION:** see the top of this file.
 
-- **#246** (Service Bus dead-letter flake) recurred on #949's ubuntu build on 2026-11-09: a
-  `MessageLockLost` with 300 s of lock left. Still open; recorded on the issue.
 - **Renovate:** the two ModelContextProtocol 2.x major-bump PRs opened on 2026-11-10; one CI
   run had failed when last looked at. Majors are not automerged.
 
