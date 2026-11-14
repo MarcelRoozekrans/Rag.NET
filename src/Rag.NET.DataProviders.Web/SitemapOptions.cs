@@ -99,7 +99,7 @@ public sealed class SitemapOptions
     /// </summary>
     /// <remarks>
     /// Fetched once per host, the first time a page on that host is about to be yielded. A missing
-    /// robots.txt (any 4xx but 429) allows everything. One that answers 5xx or 429, or cannot be
+    /// robots.txt (a 3xx, or any 4xx but 429) allows everything. One that answers 5xx or 429, or cannot be
     /// fetched, skips every page on that host, and the walk yields one failure for the host
     /// (RFC 9309 section 2.3.1.4). Only the first 500 KiB is read. Sitemap and index URLs themselves are not
     /// checked — the caller asked for them by name. Same rule as

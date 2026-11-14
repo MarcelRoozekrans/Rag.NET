@@ -23,8 +23,9 @@ namespace Rag.NET.DataProviders.Web;
 /// </para>
 /// <para>
 /// How the fetch went decides what applies (RFC 9309 section 2.3, #998). A file that downloads
-/// is parsed, up to its first 500 KiB. A 4xx, or a 3xx left after <see cref="HttpClient"/> stops
-/// following redirects, means the file is unavailable, and everything is allowed. A 5xx, a 429 or
+/// is parsed, up to its first 500 KiB. A 4xx other than 429, or a 3xx left after
+/// <see cref="HttpClient"/> stops following redirects, means the file is unavailable, and
+/// everything is allowed. A 5xx, a 429 or
 /// no response at all means it is unreachable: every URL on the host is disallowed, and
 /// <see cref="Unreachable"/> carries the error the provider reports for that host.
 /// </para>
@@ -84,8 +85,8 @@ internal sealed class RobotsTxt
     }
 
     /// <summary>
-    /// Fetches <c>/robots.txt</c> for <paramref name="origin"/>'s scheme, host and port. A 4xx
-    /// allows everything. A 5xx, a 429, or a request that fails, breaks off or times out
+    /// Fetches <c>/robots.txt</c> for <paramref name="origin"/>'s scheme, host and port. A 3xx, or
+    /// a 4xx other than 429, allows everything. A 5xx, a 429, or a request that fails, breaks off or times out
     /// disallows everything and sets <see cref="Unreachable"/>. The caller's own cancellation
     /// propagates.
     /// </summary>
@@ -107,19 +108,21 @@ internal sealed class RobotsTxt
 
             return Parse(content, ProductTokenOf(httpClient));
         }
-        catch (HttpRequestException ex) when (ex.StatusCode is { } status)
+        // Only the site's own answer counts: a proxy that refuses the tunnel also carries a status
+        // (407, say) but sets HttpRequestError, and the site was never reached.
+        catch (HttpRequestException ex) when (ex.StatusCode is { } status && ex.HttpRequestError == HttpRequestError.Unknown)
         {
             // 429 is a 4xx, but it says "slow down", not "there is no file": read as unreachable.
             if (status != HttpStatusCode.TooManyRequests && (int)status < 500) return s_allowAll;
             return new RobotsTxt([], crawlDelay: null, new RagError.HttpFailed(status,
                 $"robots.txt at {robotsUrl} returned {(int)status}. RFC 9309 section 2.3.1.4 reads "
-                + $"that as disallow-all, so no page from {host} was crawled."));
+                + $"that as disallow-all for {host}, so its pages were skipped."));
         }
         catch (Exception ex) when (FetchFailure.IsSkippable(ex, ct))
         {
             return new RobotsTxt([], crawlDelay: null, new RagError.TransportFailed(new HttpRequestException(
                 $"robots.txt at {robotsUrl} could not be fetched. RFC 9309 section 2.3.1.4 reads "
-                + $"that as disallow-all, so no page from {host} was crawled.",
+                + $"that as disallow-all for {host}, so its pages were skipped.",
                 ex)));
         }
     }

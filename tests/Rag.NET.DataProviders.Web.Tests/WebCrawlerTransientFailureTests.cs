@@ -59,12 +59,18 @@ public sealed class WebCrawlerTransientFailureTests
     }
 
     /// <summary>Answers robots.txt with one status and every other URL with a page.</summary>
-    private sealed class RobotsStatusHandler(System.Net.HttpStatusCode robotsStatus) : HttpMessageHandler
+    private sealed class RobotsStatusHandler(System.Net.HttpStatusCode robotsStatus, string page = "<p>home</p>")
+        : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
-            Task.FromResult(string.Equals(request.RequestUri!.AbsolutePath, "/robots.txt", StringComparison.Ordinal)
+        public List<string> Requested { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Requested.Add(request.RequestUri!.ToString());
+            return Task.FromResult(string.Equals(request.RequestUri.AbsolutePath, "/robots.txt", StringComparison.Ordinal)
                 ? new HttpResponseMessage(robotsStatus)
-                : new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("<p>home</p>") });
+                : new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(page) });
+        }
     }
 
     /// <remarks>
@@ -113,9 +119,11 @@ public sealed class WebCrawlerTransientFailureTests
     [Fact]
     public async Task WithRespectRobotsTxtOff_AFailingRobotsTxtIsNeverFetched()
     {
+        var handler = new RobotsStatusHandler(System.Net.HttpStatusCode.ServiceUnavailable);
+
         var entries = await new WebCrawlerDataProvider(
                 "https://example.com/",
-                new HttpClient(new RobotsStatusHandler(System.Net.HttpStatusCode.ServiceUnavailable)),
+                new HttpClient(handler),
                 new WebCrawlerOptions { RespectRobotsTxt = false })
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -123,6 +131,43 @@ public sealed class WebCrawlerTransientFailureTests
         var entry = Assert.Single(entries);
         Assert.True(entry.IsSuccess);
         Assert.Equal("https://example.com", entry.Value.Id.Value);
+        Assert.DoesNotContain("https://example.com/robots.txt", handler.Requested, StringComparer.Ordinal);
+    }
+
+    /// <remarks>
+    /// With <see cref="WebCrawlerOptions.SameDomain"/> off the seed's robots.txt gates every host,
+    /// so an unreachable one stops the whole crawl, links to other hosts included.
+    /// </remarks>
+    [Fact]
+    public async Task AnUnreachableSeedRobotsTxt_StopsTheCrawl_EvenAcrossDomains()
+    {
+        var handler = new RobotsStatusHandler(
+            System.Net.HttpStatusCode.ServiceUnavailable, """<a href="https://other.example/page">x</a>""");
+
+        var entries = await new WebCrawlerDataProvider(
+                "https://example.com/",
+                new HttpClient(handler),
+                new WebCrawlerOptions { RespectRobotsTxt = true, SameDomain = false })
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(Assert.Single(entries).IsFailure);
+        Assert.Equal(["https://example.com/robots.txt"], handler.Requested);
+    }
+
+    [Fact]
+    public async Task CallerCancellationDuringTheRobotsFetch_StopsTheCrawl()
+    {
+        using var cts = new CancellationTokenSource();
+        var pages = new Dictionary<string, string>(StringComparer.Ordinal) { ["https://example.com/"] = "<p>home</p>" };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            _ = await new WebCrawlerDataProvider(
+                    "https://example.com/",
+                    new HttpClient(new CancellingHandler(pages, "https://example.com/robots.txt", cts)),
+                    new WebCrawlerOptions { RespectRobotsTxt = true })
+                .GetFilesAsync(cts.Token)
+                .ToListAsync(cts.Token));
     }
 
     [Fact]

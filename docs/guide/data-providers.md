@@ -704,11 +704,12 @@ names it. `Allow` and `Disallow` rules may use `*` and `$`. Each rule is matched
 case-sensitively against the path and query, and the longest match wins. Only the first 500 KiB
 of the file is read.
 
-A missing robots.txt (a 4xx other than 429) allows everything. A robots.txt that answers 5xx or
-429, or cannot be fetched at all, means the whole host is skipped, as RFC 9309 section 2.3.1.4
-requires. The provider reports that host once, as an `HttpFailed` or `TransportFailed` naming the
-robots.txt URL, and it ends up in `ProviderIngestionResult.Errors`. A run with that error does not
-run full cleanup, so an outage does not delete the documents an earlier run ingested from that host.
+A missing robots.txt (a 4xx other than 429, or a redirect chain `HttpClient` gives up on) allows
+everything. A robots.txt that answers 5xx or 429, or cannot be fetched at all, means the whole host
+is skipped, as RFC 9309 section 2.3.1.4 requires. The provider reports that host once, as an
+`HttpFailed` or `TransportFailed` naming the robots.txt URL, and it ends up in
+`ProviderIngestionResult.Errors`. A run with that error does not run full cleanup, so an outage does
+not delete the documents an earlier run ingested from that host.
 
 A site's `Crawl-delay` raises `MinimumRequestInterval` to its value, and never lowers it. The
 sitemap walker uses one interval for every host it visits, so a delay from one host slows the

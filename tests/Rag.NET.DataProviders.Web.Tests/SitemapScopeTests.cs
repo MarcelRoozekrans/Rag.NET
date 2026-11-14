@@ -217,6 +217,58 @@ public sealed class SitemapScopeTests
     }
 
     [Fact]
+    public async Task ARobotsTxtThatCannotBeFetched_ReportsTransportFailed()
+    {
+        var entries = await new SitemapDataProvider(SitemapUrl, new HttpClient(new ThrowingRobotsHandler(
+                new HttpRequestException("Connection refused"))))
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(entries);
+        Assert.IsType<RagError.TransportFailed>(entry.Error);
+    }
+
+    [Fact]
+    public async Task CallerCancellationDuringTheRobotsFetch_StopsTheWalk()
+    {
+        using var cts = new CancellationTokenSource();
+        var handler = new ThrowingRobotsHandler(new TaskCanceledException("Cancelled by the caller."), cts);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            _ = await new SitemapDataProvider(SitemapUrl, new HttpClient(handler))
+                .GetFilesAsync(cts.Token)
+                .ToListAsync(cts.Token));
+    }
+
+    [Fact]
+    public async Task WithRespectRobotsTxtOff_AFailingRobotsTxtIsNeverFetched()
+    {
+        var handler = new FakeHttpMessageHandler(
+            new Dictionary<string, string>(StringComparer.Ordinal) { [SitemapUrl] = Sitemap },
+            new Dictionary<string, HttpStatusCode>(StringComparer.Ordinal) { [RobotsUrl] = HttpStatusCode.ServiceUnavailable });
+
+        var urls = await UrlsAsync(new SitemapOptions { RespectRobotsTxt = false }, handler);
+
+        Assert.Equal(5, urls.Count);
+        Assert.Equal(1, handler.RequestCount); // the sitemap only; page bodies are fetched lazily
+    }
+
+    /// <summary>Serves <see cref="Sitemap"/>; robots.txt throws, cancelling the caller first if given.</summary>
+    private sealed class ThrowingRobotsHandler(Exception failure, CancellationTokenSource? cancel = null) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            if (string.Equals(request.RequestUri!.ToString(), RobotsUrl, StringComparison.Ordinal))
+            {
+                cancel?.Cancel();
+                throw failure;
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(Sitemap) });
+        }
+    }
+
+    [Fact]
     public async Task AnUnreachableHost_DoesNotStopTheOtherHost()
     {
         const string twoHosts = """

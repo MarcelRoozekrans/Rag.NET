@@ -63,7 +63,7 @@ public sealed class RobotsTxtLoadTests
         Assert.False(robots.IsDisallowed("https://example.com/a"));
     }
 
-    public static TheoryData<string> NoResponseKinds => ["no-status", "io", "timeout"];
+    public static TheoryData<string> NoResponseKinds => ["no-status", "io", "timeout", "proxy-tunnel"];
 
     [Theory]
     [MemberData(nameof(NoResponseKinds))]
@@ -73,6 +73,9 @@ public sealed class RobotsTxtLoadTests
         {
             "no-status" => new HttpRequestException("Name or service not known"),
             "io" => new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely."),
+            // A proxy that refuses the CONNECT carries its status, but the site never answered.
+            "proxy-tunnel" => new HttpRequestException(
+                HttpRequestError.ProxyTunnelError, "The proxy tunnel request failed.", statusCode: HttpStatusCode.ProxyAuthenticationRequired),
             _ => new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout."),
         };
 
