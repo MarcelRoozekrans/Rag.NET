@@ -84,7 +84,7 @@ easy to misread a stale green tick as covering the latest commit.
 
 ## The secrets overlay
 
-Eight projects contain tests that need credentials or large local assets:
+Nine projects contain tests that need credentials or large local assets:
 
 | Project | Reads | Where the value comes from |
 |---|---|---|
@@ -96,6 +96,7 @@ Eight projects contain tests that need credentials or large local assets:
 | `Rag.NET.Parsers.Audio.Tests` | `RAGNET_WHISPER_MODEL_DIR` | a local cache directory, **not a secret**; supplied by the fenced Whisper procedure below |
 | `Rag.NET.Parsers.Vision.IntegrationTests` | `OPENROUTER_API_KEY` | repository secret, already configured for the LLM tier and now supplied here too — see below |
 | `Rag.NET.Parsers.Pdf.Tests` | `RAGNET_TESSDATA` | repository secret in the nightly (where it reaches nothing — see below); supplied locally by the fenced OCR procedure below |
+| `Rag.NET.Reranking.Onnx.Tests` | `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB` for the English telemetry test, plus `RAGNET_ONNX_RERANK_TOKENIZER` and `RAGNET_ONNX_RERANK_XLMR_MODEL` | never supplied by any job; provisionable by the fenced XLM-RoBERTa procedure below |
 
 Each of those tests calls `Assert.Skip` when its variable is absent, so the projects are safe
 anywhere and skip on a normal developer machine. They declare
@@ -494,6 +495,33 @@ echo "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3  $dir/voc
 RAGNET_ONNX_RERANK_MODEL="$dir/model.onnx" RAGNET_ONNX_RERANK_VOCAB="$dir/vocab.txt" \
 RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
   -method "*UnderCrossEncoderRerank*"   # every dataset; see "Selecting one dataset"
+```
+
+**The XLM-RoBERTa reranker tests need two more downloads, which no workflow provisions.** The
+Dutch ranking check and the SentencePiece tokenizer parity check in `Rag.NET.Reranking.Onnx.Tests`
+read `RAGNET_ONNX_RERANK_XLMR_MODEL` and `RAGNET_ONNX_RERANK_TOKENIZER`. CI does not provision them:
+the model is about 2.3 GB, and no unattended job reads it. `model.onnx` keeps its weights in
+`model.onnx.data`, so both files must sit in the same directory. If a checksum fails, do **not**
+edit the checksum to match — check whether upstream republished the revision first.
+
+```bash
+# BAAI/bge-reranker-v2-m3 (tokenizer) and EmbeddedLLM/bge-reranker-v2-m3-onnx-o3-cpu (model),
+# pinned (recorded 2026-11-14: the revisions are the commits the tests were written against; each
+# SHA-256 is the Git LFS oid from the HF tree API, and matched a local sha256sum of the downloaded
+# file).
+tok_revision=953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
+model_revision=c46cc14e4748b2332899dfe5e6dcd4750caf7cef
+dir="$RAGNET_MODELS_DIR/bge-reranker-v2-m3"
+mkdir -p "$dir"
+curl -fsSL -o "$dir/sentencepiece.bpe.model" "https://huggingface.co/BAAI/bge-reranker-v2-m3/resolve/$tok_revision/sentencepiece.bpe.model"
+curl -fsSL -o "$dir/model.onnx"      "https://huggingface.co/EmbeddedLLM/bge-reranker-v2-m3-onnx-o3-cpu/resolve/$model_revision/model.onnx"
+curl -fsSL -o "$dir/model.onnx.data" "https://huggingface.co/EmbeddedLLM/bge-reranker-v2-m3-onnx-o3-cpu/resolve/$model_revision/model.onnx.data"
+echo "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865  $dir/sentencepiece.bpe.model" | sha256sum -c -
+echo "0308488c0748152186d6bfb3bfc9589175211cfbe45ffcec909dd4465848eeaa  $dir/model.onnx"      | sha256sum -c -
+echo "84b66c787b9b98977a16d5c993a3959210a214c98fc3466da263c949c2068945  $dir/model.onnx.data" | sha256sum -c -
+
+RAGNET_ONNX_RERANK_TOKENIZER="$dir/sentencepiece.bpe.model" RAGNET_ONNX_RERANK_XLMR_MODEL="$dir/model.onnx" \
+  dotnet test tests/Rag.NET.Reranking.Onnx.Tests -c Release
 ```
 
 **The SPLADE cell needs a second model, which the nightly also does not provision** — for the reason
