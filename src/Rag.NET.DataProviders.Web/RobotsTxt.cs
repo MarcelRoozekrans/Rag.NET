@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Net;
+using Rag.NET.Models;
 
 namespace Rag.NET.DataProviders.Web;
 
@@ -19,6 +21,13 @@ namespace Rag.NET.DataProviders.Web;
 /// matched case-sensitively against the URL's path and query; the longest matching rule wins,
 /// and <c>allow</c> wins a tie. <c>/robots.txt</c> itself is always allowed.
 /// </para>
+/// <para>
+/// How the fetch went decides what applies (RFC 9309 section 2.3, #998). A file that downloads
+/// is parsed, up to its first 500 KiB. A 4xx, or a 3xx left after <see cref="HttpClient"/> stops
+/// following redirects, means the file is unavailable, and everything is allowed. A 5xx, a 429 or
+/// no response at all means it is unreachable: every URL on the host is disallowed, and
+/// <see cref="Unreachable"/> carries the error the provider reports for that host.
+/// </para>
 /// </remarks>
 internal sealed class RobotsTxt
 {
@@ -28,13 +37,27 @@ internal sealed class RobotsTxt
 
     private static readonly RobotsTxt s_allowAll = new([], crawlDelay: null);
 
+    /// <summary>
+    /// How many bytes of a robots.txt are parsed. RFC 9309 section 2.5 asks for a limit of at
+    /// least 500 KiB; this is exactly that.
+    /// </summary>
+    internal const int ParseLimitBytes = 500 * 1024;
+
     private readonly IReadOnlyList<Rule> _rules;
 
-    private RobotsTxt(IReadOnlyList<Rule> rules, TimeSpan? crawlDelay)
+    private RobotsTxt(IReadOnlyList<Rule> rules, TimeSpan? crawlDelay, RagError? unreachable = null)
     {
         _rules = rules;
         CrawlDelay = crawlDelay;
+        Unreachable = unreachable;
     }
+
+    /// <summary>
+    /// Why the robots.txt could not be reached, or <see langword="null"/> when it could. When set,
+    /// <see cref="IsDisallowed"/> disallows every URL (RFC 9309 section 2.3.1.4), and the provider
+    /// reports this error once for the host so the run shows what it skipped.
+    /// </summary>
+    internal RagError? Unreachable { get; }
 
     /// <summary>
     /// The largest valid <c>crawl-delay</c> in the applicable groups, or <see langword="null"/>.
@@ -61,20 +84,43 @@ internal sealed class RobotsTxt
     }
 
     /// <summary>
-    /// Fetches <c>/robots.txt</c> for <paramref name="origin"/>'s scheme, host and port.
-    /// A missing, unreachable, broken-off or timed-out file allows everything.
+    /// Fetches <c>/robots.txt</c> for <paramref name="origin"/>'s scheme, host and port. A 4xx
+    /// allows everything. A 5xx, a 429, or a request that fails, breaks off or times out
+    /// disallows everything and sets <see cref="Unreachable"/>. The caller's own cancellation
+    /// propagates.
     /// </summary>
     public static async Task<RobotsTxt> LoadAsync(HttpClient httpClient, Uri origin, CancellationToken ct)
     {
+        var robotsUrl = new Uri(origin, "/robots.txt").ToString();
+        var host = origin.GetLeftPart(UriPartial.Authority);
         try
         {
-            var robotsUrl = new Uri(origin, "/robots.txt").ToString();
-            var content = await httpClient.GetStringWithCharsetFallbackAsync(robotsUrl, ct).ConfigureAwait(false);
+            var (content, truncated) = await httpClient
+                .GetTextPrefixWithCharsetFallbackAsync(robotsUrl, ParseLimitBytes, ct)
+                .ConfigureAwait(false);
+            if (truncated)
+            {
+                // The last line was cut at the limit; applied shortened, it would be a different rule.
+                var end = content.LastIndexOfAny(s_lineEnds);
+                content = end < 0 ? string.Empty : content[..(end + 1)];
+            }
+
             return Parse(content, ProductTokenOf(httpClient));
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode is { } status)
+        {
+            // 429 is a 4xx, but it says "slow down", not "there is no file": read as unreachable.
+            if (status != HttpStatusCode.TooManyRequests && (int)status < 500) return s_allowAll;
+            return new RobotsTxt([], crawlDelay: null, new RagError.HttpFailed(status,
+                $"robots.txt at {robotsUrl} returned {(int)status}. RFC 9309 section 2.3.1.4 reads "
+                + $"that as disallow-all, so no page from {host} was crawled."));
         }
         catch (Exception ex) when (FetchFailure.IsSkippable(ex, ct))
         {
-            return s_allowAll;
+            return new RobotsTxt([], crawlDelay: null, new RagError.TransportFailed(new HttpRequestException(
+                $"robots.txt at {robotsUrl} could not be fetched. RFC 9309 section 2.3.1.4 reads "
+                + $"that as disallow-all, so no page from {host} was crawled.",
+                ex)));
         }
     }
 
@@ -199,6 +245,7 @@ internal sealed class RobotsTxt
     /// <summary>Whether the applicable rules disallow <paramref name="url"/>.</summary>
     public bool IsDisallowed(string url)
     {
+        if (Unreachable is not null) return true;
         if (_rules.Count == 0) return false;
 
         // Never empty: an absolute URI with no path reports "/".
