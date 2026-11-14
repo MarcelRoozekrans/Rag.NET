@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-11-14. **Next:** #944, which needs the operator's wire-format decision
+**Last updated:** 2026-11-14, after v1.8.0. **Next:** #944, which needs the operator's wire-format decision
 first. Otherwise take #926 or #927.
 
 **Merged on 2026-11-14 at the operator's request**, each squash-merged after a fresh green run on
@@ -15,7 +15,7 @@ an up-to-date branch:
   hardening decorator. `Rag.NET.E2ETests` (RequiresLlm, nightly only) was not run locally: CPU
   Ollama ran at 0.5 tokens/s on the agents host.
 - **#973** (StefH, `feat(azureaisearch)`: TokenCredential auth) as f1ab2c4f. Being a `feat`, it
-  turns the pending release from 1.7.1 into 1.8.0.
+  made the release 1.8.0 instead of 1.7.1.
 - **#983** (closes #948) was merged by the operator on 2026-11-13 as 1923f5d1; its `fix:` is in the
   release PR's changelog. #965 merged through Renovate.
 
@@ -34,11 +34,10 @@ prerelease label, makes it skip instead. A skipped run validates nothing. Before
 suite, delete `artifacts/packages` and repack with the GitVersion SemVer: the test reads every
 `.nupkg` in that directory, so packages left from an earlier pack fail it.
 
-**v1.7.0 was never published.** Its release run failed on NU1902 (GHSA-6527-9fp8-r4x6 in
-`Microsoft.AspNetCore.WebUtilities` <= 2.3.13), fixed by **#976**. The next release ships those
-changes, including the net11.0 target from #961. The operator asked for the release PR to be
-merged last, after the PRs above; then watch the release run and confirm that `publish-nuget`
-succeeds. Report a failure with its log lines; do not re-run it.
+**v1.8.0 is released (2026-11-14).** Release PR #977 merged last, at the operator's request, as
+90c0594b. The release run (CI run 43558431072, tag v1.8.0) passed and `publish-nuget` pushed every
+package. It ships #973, #983, #985, #976 and #986, and the net11.0 target from #961. v1.7.0 was
+never published: its release run failed on NU1902, which #976 fixed.
 
 **#987** tracks five Dependabot alerts in the docs site's npm dependencies (two critical, in
 `tinypool` via `@docusaurus/core`). Build-time only; no shipped package contains them.
