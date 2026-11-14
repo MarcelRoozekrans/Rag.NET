@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.8.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.7.0...v1.8.0) (2026-11-14)
+
+
+### Features
+
+* **azureaisearch:** support TokenCredential authentication ([#973](https://github.com/MarcelRoozekrans/Rag.NET/issues/973)) ([f1ab2c4](https://github.com/MarcelRoozekrans/Rag.NET/commit/f1ab2c4f4bb65307a2b390b97ea09474afdd7d16))
+
+
+### Bug Fixes
+
+* **deps:** update dependency langchain-core to v1.7.7 ([#986](https://github.com/MarcelRoozekrans/Rag.NET/issues/986)) ([ddcda7a](https://github.com/MarcelRoozekrans/Rag.NET/commit/ddcda7a704cca7271cf53120132f8533d83a66f0))
+* **retrieval:** fail a query when a call is refused, instead of answering it degraded ([#983](https://github.com/MarcelRoozekrans/Rag.NET/issues/983)) ([1923f5d](https://github.com/MarcelRoozekrans/Rag.NET/commit/1923f5d1745d760c5575594fb753c64eba891132))
+* **security:** keep every RagOptions property through prompt hardening ([#985](https://github.com/MarcelRoozekrans/Rag.NET/issues/985)) ([13ea324](https://github.com/MarcelRoozekrans/Rag.NET/commit/13ea32479d43e6ddff375a5d85562bc2566ba3be)), closes [#945](https://github.com/MarcelRoozekrans/Rag.NET/issues/945)
+* **security:** stop shipping a vulnerable WebUtilities with Security.AspNetCore ([#976](https://github.com/MarcelRoozekrans/Rag.NET/issues/976)) ([1c304fc](https://github.com/MarcelRoozekrans/Rag.NET/commit/1c304fc224cb765709884fae881a06966e1921fb))
+
 ## [1.7.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.6.0...v1.7.0) (2026-11-11)
 
 
