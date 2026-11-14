@@ -82,6 +82,24 @@ public sealed class RobotsTxtTests
     }
 
     [Fact]
+    public void RecordValues_KeepANonBreakingSpace()
+    {
+        // RFC 9309 section 2.2 trims only spaces and tabs around a value. U+00A0 is a path
+        // character, so this Allow names "/private " and must not tie with the Disallow.
+        const string robots = "User-agent: *\nDisallow: /private\nAllow: /private \n";
+
+        Assert.True(Blocked(robots, "/private/report"));
+        Assert.False(Blocked(robots, "/private%C2%A0"));
+    }
+
+    [Fact]
+    public void RecordValues_LoseSurroundingSpacesAndTabs()
+    {
+        const string robots = "User-agent: *\nDisallow:\t /x \t\n";
+        Assert.True(Blocked(robots, "/x"));
+    }
+
+    [Fact]
     public void MatchingIsCaseSensitive()
     {
         const string robots = "User-agent: *\nDisallow: /Private\n";

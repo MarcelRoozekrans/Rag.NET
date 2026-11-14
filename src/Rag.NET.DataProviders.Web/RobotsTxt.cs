@@ -24,6 +24,7 @@ internal sealed class RobotsTxt
 {
     /// <summary>RFC 9309 2.2 ends a line at CR, LF or CRLF; the empty piece a CRLF leaves is skipped.</summary>
     private static readonly char[] s_lineEnds = ['\r', '\n'];
+    private static readonly char[] s_recordWhitespace = [' ', '\t'];
 
     private static readonly RobotsTxt s_allowAll = new([], crawlDelay: null);
 
@@ -170,7 +171,9 @@ internal sealed class RobotsTxt
         }
 
         key = text[..colon].Trim();
-        value = text[(colon + 1)..].Trim();
+        // Only spaces and tabs are record whitespace (RFC 9309 section 2.2). String.Trim() would
+        // also strip U+00A0 and other Unicode spaces, which are valid path-pattern characters.
+        value = text[(colon + 1)..].Trim(s_recordWhitespace);
         return key.Length > 0;
     }
 
