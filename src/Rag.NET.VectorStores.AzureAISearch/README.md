@@ -26,7 +26,8 @@ the `AddRagNet(...)` builder the store registers into.
 ## Setup
 
 Inside your `AddRagNet(...)` builder callback — the credential is an `AzureKeyCredential`
-(from Azure.Core, referenced transitively via Azure.Search.Documents):
+or a `TokenCredential` (Microsoft Entra ID, e.g. managed identity), both from Azure.Core,
+referenced transitively via Azure.Search.Documents:
 
 ```csharp
 using Rag.NET.AzureAISearch;
@@ -37,6 +38,25 @@ rag.UseAzureAISearch(
     credential:       searchCredential,
     vectorDimensions: 1536);
 ```
+
+With Microsoft Entra ID, pass any `TokenCredential`, such as `DefaultAzureCredential` from the
+`Azure.Identity` package:
+
+```csharp
+rag.UseAzureAISearch(
+    endpoint:         new Uri("https://my-search.search.windows.net"),
+    indexName:        "my-rag-index",
+    credential:       tokenCredential,
+    vectorDimensions: 1536);
+```
+
+Token authentication needs two things on the Azure side:
+
+- The search service accepts tokens. Under **Settings → Keys**, API access control must be
+  *Role-based access control* or *Both*. The default is API keys only, and then every token
+  request is refused, whatever roles are assigned.
+- The identity holds *Search Index Data Contributor*, to read and write documents, and *Search
+  Service Contributor*, because the store creates or updates its index on first use.
 
 ## Example
 

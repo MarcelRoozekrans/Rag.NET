@@ -212,6 +212,8 @@ services.AddRagNet(rag => rag
         vectorDimensions: 1536));
 ```
 
+The credential can also be a `TokenCredential` (e.g. `new DefaultAzureCredential()`) for Microsoft Entra ID authentication.
+
 ## Configuration
 
 ### Chunking Options
