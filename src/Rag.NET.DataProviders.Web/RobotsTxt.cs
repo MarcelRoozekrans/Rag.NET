@@ -325,6 +325,9 @@ internal sealed class RobotsTxt
     /// <param name="Anchored">Whether the value ended in <c>$</c>.</param>
     private sealed record Rule(bool Allow, string Pattern, bool Anchored)
     {
+        /// <summary>The pattern cut at every <c>*</c>; one piece when it has none.</summary>
+        private readonly string[] _segments = Pattern.Split('*');
+
         /// <summary>The octets the rule has, for "the most specific match" (2.2.2).</summary>
         public int Length => Pattern.Length + (Anchored ? 1 : 0);
 
@@ -337,41 +340,34 @@ internal sealed class RobotsTxt
 
         /// <summary>
         /// Whether the rule matches from the first octet of <paramref name="target"/>: to its end
-        /// when anchored, else as a prefix. An iterative wildcard walk that retries from the last
-        /// <c>*</c> on a mismatch: no recursion, at most target-times-pattern steps.
+        /// when anchored, else as a prefix.
         /// </summary>
+        /// <remarks>
+        /// The first piece must start the target. Each middle piece is found at its leftmost
+        /// place after the one before: for <c>*</c> alone that is never wrong, because the
+        /// leftmost place leaves the most room for the rest. The last piece then ends the target
+        /// when anchored, or occurs anywhere after when not. Each piece is one ordinal search,
+        /// so 1,000 hostile rules no longer cost seconds per URL as the backtracking walk this
+        /// replaced did (#998).
+        /// </remarks>
         public bool Matches(string target)
         {
-            int t = 0, p = 0, star = -1, resume = 0;
-            while (t < target.Length)
+            var first = _segments[0];
+            if (!target.StartsWith(first, StringComparison.Ordinal)) return false;
+            if (_segments.Length == 1) return !Anchored || target.Length == first.Length;
+
+            var position = first.Length;
+            for (var i = 1; i < _segments.Length - 1; i++)
             {
-                if (p < Pattern.Length && Pattern[p] == '*')
-                {
-                    star = p++;
-                    resume = t;
-                }
-                else if (p < Pattern.Length && Pattern[p] == target[t])
-                {
-                    p++;
-                    t++;
-                }
-                else if (!Anchored && p == Pattern.Length)
-                {
-                    return true;
-                }
-                else if (star >= 0)
-                {
-                    p = star + 1;
-                    t = ++resume;
-                }
-                else
-                {
-                    return false;
-                }
+                var found = target.IndexOf(_segments[i], position, StringComparison.Ordinal);
+                if (found < 0) return false;
+                position = found + _segments[i].Length;
             }
 
-            while (p < Pattern.Length && Pattern[p] == '*') p++;
-            return p == Pattern.Length;
+            var last = _segments[^1];
+            return Anchored
+                ? target.Length - last.Length >= position && target.EndsWith(last, StringComparison.Ordinal)
+                : target.IndexOf(last, position, StringComparison.Ordinal) >= 0;
         }
     }
 

@@ -35,6 +35,11 @@ The operator chose to follow the RFC and to report the host that was skipped (20
 - **Parse at most 500 KiB (2.5).** Only the first 512,000 bytes of the body are read. If the file
   is longer, the partial last line is dropped, so a rule that was cut off is never applied in its
   shortened form.
+- **Bound the matching cost.** The issue's comment measured about 27 s per URL for 1,000 rules
+  like `/*aaa…ab` against an 8,000-character URL, and that fits inside the 500 KiB limit. The
+  backtracking wildcard walk is replaced by a segment matcher: split the rule at `*` and find
+  each piece left to right with an ordinal search. A test holds two hostile shapes under one
+  second. Added 2026-11-14 at the operator's choice, after review found the item still open.
 
 ## Why reporting is required
 
