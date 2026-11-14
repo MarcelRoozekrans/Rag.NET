@@ -17,6 +17,13 @@ public sealed class WebCrawlerOptions
     /// <summary>
     /// Fetch <c>/robots.txt</c> and skip disallowed paths. Default: <see langword="true"/>.
     /// </summary>
+    /// <remarks>
+    /// Read per RFC 9309: the group naming the product token of the <see cref="HttpClient"/>'s
+    /// default <c>User-Agent</c> applies, else the <c>User-agent: *</c> group. <c>Allow</c> and
+    /// <c>Disallow</c> rules may use <c>*</c> and <c>$</c>; each is matched case-sensitively against
+    /// the path and query, and the longest match wins. A <c>Crawl-delay</c> raises
+    /// <see cref="MinimumRequestInterval"/> and never lowers it.
+    /// </remarks>
     public bool RespectRobotsTxt { get; init; } = true;
 
     /// <summary>
@@ -43,5 +50,9 @@ public sealed class WebCrawlerOptions
     /// included. Default <see cref="TimeSpan.Zero"/>: no spacing. Negative values are rejected at
     /// construction.
     /// </summary>
+    /// <remarks>
+    /// With <see cref="RespectRobotsTxt"/> on, a longer <c>Crawl-delay</c> in the site's robots.txt
+    /// takes over from this value; a shorter one is ignored.
+    /// </remarks>
     public TimeSpan MinimumRequestInterval { get; init; } = TimeSpan.Zero;
 }

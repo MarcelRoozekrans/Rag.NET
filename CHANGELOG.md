@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.8.2](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.8.1...v1.8.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **web:** read robots.txt per RFC 9309 section 2.2 and honour Crawl-delay ([#999](https://github.com/MarcelRoozekrans/Rag.NET/issues/999)) ([ffa4f24](https://github.com/MarcelRoozekrans/Rag.NET/commit/ffa4f24d4cc15f667697c03815d8fb0c1e2cd563))
+
+## [1.8.1](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.8.0...v1.8.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** update Microsoft.ML.Tokenizers to 3.0.0 and lift the 2.x hold ([#994](https://github.com/MarcelRoozekrans/Rag.NET/issues/994)) ([d98e80d](https://github.com/MarcelRoozekrans/Rag.NET/commit/d98e80d451ee8500dd7e3773c00b60a5c92145cf))
+
 ## [1.8.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.7.0...v1.8.0) (2026-11-14)
 
 

@@ -35,4 +35,12 @@
     <AdditionalFiles Include="BannedSymbols.txt" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- RobotsTxtTests drive RobotsTxt.Parse directly: the RFC 9309 cases are about the parser,
+         and reaching each one through a crawl would bury it under HTTP setup. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.DataProviders.Web.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>
