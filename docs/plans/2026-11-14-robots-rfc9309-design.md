@@ -55,7 +55,11 @@ RFC 9309 section 2.2, and `Crawl-delay` gets the meaning the issue asks for.
 ## Anti-goals
 
 - Fetching a page the applicable group disallows, or skipping one it allows, for any of the
-  examples in RFC 9309 sections 2.2.1 to 2.2.3.
+  examples in RFC 9309 sections 2.2.1 to 2.2.3, with one exception. Figure 4's second row
+  (`/foo/bar?baz=https://foo.bar` against `https%3A%2F%2Ffoo.bar`) asks for reserved characters
+  inside a query value to be encoded, which contradicts keeping `%2F` distinct from `/`
+  above. Reserved escapes stay distinct, as in Google's reference parser. (Implementer's
+  ruling during the final review, 2026-11-14; the operator may overrule it.)
 - A `Crawl-delay` making requests faster than `MinimumRequestInterval`.
 - A matcher whose running time explodes on rules with many `*` (no backtracking regex).
 

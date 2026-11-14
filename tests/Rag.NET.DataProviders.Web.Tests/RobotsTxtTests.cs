@@ -256,7 +256,9 @@ public sealed class RobotsTxtTests
     [Fact]
     public void CrawlDelay_IsReadFromTheApplicableGroup()
     {
-        const string robots = "User-agent: *\nCrawl-delay: 5\n\nUser-agent: MyBot\nCrawl-delay: 0.5\n";
+        // Each group has a rule: Crawl-delay alone does not end a run of user-agent lines.
+        const string robots =
+            "User-agent: *\nDisallow: /a\nCrawl-delay: 5\n\nUser-agent: MyBot\nDisallow: /b\nCrawl-delay: 0.5\n";
 
         Assert.Equal(TimeSpan.FromSeconds(0.5), RobotsTxt.Parse(robots, "MyBot").CrawlDelay);
         Assert.Equal(TimeSpan.FromSeconds(5), RobotsTxt.Parse(robots, null).CrawlDelay);
@@ -286,5 +288,37 @@ public sealed class RobotsTxtTests
 
         Assert.Equal(RobotsTxt.LongestCrawlDelay, delay);
         Assert.True(RobotsTxt.LongestCrawlDelay >= TimeSpan.FromDays(49));
+    }
+
+    // ── Review fixes ────────────────────────────────────────────────────────
+
+    /// <remarks>Crawl-delay is not an RFC 9309 record, so by 2.2.4 it must not split a run of
+    /// user-agent lines into two groups.</remarks>
+    [Fact]
+    public void CrawlDelay_DoesNotEndARunOfUserAgentLines()
+    {
+        const string robots = "User-agent: MyBot\nCrawl-delay: 5\nUser-agent: OtherBot\nDisallow: /private\n";
+
+        Assert.True(Blocked(robots, "/private", "MyBot"));
+        Assert.Equal(TimeSpan.FromSeconds(5), RobotsTxt.Parse(robots, "OtherBot").CrawlDelay);
+    }
+
+    [Fact]
+    public void BareCarriageReturns_EndLines()
+    {
+        Assert.True(Blocked("User-agent: *\rDisallow: /p\r", "/p"));
+    }
+
+    [Fact]
+    public void StarFollowedByAName_IsNotTheStarGroup()
+    {
+        const string robots = "User-agent: *bot\nDisallow: /\n";
+        Assert.False(Blocked(robots, "/a"));
+    }
+
+    [Fact]
+    public void StarFollowedByAComment_IsTheStarGroup()
+    {
+        Assert.True(Blocked("User-agent: *# everyone\nDisallow: /a\n", "/a"));
     }
 }

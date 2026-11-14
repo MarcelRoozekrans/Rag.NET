@@ -22,6 +22,9 @@ namespace Rag.NET.DataProviders.Web;
 /// </remarks>
 internal sealed class RobotsTxt
 {
+    /// <summary>RFC 9309 2.2 ends a line at CR, LF or CRLF; the empty piece a CRLF leaves is skipped.</summary>
+    private static readonly char[] s_lineEnds = ['\r', '\n'];
+
     private static readonly RobotsTxt s_allowAll = new([], crawlDelay: null);
 
     private readonly IReadOnlyList<Rule> _rules;
@@ -84,7 +87,7 @@ internal sealed class RobotsTxt
         Group? current = null;
         var lastWasAgent = false;
 
-        foreach (var rawLine in content.Split('\n'))
+        foreach (var rawLine in content.Split(s_lineEnds))
         {
             if (!TryReadRecord(rawLine, out var key, out var value)) continue;
 
@@ -113,7 +116,7 @@ internal sealed class RobotsTxt
 
             if (key.Equals("crawl-delay", StringComparison.OrdinalIgnoreCase))
             {
-                lastWasAgent = false;
+                // Not an RFC 9309 record, so it must not split a run of user-agent lines (2.2.4).
                 if (current is not null
                     && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
                     && !double.IsNaN(seconds) && seconds >= 0)
@@ -177,7 +180,11 @@ internal sealed class RobotsTxt
     /// </summary>
     private static string AgentName(string value)
     {
-        if (value.StartsWith('*')) return "*";
+        if (value.StartsWith('*'))
+        {
+            // Only a bare * is the wildcard agent; "*bot" names no agent this file can mean.
+            return value.Length == 1 || !IsTokenChar(value[1]) ? "*" : string.Empty;
+        }
 
         var end = 0;
         while (end < value.Length && IsTokenChar(value[end])) end++;
@@ -191,8 +198,8 @@ internal sealed class RobotsTxt
     {
         if (_rules.Count == 0) return false;
 
+        // Never empty: an absolute URI with no path reports "/".
         var pathAndQuery = new Uri(url).PathAndQuery;
-        if (pathAndQuery.Length == 0) pathAndQuery = "/";
         if (string.Equals(pathAndQuery, "/robots.txt", StringComparison.Ordinal)) return false;
 
         var target = Normalise(pathAndQuery, isPattern: false);
