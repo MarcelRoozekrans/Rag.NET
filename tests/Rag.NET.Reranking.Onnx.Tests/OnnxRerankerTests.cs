@@ -65,4 +65,134 @@ public class OnnxRerankerTests
             File.Delete(tempModel);
         }
     }
+
+    [Fact]
+    public void Constructor_WhenBothVocabPathAndTokenizerPathAreSet_ThrowsArgumentException()
+    {
+        var options = new OnnxRerankerOptions
+        {
+            ModelPath = "nonexistent/model.onnx",
+            VocabPath = "nonexistent/vocab.txt",
+            TokenizerPath = "nonexistent/sentencepiece.bpe.model",
+        };
+
+        var ex = Assert.Throws<ArgumentException>(() => new OnnxReranker(options));
+        Assert.Contains("VocabPath", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("TokenizerPath", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("", null)]
+    [InlineData(" ", null)]
+    [InlineData("", "")]
+    [InlineData(" ", "")]
+    public void Constructor_WhenNeitherVocabPathNorTokenizerPathIsSet_ThrowsArgumentException(
+        string vocabPath, string? tokenizerPath)
+    {
+        var options = new OnnxRerankerOptions
+        {
+            ModelPath = "nonexistent/model.onnx",
+            VocabPath = vocabPath,
+            TokenizerPath = tokenizerPath,
+        };
+
+        var ex = Assert.Throws<ArgumentException>(() => new OnnxReranker(options));
+        Assert.Contains("VocabPath", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("TokenizerPath", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Constructor_WhenTokenizerPathIsWhitespace_UsesVocabPath()
+    {
+        var tempModel = Path.GetTempFileName();
+        try
+        {
+            var options = new OnnxRerankerOptions
+            {
+                ModelPath = tempModel,
+                VocabPath = "nonexistent/vocab.txt",
+                TokenizerPath = "   ",
+            };
+
+            var ex = Assert.Throws<FileNotFoundException>(() => new OnnxReranker(options));
+            Assert.Equal("nonexistent/vocab.txt", ex.FileName);
+        }
+        finally
+        {
+            File.Delete(tempModel);
+        }
+    }
+
+    /// <summary>
+    /// The XLM-RoBERTa feed reserves four positions (&lt;s&gt;, two &lt;/s&gt; between the segments, one closing),
+    /// so a MaxLength the BERT path accepts can still be too small for it.
+    /// </summary>
+    [Fact]
+    public void Constructor_WhenMaxLengthCannotHoldTheXlmRobertaSpecialTokens_ThrowsArgumentOutOfRangeException()
+    {
+        var options = new OnnxRerankerOptions
+        {
+            ModelPath = "nonexistent/model.onnx",
+            TokenizerPath = "nonexistent/sentencepiece.bpe.model",
+            MaxLength = 4,
+        };
+
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new OnnxReranker(options));
+        Assert.Contains("MaxLength", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Constructor_WhenMaxLengthIsFourOnTheBertPath_PassesTheLengthCheck()
+    {
+        var options = new OnnxRerankerOptions
+        {
+            ModelPath = "nonexistent/model.onnx",
+            VocabPath = "nonexistent/vocab.txt",
+            MaxLength = 4,
+        };
+
+        Assert.Throws<FileNotFoundException>(() => new OnnxReranker(options));
+    }
+
+    [Fact]
+    public void Constructor_WhenTokenizerPathDoesNotExist_ThrowsFileNotFoundException()
+    {
+        var tempModel = Path.GetTempFileName();
+        try
+        {
+            var options = new OnnxRerankerOptions
+            {
+                ModelPath = tempModel,
+                TokenizerPath = "nonexistent/sentencepiece.bpe.model",
+            };
+
+            var ex = Assert.Throws<FileNotFoundException>(() => new OnnxReranker(options));
+            Assert.Equal("nonexistent/sentencepiece.bpe.model", ex.FileName);
+        }
+        finally
+        {
+            File.Delete(tempModel);
+        }
+    }
+
+    [Fact]
+    public void Constructor_WhenTokenizerPathIsNotASentencePieceModel_ThrowsInvalidDataException()
+    {
+        var tempModel = Path.GetTempFileName();
+        var tempTokenizer = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(tempTokenizer, "{}");
+            var options = new OnnxRerankerOptions { ModelPath = tempModel, TokenizerPath = tempTokenizer };
+
+            var ex = Assert.Throws<InvalidDataException>(() => new OnnxReranker(options));
+            Assert.Contains("TokenizerPath", ex.Message, StringComparison.Ordinal);
+            Assert.Contains(tempTokenizer, ex.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(tempModel);
+            File.Delete(tempTokenizer);
+        }
+    }
 }

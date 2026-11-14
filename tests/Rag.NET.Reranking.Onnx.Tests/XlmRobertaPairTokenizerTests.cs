@@ -32,6 +32,19 @@ public sealed class XlmRobertaPairTokenizerTests
     public void BuildFeed_WithAnEmptyQuery_StillProducesAValidFeed()
         => Assert.Equal([0L, 2, 2, 21, 2], XlmRobertaPairTokenizer.BuildFeed([], [20], 512).InputIds);
 
+    [Fact]
+    public void BuildFeed_WithAShortQueryAndALongPassage_KeepsTheQueryWholeAndTruncatesThePassage()
+    {
+        var passage = Enumerable.Range(100, 1000).ToArray();
+
+        var ids = XlmRobertaPairTokenizer.BuildFeed([10, 11, 12], passage, maxLength: 16).InputIds;
+
+        // 16 positions less the 4 special tokens leaves 12; the query keeps its 3, the passage gets 9.
+        Assert.Equal(
+            [0L, 11, 12, 13, 2, 2, 101, 102, 103, 104, 105, 106, 107, 108, 109, 2],
+            ids);
+    }
+
     [Theory]
     [InlineData(5)]
     [InlineData(6)]

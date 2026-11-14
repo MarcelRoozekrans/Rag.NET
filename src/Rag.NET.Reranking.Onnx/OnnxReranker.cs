@@ -8,32 +8,100 @@ namespace Rag.NET.Reranking.Onnx;
 
 public sealed class OnnxReranker : IReranker, IDisposable
 {
+    private static readonly string[] SuppliedInputs = ["input_ids", "attention_mask", "token_type_ids"];
+
     private readonly InferenceSession _session;
     private readonly OnnxRerankerOptions _options;
-    private readonly CrossEncoderPairTokenizer _tokenizer;
+    private readonly IPairTokenizer _tokenizer;
+    private readonly bool _feedsAttentionMask;
+    private readonly bool _feedsTokenTypeIds;
 
     public OnnxReranker(OnnxRerankerOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        // Before the file checks, so the message names the option rather than a missing file.
-        if (options.MaxLength <= CrossEncoderPairTokenizer.SpecialTokensPerPair)
-        {
-            throw new ArgumentOutOfRangeException(nameof(options),
-                $"MaxLength ({options.MaxLength}) must exceed the " +
-                $"{CrossEncoderPairTokenizer.SpecialTokensPerPair} positions reserved for [CLS] and the two [SEP].");
-        }
+        var useTokenizer = ValidateOptions(options);
 
         if (!File.Exists(options.ModelPath))
             throw new FileNotFoundException($"ONNX model file not found: {options.ModelPath}", options.ModelPath);
 
-        if (!File.Exists(options.VocabPath))
-            throw new FileNotFoundException(
-                $"BERT vocabulary file not found: {options.VocabPath}", options.VocabPath);
+        _tokenizer = useTokenizer
+            ? LoadSentencePieceTokenizer(options.TokenizerPath!)
+            : LoadBertTokenizer(options.VocabPath);
 
         _options = options;
-        _tokenizer = new CrossEncoderPairTokenizer(options.VocabPath);
         _session = new InferenceSession(options.ModelPath);
+
+        // Feed only what the export declares: XLM-RoBERTa exports usually take no token_type_ids, and
+        // ONNX Runtime rejects an input the graph does not have.
+        var declared = _session.InputMetadata.Keys.ToHashSet(StringComparer.Ordinal);
+        var unsupported = declared.FirstOrDefault(name => Array.IndexOf(SuppliedInputs, name) < 0);
+        if (unsupported is not null || !declared.Contains("input_ids"))
+        {
+            var problem = unsupported is not null
+                ? $"declares input '{unsupported}'"
+                : "does not declare input 'input_ids'";
+            _session.Dispose();
+            throw new InvalidOperationException(
+                $"The ONNX model {problem}, but the reranker supplies only " +
+                $"{string.Join(", ", SuppliedInputs)}.");
+        }
+
+        _feedsAttentionMask = declared.Contains("attention_mask");
+        _feedsTokenTypeIds = declared.Contains("token_type_ids");
+    }
+
+    /// <returns>True when <see cref="OnnxRerankerOptions.TokenizerPath"/> selects the SentencePiece tokenizer.</returns>
+    private static bool ValidateOptions(OnnxRerankerOptions options)
+    {
+        var useTokenizer = !string.IsNullOrWhiteSpace(options.TokenizerPath);
+        var useVocab = !string.IsNullOrWhiteSpace(options.VocabPath);
+        if (useTokenizer == useVocab)
+        {
+            throw new ArgumentException(
+                "Set exactly one of VocabPath (BERT vocab.txt) and TokenizerPath (SentencePiece model); " +
+                (useTokenizer ? "both are set." : "neither is set."),
+                nameof(options));
+        }
+
+        // Before the file checks, so the message names the option rather than a missing file.
+        var specialTokens = useTokenizer
+            ? XlmRobertaPairTokenizer.SpecialTokensPerPair
+            : CrossEncoderPairTokenizer.SpecialTokensPerPair;
+        if (options.MaxLength <= specialTokens)
+        {
+            var reserved = useTokenizer
+                ? "<s>, the two </s> between the segments and the closing </s>"
+                : "[CLS] and the two [SEP]";
+            throw new ArgumentOutOfRangeException(nameof(options),
+                $"MaxLength ({options.MaxLength}) must exceed the {specialTokens} positions reserved for {reserved}.");
+        }
+
+        return useTokenizer;
+    }
+
+    private static CrossEncoderPairTokenizer LoadBertTokenizer(string vocabPath)
+    {
+        if (!File.Exists(vocabPath))
+            throw new FileNotFoundException($"BERT vocabulary file not found: {vocabPath}", vocabPath);
+
+        return new CrossEncoderPairTokenizer(vocabPath);
+    }
+
+    private static XlmRobertaPairTokenizer LoadSentencePieceTokenizer(string tokenizerPath)
+    {
+        if (!File.Exists(tokenizerPath))
+            throw new FileNotFoundException($"SentencePiece model file not found: {tokenizerPath}", tokenizerPath);
+
+        try
+        {
+            return new XlmRobertaPairTokenizer(tokenizerPath);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidDataException(
+                $"TokenizerPath '{tokenizerPath}' is not a SentencePiece model file (sentencepiece.bpe.model).", ex);
+        }
     }
 
     public Task<IReadOnlyList<RerankResult>> RerankAsync(
@@ -72,12 +140,14 @@ public sealed class OnnxReranker : IReranker, IDisposable
     {
         var (inputIds, attentionMask, tokenTypeIds) = TokenizePair(query, passage);
 
-        var inputs = new List<NamedOnnxValue>
+        var inputs = new List<NamedOnnxValue>(3)
         {
             NamedOnnxValue.CreateFromTensor("input_ids", inputIds),
-            NamedOnnxValue.CreateFromTensor("attention_mask", attentionMask),
-            NamedOnnxValue.CreateFromTensor("token_type_ids", tokenTypeIds),
         };
+        if (_feedsAttentionMask)
+            inputs.Add(NamedOnnxValue.CreateFromTensor("attention_mask", attentionMask));
+        if (_feedsTokenTypeIds)
+            inputs.Add(NamedOnnxValue.CreateFromTensor("token_type_ids", tokenTypeIds));
 
         using var outputs = _session.Run(inputs);
         var logits = outputs.First().AsTensor<float>();
