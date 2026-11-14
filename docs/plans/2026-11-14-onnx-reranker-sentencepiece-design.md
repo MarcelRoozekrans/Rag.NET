@@ -68,9 +68,9 @@ option backed by the SentencePiece tokenizer in `Microsoft.ML.Tokenizers`, then 
     at 4), template layout and budget with 4 reserved positions, through an internal seam that
     takes raw piece ids so the offset mapping is tested without the 5 MB model.
   - Gated tests, skipped unless `RAGNET_ONNX_RERANK_TOKENIZER` (and for scoring
-    `RAGNET_ONNX_RERANK_XLMR_MODEL`) point at existing files, as the reranker telemetry test gates on
+    `RAGNET_ONNX_RERANK_XLMR_MODEL`) point at existing files. The reranker telemetry test gates on
     `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB`, which hold the BERT model, so the XLM-RoBERTa export gets its
-    own variable: ids for a Dutch sentence equal the ids the model's
+    own variable. Ids for a Dutch sentence equal the ids the model's
     `tokenizer.json` gives (recorded once as expected values); and the Dutch ranking check: for a
     few Dutch questions, the answering passage outranks plausible distractors.
 - *Builder's call:* which community ONNX export of bge-reranker-v2-m3 (the BAAI repo ships none);

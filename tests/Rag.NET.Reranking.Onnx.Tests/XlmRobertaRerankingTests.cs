@@ -1,5 +1,4 @@
 using Rag.NET.Models;
-using Rag.NET.Testing;
 using Xunit;
 
 namespace Rag.NET.Reranking.Onnx.Tests;
@@ -59,8 +58,7 @@ public sealed class XlmRobertaRerankingTests
             string.IsNullOrEmpty(modelPath) || !File.Exists(modelPath) ||
             string.IsNullOrEmpty(tokenizerPath) || !File.Exists(tokenizerPath),
             "Set RAGNET_ONNX_RERANK_XLMR_MODEL and RAGNET_ONNX_RERANK_TOKENIZER to existing "
-            + "bge-reranker-v2-m3 model and sentencepiece.bpe.model files to run this test."
-            + BeirProvisioningHint.Describe());
+            + "bge-reranker-v2-m3 model and sentencepiece.bpe.model files to run this test.");
 
         using var reranker = new OnnxReranker(new OnnxRerankerOptions
         {
@@ -79,8 +77,16 @@ public sealed class XlmRobertaRerankingTests
 
         var results = await reranker.RerankAsync(question, candidates, TestContext.Current.CancellationToken);
 
-        var scores = string.Join("; ", results.Select(r => $"{r.RelevanceScore:F3}: {r.SearchResult.Chunk.Text[..30]}"));
-        var best = results.MaxBy(r => r.RelevanceScore)!;
-        Assert.True(string.Equals(best.SearchResult.Chunk.Text, answer, StringComparison.Ordinal), $"Expected the answering passage first. Scores: {scores}");
+        var scores = string.Join(
+            "; ", results.Select(r => $"{r.RelevanceScore:F3}: {r.SearchResult.Chunk.Text[..30]}"));
+        var answerScore = results.Single(r => string.Equals(r.SearchResult.Chunk.Text, answer, StringComparison.Ordinal))
+            .RelevanceScore;
+        var bestDistractor = results
+            .Where(r => !string.Equals(r.SearchResult.Chunk.Text, answer, StringComparison.Ordinal))
+            .Max(r => r.RelevanceScore);
+
+        Assert.True(
+            answerScore - bestDistractor >= 0.3,
+            $"Expected the answering passage to beat every distractor by at least 0.3. Scores: {scores}");
     }
 }
