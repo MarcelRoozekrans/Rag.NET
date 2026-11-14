@@ -39,6 +39,21 @@ rag.UseOnnxReranking(o =>
 });
 ```
 
+For an XLM-RoBERTa cross-encoder such as `bge-reranker-v2-m3`, set `TokenizerPath` to its
+SentencePiece model instead of `VocabPath`. Set exactly one of the two. The BAAI repository
+ships no ONNX file, so use a community export; the project checked
+`EmbeddedLLM/bge-reranker-v2-m3-onnx-o3-cpu`, which it neither endorses nor maintains.
+
+```csharp
+using Rag.NET.Reranking.Onnx;
+
+rag.UseOnnxReranking(o =>
+{
+    o.ModelPath = "models/bge-reranker-v2-m3/model.onnx";
+    o.TokenizerPath = "models/bge-reranker-v2-m3/sentencepiece.bpe.model";
+});
+```
+
 ## Example
 
 ```csharp
