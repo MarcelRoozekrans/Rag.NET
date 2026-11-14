@@ -1,9 +1,28 @@
 # Session State
 
-**Last updated:** 2026-11-14 (evening). **Next:** the operator merges **PR #1007** (#926). Then
-confirm its `feat(reranking)` commit appears in the release-please PR: a green workflow does not
-mean the commit was counted. After that the queue has only #998 (needs the operator's decision)
-and #944 (waits for the next major). Ask the operator which to take, or whether to groom new work.
+**Last updated:** 2026-11-14 (late evening). **Next:** the operator merges **PR #1007** (#926)
+and **PR #1010** (#998). After each merge, confirm its `feat(reranking)` or `fix(web)` commit
+appears in the release-please PR: a green workflow does not mean the commit was counted. Do not
+merge either, or the release PR, unasked. After that the queue has only #1009 (new, a bug) and
+#944 (waits for the next major). Ask the operator which to take, or whether to groom new work.
+
+**PR #1010 (closes #998), open for the operator.** Branch `fix/robots-unreachable-disallow`, head
+8ab7a021. Every check is green, CodeRabbit approved with no inline findings, and the merge state is
+BLOCKED only on the operator's review. Operator's decisions (2026-11-14): follow RFC 9309 2.3.1.4
+and report the skipped host; reuse `RagError.HttpFailed`/`TransportFailed`, no new API; 429 is
+unreachable; 500 KiB parse cap with the cut line dropped; replace the backtracking wildcard matcher
+with a segment matcher in the same PR. Design and plan: `docs/plans/2026-11-14-robots-unreachable-*.md`.
+The redirect "limit of five" in #998 is a misreading (the RFC says *at least* five); the PR body
+says so, and nothing changed there.
+
+**#1009** (filed 2026-11-14, bug, verified on .NET 10): `HttpClient.Timeout` does not bound a
+response body that stalls after its headers in the web providers' `ResponseHeadersRead` reads.
+
+**Agents host disk (2026-11-14):** it filled to 0 MB during the #998 build. With the operator's
+approval, bin/obj were deleted in the nine worktrees whose PRs had merged, freeing 73 GB. The
+`bridge-cse_*` worktrees for merged branches can be removed outright once their sessions are
+archived. A zero-byte `deps.json` written while the disk was full broke one test project
+until it was rebuilt; after a disk-full event, look for zero-size files under `bin/`.
 
 **PR #1007 (closes #926), open for the operator.** Branch `feat/onnx-reranker-sentencepiece`, head
 d384a5fa. Every required check is green, CodeRabbit approved after two fix rounds, and the merge
@@ -44,9 +63,7 @@ Leftover: local branch `fix/robots-rfc9309` is still checked out in the earlier 
 worktree `.claude/worktrees/bridge-cse_01RwoARdH4BqtszEjF9nyNhF`, which has no uncommitted changes.
 The remote branch is gone. Remove the worktree and the branch once that session is archived.
 
-**#998** (filed 2026-11-14, needs a decision): RFC 9309 section 2.3. An unreachable or 5xx
-robots.txt should disallow everything, but today it allows everything. It also covers the 500 KiB
-parse limit and a quadratic matching cost on huge hostile files.
+**#998** is in PR #1010, above.
 
 **#944 decided (2026-11-14, recorded on the issue):** breaking change in the next major, with #937.
 One nested options object replaces the flat `TopK`/`UseHybridSearch` fields in JSON and proto
@@ -91,7 +108,7 @@ suite, delete `artifacts/packages` and repack with the GitVersion SemVer: the te
 package. It ships #973, #983, #985, #976 and #986, and the net11.0 target from #961. v1.7.0 was
 never published: its release run failed on NU1902, which #976 fixed.
 
-**Queue:** #998 (needs the operator's decision). #944 waits for the next major release. #926 is in PR #1007.
+**Queue:** #1009 (bug). #944 waits for the next major release. #926 is in PR #1007, #998 in PR #1010.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
