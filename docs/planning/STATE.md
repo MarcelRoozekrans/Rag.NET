@@ -1,39 +1,37 @@
 # Session State
 
-**Last updated:** 2026-11-14. **Next:** #926, once the operator merges **#994** (the Tokenizers 3.0.0
-bump it needs). Branch `feat/onnx-reranker-sentencepiece` from main after that merge, and resume the
-brainstorm at "lay out the approaches" with the findings below. **#999 (#927) and #1000 (#987) are
-open for the operator**; after each merges, sync main and delete its branch (`fix/robots-rfc9309`,
-`chore/docs-npm-alerts`), verifying the squash merge by grep: `ProductTokenOf` for #999,
-`wrappingWidth: 200` in `docusaurus.config.ts` for #1000. With #994 still open and both PRs
-waiting, nothing in the queue is unblocked but #998, which needs the operator's decision.
+**Last updated:** 2026-11-14. **Next:** #926. Branch `feat/onnx-reranker-sentencepiece` from main
+and resume the brainstorm at "lay out the approaches" with the findings below. #994, the
+Tokenizers 3.0.0 bump #926 needed, is merged and shipped in v1.8.1. **Release PR #1003 (1.8.2, ships
+#999) is open for the operator**; do not merge it unasked.
 
-**#999** (open, closes #927; all CI green, CodeRabbit approved): `RobotsTxt` follows RFC 9309
-section 2.2. Named groups apply first, with the product token taken from the `HttpClient`'s
-default `User-Agent` (operator's choice: no new option). `Allow` and `Disallow` use `*`, `$`
-and longest match, and percent-encoding is normalised. `Crawl-delay` raises
-`MinimumRequestInterval` and never lowers it; the operator approved this with no cap.
-`RequestThrottle.RaiseTo` exists, and every request start is now recorded. Rulings for the
-operator to check:
-- Figure 4 row 2 is unmatched: reserved escapes stay distinct, as in Google's parser.
-- `Crawl-delay` values above `Task.Delay`'s limit (~49.7 days) are held at that limit.
-- The sitemap walker uses one interval for all hosts.
+**Merged on 2026-11-14** (operator's request "merge them when green", or merged by the operator):
+- **#994** as d98e80d4: `Microsoft.ML.Tokenizers` and `Data.Cl100kBase` 1.0.3 -> 3.0.0, and the
+  `renovate.json` rule holding them below 2.0 removed. Released in **v1.8.1** (#1001, merged by the
+  operator); the release run's `publish-nuget` passed.
+- **#999** (closes #927) as ffa4f24d: `RobotsTxt` follows RFC 9309 section 2.2. Named groups apply
+  first, with the product token from the `HttpClient`'s default `User-Agent`; `*`, `$`, longest
+  match and percent-encoding normalisation; `Crawl-delay` raises `MinimumRequestInterval` and never
+  lowers it. CodeRabbit's last finding was real and is fixed in it: record values are trimmed of
+  spaces and tabs only, so a U+00A0 in a path pattern survives. Rulings for the operator to check:
+  Figure 4 row 2 stays unmatched, as in Google's parser; `Crawl-delay` above `Task.Delay`'s limit
+  (~49.7 days) is held at that limit; the sitemap walker uses one interval for all hosts. Design
+  and plan: `docs/plans/2026-11-14-robots-rfc9309-*.md`. In release PR #1003.
+- **#1000** (closes #987), merged by the operator: tinypool 2.2.0 and serialize-javascript 7.1.4 by
+  override, mermaid 12.3.0 with katex 0.18. Mermaid 12 changed its defaults (ELK layout, `neo` look,
+  120px label wrap); `docusaurus.config.ts` sets dagre, classic and 200px. The site's `tsc`, broken
+  by TypeScript 7 since #41, works again. The deepmerge alert, which has no patched release, was
+  dismissed as tolerable risk at the operator's choice.
+- **#996**, the previous state handoff, merged by the operator.
+- **#974** (StefH's NU1902 report) closed with a comment: #976 fixed it and v1.8.0 shipped it.
 
-Verified: Web tests 222/222, every other test project green (E2E not run), pack-validate 68/68.
-CONVENTIONS.md now records **Build:** and **Test:** (`dotnet build|test Rag.NET.slnx -c Release`),
-as the operator chose. Design and plan: `docs/plans/2026-11-14-robots-rfc9309-*.md`.
+Leftover: local branch `fix/robots-rfc9309` is still checked out in the earlier session's locked
+worktree `.claude/worktrees/bridge-cse_01RwoARdH4BqtszEjF9nyNhF`, which has no uncommitted changes.
+The remote branch is gone. Remove the worktree and the branch once that session is archived.
 
 **#998** (filed 2026-11-14, needs a decision): RFC 9309 section 2.3. An unreachable or 5xx
 robots.txt should disallow everything, but today it allows everything. It also covers the 500 KiB
 parse limit and a quadratic matching cost on huge hostile files.
-
-**#994** (open, CI green, 11 checks): `Microsoft.ML.Tokenizers` and `Data.Cl100kBase` 1.0.3 -> 3.0.0,
-and the `renovate.json` rule holding them below 2.0 removed. That rule's revisit condition is met:
-Cl100kBase 3.0.0 ships a `net8.0` group that depends only on Tokenizers, and Tokenizers 3.0.0's
-`net8.0` group has no dependencies. Verified locally: 78 of 79 test projects (E2ETests not run: CPU
-Ollama hung past an hour), Embeddings.Onnx 302/302 and Reranking.Onnx 38/38 with real models (none
-skipped), pack-validate 68/68 from a fresh pack, no nuspec declares `Bcl.Memory`. The operator chose
-a separate PR before #926 on 2026-11-14.
 
 **#926 findings (2026-11-14, probed against BAAI/bge-reranker-v2-m3's own files):**
 - The model's `sentencepiece.bpe.model` is a **Unigram** model despite its name. Tokenizers 1.0.3
@@ -95,14 +93,7 @@ suite, delete `artifacts/packages` and repack with the GitVersion SemVer: the te
 package. It ships #973, #983, #985, #976 and #986, and the net11.0 target from #961. v1.7.0 was
 never published: its release run failed on NU1902, which #976 fixed.
 
-**#1000** (open, closes #987; all CI green, CodeRabbit approved): tinypool 2.2.0 and
-serialize-javascript 7.1.4 by override, and mermaid 12.3.0, which brings katex 0.18. Mermaid 12
-changed its defaults (ELK layout, `neo` look, 120px label wrap); `docusaurus.config.ts` sets
-dagre, classic and 200px. All 26 diagrams render; 20 match main's size, 6 are 2-10% wider. A
-second commit fixes `tsc` on the site, broken by TypeScript 7 since #41. The deepmerge alert
-(no patched release) was dismissed as tolerable risk at the operator's choice on 2026-11-14.
-
-**Queue:** #926 (after #994), #998 (needs the operator's decision). #927 is in #999. #944 waits for the next major release.
+**Queue:** #926, #998 (needs the operator's decision). #944 waits for the next major release.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
