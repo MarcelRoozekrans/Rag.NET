@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Rag.NET.DataProviders.Web;
 
 /// <summary>
@@ -20,11 +22,39 @@ namespace Rag.NET.DataProviders.Web;
 /// </remarks>
 internal sealed class RobotsTxt
 {
-    private static readonly RobotsTxt s_allowAll = new([]);
+    private static readonly RobotsTxt s_allowAll = new([], crawlDelay: null);
 
     private readonly IReadOnlyList<Rule> _rules;
 
-    private RobotsTxt(IReadOnlyList<Rule> rules) => _rules = rules;
+    private RobotsTxt(IReadOnlyList<Rule> rules, TimeSpan? crawlDelay)
+    {
+        _rules = rules;
+        CrawlDelay = crawlDelay;
+    }
+
+    /// <summary>
+    /// The largest valid <c>crawl-delay</c> in the applicable groups, or <see langword="null"/>.
+    /// Not part of RFC 9309, but sites use it; the providers raise their request interval to it
+    /// and never lower it.
+    /// </summary>
+    internal TimeSpan? CrawlDelay { get; }
+
+    /// <summary>
+    /// The longest delay <see cref="Task.Delay(TimeSpan)"/> accepts. A larger <c>crawl-delay</c>
+    /// is held to it rather than thrown on, which still stalls the crawl as the site asked.
+    /// </summary>
+    internal static TimeSpan LongestCrawlDelay { get; } = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+
+    /// <summary>
+    /// The product token <paramref name="client"/> identifies as: the name of the first product
+    /// in its default <c>User-Agent</c> header, when that name is a valid RFC 9309 token
+    /// (<c>a-z A-Z _ -</c>). <see langword="null"/> otherwise, which leaves only <c>*</c> groups.
+    /// </summary>
+    internal static string? ProductTokenOf(HttpClient client)
+    {
+        var name = client.DefaultRequestHeaders.UserAgent.FirstOrDefault(p => p.Product is not null)?.Product!.Name;
+        return !string.IsNullOrEmpty(name) && name.All(IsTokenChar) ? name : null;
+    }
 
     /// <summary>
     /// Fetches <c>/robots.txt</c> for <paramref name="origin"/>'s scheme, host and port.
@@ -36,7 +66,7 @@ internal sealed class RobotsTxt
         {
             var robotsUrl = new Uri(origin, "/robots.txt").ToString();
             var content = await httpClient.GetStringWithCharsetFallbackAsync(robotsUrl, ct).ConfigureAwait(false);
-            return Parse(content, productToken: null);
+            return Parse(content, ProductTokenOf(httpClient));
         }
         catch (Exception ex) when (FetchFailure.IsSkippable(ex, ct))
         {
@@ -81,11 +111,29 @@ internal sealed class RobotsTxt
                     value: value));
             }
 
+            if (key.Equals("crawl-delay", StringComparison.OrdinalIgnoreCase))
+            {
+                lastWasAgent = false;
+                if (current is not null
+                    && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds)
+                    && !double.IsNaN(seconds) && seconds >= 0)
+                {
+                    current.CrawlDelays.Add(seconds >= LongestCrawlDelay.TotalSeconds
+                        ? LongestCrawlDelay
+                        : TimeSpan.FromSeconds(seconds));
+                }
+
+                continue;
+            }
+
             // Any other record (Sitemap, Host, unknown) neither ends nor breaks a group.
         }
 
         var applicable = Select(groups, productToken);
-        return new RobotsTxt(applicable.SelectMany(g => g.Rules).ToList());
+        var delays = applicable.SelectMany(g => g.CrawlDelays).ToList();
+        return new RobotsTxt(
+            applicable.SelectMany(g => g.Rules).ToList(),
+            delays.Count > 0 ? delays.Max() : null);
     }
 
     private static List<Group> Select(List<Group> groups, string? productToken)
@@ -272,5 +320,7 @@ internal sealed class RobotsTxt
         public List<string> Agents { get; } = [];
 
         public List<Rule> Rules { get; } = [];
+
+        public List<TimeSpan> CrawlDelays { get; } = [];
     }
 }

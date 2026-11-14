@@ -229,4 +229,62 @@ public sealed class RobotsTxtTests
         Assert.True(Blocked(robots, "/file-*.html"));
         Assert.False(Blocked(robots, "/file-x.html"));
     }
+
+    // ── Product token and Crawl-delay ───────────────────────────────────────
+
+    [Fact]
+    public void ProductTokenOf_TakesTheFirstProductName()
+    {
+        using var named = new HttpClient();
+        named.DefaultRequestHeaders.UserAgent.ParseAdd("MyBot/1.0 (+https://example.com/bot)");
+        using var none = new HttpClient();
+        using var invalid = new HttpClient();
+        invalid.DefaultRequestHeaders.UserAgent.ParseAdd("My.Bot/1.0");
+
+        Assert.Equal("MyBot", RobotsTxt.ProductTokenOf(named));
+        Assert.Null(RobotsTxt.ProductTokenOf(none));
+        Assert.Null(RobotsTxt.ProductTokenOf(invalid));
+    }
+
+    [Fact]
+    public void UserAgentValueWithVersion_StillNames()
+    {
+        const string robots = "User-agent: MyBot/2.0\nDisallow: /b\n";
+        Assert.True(Blocked(robots, "/b", "MyBot"));
+    }
+
+    [Fact]
+    public void CrawlDelay_IsReadFromTheApplicableGroup()
+    {
+        const string robots = "User-agent: *\nCrawl-delay: 5\n\nUser-agent: MyBot\nCrawl-delay: 0.5\n";
+
+        Assert.Equal(TimeSpan.FromSeconds(0.5), RobotsTxt.Parse(robots, "MyBot").CrawlDelay);
+        Assert.Equal(TimeSpan.FromSeconds(5), RobotsTxt.Parse(robots, null).CrawlDelay);
+    }
+
+    [Fact]
+    public void CrawlDelay_LargerOfTwoCounts()
+    {
+        const string robots = "User-agent: *\nCrawl-delay: 2\nCrawl-delay: 3\n";
+        Assert.Equal(TimeSpan.FromSeconds(3), RobotsTxt.Parse(robots, null).CrawlDelay);
+    }
+
+    [Fact]
+    public void CrawlDelay_InvalidIsIgnored()
+    {
+        Assert.Null(RobotsTxt.Parse("User-agent: *\nCrawl-delay: soon\n", null).CrawlDelay);
+        Assert.Null(RobotsTxt.Parse("User-agent: *\nCrawl-delay: -1\n", null).CrawlDelay);
+    }
+
+    /// <remarks>A huge value is honoured as "as slow as a delay can be", not thrown on:
+    /// <see cref="TimeSpan.FromSeconds(double)"/> overflows past about 29,000 years and
+    /// <see cref="Task.Delay(TimeSpan)"/> refuses more than about 49 days.</remarks>
+    [Fact]
+    public void CrawlDelay_Huge_IsCappedAtTheLongestDelay()
+    {
+        var delay = RobotsTxt.Parse("User-agent: *\nCrawl-delay: 1e300\n", null).CrawlDelay;
+
+        Assert.Equal(RobotsTxt.LongestCrawlDelay, delay);
+        Assert.True(RobotsTxt.LongestCrawlDelay >= TimeSpan.FromDays(49));
+    }
 }
