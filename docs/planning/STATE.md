@@ -1,22 +1,49 @@
 # Session State
 
-**Last updated:** 2026-11-13 — **main is green again; release PR #977 (1.7.1) waits for the
-operator.** The operator merges release PRs; the agent does not.
+**Last updated:** 2026-11-14. **Next:** #944, which needs the operator's wire-format decision
+first. Otherwise take #926 or #927.
 
-**v1.7.0 was never published.** Its release run failed on NU1902: advisory GHSA-6527-9fp8-r4x6
-(published 2026-11-10) covers `Microsoft.AspNetCore.WebUtilities` <= 2.3.13, and main went red at
-the v1.7.0 release commit. `build-test (ubuntu-latest)` failed and `publish-nuget` was skipped. The
-v1.7.0 tag and GitHub release exist, but nuget.org has no 1.7.0. **1.7.1 is the release that ships
-those changes**, including the net11.0 target from #961.
-- **#976** (`fix`, merged 2026-11-13): `Rag.NET.Security.AspNetCore` now uses the
-  `Microsoft.AspNetCore.App` framework reference, as its sibling ASP.NET Core packages do. Its legacy
-  `Microsoft.AspNetCore.Http` 2.3.x reference pulled a vulnerable WebUtilities in every version.
-  WireMock.Net went from 2.30.0 to 2.31.0, which depends on the fixed 2.3.14. The operator chose the
-  framework reference over pinning WebUtilities.
-- After merging #977, watch the release run and confirm that `publish-nuget` succeeds.
-- The nine non-major Renovate PRs (#965 to #972, #975) were approved and on auto-merge, held only
-  by main being red. They should rebase and merge on their own; check that they did.
-- External PR **#973** (StefH, `feat(azureaisearch)`: TokenCredential auth) is open and unreviewed.
+**Merged on 2026-11-14 at the operator's request**, each squash-merged after a fresh green run on
+an up-to-date branch:
+- **#982** (closes #246) as 809b42fa. The Service Bus emulator 2.0.1 faults the whole queue entity
+  on the first receive from a fresh dead-letter sub-queue ("Cannot add the same item
+  'S.SP-SequenceNumber:1' more than once"), so the test now peeks the sub-queue. Upstream:
+  Azure/azure-service-bus-emulator-installer#157. Nothing further to track here.
+- **#985** (closes #945) as 13ea3247. `RagOptions` gains an internal `Copy()` (`MemberwiseClone`,
+  assignment record included); `Rag.NET.Security` joins Abstractions' `InternalsVisibleTo`.
+  Reflection tests in `Rag.NET.Tests` cover every public property through `Copy()` and the
+  hardening decorator. `Rag.NET.E2ETests` (RequiresLlm, nightly only) was not run locally: CPU
+  Ollama ran at 0.5 tokens/s on the agents host.
+- **#973** (StefH, `feat(azureaisearch)`: TokenCredential auth) as f1ab2c4f. Being a `feat`, it
+  turns the pending release from 1.7.1 into 1.8.0.
+- **#983** (closes #948) was merged by the operator on 2026-11-13 as 1923f5d1; its `fix:` is in the
+  release PR's changelog. #965 merged through Renovate.
+
+**#948 details** (for the rulings): a deliberate refusal now fails the query at 24 degrading
+catches on the query path. Until #937, `RetrieveAsync` returns `StorageFailed` with the refusal as
+`Inner`; `AskAsync` throws `InvalidOperationException` with it as `InnerException`. Rulings the
+operator may want to check: `TagRetriever` and `DeepResearchRetriever` return the refusal as a
+failed result instead of throwing; DeepResearch sub-queries and FLARE's lookahead stop on a failed
+result that is a refusal; a refusal now fails `PersistentConversationMemory.StoreAsync`. Design
+and plan: `docs/plans/2026-11-13-refusal-fails-query-{design,implementation}.md`.
+
+**Local pack-validate needs a fresh pack.** `EveryPackageCarriesTheVersionGitVersionDerives`
+fails when the packages disagree with each other or with the derived version's MajorMinorPatch. A
+directory packed consistently on another branch, with the same MajorMinorPatch but another
+prerelease label, makes it skip instead. A skipped run validates nothing. Before running the
+suite, delete `artifacts/packages` and repack with the GitVersion SemVer: the test reads every
+`.nupkg` in that directory, so packages left from an earlier pack fail it.
+
+**v1.7.0 was never published.** Its release run failed on NU1902 (GHSA-6527-9fp8-r4x6 in
+`Microsoft.AspNetCore.WebUtilities` <= 2.3.13), fixed by **#976**. The next release ships those
+changes, including the net11.0 target from #961. The operator asked for the release PR to be
+merged last, after the PRs above; then watch the release run and confirm that `publish-nuget`
+succeeds. Report a failure with its log lines; do not re-run it.
+
+**#987** tracks five Dependabot alerts in the docs site's npm dependencies (two critical, in
+`tinypool` via `@docusaurus/core`). Build-time only; no shipped package contains them.
+
+**Queue:** #944 (remote clients drop `RagOptions`, needs a wire-format decision), #926, #927, #987.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
@@ -36,13 +63,8 @@ the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
   at about Renovate's run times. Renovate then treats the PR as edited and stops touching it, so
   auto-merge is never enabled. Asked the operator on 2026-11-10; not yet identified.
 
-**NEXT ACTION:** after #977 is released, pick the next item with the operator: #973 (external
-PR), or #948 (the query path's swallowing catches),
-#944 (remote clients drop `RagOptions`, needs a wire-format decision), #945 (`ShallowCopy` drops
-three fields), #926, #927, or #246.
+**NEXT ACTION:** see the top of this file.
 
-- **#246** (Service Bus dead-letter flake) recurred on #949's ubuntu build on 2026-11-09: a
-  `MessageLockLost` with 300 s of lock left. Still open; recorded on the issue.
 - **Renovate:** the two ModelContextProtocol 2.x major-bump PRs opened on 2026-11-10; one CI
   run had failed when last looked at. Majors are not automerged.
 
