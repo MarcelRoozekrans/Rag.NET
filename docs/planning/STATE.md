@@ -1,29 +1,44 @@
 # Session State
 
-**Last updated:** 2026-11-14. **Next:** #926. Branch `feat/onnx-reranker-sentencepiece` from main
-and resume the brainstorm at "lay out the approaches" with the findings below. #994, the
-Tokenizers 3.0.0 bump #926 needed, is merged and shipped in v1.8.1. **Release PR #1003 (1.8.2, ships
-#999) is open for the operator**; do not merge it unasked.
+**Last updated:** 2026-11-14 (evening). **Next:** the operator merges **PR #1007** (#926). Then
+confirm its `feat(reranking)` commit appears in the release-please PR: a green workflow does not
+mean the commit was counted. After that the queue has only #998 (needs the operator's decision)
+and #944 (waits for the next major). Ask the operator which to take, or whether to groom new work.
 
-**Merged on 2026-11-14** (operator's request "merge them when green", or merged by the operator):
-- **#994** as d98e80d4: `Microsoft.ML.Tokenizers` and `Data.Cl100kBase` 1.0.3 -> 3.0.0, and the
-  `renovate.json` rule holding them below 2.0 removed. Released in **v1.8.1** (#1001, merged by the
-  operator); the release run's `publish-nuget` passed.
-- **#999** (closes #927) as ffa4f24d: `RobotsTxt` follows RFC 9309 section 2.2. Named groups apply
-  first, with the product token from the `HttpClient`'s default `User-Agent`; `*`, `$`, longest
-  match and percent-encoding normalisation; `Crawl-delay` raises `MinimumRequestInterval` and never
-  lowers it. CodeRabbit's last finding was real and is fixed in it: record values are trimmed of
-  spaces and tabs only, so a U+00A0 in a path pattern survives. Rulings for the operator to check:
-  Figure 4 row 2 stays unmatched, as in Google's parser; `Crawl-delay` above `Task.Delay`'s limit
-  (~49.7 days) is held at that limit; the sitemap walker uses one interval for all hosts. Design
-  and plan: `docs/plans/2026-11-14-robots-rfc9309-*.md`. In release PR #1003.
-- **#1000** (closes #987), merged by the operator: tinypool 2.2.0 and serialize-javascript 7.1.4 by
-  override, mermaid 12.3.0 with katex 0.18. Mermaid 12 changed its defaults (ELK layout, `neo` look,
-  120px label wrap); `docusaurus.config.ts` sets dagre, classic and 200px. The site's `tsc`, broken
-  by TypeScript 7 since #41, works again. The deepmerge alert, which has no patched release, was
-  dismissed as tolerable risk at the operator's choice.
-- **#996**, the previous state handoff, merged by the operator.
-- **#974** (StefH's NU1902 report) closed with a comment: #976 fixed it and v1.8.0 shipped it.
+**PR #1007 (closes #926), open for the operator.** Branch `feat/onnx-reranker-sentencepiece`, head
+d384a5fa. Every required check is green, CodeRabbit approved after two fix rounds, and the merge
+state is BLOCKED only on the operator's review. Do not merge it unasked.
+- `OnnxRerankerOptions.TokenizerPath` loads XLM-RoBERTa cross-encoders such as bge-reranker-v2-m3
+  from `sentencepiece.bpe.model`. Exactly one of `VocabPath` and `TokenizerPath` is set, and
+  `VocabPath` is no longer `required`. The fairseq id offset and the `<s> q </s></s> p </s>`
+  template are fixed behaviour. The reranker feeds only the inputs the ONNX session declares.
+- `XlmRobertaPairTokenizer` compensates for two gaps in Microsoft.ML.Tokenizers 3.0.0: it fuses
+  runs of `<unk>`, and it drops 30 C0/C1 control characters the model's normalizer drops. Both
+  are tracked upstream in dotnet/machinelearning#7859. The operator approved the comment posted
+  there on 2026-11-14 for the control characters. Remove both helpers once upstream matches.
+  A U+2034 difference one review reported did not reproduce on re-measurement.
+- Real-model run, local only: 178 passed, 0 skipped. The Dutch check scored the answer at least
+  0.986 and the best distractor at most 0.234. The export is
+  `EmbeddedLLM/bge-reranker-v2-m3-onnx-o3-cpu` @ c46cc14e, and the tokenizer comes from
+  BAAI/bge-reranker-v2-m3 @ 953dc6f6. `docs/reference/ci.md` has the pinned, checksummed local
+  procedure. The models sit in `~/.cache/ragnet-models/` on the agents host (2.4 GB); delete them
+  when no longer needed.
+- `codecov/patch` (not required) fails at 80.6%: the uncovered lines run only with real model
+  files. The operator chose to leave it, keeping CI free of Hugging Face downloads.
+- Also in the PR: every fenced model-download procedure in `ci.md` runs in a fail-fast subshell.
+  The Whisper block's literal `\n` continuation is fixed, and `.whisper-models/` and
+  `.reranker-models/` are git-ignored.
+- Design and plan: `docs/plans/2026-11-14-onnx-reranker-sentencepiece-{design,implementation}.md`.
+
+**Merged on 2026-11-14 by the operator after the last handoff:** #1004 (state handoff), #1003
+(release 1.8.2, ships #999), and the Renovate PRs #1005 and #1006.
+
+**Agents host notes (2026-11-14):**
+- The root disk is at about 97%. Most of it is `/tmp/dotnet11-wave*` (39 GB) from other work, not
+  this repo. Weaviate turns read-only above 90% disk, so `Rag.NET.VectorStores.Weaviate.Tests`
+  fails locally until space is freed. CI is unaffected.
+- `Rag.NET.E2ETests` hangs on this host's CPU Ollama. Exclude it from local full runs; it runs
+  nightly. Give each project a timeout, such as `timeout 900`, so one hang cannot eat the run.
 
 Leftover: local branch `fix/robots-rfc9309` is still checked out in the earlier session's locked
 worktree `.claude/worktrees/bridge-cse_01RwoARdH4BqtszEjF9nyNhF`, which has no uncommitted changes.
@@ -32,23 +47,6 @@ The remote branch is gone. Remove the worktree and the branch once that session 
 **#998** (filed 2026-11-14, needs a decision): RFC 9309 section 2.3. An unreachable or 5xx
 robots.txt should disallow everything, but today it allows everything. It also covers the 500 KiB
 parse limit and a quadratic matching cost on huge hostile files.
-
-**#926 findings (2026-11-14, probed against BAAI/bge-reranker-v2-m3's own files):**
-- The model's `sentencepiece.bpe.model` is a **Unigram** model despite its name. Tokenizers 1.0.3
-  refuses it (`The model type is not Bpe`); 2.0.1 and 3.0.0 load it with
-  `SentencePieceTokenizer.Create(stream, addBeginningOfSentence: false, addEndOfSentence: false)` and
-  split Dutch as the model's `tokenizer.json` does (`▁hoofd stad`).
-- **Ids are off by one (fairseq offset).** Raw SentencePiece ids are `<unk>`=0, `<s>`=1, `</s>`=2;
-  the model's vocabulary is `<s>`=0, `<pad>`=1, `</s>`=2, `<unk>`=3, and every other piece is raw
-  id + 1 (`▁Wat` 6585 raw, 6586 in `tokenizer.json`). Feeding raw ids scores garbage without failing.
-- **Pair template:** `<s> A </s></s> B </s>` (four special tokens, against BERT's three), per the
-  `TemplateProcessing` post-processor in `tokenizer.json`.
-- XLM-R ONNX exports usually take no `token_type_ids`; feed only the inputs the session declares.
-- The BAAI repo ships no ONNX file. Community exports exist on Hugging Face (search
-  `bge-reranker-v2-m3 onnx`); pick one with a pinned revision for the Dutch ranking check.
-- Open design points for the brainstorm: how `TokenizerPath` and `VocabPath` relate (exclusive, one
-  required); whether the offset and template are fixed XLM-R behaviour or options; where the Dutch
-  sanity check lives (test needing a model env var, like `RAGNET_ONNX_RERANK_MODEL`).
 
 **#944 decided (2026-11-14, recorded on the issue):** breaking change in the next major, with #937.
 One nested options object replaces the flat `TopK`/`UseHybridSearch` fields in JSON and proto
@@ -93,7 +91,7 @@ suite, delete `artifacts/packages` and repack with the GitVersion SemVer: the te
 package. It ships #973, #983, #985, #976 and #986, and the net11.0 target from #961. v1.7.0 was
 never published: its release run failed on NU1902, which #976 fixed.
 
-**Queue:** #926, #998 (needs the operator's decision). #944 waits for the next major release.
+**Queue:** #998 (needs the operator's decision). #944 waits for the next major release. #926 is in PR #1007.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
