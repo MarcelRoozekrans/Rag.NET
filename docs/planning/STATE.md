@@ -30,8 +30,9 @@ and plan: `docs/plans/2026-11-13-refusal-fails-query-{design,implementation}.md`
 **Local pack-validate needs a fresh pack.** `EveryPackageCarriesTheVersionGitVersionDerives`
 fails when the packages disagree with each other or with the derived version's MajorMinorPatch. A
 directory packed consistently on another branch, with the same MajorMinorPatch but another
-prerelease label, makes it skip instead. A skipped run validates nothing. Repack with the
-GitVersion SemVer immediately before running the suite.
+prerelease label, makes it skip instead. A skipped run validates nothing. Before running the
+suite, delete `artifacts/packages` and repack with the GitVersion SemVer: the test reads every
+`.nupkg` in that directory, so packages left from an earlier pack fail it.
 
 **v1.7.0 was never published.** Its release run failed on NU1902 (GHSA-6527-9fp8-r4x6 in
 `Microsoft.AspNetCore.WebUtilities` <= 2.3.13), fixed by **#976**. The next release ships those
