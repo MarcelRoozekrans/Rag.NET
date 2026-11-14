@@ -1,4 +1,5 @@
 using Rag.NET.DataProviders.Web;
+using Rag.NET.Models;
 using Xunit;
 
 namespace Rag.NET.DataProviders.Web.Tests;
@@ -17,9 +18,12 @@ public sealed class WebCrawlerTransientFailureTests
     private sealed class FailingHandler(Dictionary<string, string> pages, string failingUrl, Exception failure)
         : HttpMessageHandler
     {
+        public List<string> Requested { get; } = [];
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             var url = request.RequestUri!.ToString();
+            Requested.Add(url);
             if (string.Equals(url, failingUrl, StringComparison.Ordinal)) throw failure;
             return Task.FromResult(pages.TryGetValue(url, out var body)
                 ? new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(body) }
@@ -54,23 +58,71 @@ public sealed class WebCrawlerTransientFailureTests
             entries.Select(e => e.Value.Id.Value).ToList());
     }
 
+    /// <summary>Answers robots.txt with one status and every other URL with a page.</summary>
+    private sealed class RobotsStatusHandler(System.Net.HttpStatusCode robotsStatus) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(string.Equals(request.RequestUri!.AbsolutePath, "/robots.txt", StringComparison.Ordinal)
+                ? new HttpResponseMessage(robotsStatus)
+                : new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("<p>home</p>") });
+    }
+
+    /// <remarks>
+    /// #998: RFC 9309 section 2.3.1.4 reads an unreachable robots.txt as disallow-all. Until then
+    /// a failed fetch allowed everything, so an outage crawled the whole site.
+    /// </remarks>
     [Theory]
     [MemberData(nameof(Failures))]
-    public async Task AFailedRobotsTxt_AllowsEverything(string kind)
+    public async Task AFailedRobotsTxt_ReportsTheHost_AndListsNothing(string kind)
     {
         Exception failure = string.Equals(kind, "io", StringComparison.Ordinal)
             ? new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely.")
             : new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.");
         var pages = new Dictionary<string, string>(StringComparer.Ordinal) { ["https://example.com/"] = "<p>home</p>" };
+        var handler = new FailingHandler(pages, "https://example.com/robots.txt", failure);
 
         var entries = await new WebCrawlerDataProvider(
                 "https://example.com/",
-                new HttpClient(new FailingHandler(pages, "https://example.com/robots.txt", failure)),
+                new HttpClient(handler),
                 new WebCrawlerOptions { RespectRobotsTxt = true })
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("https://example.com", Assert.Single(entries).Value.Id.Value);
+        var entry = Assert.Single(entries);
+        Assert.True(entry.IsFailure);
+        Assert.IsType<RagError.TransportFailed>(entry.Error);
+        Assert.Equal(["https://example.com/robots.txt"], handler.Requested);
+    }
+
+    [Fact]
+    public async Task AServerErrorRobotsTxt_ReportsHttpFailed()
+    {
+        var entries = await new WebCrawlerDataProvider(
+                "https://example.com/",
+                new HttpClient(new RobotsStatusHandler(System.Net.HttpStatusCode.ServiceUnavailable)),
+                new WebCrawlerOptions { RespectRobotsTxt = true })
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(entries);
+        Assert.True(entry.IsFailure);
+        Assert.Equal(System.Net.HttpStatusCode.ServiceUnavailable,
+            Assert.IsType<RagError.HttpFailed>(entry.Error).StatusCode);
+    }
+
+    [Fact]
+    public async Task WithRespectRobotsTxtOff_AFailingRobotsTxtIsNeverFetched()
+    {
+        var entries = await new WebCrawlerDataProvider(
+                "https://example.com/",
+                new HttpClient(new RobotsStatusHandler(System.Net.HttpStatusCode.ServiceUnavailable)),
+                new WebCrawlerOptions { RespectRobotsTxt = false })
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(entries);
+        Assert.True(entry.IsSuccess);
+        Assert.Equal("https://example.com", entry.Value.Id.Value);
     }
 
     [Fact]

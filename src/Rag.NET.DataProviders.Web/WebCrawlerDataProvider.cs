@@ -43,12 +43,12 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var seedUri = new Uri(_seedUrl);
-        RobotsTxt? robots = null;
-        if (_options.RespectRobotsTxt)
+        var robots = await LoadRobotsAsync(seedUri, cancellationToken).ConfigureAwait(false);
+        if (robots?.Unreachable is { } unreachable)
         {
-            await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
-            robots = await RobotsTxt.LoadAsync(_httpClient, seedUri, cancellationToken).ConfigureAwait(false);
-            if (robots.CrawlDelay is { } crawlDelay) _throttle.RaiseTo(crawlDelay);
+            // Disallow all, and say so: a silent empty run lets full cleanup delete the site (#998).
+            yield return Result<FileEntry, RagError>.Failure(unreachable);
+            yield break;
         }
 
         var visited = new HashSet<string>(StringComparer.Ordinal);
@@ -101,6 +101,21 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// The seed host's robots.txt, or <see langword="null"/> when
+    /// <see cref="WebCrawlerOptions.RespectRobotsTxt"/> is off. Its <c>Crawl-delay</c> raises the
+    /// request interval.
+    /// </summary>
+    private async Task<RobotsTxt?> LoadRobotsAsync(Uri seedUri, CancellationToken cancellationToken)
+    {
+        if (!_options.RespectRobotsTxt) return null;
+
+        await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var robots = await RobotsTxt.LoadAsync(_httpClient, seedUri, cancellationToken).ConfigureAwait(false);
+        if (robots.CrawlDelay is { } crawlDelay) _throttle.RaiseTo(crawlDelay);
+        return robots;
     }
 
     /// <summary>
