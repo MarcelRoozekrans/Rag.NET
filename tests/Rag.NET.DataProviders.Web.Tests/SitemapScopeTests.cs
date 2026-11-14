@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Net;
 using Rag.NET.DataProviders.Web;
+using Rag.NET.Models;
 using Xunit;
 
 namespace Rag.NET.DataProviders.Web.Tests;
@@ -192,6 +194,52 @@ public sealed class SitemapScopeTests
     {
         // The handler answers 404 for robots.txt.
         Assert.Equal(5, (await UrlsAsync(options: null)).Count);
+    }
+
+    /// <remarks>
+    /// #998: RFC 9309 section 2.3.1.4 reads an unreachable robots.txt as disallow-all. The host is
+    /// reported once, not once per page, and listed nothing.
+    /// </remarks>
+    [Fact]
+    public async Task AnUnreachableRobotsTxt_ReportsTheHostOnce_AndSkipsItsPages()
+    {
+        var handler = new FakeHttpMessageHandler(
+            new Dictionary<string, string>(StringComparer.Ordinal) { [SitemapUrl] = Sitemap },
+            new Dictionary<string, HttpStatusCode>(StringComparer.Ordinal) { [RobotsUrl] = HttpStatusCode.ServiceUnavailable });
+
+        var entries = await new SitemapDataProvider(SitemapUrl, new HttpClient(handler))
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(entries);
+        Assert.True(entry.IsFailure);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, Assert.IsType<RagError.HttpFailed>(entry.Error).StatusCode);
+    }
+
+    [Fact]
+    public async Task AnUnreachableHost_DoesNotStopTheOtherHost()
+    {
+        const string twoHosts = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+              <url><loc>https://example.com/a</loc></url>
+              <url><loc>https://other.example/c</loc></url>
+              <url><loc>https://example.com/b</loc></url>
+              <url><loc>https://other.example/d</loc></url>
+            </urlset>
+            """;
+        var handler = new FakeHttpMessageHandler(
+            new Dictionary<string, string>(StringComparer.Ordinal) { [SitemapUrl] = twoHosts },
+            new Dictionary<string, HttpStatusCode>(StringComparer.Ordinal) { [RobotsUrl] = HttpStatusCode.ServiceUnavailable });
+
+        var entries = await new SitemapDataProvider(SitemapUrl, new HttpClient(handler))
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.IsType<RagError.HttpFailed>(Assert.Single(entries, e => e.IsFailure).Error);
+        Assert.Equal(
+            ["https://other.example/c", "https://other.example/d"],
+            entries.Where(e => e.IsSuccess).Select(e => e.Value.Id.Value).ToList());
     }
 
     [Fact]

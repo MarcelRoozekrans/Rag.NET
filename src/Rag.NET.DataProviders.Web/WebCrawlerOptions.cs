@@ -22,7 +22,10 @@ public sealed class WebCrawlerOptions
     /// default <c>User-Agent</c> applies, else the <c>User-agent: *</c> group. <c>Allow</c> and
     /// <c>Disallow</c> rules may use <c>*</c> and <c>$</c>; each is matched case-sensitively against
     /// the path and query, and the longest match wins. A <c>Crawl-delay</c> raises
-    /// <see cref="MinimumRequestInterval"/> and never lowers it.
+    /// <see cref="MinimumRequestInterval"/> and never lowers it. A missing robots.txt (any 4xx but
+    /// 429) allows everything. One that answers 5xx or 429, or cannot be fetched, stops the crawl
+    /// before the seed: the crawler yields one failure for the host and no pages (RFC 9309
+    /// section 2.3.1.4). Only the first 500 KiB is read.
     /// </remarks>
     public bool RespectRobotsTxt { get; init; } = true;
 
