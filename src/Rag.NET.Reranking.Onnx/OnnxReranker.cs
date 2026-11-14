@@ -35,24 +35,35 @@ public sealed class OnnxReranker : IReranker, IDisposable
         // Feed only what the export declares: XLM-RoBERTa exports usually take no token_type_ids, and
         // ONNX Runtime rejects an input the graph does not have.
         var declared = _session.InputMetadata.Keys.ToHashSet(StringComparer.Ordinal);
-        var unsupported = declared
-            .Where(name => Array.IndexOf(SuppliedInputs, name) < 0)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-        if (unsupported.Length > 0 || !declared.Contains("input_ids"))
+        var problem = DescribeInputProblem(declared);
+        if (problem is not null)
         {
-            var problem = unsupported.Length > 0
-                ? $"declares {(unsupported.Length == 1 ? "input" : "inputs")} " +
-                  string.Join(", ", unsupported.Select(name => $"'{name}'"))
-                : "does not declare input 'input_ids'";
             _session.Dispose();
-            throw new InvalidOperationException(
-                $"The ONNX model {problem}, but the reranker supplies only " +
-                $"{string.Join(", ", SuppliedInputs)}.");
+            throw new InvalidOperationException(problem);
         }
 
         _feedsAttentionMask = declared.Contains("attention_mask");
         _feedsTokenTypeIds = declared.Contains("token_type_ids");
+    }
+
+    /// <summary>Checks the input names an ONNX export declares against what the reranker supplies.</summary>
+    /// <param name="declared">The export's declared input names.</param>
+    /// <returns>Null when the names are acceptable, otherwise the exception message.</returns>
+    internal static string? DescribeInputProblem(IReadOnlyCollection<string> declared)
+    {
+        var unsupported = declared
+            .Where(name => Array.IndexOf(SuppliedInputs, name) < 0)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        if (unsupported.Length == 0 && declared.Contains("input_ids", StringComparer.Ordinal))
+            return null;
+
+        var problem = unsupported.Length > 0
+            ? $"declares {(unsupported.Length == 1 ? "input" : "inputs")} " +
+              string.Join(", ", unsupported.Select(name => $"'{name}'"))
+            : "does not declare input 'input_ids'";
+        return $"The ONNX model {problem}, but the reranker supplies only " +
+               $"{string.Join(", ", SuppliedInputs)}.";
     }
 
     /// <returns>True when <see cref="OnnxRerankerOptions.TokenizerPath"/> selects the SentencePiece tokenizer.</returns>

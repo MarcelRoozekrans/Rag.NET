@@ -4,6 +4,45 @@ namespace Rag.NET.Reranking.Onnx.Tests;
 
 public class OnnxRerankerTests
 {
+    [Theory]
+    [InlineData("input_ids", "attention_mask", "token_type_ids")]
+    [InlineData("input_ids", "attention_mask")]
+    public void DescribeInputProblem_WhenInputsAreSupported_ReturnsNull(params string[] declared)
+    {
+        Assert.Null(OnnxReranker.DescribeInputProblem(declared));
+    }
+
+    [Fact]
+    public void DescribeInputProblem_WhenOneInputIsUnsupported_NamesItInTheSingular()
+    {
+        var message = OnnxReranker.DescribeInputProblem(["input_ids", "position_ids"]);
+
+        Assert.Equal(
+            "The ONNX model declares input 'position_ids', but the reranker supplies only "
+            + "input_ids, attention_mask, token_type_ids.",
+            message);
+    }
+
+    [Fact]
+    public void DescribeInputProblem_WhenSeveralInputsAreUnsupported_NamesAllOfThemSorted()
+    {
+        var message = OnnxReranker.DescribeInputProblem(["input_ids", "zeta", "alpha"]);
+
+        Assert.Equal(
+            "The ONNX model declares inputs 'alpha', 'zeta', but the reranker supplies only "
+            + "input_ids, attention_mask, token_type_ids.",
+            message);
+    }
+
+    [Fact]
+    public void DescribeInputProblem_WhenInputIdsIsMissing_IsRejected()
+    {
+        var message = OnnxReranker.DescribeInputProblem(["attention_mask"]);
+
+        Assert.NotNull(message);
+        Assert.Contains("does not declare input 'input_ids'", message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Constructor_WhenModelPathDoesNotExist_ThrowsFileNotFoundException()
     {
