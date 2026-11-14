@@ -2,9 +2,11 @@
 
 **Last updated:** 2026-11-14. **Next:** #926, once the operator merges **#994** (the Tokenizers 3.0.0
 bump it needs). Branch `feat/onnx-reranker-sentencepiece` from main after that merge, and resume the
-brainstorm at "lay out the approaches" with the findings below. While #994 waits, take #987 on a
-fresh branch from main. **#999 (#927) is open for the operator**; after it merges, sync main and
-delete `fix/robots-rfc9309`.
+brainstorm at "lay out the approaches" with the findings below. **#999 (#927) and #1000 (#987) are
+open for the operator**; after each merges, sync main and delete its branch (`fix/robots-rfc9309`,
+`chore/docs-npm-alerts`), verifying the squash merge by grep: `ProductTokenOf` for #999,
+`wrappingWidth: 200` in `docusaurus.config.ts` for #1000. With #994 still open and both PRs
+waiting, nothing in the queue is unblocked but #998, which needs the operator's decision.
 
 **#999** (open, closes #927; all CI green, CodeRabbit approved): `RobotsTxt` follows RFC 9309
 section 2.2. Named groups apply first, with the product token taken from the `HttpClient`'s
@@ -93,10 +95,14 @@ suite, delete `artifacts/packages` and repack with the GitVersion SemVer: the te
 package. It ships #973, #983, #985, #976 and #986, and the net11.0 target from #961. v1.7.0 was
 never published: its release run failed on NU1902, which #976 fixed.
 
-**#987** tracks five Dependabot alerts in the docs site's npm dependencies (two critical, in
-`tinypool` via `@docusaurus/core`). Build-time only; no shipped package contains them.
+**#1000** (open, closes #987; all CI green, CodeRabbit approved): tinypool 2.2.0 and
+serialize-javascript 7.1.4 by override, and mermaid 12.3.0, which brings katex 0.18. Mermaid 12
+changed its defaults (ELK layout, `neo` look, 120px label wrap); `docusaurus.config.ts` sets
+dagre, classic and 200px. All 26 diagrams render; 20 match main's size, 6 are 2-10% wider. A
+second commit fixes `tsc` on the site, broken by TypeScript 7 since #41. The deepmerge alert
+(no patched release) was dismissed as tolerable risk at the operator's choice on 2026-11-14.
 
-**Queue:** #926 (after #994), #987, #998 (needs the operator's decision). #927 is in #999. #944 waits for the next major release.
+**Queue:** #926 (after #994), #998 (needs the operator's decision). #927 is in #999. #944 waits for the next major release.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
