@@ -2,7 +2,28 @@
 
 **Last updated:** 2026-11-14. **Next:** #926, once the operator merges **#994** (the Tokenizers 3.0.0
 bump it needs). Branch `feat/onnx-reranker-sentencepiece` from main after that merge, and resume the
-brainstorm at "lay out the approaches" with the findings below. #927 is the alternative while #994 waits.
+brainstorm at "lay out the approaches" with the findings below. While #994 waits, take #987 on a
+fresh branch from main. **#999 (#927) is open for the operator**; after it merges, sync main and
+delete `fix/robots-rfc9309`.
+
+**#999** (open, closes #927; all CI green, CodeRabbit approved): `RobotsTxt` follows RFC 9309
+section 2.2. Named groups apply first, with the product token taken from the `HttpClient`'s
+default `User-Agent` (operator's choice: no new option). `Allow` and `Disallow` use `*`, `$`
+and longest match, and percent-encoding is normalised. `Crawl-delay` raises
+`MinimumRequestInterval` and never lowers it; the operator approved this with no cap.
+`RequestThrottle.RaiseTo` exists, and every request start is now recorded. Rulings for the
+operator to check:
+- Figure 4 row 2 is unmatched: reserved escapes stay distinct, as in Google's parser.
+- `Crawl-delay` values above `Task.Delay`'s limit (~49.7 days) are held at that limit.
+- The sitemap walker uses one interval for all hosts.
+
+Verified: Web tests 222/222, every other test project green (E2E not run), pack-validate 68/68.
+CONVENTIONS.md now records **Build:** and **Test:** (`dotnet build|test Rag.NET.slnx -c Release`),
+as the operator chose. Design and plan: `docs/plans/2026-11-14-robots-rfc9309-*.md`.
+
+**#998** (filed 2026-11-14, needs a decision): RFC 9309 section 2.3. An unreachable or 5xx
+robots.txt should disallow everything, but today it allows everything. It also covers the 500 KiB
+parse limit and a quadratic matching cost on huge hostile files.
 
 **#994** (open, CI green, 11 checks): `Microsoft.ML.Tokenizers` and `Data.Cl100kBase` 1.0.3 -> 3.0.0,
 and the `renovate.json` rule holding them below 2.0 removed. That rule's revisit condition is met:
@@ -75,7 +96,7 @@ never published: its release run failed on NU1902, which #976 fixed.
 **#987** tracks five Dependabot alerts in the docs site's npm dependencies (two critical, in
 `tinypool` via `@docusaurus/core`). Build-time only; no shipped package contains them.
 
-**Queue:** #926 (after #994), #927, #987. #944 waits for the next major release.
+**Queue:** #926 (after #994), #987, #998 (needs the operator's decision). #927 is in #999. #944 waits for the next major release.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
