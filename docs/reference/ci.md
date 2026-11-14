@@ -261,12 +261,16 @@ implementations agree on the content rather than that the library round-trips it
 # The model is public and unauthenticated. Revision and SHA-256 are the upstream LFS values from
 # https://huggingface.co/api/models/ggerganov/whisper.cpp (repo revision 5359861c739e...), checked
 # against the file this procedure was verified with rather than copied from a mirror.
+(
+set -euo pipefail
 export RAGNET_WHISPER_MODEL_DIR="$PWD/.whisper-models"
 mkdir -p "$RAGNET_WHISPER_MODEL_DIR"
 curl -fsSL -o "$RAGNET_WHISPER_MODEL_DIR/ggml-base.bin"   https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin
 echo "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe  $RAGNET_WHISPER_MODEL_DIR/ggml-base.bin"   | sha256sum -c -
 
-tests/Rag.NET.Parsers.Audio.Tests/bin/Release/net10.0/Rag.NET.Parsers.Audio.Tests.exe \n  -class "*RealTranscriptionTests"
+tests/Rag.NET.Parsers.Audio.Tests/bin/Release/net10.0/Rag.NET.Parsers.Audio.Tests.exe \
+  -class "*RealTranscriptionTests"
+)
 ```
 
 The download is optional: with the directory set but empty, the parser fetches the model itself on
@@ -484,6 +488,8 @@ test consumes; the pins and the digest checks moved here, unchanged. If a checks
 # targetCommit from the HF API; the model SHA-256 is its Git LFS oid, re-verified locally; the
 # vocab SHA-256 was computed locally — it is byte-identical to all-MiniLM-L6-v2's, expected,
 # since both tokenize with the standard BERT uncased WordPiece vocabulary).
+(
+set -euo pipefail
 revision=c5ee24cb16019beea0893ab7796b1df96625c6b8
 dir="$RAGNET_BEIR_CACHE/models/ms-marco-MiniLM-L6-v2"
 mkdir -p "$dir"
@@ -495,6 +501,7 @@ echo "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3  $dir/voc
 RAGNET_ONNX_RERANK_MODEL="$dir/model.onnx" RAGNET_ONNX_RERANK_VOCAB="$dir/vocab.txt" \
 RAGNET_BEIR_LONG_RUNS=1 tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
   -method "*UnderCrossEncoderRerank*"   # every dataset; see "Selecting one dataset"
+)
 ```
 
 **The XLM-RoBERTa reranker tests need two more downloads, which no workflow provisions.** The
@@ -509,6 +516,8 @@ edit the checksum to match — check whether upstream republished the revision f
 # pinned (recorded 2026-11-14: the revisions are the commits the tests were written against; each
 # SHA-256 is the Git LFS oid from the HF tree API, and matched a local sha256sum of the downloaded
 # file).
+(
+set -euo pipefail
 tok_revision=953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e
 model_revision=c46cc14e4748b2332899dfe5e6dcd4750caf7cef
 dir="$RAGNET_MODELS_DIR/bge-reranker-v2-m3"
@@ -522,6 +531,7 @@ echo "84b66c787b9b98977a16d5c993a3959210a214c98fc3466da263c949c2068945  $dir/mod
 
 RAGNET_ONNX_RERANK_TOKENIZER="$dir/sentencepiece.bpe.model" RAGNET_ONNX_RERANK_XLMR_MODEL="$dir/model.onnx" \
   dotnet test tests/Rag.NET.Reranking.Onnx.Tests -c Release
+)
 ```
 
 **The SPLADE cell needs a second model, which the nightly also does not provision** — for the reason
@@ -542,6 +552,8 @@ republished the revision first.
 # both SHA-256s computed locally after download). The vocab digest is byte-identical to the
 # cross-encoder's above — expected, and worth checking rather than assuming: all three models
 # tokenize with the standard BERT uncased WordPiece vocabulary.
+(
+set -euo pipefail
 revision=efcd182bc7eb351e81a9445752d4388c2bab500b
 dir="$RAGNET_BEIR_CACHE/models/Splade_PP_en_v1"
 mkdir -p "$dir"
@@ -554,6 +566,7 @@ RAGNET_ONNX_SPLADE_MODEL="$dir/model.onnx" RAGNET_ONNX_SPLADE_VOCAB="$dir/vocab.
 RAGNET_BEIR_LONG_RUNS=scifact \
   tests/Rag.NET.Benchmarks.Quality.IntegrationTests/bin/Release/net11.0/Rag.NET.Benchmarks.Quality.IntegrationTests.exe \
   -method '*NdcgAt10_UnderSplade_*' -showLiveOutput
+)
 ```
 
 **Run it on a quiet machine.** The cell encodes every unit through the MLM before it retrieves
