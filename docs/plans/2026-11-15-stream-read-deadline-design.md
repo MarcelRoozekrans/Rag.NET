@@ -66,7 +66,7 @@ path. Today, without a hash store, `PipelineIngestor` rethrows it and the per-en
 it, so it ends the whole provider run. The caller's own cancellation still propagates. The catch is deliberately broad: it also
 covers a vector-store, hash-store or remote-pipeline client timeout. Model calls never get
 there; they are already `ModelCallFailed`. A store timeout is labelled `TransportFailed` rather
-than `StorageFailed`, which is tracked as a follow-up issue.
+than `StorageFailed`, which is tracked as #1019.
 
 ## Tests
 

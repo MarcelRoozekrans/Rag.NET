@@ -389,7 +389,7 @@ public static class RagPipelineExtensions
     //   this entry, not the run. Besides a stalled content read, that includes a vector-store,
     //   hash-store or remote-pipeline client timeout. Model calls never get here; they are
     //   already ModelCallFailed. A store timeout is labelled TransportFailed rather than
-    //   StorageFailed; that is tracked as a follow-up issue.
+    //   StorageFailed; that is tracked as #1019.
     // - ReservedMetadataKeyException is deliberately excluded from the catch-all alongside the
     //   caller's cancellation: it is a connector authoring bug that repeats identically for every
     //   entry, so downgrading it to a per-entry RagError would emit N copies of one bug and still
