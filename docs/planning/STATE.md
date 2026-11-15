@@ -1,20 +1,20 @@
 # Session State
 
-**Last updated:** 2026-11-14 (night). **Next:** the operator merges **PR #1007** (#926)
-and **PR #1010** (#998). After each merge, confirm its `feat(reranking)` or `fix(web)` commit
-appears in the release-please PR: a green workflow does not mean the commit was counted. Do not
-merge either, or the release PR, unasked. Then start **#1009** from main (the operator chose it,
-and chose to wait for #1010, which adds one of the two reads it fixes). Decisions are on the issue.
+**Last updated:** 2026-11-15. **Next:** start **#1009** on a new branch `fix/body-read-timeout`
+from main; decisions are below and on the issue. **PR #1007** (#926) still waits for the operator.
+After it merges, confirm its `feat(reranking)` commit appears in the release-please PR. Do not
+merge #1007 or the release PR (**#1015**, 1.8.4) unasked.
 
-**PR #1010 (closes #998), open for the operator.** Branch `fix/robots-unreachable-disallow`, head
-fb4f1eba. `codecov/patch` had failed at 81.25% on three rejecting branches of the new segment
-matcher; the operator chose to cover them, and fb4f1eba adds the tests. Otherwise every check was green, CodeRabbit approved with no inline findings, and the merge state is
-BLOCKED only on the operator's review. Operator's decisions (2026-11-14): follow RFC 9309 2.3.1.4
-and report the skipped host; reuse `RagError.HttpFailed`/`TransportFailed`, no new API; 429 is
-unreachable; 500 KiB parse cap with the cut line dropped; replace the backtracking wildcard matcher
-with a segment matcher in the same PR. Design and plan: `docs/plans/2026-11-14-robots-unreachable-*.md`.
-The redirect "limit of five" in #998 is a misreading (the RFC says *at least* five); the PR body
-says so, and nothing changed there.
+**PR #1010 (closes #998) merged 2026-11-15** as cd6f05aa, at the operator's request. Its `fix(web)`
+commit is in release PR #1015 (confirmed). Review rounds after the handoff added, with the
+operator's choices:
+- tests covering the segment matcher's rejecting branches (`codecov/patch` was 81.25%);
+- `FetchFailure.IsSkippable` takes any `IOException`: a reset mid-body throws a plain
+  `IOException` on .NET 10, not `HttpIOException` (reproduced);
+- the crawler reports a page whose fetch may pass (5xx, 429, timeout, broken off) as
+  `HttpFailed`/`TransportFailed` and goes on, so full cleanup keeps it; a 4xx other than 429 is
+  still a quiet skip. `FetchFailure.IsAbsent` and `ToError` hold the split for the crawler and
+  `RobotsTxt.LoadAsync`.
 
 **#1009** (filed 2026-11-14, bug, verified on .NET 10): `HttpClient.Timeout` does not bound a
 response body that stalls after its headers in the web providers' `ResponseHeadersRead` reads.
@@ -23,7 +23,10 @@ Operator's decisions (2026-11-14, also on the issue): the full-body read
 timeout covers the body; the 500 KiB prefix read keeps `ResponseHeadersRead` and gets a linked CTS
 set to `HttpClient.Timeout`, its expiry reported as a timeout, not caller cancellation. Web
 provider only: the Airtable and Bitbucket stream-returning reads moved to **#1012**, which needs a
-design decision (shared timeout `Stream` wrapper, idle vs total deadline). Start after #1010 merges.
+design decision (shared timeout `Stream` wrapper, idle vs total deadline). #1010 has merged, so
+start now. For the linked CTS: `IsSkippable` takes a `TaskCanceledException` only when the caller's
+token is not cancelled, so the expiry must surface as that, not as `TimeoutException`. A crawled
+page that times out is now reported, not skipped silently, so a test can assert the error.
 
 **Agents host disk (2026-11-14):** it filled to 0 MB during the #998 build. With the operator's
 approval, bin/obj were deleted in the nine worktrees whose PRs had merged, freeing 73 GB. The
@@ -115,7 +118,7 @@ suite, delete `artifacts/packages` and repack with the GitVersion SemVer: the te
 package. It ships #973, #983, #985, #976 and #986, and the net11.0 target from #961. v1.7.0 was
 never published: its release run failed on NU1902, which #976 fixed.
 
-**Queue:** #1009 (bug, next, after #1010 merges). #1012 (bug, needs a design). #944 waits for the next major release. #926 is in PR #1007, #998 in PR #1010.
+**Queue:** #1009 (bug, next). #1012 (bug, needs a design). #944 waits for the next major release. #926 is in PR #1007.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
