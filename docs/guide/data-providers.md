@@ -701,8 +701,21 @@ ingestion pipeline does not drop repeats, so each copy used to be fetched and em
 RFC 9309. The rules come from the group that names the product token in the `HttpClient`'s
 default `User-Agent` (`MyBot` in `MyBot/1.0`), or from the `User-agent: *` group when no group
 names it. `Allow` and `Disallow` rules may use `*` and `$`. Each rule is matched
-case-sensitively against the path and query, and the longest match wins. A missing or
-unreachable robots.txt allows everything.
+case-sensitively against the path and query, and the longest match wins. Only the first 500 KiB
+of the file is read.
+
+A missing robots.txt (a 4xx other than 429, or a redirect chain `HttpClient` gives up on) allows
+everything. A robots.txt that answers 5xx or 429, or cannot be fetched at all, means the whole host
+is skipped, as RFC 9309 section 2.3.1.4 requires. The provider reports that host once, as an
+`HttpFailed` or `TransportFailed` naming the robots.txt URL, and it ends up in
+`ProviderIngestionResult.Errors`. A run with that error does not run full cleanup, so an outage does
+not delete the documents an earlier run ingested from that host.
+
+The crawler reads each page's fetch the same way. A page that answers a 4xx other than 429 is
+gone: it is skipped without an error, so full cleanup removes its document. A page that answers
+5xx or 429, times out, or breaks off is reported as an `HttpFailed` or `TransportFailed` naming its
+URL, and the crawl goes on. That run does not run full cleanup, so a page that is down for a
+moment keeps its document.
 
 A site's `Crawl-delay` raises `MinimumRequestInterval` to its value, and never lowers it. The
 sitemap walker uses one interval for every host it visits, so a delay from one host slows the
@@ -745,7 +758,8 @@ Prefixes are matched against the normalised page id (no fragment, no trailing sl
 the trailing slash off when the seed itself should match.
 
 robots.txt is read the same way as for the sitemap walker above, from the seed's host. Its
-`Crawl-delay` raises `MinimumRequestInterval` and never lowers it.
+`Crawl-delay` raises `MinimumRequestInterval` and never lowers it. When that robots.txt is
+unreachable, the crawler reports the host and crawls nothing.
 
 **Page ids are normalised.** Each crawled page's id is its URL with the fragment and any trailing
 slash removed, so `https://site/`, `https://site` and `https://site#top` are one page rather than

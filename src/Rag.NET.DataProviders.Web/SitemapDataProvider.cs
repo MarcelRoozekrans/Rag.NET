@@ -97,13 +97,13 @@ public sealed class SitemapDataProvider : IFileContentProvider
     }
 
     /// <summary>
-    /// Whether robots.txt for <paramref name="url"/>'s host disallows it, fetching that file the
-    /// first time the host is seen.
+    /// The robots.txt for <paramref name="url"/>'s host, fetched the first time the host is seen,
+    /// or <see langword="null"/> when <see cref="SitemapOptions.RespectRobotsTxt"/> is off.
     /// </summary>
-    private async Task<bool> IsDisallowedByRobotsAsync(
+    private async Task<RobotsTxt?> RobotsForAsync(
         string url, Dictionary<string, RobotsTxt> robotsByHost, CancellationToken ct)
     {
-        if (!_options.RespectRobotsTxt) return false;
+        if (!_options.RespectRobotsTxt) return null;
 
         var uri = new Uri(url);
         var origin = uri.GetLeftPart(UriPartial.Authority);
@@ -116,7 +116,7 @@ public sealed class SitemapDataProvider : IFileContentProvider
             robotsByHost[origin] = robots;
         }
 
-        return robots.IsDisallowed(url);
+        return robots;
     }
 
     /// <summary>State that lives for one <see cref="GetFilesAsync"/> walk.</summary>
@@ -131,6 +131,12 @@ public sealed class SitemapDataProvider : IFileContentProvider
         /// Ordinal, because the id is the URL verbatim and two spellings are two ids downstream.
         /// </summary>
         public HashSet<string> Yielded { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Hosts whose unreachable robots.txt has been reported, so each is reported once rather
+        /// than once per page (#998). Keyed like <see cref="RobotsByHost"/>.
+        /// </summary>
+        public HashSet<string> ReportedUnreachable { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
     private async IAsyncEnumerable<Result<FileEntry, RagError>> LoadSitemapAsync(
@@ -163,7 +169,16 @@ public sealed class SitemapDataProvider : IFileContentProvider
                 if (loc is null) continue;
                 if (walk.Yielded.Contains(loc)) continue;
                 if (!IsIncluded(loc) || IsExcluded(loc)) continue;
-                if (await IsDisallowedByRobotsAsync(loc, walk.RobotsByHost, cancellationToken).ConfigureAwait(false)) continue;
+                var robots = await RobotsForAsync(loc, walk.RobotsByHost, cancellationToken).ConfigureAwait(false);
+                if (robots?.Unreachable is { } unreachable)
+                {
+                    // Disallowed whole (RFC 9309 2.3.1.4), and reported so cleanup keeps the host's pages.
+                    if (walk.ReportedUnreachable.Add(new Uri(loc).GetLeftPart(UriPartial.Authority)))
+                        yield return Result<FileEntry, RagError>.Failure(unreachable);
+                    continue;
+                }
+
+                if (robots?.IsDisallowed(loc) == true) continue;
                 walk.Yielded.Add(loc);
                 var lastMod = urlEl.Element(s_ns + "lastmod")?.Value;
                 var capturedLoc = loc;

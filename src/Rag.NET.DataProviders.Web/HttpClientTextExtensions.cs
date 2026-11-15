@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text;
 
 namespace Rag.NET.DataProviders.Web;
@@ -65,6 +66,52 @@ internal static class HttpClientTextExtensions
             // header's claim and the fallback, which is what GetStringAsync does too.
             using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: true);
             return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Like <see cref="GetStringWithCharsetFallbackAsync"/>, but decodes at most
+    /// <paramref name="maxBytes"/> bytes of the body. <c>Truncated</c> says whether the body had
+    /// more. The last character may be cut in half; callers that care drop the partial last line.
+    /// </summary>
+    /// <exception cref="HttpRequestException">As for <see cref="GetStringWithCharsetFallbackAsync"/>.</exception>
+    public static async Task<(string Text, bool Truncated)> GetTextPrefixWithCharsetFallbackAsync(
+        this HttpClient httpClient, string url, int maxBytes, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(maxBytes);
+
+        using var response = await httpClient
+            .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            .ConfigureAwait(false);
+
+        _ = response.EnsureSuccessStatusCode();
+
+        var encoding = ResolveEncoding(response.Content.Headers.ContentType?.CharSet);
+
+        // One byte past the limit is enough to know whether the body went on. Rented, not allocated:
+        // the limit is 500 KiB for robots.txt, and most files are a few hundred bytes.
+        var buffer = ArrayPool<byte>.Shared.Rent(maxBytes + 1);
+        try
+        {
+            var read = 0;
+            var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            await using (stream.ConfigureAwait(false))
+            {
+                int n;
+                while (read <= maxBytes
+                       && (n = await stream.ReadAsync(buffer.AsMemory(read, maxBytes + 1 - read), cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    read += n;
+                }
+            }
+
+            using var reader = new StreamReader(
+                new MemoryStream(buffer, 0, Math.Min(read, maxBytes)), encoding, detectEncodingFromByteOrderMarks: true);
+            return (await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false), read > maxBytes);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 

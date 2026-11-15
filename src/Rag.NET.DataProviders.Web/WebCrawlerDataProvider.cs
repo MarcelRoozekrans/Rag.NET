@@ -43,12 +43,12 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var seedUri = new Uri(_seedUrl);
-        RobotsTxt? robots = null;
-        if (_options.RespectRobotsTxt)
+        var robots = await LoadRobotsAsync(seedUri, cancellationToken).ConfigureAwait(false);
+        if (robots?.Unreachable is { } unreachable)
         {
-            await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
-            robots = await RobotsTxt.LoadAsync(_httpClient, seedUri, cancellationToken).ConfigureAwait(false);
-            if (robots.CrawlDelay is { } crawlDelay) _throttle.RaiseTo(crawlDelay);
+            // Disallow all, and say so: a silent empty run lets full cleanup delete the site (#998).
+            yield return Result<FileEntry, RagError>.Failure(unreachable);
+            yield break;
         }
 
         var visited = new HashSet<string>(StringComparer.Ordinal);
@@ -68,17 +68,15 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
             if (_options.SameDomain && !string.Equals(new Uri(url).Host, seedUri.Host, StringComparison.OrdinalIgnoreCase)) continue;
             if (!UrlPrefixes.MatchesAny(url, _includedPrefixes)) continue;
 
-            string html;
-            try
+            var fetched = await FetchPageAsync(url, cancellationToken).ConfigureAwait(false);
+            if (fetched is not { } page) continue;
+            if (page.IsFailure)
             {
-                await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
-                html = await _httpClient.GetStringWithCharsetFallbackAsync(url, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (FetchFailure.IsSkippable(ex, cancellationToken))
-            {
+                yield return Result<FileEntry, RagError>.Failure(page.Error);
                 continue;
             }
 
+            var html = page.Value;
             pageCount++;
             var capturedHtml = html;
 
@@ -101,6 +99,43 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// The seed host's robots.txt, or <see langword="null"/> when
+    /// <see cref="WebCrawlerOptions.RespectRobotsTxt"/> is off. Its <c>Crawl-delay</c> raises the
+    /// request interval.
+    /// </summary>
+    /// <summary>
+    /// Fetches one page. <see langword="null"/> when the site says it is gone, so it is skipped
+    /// quietly and full cleanup can remove it. A failure that may pass is returned as an error:
+    /// a silent skip would let full cleanup delete a page that still exists.
+    /// </summary>
+    private async Task<Result<string, RagError>?> FetchPageAsync(string url, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return await _httpClient.GetStringWithCharsetFallbackAsync(url, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (FetchFailure.IsAbsent(ex))
+        {
+            return null;
+        }
+        catch (Exception ex) when (FetchFailure.IsSkippable(ex, cancellationToken))
+        {
+            return FetchFailure.ToError(ex, url, "The page was skipped; the crawl went on.");
+        }
+    }
+
+    private async Task<RobotsTxt?> LoadRobotsAsync(Uri seedUri, CancellationToken cancellationToken)
+    {
+        if (!_options.RespectRobotsTxt) return null;
+
+        await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var robots = await RobotsTxt.LoadAsync(_httpClient, seedUri, cancellationToken).ConfigureAwait(false);
+        if (robots.CrawlDelay is { } crawlDelay) _throttle.RaiseTo(crawlDelay);
+        return robots;
     }
 
     /// <summary>

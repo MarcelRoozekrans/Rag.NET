@@ -195,6 +195,25 @@ public sealed class RobotsTxtTests
         Assert.False(Blocked(robots, "/a"));
     }
 
+    /// <summary>
+    /// Each way the segment matcher (#998) can accept or reject: an anchored rule without
+    /// <c>*</c>, a middle piece that is missing, and an anchored last piece that would have to
+    /// reuse octets the first piece already took.
+    /// </summary>
+    [Theory]
+    [InlineData("/a$", "/a", true)]
+    [InlineData("/a$", "/ab", false)]
+    [InlineData("/a*b*c", "/a-b-c", true)]
+    [InlineData("/a*b*c", "/a-c", false)]
+    [InlineData("/a*a$", "/aa", true)]
+    [InlineData("/a*a$", "/a", false)]
+    [InlineData("/x*yz$", "/xyz", true)]
+    [InlineData("/x*yz$", "/xz", false)]
+    public void SegmentMatcher_AcceptsAndRejects(string rule, string path, bool blocked)
+    {
+        Assert.Equal(blocked, Blocked("User-agent: *\nDisallow: " + rule + "\n", path));
+    }
+
     [Fact]
     public void LongestMatchCountsPatternOctets()
     {
@@ -338,5 +357,32 @@ public sealed class RobotsTxtTests
     public void StarFollowedByAComment_IsTheStarGroup()
     {
         Assert.True(Blocked("User-agent: *# everyone\nDisallow: /a\n", "/a"));
+    }
+
+    // ── Matching cost (#998) ────────────────────────────────────────────────
+
+    /// <remarks>
+    /// Measured in review of #927: the backtracking walk took about 27 s per URL for 1,000 such
+    /// rules, which fit inside the 500 KiB parse limit. One second is generous; the segment
+    /// matcher takes milliseconds.
+    /// </remarks>
+    [Theory]
+    [InlineData("the reported case")]
+    [InlineData("first and last characters match everywhere")]
+    public void HostileWildcardRules_AreMatchedQuickly(string shape)
+    {
+        var segment = string.Equals(shape, "the reported case", StringComparison.Ordinal)
+            ? new string('a', 500) + "b"
+            : new string('a', 250) + "c" + new string('a', 250);
+        var rule = "Disallow: /*" + segment + "\n";
+        var robots = RobotsTxt.Parse("User-agent: *\n" + string.Concat(Enumerable.Repeat(rule, 1_000)), null);
+        var url = "https://example.com/" + new string('a', 8_000);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var blocked = robots.IsDisallowed(url);
+        watch.Stop();
+
+        Assert.False(blocked);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(1), $"took {watch.Elapsed}");
     }
 }
