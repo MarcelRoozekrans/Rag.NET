@@ -58,3 +58,7 @@ docs/pre-push-review-*.md
 
 # Screenshots and page snapshots the Playwright MCP server writes into the working directory.
 .playwright-mcp/
+
+# Model downloads from the fenced procedures in docs/reference/ci.md.
+.whisper-models/
+.reranker-models/

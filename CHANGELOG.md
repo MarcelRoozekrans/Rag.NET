@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.9.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.8.4...v1.9.0) (2026-11-15)
+
+
+### Features
+
+* **reranking:** load SentencePiece cross-encoders such as bge-reranker-v2-m3 ([#1007](https://github.com/MarcelRoozekrans/Rag.NET/issues/1007)) ([81adcd9](https://github.com/MarcelRoozekrans/Rag.NET/commit/81adcd92144e87071368361a79dc7c333cc0038f)), closes [#926](https://github.com/MarcelRoozekrans/Rag.NET/issues/926)
+
+
+### Bug Fixes
+
+* **web:** bound a response body that stalls after its headers by HttpClient.Timeout ([#1016](https://github.com/MarcelRoozekrans/Rag.NET/issues/1016)) ([23966ba](https://github.com/MarcelRoozekrans/Rag.NET/commit/23966ba0ed0a7e3b0149dd93307dcb43dccceb6b)), closes [#1009](https://github.com/MarcelRoozekrans/Rag.NET/issues/1009)
+
+## [1.8.4](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.8.3...v1.8.4) (2026-11-15)
+
+
+### Bug Fixes
+
+* **deps:** update dependency haystack-ai to v3.5.0 ([#990](https://github.com/MarcelRoozekrans/Rag.NET/issues/990)) ([ed74afa](https://github.com/MarcelRoozekrans/Rag.NET/commit/ed74afa289e9b439febe099a50bbeb90bfe252c8))
+* **web:** disallow a host whose robots.txt is unreachable, and report it, per RFC 9309 2.3 ([#1010](https://github.com/MarcelRoozekrans/Rag.NET/issues/1010)) ([cd6f05a](https://github.com/MarcelRoozekrans/Rag.NET/commit/cd6f05aada88888239e778f8a3c3def45728bed4))
+
 ## [1.8.3](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.8.2...v1.8.3) (2026-11-15)
 
 

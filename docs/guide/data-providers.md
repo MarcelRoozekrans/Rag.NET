@@ -65,6 +65,9 @@ Every list has a matching count — `IngestedCount`, `SkippedCount`, `FailedCoun
 > during cleanup. Read `Failed` for *which entries* failed; read `Errors` for *everything* that went
 > wrong.
 
+A timeout you did not ask for, such as a content stream that stalls or a store client that times
+out, fails that one entry. Only cancelling your own token, or `StopOnFirstError`, ends the run.
+
 ### Writing your own provider
 
 Implement `IFileContentProvider` and yield one `FileEntry` per document. Nothing else is required — no base metadata, no registration ceremony:
@@ -592,6 +595,10 @@ services.AddBitbucketDataProvider(
     });
 ```
 
+File contents are streamed. Each read must return data within the connector `HttpClient`'s
+`Timeout` (100 seconds by default). A file whose download stalls longer fails that entry as
+`RagError.TransportFailed`, and the run goes on. Slow but steady downloads are not cut off.
+
 ### Zendesk — Tickets
 
 ```csharp
@@ -642,6 +649,12 @@ Delta runs require a "Last modified time" field in the table, named via
 change to any field. Field names containing `{` or `}` are rejected at construction (Airtable's
 formula grammar cannot escape braces inside a field reference), as are delta tokens containing
 anything outside ISO-8601 timestamp characters, since both are interpolated into the formula.
+
+Attachments are streamed, not buffered. Each read of an attachment body must return data within
+the connector `HttpClient`'s `Timeout` (100 seconds by default). An attachment whose download
+stalls longer fails that entry as `RagError.TransportFailed`, and the run goes on. A slow download
+that keeps making progress is never cut off, and a client with `Timeout.InfiniteTimeSpan` disables
+the limit.
 
 ### Web — Sitemap
 
@@ -701,8 +714,21 @@ ingestion pipeline does not drop repeats, so each copy used to be fetched and em
 RFC 9309. The rules come from the group that names the product token in the `HttpClient`'s
 default `User-Agent` (`MyBot` in `MyBot/1.0`), or from the `User-agent: *` group when no group
 names it. `Allow` and `Disallow` rules may use `*` and `$`. Each rule is matched
-case-sensitively against the path and query, and the longest match wins. A missing or
-unreachable robots.txt allows everything.
+case-sensitively against the path and query, and the longest match wins. Only the first 500 KiB
+of the file is read.
+
+A missing robots.txt (a 4xx other than 429, or a redirect chain `HttpClient` gives up on) allows
+everything. A robots.txt that answers 5xx or 429, or cannot be fetched at all, means the whole host
+is skipped, as RFC 9309 section 2.3.1.4 requires. The provider reports that host once, as an
+`HttpFailed` or `TransportFailed` naming the robots.txt URL, and it ends up in
+`ProviderIngestionResult.Errors`. A run with that error does not run full cleanup, so an outage does
+not delete the documents an earlier run ingested from that host.
+
+The crawler reads each page's fetch the same way. A page that answers a 4xx other than 429 is
+gone: it is skipped without an error, so full cleanup removes its document. A page that answers
+5xx or 429, times out, or breaks off is reported as an `HttpFailed` or `TransportFailed` naming its
+URL, and the crawl goes on. That run does not run full cleanup, so a page that is down for a
+moment keeps its document.
 
 A site's `Crawl-delay` raises `MinimumRequestInterval` to its value, and never lowers it. The
 sitemap walker uses one interval for every host it visits, so a delay from one host slows the
@@ -745,7 +771,8 @@ Prefixes are matched against the normalised page id (no fragment, no trailing sl
 the trailing slash off when the seed itself should match.
 
 robots.txt is read the same way as for the sitemap walker above, from the seed's host. Its
-`Crawl-delay` raises `MinimumRequestInterval` and never lowers it.
+`Crawl-delay` raises `MinimumRequestInterval` and never lowers it. When that robots.txt is
+unreachable, the crawler reports the host and crawls nothing.
 
 **Page ids are normalised.** Each crawled page's id is its URL with the fragment and any trailing
 slash removed, so `https://site/`, `https://site` and `https://site#top` are one page rather than

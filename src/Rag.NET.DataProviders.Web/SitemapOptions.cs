@@ -98,8 +98,10 @@ public sealed class SitemapOptions
     /// Default: <see langword="true"/>.
     /// </summary>
     /// <remarks>
-    /// Fetched once per host, the first time a page on that host is about to be yielded; a missing
-    /// or unreachable robots.txt allows everything. Sitemap and index URLs themselves are not
+    /// Fetched once per host, the first time a page on that host is about to be yielded. A missing
+    /// robots.txt (a 3xx, or any 4xx but 429) allows everything. One that answers 5xx or 429, or cannot be
+    /// fetched, skips every page on that host, and the walk yields one failure for the host
+    /// (RFC 9309 section 2.3.1.4). Only the first 500 KiB is read. Sitemap and index URLs themselves are not
     /// checked — the caller asked for them by name. Same rule as
     /// <see cref="WebCrawlerOptions.RespectRobotsTxt"/>: RFC 9309 groups and longest-match
     /// <c>Allow</c>/<c>Disallow</c> with <c>*</c> and <c>$</c>. A host's <c>Crawl-delay</c> raises

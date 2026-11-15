@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Net;
+using Rag.NET.Models;
 
 namespace Rag.NET.DataProviders.Web;
 
@@ -19,6 +21,14 @@ namespace Rag.NET.DataProviders.Web;
 /// matched case-sensitively against the URL's path and query; the longest matching rule wins,
 /// and <c>allow</c> wins a tie. <c>/robots.txt</c> itself is always allowed.
 /// </para>
+/// <para>
+/// How the fetch went decides what applies (RFC 9309 section 2.3, #998). A file that downloads
+/// is parsed, up to its first 500 KiB. A 4xx other than 429, or a 3xx left after
+/// <see cref="HttpClient"/> stops following redirects, means the file is unavailable, and
+/// everything is allowed. A 5xx, a 429 or
+/// no response at all means it is unreachable: every URL on the host is disallowed, and
+/// <see cref="Unreachable"/> carries the error the provider reports for that host.
+/// </para>
 /// </remarks>
 internal sealed class RobotsTxt
 {
@@ -28,13 +38,27 @@ internal sealed class RobotsTxt
 
     private static readonly RobotsTxt s_allowAll = new([], crawlDelay: null);
 
+    /// <summary>
+    /// How many bytes of a robots.txt are parsed. RFC 9309 section 2.5 asks for a limit of at
+    /// least 500 KiB; this is exactly that.
+    /// </summary>
+    internal const int ParseLimitBytes = 500 * 1024;
+
     private readonly IReadOnlyList<Rule> _rules;
 
-    private RobotsTxt(IReadOnlyList<Rule> rules, TimeSpan? crawlDelay)
+    private RobotsTxt(IReadOnlyList<Rule> rules, TimeSpan? crawlDelay, RagError? unreachable = null)
     {
         _rules = rules;
         CrawlDelay = crawlDelay;
+        Unreachable = unreachable;
     }
+
+    /// <summary>
+    /// Why the robots.txt could not be reached, or <see langword="null"/> when it could. When set,
+    /// <see cref="IsDisallowed"/> disallows every URL (RFC 9309 section 2.3.1.4), and the provider
+    /// reports this error once for the host so the run shows what it skipped.
+    /// </summary>
+    internal RagError? Unreachable { get; }
 
     /// <summary>
     /// The largest valid <c>crawl-delay</c> in the applicable groups, or <see langword="null"/>.
@@ -61,20 +85,37 @@ internal sealed class RobotsTxt
     }
 
     /// <summary>
-    /// Fetches <c>/robots.txt</c> for <paramref name="origin"/>'s scheme, host and port.
-    /// A missing, unreachable, broken-off or timed-out file allows everything.
+    /// Fetches <c>/robots.txt</c> for <paramref name="origin"/>'s scheme, host and port. A 3xx, or
+    /// a 4xx other than 429, allows everything. A 5xx, a 429, or a request that fails, breaks off or times out
+    /// disallows everything and sets <see cref="Unreachable"/>. The caller's own cancellation
+    /// propagates.
     /// </summary>
     public static async Task<RobotsTxt> LoadAsync(HttpClient httpClient, Uri origin, CancellationToken ct)
     {
+        var robotsUrl = new Uri(origin, "/robots.txt").ToString();
+        var host = origin.GetLeftPart(UriPartial.Authority);
         try
         {
-            var robotsUrl = new Uri(origin, "/robots.txt").ToString();
-            var content = await httpClient.GetStringWithCharsetFallbackAsync(robotsUrl, ct).ConfigureAwait(false);
+            var (content, truncated) = await httpClient
+                .GetTextPrefixWithCharsetFallbackAsync(robotsUrl, ParseLimitBytes, ct)
+                .ConfigureAwait(false);
+            if (truncated)
+            {
+                // The last line was cut at the limit; applied shortened, it would be a different rule.
+                var end = content.LastIndexOfAny(s_lineEnds);
+                content = end < 0 ? string.Empty : content[..(end + 1)];
+            }
+
             return Parse(content, ProductTokenOf(httpClient));
+        }
+        catch (Exception ex) when (FetchFailure.IsAbsent(ex))
+        {
+            return s_allowAll;
         }
         catch (Exception ex) when (FetchFailure.IsSkippable(ex, ct))
         {
-            return s_allowAll;
+            return new RobotsTxt([], crawlDelay: null, FetchFailure.ToError(ex, $"robots.txt at {robotsUrl}",
+                $"RFC 9309 section 2.3.1.4 reads that as disallow-all for {host}, so its pages were skipped."));
         }
     }
 
@@ -199,6 +240,7 @@ internal sealed class RobotsTxt
     /// <summary>Whether the applicable rules disallow <paramref name="url"/>.</summary>
     public bool IsDisallowed(string url)
     {
+        if (Unreachable is not null) return true;
         if (_rules.Count == 0) return false;
 
         // Never empty: an absolute URI with no path reports "/".
@@ -275,6 +317,9 @@ internal sealed class RobotsTxt
     /// <param name="Anchored">Whether the value ended in <c>$</c>.</param>
     private sealed record Rule(bool Allow, string Pattern, bool Anchored)
     {
+        /// <summary>The pattern cut at every <c>*</c>; one piece when it has none.</summary>
+        private readonly string[] _segments = Pattern.Split('*');
+
         /// <summary>The octets the rule has, for "the most specific match" (2.2.2).</summary>
         public int Length => Pattern.Length + (Anchored ? 1 : 0);
 
@@ -287,41 +332,34 @@ internal sealed class RobotsTxt
 
         /// <summary>
         /// Whether the rule matches from the first octet of <paramref name="target"/>: to its end
-        /// when anchored, else as a prefix. An iterative wildcard walk that retries from the last
-        /// <c>*</c> on a mismatch: no recursion, at most target-times-pattern steps.
+        /// when anchored, else as a prefix.
         /// </summary>
+        /// <remarks>
+        /// The first piece must start the target. Each middle piece is found at its leftmost
+        /// place after the one before: for <c>*</c> alone that is never wrong, because the
+        /// leftmost place leaves the most room for the rest. The last piece then ends the target
+        /// when anchored, or occurs anywhere after when not. Each piece is one ordinal search,
+        /// so 1,000 hostile rules no longer cost seconds per URL as the backtracking walk this
+        /// replaced did (#998).
+        /// </remarks>
         public bool Matches(string target)
         {
-            int t = 0, p = 0, star = -1, resume = 0;
-            while (t < target.Length)
+            var first = _segments[0];
+            if (!target.StartsWith(first, StringComparison.Ordinal)) return false;
+            if (_segments.Length == 1) return !Anchored || target.Length == first.Length;
+
+            var position = first.Length;
+            for (var i = 1; i < _segments.Length - 1; i++)
             {
-                if (p < Pattern.Length && Pattern[p] == '*')
-                {
-                    star = p++;
-                    resume = t;
-                }
-                else if (p < Pattern.Length && Pattern[p] == target[t])
-                {
-                    p++;
-                    t++;
-                }
-                else if (!Anchored && p == Pattern.Length)
-                {
-                    return true;
-                }
-                else if (star >= 0)
-                {
-                    p = star + 1;
-                    t = ++resume;
-                }
-                else
-                {
-                    return false;
-                }
+                var found = target.IndexOf(_segments[i], position, StringComparison.Ordinal);
+                if (found < 0) return false;
+                position = found + _segments[i].Length;
             }
 
-            while (p < Pattern.Length && Pattern[p] == '*') p++;
-            return p == Pattern.Length;
+            var last = _segments[^1];
+            return Anchored
+                ? target.Length - last.Length >= position && target.EndsWith(last, StringComparison.Ordinal)
+                : target.IndexOf(last, position, StringComparison.Ordinal) >= 0;
         }
     }
 
