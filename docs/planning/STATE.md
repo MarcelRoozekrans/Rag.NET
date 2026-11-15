@@ -1,63 +1,38 @@
 # Session State
 
-**Last updated:** 2026-11-15. **Next:** start **#1009** on a new branch `fix/body-read-timeout`
-from main; decisions are below and on the issue. **PR #1007** (#926) still waits for the operator.
-After it merges, confirm its `feat(reranking)` commit appears in the release-please PR. Do not
-merge #1007 or the release PR (**#1015**, 1.8.4) unasked.
+**Last updated:** 2026-11-15. **Next:** release PR **#1018** (1.9.0) waits for the operator; do
+not merge it unasked. The open bug queue is **#1012** (Airtable and Bitbucket stream reads not
+bounded by `HttpClient.Timeout`), which needs a design decision before work starts: a shared
+timeout `Stream` wrapper or not, and an idle or a total deadline. Bring a proposal with options,
+grounded in what #1016 did for the web provider. #944 waits for the next major.
 
-**PR #1010 (closes #998) merged 2026-11-15** as cd6f05aa, at the operator's request. Its `fix(web)`
-commit is in release PR #1015 (confirmed). Review rounds after the handoff added, with the
-operator's choices:
-- tests covering the segment matcher's rejecting branches (`codecov/patch` was 81.25%);
-- `FetchFailure.IsSkippable` takes any `IOException`: a reset mid-body throws a plain
-  `IOException` on .NET 10, not `HttpIOException` (reproduced);
-- the crawler reports a page whose fetch may pass (5xx, 429, timeout, broken off) as
-  `HttpFailed`/`TransportFailed` and goes on, so full cleanup keeps it; a 4xx other than 429 is
-  still a quiet skip. `FetchFailure.IsAbsent` and `ToError` hold the split for the crawler and
-  `RobotsTxt.LoadAsync`.
+**Merged 2026-11-15 at the operator's request** ("you can merge them", covering #1007, #1015 and
+#1016). Each branch was brought up to date and passed a fresh run before the merge:
+- **#1015** (release 1.8.4) was already merged by the operator, without #1007 and #1016.
+- **#1016** (closes #1009) as 23966ba0. Both web text reads keep `ResponseHeadersRead`, so the status
+  is checked before any body is read, and share `WithBodyDeadlineAsync` in
+  `HttpClientTextExtensions`: a linked deadline of `HttpClient.Timeout` that starts with the
+  request. Its expiry is thrown as `TaskCanceledException` around `TimeoutException` with the
+  caller's token untouched, so `FetchFailure.IsSkippable` takes it. The first version switched the
+  full read to `ResponseContentRead` as decided on #1009; CodeRabbit found that buffering ran before
+  the status check, so a 404 or 5xx with a stalled body became a timeout. The operator chose the
+  shared deadline instead, recorded on #1009. Test helpers `StalledBodyServer` (loopback socket)
+  and `StalledBodyContent` (handler) live in `Rag.NET.DataProviders.Web.Tests` and fit #1012.
+- **#1007** (closes #926) as 81adcd92. Its subject was 106 characters with the PR number, so the
+  squash subject dropped "in the ONNX reranker" to stay under commitlint's 100.
+- Release PR #1018 (1.9.0) lists both the `feat(reranking)` and the `fix(web)` commit (confirmed).
 
-**#1009** (filed 2026-11-14, bug, verified on .NET 10): `HttpClient.Timeout` does not bound a
-response body that stalls after its headers in the web providers' `ResponseHeadersRead` reads.
-Operator's decisions (2026-11-14, also on the issue): the full-body read
-`GetStringWithCharsetFallbackAsync` switches to the default `ResponseContentRead`, so the client
-timeout covers the body; the 500 KiB prefix read keeps `ResponseHeadersRead` and gets a linked CTS
-set to `HttpClient.Timeout`, its expiry reported as a timeout, not caller cancellation. Web
-provider only: the Airtable and Bitbucket stream-returning reads moved to **#1012**, which needs a
-design decision (shared timeout `Stream` wrapper, idle vs total deadline). #1010 has merged, so
-start now. For the linked CTS: `IsSkippable` takes a `TaskCanceledException` only when the caller's
-token is not cancelled, so the expiry must surface as that, not as `TimeoutException`. A crawled
-page that times out is now reported, not skipped silently, so a test can assert the error.
+**CI notes from these merges:** the `Main` ruleset requires up-to-date branches, and Renovate
+automerges into main between runs, so a branch can fall behind again while its CI runs. Codecov
+posts `codecov/project` minutes after the other checks; `gh pr checks --watch` can exit before it
+appears, leaving the PR BLOCKED until it does. UNSTABLE on #1007 was the non-required
+`codecov/patch`, which the operator chose to leave failing.
 
 **Agents host disk (2026-11-14):** it filled to 0 MB during the #998 build. With the operator's
 approval, bin/obj were deleted in the nine worktrees whose PRs had merged, freeing 73 GB. The
 `bridge-cse_*` worktrees for merged branches can be removed outright once their sessions are
 archived. A zero-byte `deps.json` written while the disk was full broke one test project
 until it was rebuilt; after a disk-full event, look for zero-size files under `bin/`.
-
-**PR #1007 (closes #926), open for the operator.** Branch `feat/onnx-reranker-sentencepiece`, head
-d384a5fa. Every required check is green, CodeRabbit approved after two fix rounds, and the merge
-state is BLOCKED only on the operator's review. Do not merge it unasked.
-- `OnnxRerankerOptions.TokenizerPath` loads XLM-RoBERTa cross-encoders such as bge-reranker-v2-m3
-  from `sentencepiece.bpe.model`. Exactly one of `VocabPath` and `TokenizerPath` is set, and
-  `VocabPath` is no longer `required`. The fairseq id offset and the `<s> q </s></s> p </s>`
-  template are fixed behaviour. The reranker feeds only the inputs the ONNX session declares.
-- `XlmRobertaPairTokenizer` compensates for two gaps in Microsoft.ML.Tokenizers 3.0.0: it fuses
-  runs of `<unk>`, and it drops 30 C0/C1 control characters the model's normalizer drops. Both
-  are tracked upstream in dotnet/machinelearning#7859. The operator approved the comment posted
-  there on 2026-11-14 for the control characters. Remove both helpers once upstream matches.
-  A U+2034 difference one review reported did not reproduce on re-measurement.
-- Real-model run, local only: 178 passed, 0 skipped. The Dutch check scored the answer at least
-  0.986 and the best distractor at most 0.234. The export is
-  `EmbeddedLLM/bge-reranker-v2-m3-onnx-o3-cpu` @ c46cc14e, and the tokenizer comes from
-  BAAI/bge-reranker-v2-m3 @ 953dc6f6. `docs/reference/ci.md` has the pinned, checksummed local
-  procedure. The models sit in `~/.cache/ragnet-models/` on the agents host (2.4 GB); delete them
-  when no longer needed.
-- `codecov/patch` (not required) fails at 80.6%: the uncovered lines run only with real model
-  files. The operator chose to leave it, keeping CI free of Hugging Face downloads.
-- Also in the PR: every fenced model-download procedure in `ci.md` runs in a fail-fast subshell.
-  The Whisper block's literal `\n` continuation is fixed, and `.whisper-models/` and
-  `.reranker-models/` are git-ignored.
-- Design and plan: `docs/plans/2026-11-14-onnx-reranker-sentencepiece-{design,implementation}.md`.
 
 **Merged on 2026-11-14 by the operator after the last handoff:** #1004 (state handoff), #1003
 (release 1.8.2, ships #999), and the Renovate PRs #1005 and #1006.
@@ -72,8 +47,6 @@ state is BLOCKED only on the operator's review. Do not merge it unasked.
 Leftover: local branch `fix/robots-rfc9309` is still checked out in the earlier session's locked
 worktree `.claude/worktrees/bridge-cse_01RwoARdH4BqtszEjF9nyNhF`, which has no uncommitted changes.
 The remote branch is gone. Remove the worktree and the branch once that session is archived.
-
-**#998** is in PR #1010, above.
 
 **#944 decided (2026-11-14, recorded on the issue):** breaking change in the next major, with #937.
 One nested options object replaces the flat `TopK`/`UseHybridSearch` fields in JSON and proto
@@ -118,7 +91,7 @@ suite, delete `artifacts/packages` and repack with the GitVersion SemVer: the te
 package. It ships #973, #983, #985, #976 and #986, and the net11.0 target from #961. v1.7.0 was
 never published: its release run failed on NU1902, which #976 fixed.
 
-**Queue:** #1009 (bug, next). #1012 (bug, needs a design). #944 waits for the next major release. #926 is in PR #1007.
+**Queue:** #1012 (bug, needs a design). #944 waits for the next major release.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
