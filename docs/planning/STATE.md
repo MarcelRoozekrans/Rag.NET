@@ -1,54 +1,78 @@
 # Session State
 
-**Last updated:** 2026-11-14. **Next:** #926. Branch `feat/onnx-reranker-sentencepiece` from main
-and resume the brainstorm at "lay out the approaches" with the findings below. #994, the
-Tokenizers 3.0.0 bump #926 needed, is merged and shipped in v1.8.1. **Release PR #1003 (1.8.2, ships
-#999) is open for the operator**; do not merge it unasked.
+**Last updated:** 2026-11-15, later. **Next:** PR **#1020** (fixes #1012) is green and
+CodeRabbit-approved, and waits for the operator to merge. The `Main` ruleset requires an
+up-to-date branch, so run `gh pr update-branch 1020` and let CI re-run before merging. After the
+merge, confirm the `fix:` commit appears in the next release-please PR. Release 1.9.0 (#1018)
+was merged by the operator. Open follow-up: **#1019**, which needs a decision. A store,
+hash-store or remote-pipeline client timeout during ingestion now fails one entry as
+`TransportFailed` where `StorageFailed` would fit; options are listed on the issue. #944 waits
+for the next major.
 
-**Merged on 2026-11-14** (operator's request "merge them when green", or merged by the operator):
-- **#994** as d98e80d4: `Microsoft.ML.Tokenizers` and `Data.Cl100kBase` 1.0.3 -> 3.0.0, and the
-  `renovate.json` rule holding them below 2.0 removed. Released in **v1.8.1** (#1001, merged by the
-  operator); the release run's `publish-nuget` passed.
-- **#999** (closes #927) as ffa4f24d: `RobotsTxt` follows RFC 9309 section 2.2. Named groups apply
-  first, with the product token from the `HttpClient`'s default `User-Agent`; `*`, `$`, longest
-  match and percent-encoding normalisation; `Crawl-delay` raises `MinimumRequestInterval` and never
-  lowers it. CodeRabbit's last finding was real and is fixed in it: record values are trimmed of
-  spaces and tabs only, so a U+00A0 in a path pattern survives. Rulings for the operator to check:
-  Figure 4 row 2 stays unmatched, as in Google's parser; `Crawl-delay` above `Task.Delay`'s limit
-  (~49.7 days) is held at that limit; the sitemap walker uses one interval for all hosts. Design
-  and plan: `docs/plans/2026-11-14-robots-rfc9309-*.md`. In release PR #1003.
-- **#1000** (closes #987), merged by the operator: tinypool 2.2.0 and serialize-javascript 7.1.4 by
-  override, mermaid 12.3.0 with katex 0.18. Mermaid 12 changed its defaults (ELK layout, `neo` look,
-  120px label wrap); `docusaurus.config.ts` sets dagre, classic and 200px. The site's `tsc`, broken
-  by TypeScript 7 since #41, works again. The deepmerge alert, which has no patched release, was
-  dismissed as tolerable risk at the operator's choice.
-- **#996**, the previous state handoff, merged by the operator.
-- **#974** (StefH's NU1902 report) closed with a comment: #976 fixed it and v1.8.0 shipped it.
+**#1012 as built (PR #1020, branch `fix/stream-read-deadline`).** Decisions by the operator on
+2026-11-15:
+- **Idle per-read deadline** of `HttpClient.Timeout`, not a total. A total would cut off large
+  attachments on slow links. `Timeout.InfiniteTimeSpan` disables it.
+- **Expiry like HttpClient**, a `TaskCanceledException` around `TimeoutException`, plus the
+  pipeline fix.
+
+The wrapper, `TimeoutBoundedResponseStream`:
+- It is internal, lives in `src/Shared/`, and is linked into both connectors.
+- It owns and disposes the response.
+- It also bounds sync reads, because the ZIP, OpenXml and MSG parsers read synchronously.
+- Its sync reads honour the token given to `OpenAsync`, a CodeRabbit finding.
+
+The pipeline fix: without a hash store, `PipelineIngestor` rethrew a non-caller OCE and the
+per-entry catch skipped it, so one stalled entry ended the run. `ProcessEntryAsync` now fails the
+entry as `TransportFailed`. This is deliberately broad, which is why #1019 exists.
+
+Design and plan: `docs/plans/2026-11-15-stream-read-deadline-{design,implementation}.md`.
+
+Local check: all 78 test projects pass, excluding E2ETests. In PackageValidation, only
+`EveryPackageCarriesTheVersionGitVersionDerives` fails locally, because it was packed with a
+hand-picked version; CI passes it.
+
+**Merged 2026-11-15 at the operator's request** ("you can merge them", covering #1007, #1015 and
+#1016). Each branch was brought up to date and passed a fresh run before the merge:
+- **#1015** (release 1.8.4) was already merged by the operator, without #1007 and #1016.
+- **#1016** (closes #1009) as 23966ba0. Both web text reads keep `ResponseHeadersRead`, so the status
+  is checked before any body is read, and share `WithBodyDeadlineAsync` in
+  `HttpClientTextExtensions`: a linked deadline of `HttpClient.Timeout` that starts with the
+  request. Its expiry is thrown as `TaskCanceledException` around `TimeoutException` with the
+  caller's token untouched, so `FetchFailure.IsSkippable` takes it. The first version switched the
+  full read to `ResponseContentRead` as decided on #1009; CodeRabbit found that buffering ran before
+  the status check, so a 404 or 5xx with a stalled body became a timeout. The operator chose the
+  shared deadline instead, recorded on #1009. Test helpers `StalledBodyServer` (loopback socket)
+  and `StalledBodyContent` (handler) live in `Rag.NET.DataProviders.Web.Tests` and fit #1012.
+- **#1007** (closes #926) as 81adcd92. Its subject was 106 characters with the PR number, so the
+  squash subject dropped "in the ONNX reranker" to stay under commitlint's 100.
+- Release PR #1018 (1.9.0) lists both the `feat(reranking)` and the `fix(web)` commit (confirmed).
+
+**CI notes from these merges:** the `Main` ruleset requires up-to-date branches, and Renovate
+automerges into main between runs, so a branch can fall behind again while its CI runs. Codecov
+posts `codecov/project` minutes after the other checks; `gh pr checks --watch` can exit before it
+appears, leaving the PR BLOCKED until it does. UNSTABLE on #1007 was the non-required
+`codecov/patch`, which the operator chose to leave failing.
+
+**Agents host disk (2026-11-14):** it filled to 0 MB during the #998 build. With the operator's
+approval, bin/obj were deleted in the nine worktrees whose PRs had merged, freeing 73 GB. The
+`bridge-cse_*` worktrees for merged branches can be removed outright once their sessions are
+archived. A zero-byte `deps.json` written while the disk was full broke one test project
+until it was rebuilt; after a disk-full event, look for zero-size files under `bin/`.
+
+**Merged on 2026-11-14 by the operator after the last handoff:** #1004 (state handoff), #1003
+(release 1.8.2, ships #999), and the Renovate PRs #1005 and #1006.
+
+**Agents host notes (2026-11-14):**
+- The root disk is at about 97%. Most of it is `/tmp/dotnet11-wave*` (39 GB) from other work, not
+  this repo. Weaviate turns read-only above 90% disk, so `Rag.NET.VectorStores.Weaviate.Tests`
+  fails locally until space is freed. CI is unaffected.
+- `Rag.NET.E2ETests` hangs on this host's CPU Ollama. Exclude it from local full runs; it runs
+  nightly. Give each project a timeout, such as `timeout 900`, so one hang cannot eat the run.
 
 Leftover: local branch `fix/robots-rfc9309` is still checked out in the earlier session's locked
 worktree `.claude/worktrees/bridge-cse_01RwoARdH4BqtszEjF9nyNhF`, which has no uncommitted changes.
 The remote branch is gone. Remove the worktree and the branch once that session is archived.
-
-**#998** (filed 2026-11-14, needs a decision): RFC 9309 section 2.3. An unreachable or 5xx
-robots.txt should disallow everything, but today it allows everything. It also covers the 500 KiB
-parse limit and a quadratic matching cost on huge hostile files.
-
-**#926 findings (2026-11-14, probed against BAAI/bge-reranker-v2-m3's own files):**
-- The model's `sentencepiece.bpe.model` is a **Unigram** model despite its name. Tokenizers 1.0.3
-  refuses it (`The model type is not Bpe`); 2.0.1 and 3.0.0 load it with
-  `SentencePieceTokenizer.Create(stream, addBeginningOfSentence: false, addEndOfSentence: false)` and
-  split Dutch as the model's `tokenizer.json` does (`▁hoofd stad`).
-- **Ids are off by one (fairseq offset).** Raw SentencePiece ids are `<unk>`=0, `<s>`=1, `</s>`=2;
-  the model's vocabulary is `<s>`=0, `<pad>`=1, `</s>`=2, `<unk>`=3, and every other piece is raw
-  id + 1 (`▁Wat` 6585 raw, 6586 in `tokenizer.json`). Feeding raw ids scores garbage without failing.
-- **Pair template:** `<s> A </s></s> B </s>` (four special tokens, against BERT's three), per the
-  `TemplateProcessing` post-processor in `tokenizer.json`.
-- XLM-R ONNX exports usually take no `token_type_ids`; feed only the inputs the session declares.
-- The BAAI repo ships no ONNX file. Community exports exist on Hugging Face (search
-  `bge-reranker-v2-m3 onnx`); pick one with a pinned revision for the Dutch ranking check.
-- Open design points for the brainstorm: how `TokenizerPath` and `VocabPath` relate (exclusive, one
-  required); whether the offset and template are fixed XLM-R behaviour or options; where the Dutch
-  sanity check lives (test needing a model env var, like `RAGNET_ONNX_RERANK_MODEL`).
 
 **#944 decided (2026-11-14, recorded on the issue):** breaking change in the next major, with #937.
 One nested options object replaces the flat `TopK`/`UseHybridSearch` fields in JSON and proto
@@ -93,7 +117,7 @@ suite, delete `artifacts/packages` and repack with the GitVersion SemVer: the te
 package. It ships #973, #983, #985, #976 and #986, and the net11.0 target from #961. v1.7.0 was
 never published: its release run failed on NU1902, which #976 fixed.
 
-**Queue:** #926, #998 (needs the operator's decision). #944 waits for the next major release.
+**Queue:** #1012 (bug, needs a design). #944 waits for the next major release.
 
 **#951 is done (2026-11-10, closed).** Renovate no longer bypasses the `Main` ruleset in any of
 the 14 repos that extend the `ZeroAlloc-Net/.github` preset:
