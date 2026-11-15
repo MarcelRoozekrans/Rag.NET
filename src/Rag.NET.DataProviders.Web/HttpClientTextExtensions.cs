@@ -48,12 +48,16 @@ internal static class HttpClientTextExtensions
     /// The request failed or returned a non-success status — the same exception, from the same
     /// cause, that <c>GetStringAsync</c> raised, so existing handlers keep working unchanged.
     /// </exception>
+    /// <remarks>
+    /// The body is buffered with the default <see cref="HttpCompletionOption.ResponseContentRead"/>,
+    /// so <see cref="HttpClient.Timeout"/> covers it. With <c>ResponseHeadersRead</c> the timeout
+    /// stopped at the headers, and a server that stalled mid-body held the read until the caller's
+    /// token fired (#1009). This method reads the whole body anyway, so buffering costs nothing.
+    /// </remarks>
     public static async Task<string> GetStringWithCharsetFallbackAsync(
         this HttpClient httpClient, string url, CancellationToken cancellationToken)
     {
-        using var response = await httpClient
-            .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-            .ConfigureAwait(false);
+        using var response = await httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
 
         _ = response.EnsureSuccessStatusCode();
 
@@ -74,12 +78,46 @@ internal static class HttpClientTextExtensions
     /// <paramref name="maxBytes"/> bytes of the body. <c>Truncated</c> says whether the body had
     /// more. The last character may be cut in half; callers that care drop the partial last line.
     /// </summary>
+    /// <remarks>
+    /// The body is streamed with <see cref="HttpCompletionOption.ResponseHeadersRead"/> so that no
+    /// more than <paramref name="maxBytes"/> is held, and <see cref="HttpClient.Timeout"/> stops at
+    /// the headers. A deadline of <see cref="HttpClient.Timeout"/>, started with the request,
+    /// bounds the body read in its place, so a server that stalls mid-body cannot hold it (#1009).
+    /// </remarks>
     /// <exception cref="HttpRequestException">As for <see cref="GetStringWithCharsetFallbackAsync"/>.</exception>
+    /// <exception cref="TaskCanceledException">
+    /// The deadline expired while the body was read. Like <see cref="HttpClient"/>'s own timeout
+    /// it wraps a <see cref="TimeoutException"/>, and <paramref name="cancellationToken"/> is not
+    /// cancelled, so callers tell it from their own cancellation.
+    /// </exception>
     public static async Task<(string Text, bool Truncated)> GetTextPrefixWithCharsetFallbackAsync(
         this HttpClient httpClient, string url, int maxBytes, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maxBytes);
 
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var timeout = httpClient.Timeout;
+        if (timeout != Timeout.InfiniteTimeSpan)
+        {
+            deadline.CancelAfter(timeout);
+        }
+
+        try
+        {
+            return await ReadPrefixAsync(httpClient, url, maxBytes, deadline.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException ex)
+            when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TaskCanceledException(
+                $"The request was canceled due to the configured HttpClient.Timeout of {timeout.TotalSeconds} seconds elapsing.",
+                new TimeoutException(ex.Message, ex));
+        }
+    }
+
+    private static async Task<(string Text, bool Truncated)> ReadPrefixAsync(
+        HttpClient httpClient, string url, int maxBytes, CancellationToken cancellationToken)
+    {
         using var response = await httpClient
             .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
             .ConfigureAwait(false);
