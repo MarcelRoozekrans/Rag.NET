@@ -797,6 +797,7 @@ services.AddRagNet(b => b
     .UseOnnxReranking(o =>
     {
         o.ModelPath = "models/ms-marco-MiniLM-L-6-v2.onnx";
+        o.VocabPath = "models/vocab.txt";
         o.MaxLength = 512;
     }));
 
@@ -889,12 +890,23 @@ When `CandidateCount` is not set, it defaults to `TopK × 3`. When no reranker i
 
 ### Recommended models
 
-| Model | Languages | Size | Use case |
-|-------|-----------|------|----------|
-| `ms-marco-MiniLM-L-6-v2` | English | ~80 MB | Fast, good accuracy for English-only corpora |
-| `bge-reranker-v2-m3` | 100+ | ~568 MB | Multilingual, strong accuracy |
+| Model | Languages | Size | Tokenizer file | Option | Use case |
+|-------|-----------|------|----------------|--------|----------|
+| `ms-marco-MiniLM-L-6-v2` | English | ~91 MB | `vocab.txt` | `VocabPath` | Fast, good accuracy for English-only corpora |
+| `bge-reranker-v2-m3` | 100+ | ~2.3 GB | `sentencepiece.bpe.model` | `TokenizerPath` | Multilingual, strong accuracy |
 
-Download ONNX models from [Hugging Face](https://huggingface.co) and point `ModelPath` to the `.onnx` file.
+Download ONNX models from [Hugging Face](https://huggingface.co) and point `ModelPath` to the `.onnx` file. Set exactly one of `VocabPath` (a BERT `vocab.txt`) and `TokenizerPath` (a SentencePiece `sentencepiece.bpe.model`). Setting both or neither throws an `ArgumentException`.
+
+The `BAAI/bge-reranker-v2-m3` repository ships `sentencepiece.bpe.model` but no ONNX file, so you need a community export. The project checked its Dutch ranking against `EmbeddedLLM/bge-reranker-v2-m3-onnx-o3-cpu`; that export is not endorsed or maintained by Rag.NET. That export stores its weights in a separate `model.onnx.data` file, which must stay in the same directory as `model.onnx`; `ModelPath` points at `model.onnx`. The reranker applies the XLM-RoBERTa id layout and pair template itself, and feeds the model only the inputs it declares.
+
+```csharp
+services.AddRagNet(b => b
+    .UseOnnxReranking(o =>
+    {
+        o.ModelPath = "models/bge-reranker-v2-m3/model.onnx";
+        o.TokenizerPath = "models/bge-reranker-v2-m3/sentencepiece.bpe.model";
+    }));
+```
 
 ## Metadata filtering
 

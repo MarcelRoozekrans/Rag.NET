@@ -5,9 +5,19 @@ namespace Rag.NET.DataProviders.Web.Tests;
 internal sealed class FakeHttpMessageHandler : HttpMessageHandler
 {
     private readonly Dictionary<string, string> _responses;
+    private readonly Dictionary<string, HttpStatusCode> _statuses;
 
-    public FakeHttpMessageHandler(Dictionary<string, string> responses)
-        => _responses = responses;
+    /// <param name="responses">Bodies answered with 200, by URL.</param>
+    /// <param name="statuses">
+    /// URLs answered with a fixed status and no body, such as a robots.txt that returns 503 (#998).
+    /// Every URL in neither map answers 404.
+    /// </param>
+    public FakeHttpMessageHandler(
+        Dictionary<string, string> responses, Dictionary<string, HttpStatusCode>? statuses = null)
+    {
+        _responses = responses;
+        _statuses = statuses ?? new Dictionary<string, HttpStatusCode>(StringComparer.Ordinal);
+    }
 
     /// <summary>
     /// How many requests this handler has been asked for.
@@ -25,6 +35,11 @@ internal sealed class FakeHttpMessageHandler : HttpMessageHandler
     {
         RequestCount++;
         var url = request.RequestUri!.ToString();
+        if (_statuses.TryGetValue(url, out var status))
+        {
+            return Task.FromResult(new HttpResponseMessage(status));
+        }
+
         if (_responses.TryGetValue(url, out var body))
         {
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)

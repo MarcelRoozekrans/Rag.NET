@@ -317,16 +317,17 @@ rag.UseCohereReranking(o =>
 
 **Package:** `Rag.NET.Reranking.Onnx`
 
-Run a BERT-based cross-encoder reranker fully locally via `Microsoft.ML.OnnxRuntime`. `OnnxReranker` tokenises each query-passage pair using a BERT whitespace tokeniser, runs inference through the ONNX model, and ranks results by the sigmoid-transformed logit score. No API key or network access required — suitable for air-gapped environments or cost-sensitive deployments.
+Run a cross-encoder reranker fully locally via `Microsoft.ML.OnnxRuntime`. `OnnxReranker` tokenises each query-passage pair with a BERT WordPiece tokeniser (`VocabPath`) or a SentencePiece model for XLM-RoBERTa cross-encoders such as `bge-reranker-v2-m3` (`TokenizerPath`), runs inference through the ONNX model, and ranks results by the sigmoid-transformed logit score. No API key or network access required — suitable for air-gapped environments or cost-sensitive deployments.
 
-**Why:** Highest-quality reranking without API cost or data-egress concerns; works offline with any ONNX-compatible cross-encoder model (e.g., `ms-marco-MiniLM-L-6-v2` exported to ONNX).
+**Why:** Highest-quality reranking without API cost or data-egress concerns; works offline with an ONNX cross-encoder using either of two tokenizer families: BERT WordPiece via `VocabPath` (e.g., `ms-marco-MiniLM-L-6-v2`) or XLM-RoBERTa SentencePiece via `TokenizerPath` (e.g., `bge-reranker-v2-m3`).
 
 **Options**
 
 | Option | Default | Description |
 |---|---|---|
 | `ModelPath` | *(required)* | Path to the `.onnx` cross-encoder model file. |
-| `VocabPath` | *(required)* | Path to the BERT `vocab.txt` vocabulary file. |
+| `VocabPath` | `""` | Path to the BERT `vocab.txt` vocabulary file. Set exactly one of `VocabPath` and `TokenizerPath`. |
+| `TokenizerPath` | `null` | Path to a SentencePiece `sentencepiece.bpe.model` for XLM-RoBERTa cross-encoders. Set exactly one of `VocabPath` and `TokenizerPath`; setting both or neither throws `ArgumentException`. |
 | `MaxLength` | `512` | Maximum token sequence length; query + passage pairs are truncated to this limit. |
 
 **Usage**
@@ -338,6 +339,17 @@ services.AddRagNet(rag => rag
         o.ModelPath = "models/cross-encoder.onnx";
         o.VocabPath = "models/vocab.txt";
         o.MaxLength = 512;
+    }));
+```
+
+For an XLM-RoBERTa cross-encoder such as `bge-reranker-v2-m3`, set `TokenizerPath` instead of `VocabPath`:
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseOnnxReranking(o =>
+    {
+        o.ModelPath = "models/bge-reranker-v2-m3/model.onnx";
+        o.TokenizerPath = "models/bge-reranker-v2-m3/sentencepiece.bpe.model";
     }));
 ```
 

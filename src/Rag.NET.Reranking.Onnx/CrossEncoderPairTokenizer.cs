@@ -17,7 +17,7 @@ namespace Rag.NET.Reranking.Onnx;
 /// reorders every query — it just reorders them worse than the dense ranking it was handed, which
 /// is why no reordering-based guard could see it.
 /// </remarks>
-internal sealed class CrossEncoderPairTokenizer
+internal sealed class CrossEncoderPairTokenizer : IPairTokenizer
 {
     /// <summary>[CLS] plus the two [SEP] positions every pair reserves.</summary>
     internal const int SpecialTokensPerPair = 3;
@@ -33,7 +33,7 @@ internal sealed class CrossEncoderPairTokenizer
     /// Encodes one query/passage pair into ids, attention mask and segment ids, truncated to
     /// <paramref name="maxLength"/> positions in total.
     /// </summary>
-    internal (long[] InputIds, long[] AttentionMask, long[] TokenTypeIds) Encode(
+    public (long[] InputIds, long[] AttentionMask, long[] TokenTypeIds) Encode(
         string query, string passage, int maxLength)
     {
         // Special tokens are added here rather than by the tokenizer, so truncation cannot drop

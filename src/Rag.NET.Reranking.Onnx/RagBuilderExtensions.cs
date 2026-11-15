@@ -14,7 +14,7 @@ public static class RagBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(configure);
 
-        var options = new OnnxRerankerOptions { ModelPath = "", VocabPath = "" };
+        var options = new OnnxRerankerOptions { ModelPath = "" };
         configure(options);
 
         builder.Services.AddSingleton(options);

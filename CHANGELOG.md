@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.8.4](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.8.3...v1.8.4) (2026-11-15)
+
+
+### Bug Fixes
+
+* **deps:** update dependency haystack-ai to v3.5.0 ([#990](https://github.com/MarcelRoozekrans/Rag.NET/issues/990)) ([ed74afa](https://github.com/MarcelRoozekrans/Rag.NET/commit/ed74afa289e9b439febe099a50bbeb90bfe252c8))
+* **web:** disallow a host whose robots.txt is unreachable, and report it, per RFC 9309 2.3 ([#1010](https://github.com/MarcelRoozekrans/Rag.NET/issues/1010)) ([cd6f05a](https://github.com/MarcelRoozekrans/Rag.NET/commit/cd6f05aada88888239e778f8a3c3def45728bed4))
+
+## [1.8.3](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.8.2...v1.8.3) (2026-11-15)
+
+
+### Bug Fixes
+
+* **deps:** update dependency langchain-core to v1.8.0 ([#1011](https://github.com/MarcelRoozekrans/Rag.NET/issues/1011)) ([e314f8b](https://github.com/MarcelRoozekrans/Rag.NET/commit/e314f8b42d304096c80d29295281f84e69016726))
+
 ## [1.8.2](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.8.1...v1.8.2) (2026-11-14)
 
 
