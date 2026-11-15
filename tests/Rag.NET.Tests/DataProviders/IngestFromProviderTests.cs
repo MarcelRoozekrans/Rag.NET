@@ -1719,6 +1719,99 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Same(timeout, error.Inner);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ContentWhoseReadTimesOut_FailsThatEntryAndTheRunGoesOn(bool withHashStore)
+    {
+        // A stream that stalls after its headers surfaces as a TaskCanceledException from the
+        // read, the way HttpClient reports its own timeout (#1012). Without a hash store the
+        // read happens inside the pipeline, so the entry used to end the whole run.
+        var timeout = new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.",
+            new TimeoutException());
+        ReadTheStreamWhenIngesting();
+
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-1"),
+                    FileName: "stalled.txt",
+                    OpenContentAsync: _ => Task.FromResult<Stream>(new StalledStream(timeout)))),
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-2"),
+                    FileName: "fine.txt",
+                    OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hello"u8.ToArray())))),
+            }.ToAsyncEnumerable());
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            hashStore: withHashStore ? new SqliteContentHashStore(_dbPath) : null,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.FailedCount);
+        Assert.Equal(1, result.IngestedCount);
+        var error = Assert.IsType<RagError.TransportFailed>(Assert.Single(result.Errors));
+        Assert.Same(timeout, error.Inner);
+    }
+
+    [Fact]
+    public async Task ContentReadCancelledByTheCaller_StillPropagates()
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        ReadTheStreamWhenIngesting();
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-1"),
+                    FileName: "page.txt",
+                    OpenContentAsync: _ => Task.FromResult<Stream>(new StalledStream(cts)))),
+            }.ToAsyncEnumerable());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"), cancellationToken: cts.Token));
+    }
+
+    // The mocked pipeline does not read what it is given; the real one does, and a stalled read
+    // is what the tests above need to reach.
+    private void ReadTheStreamWhenIngesting() =>
+        _pipeline.IngestAsync(
+                Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(async ci =>
+            {
+                var buffer = new byte[16];
+                _ = await ci.ArgAt<Stream>(0).ReadAsync(buffer, ci.ArgAt<CancellationToken>(4));
+                return Result<IngestionResult, RagError>.Success(
+                    new IngestionResult { DocumentId = ci.ArgAt<DocumentMetadata>(1).DocumentId, ChunksStored = 1 });
+            });
+
+    /// <summary>A stream whose reads fail the way a stalled HTTP body does.</summary>
+    private sealed class StalledStream : MemoryStream
+    {
+        private readonly Exception? _error;
+        private readonly CancellationTokenSource? _cts;
+
+        public StalledStream(Exception error) { _error = error; }
+        public StalledStream(CancellationTokenSource cts) { _cts = cts; }
+
+        private Exception Fail()
+        {
+            if (_cts is null) return _error!;
+            _cts.Cancel();
+            return new OperationCanceledException(_cts.Token);
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw Fail();
+        public override int Read(Span<byte> buffer) => throw Fail();
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => Task.FromException<int>(Fail());
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => ValueTask.FromException<int>(Fail());
+    }
+
     [Fact]
     public async Task ContentFetchCancelledByTheCaller_StillPropagates()
     {
