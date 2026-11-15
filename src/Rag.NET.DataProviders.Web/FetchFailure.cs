@@ -10,10 +10,13 @@ internal static class FetchFailure
     /// <remarks>
     /// <see cref="HttpRequestException"/> alone missed two of these. A body that ends early throws
     /// <see cref="HttpIOException"/>, an <see cref="IOException"/>, and a timeout throws
-    /// <see cref="TaskCanceledException"/>; either ended a live 675-page crawl on one page. The
-    /// caller's own cancellation is excluded, so cancelling still stops the walk.
+    /// <see cref="TaskCanceledException"/>; either ended a live 675-page crawl on one page. A
+    /// connection reset during the body read throws a plain <see cref="IOException"/> on .NET 10,
+    /// not an <see cref="HttpIOException"/>, so any <see cref="IOException"/> counts. The callers
+    /// wrap only the fetch and its body read, so no other I/O reaches this. The caller's own
+    /// cancellation is excluded, so cancelling still stops the walk.
     /// </remarks>
     public static bool IsSkippable(Exception exception, CancellationToken callerToken) =>
-        exception is HttpRequestException or HttpIOException
+        exception is HttpRequestException or IOException
         || (exception is TaskCanceledException && !callerToken.IsCancellationRequested);
 }

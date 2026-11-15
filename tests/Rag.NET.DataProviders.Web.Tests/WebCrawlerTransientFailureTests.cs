@@ -15,7 +15,7 @@ namespace Rag.NET.DataProviders.Web.Tests;
 /// </remarks>
 public sealed class WebCrawlerTransientFailureTests
 {
-    private sealed class FailingHandler(Dictionary<string, string> pages, string failingUrl, Exception failure)
+    private sealed class FailingHandler(Dictionary<string, string> pages, string failingUrl, Exception? failure)
         : HttpMessageHandler
     {
         public List<string> Requested { get; } = [];
@@ -24,22 +24,33 @@ public sealed class WebCrawlerTransientFailureTests
         {
             var url = request.RequestUri!.ToString();
             Requested.Add(url);
-            if (string.Equals(url, failingUrl, StringComparison.Ordinal)) throw failure;
+            if (string.Equals(url, failingUrl, StringComparison.Ordinal))
+            {
+                // A reset fails inside the body read, after the headers arrived.
+                if (failure is null) return Task.FromResult(BodyResetContent.Response());
+                throw failure;
+            }
             return Task.FromResult(pages.TryGetValue(url, out var body)
                 ? new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(body) }
                 : new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
         }
     }
 
-    public static TheoryData<string> Failures => ["io", "timeout"];
+    public static TheoryData<string> Failures => ["io", "timeout", "reset"];
+
+    /// <summary>The failure for <paramref name="kind"/>; <see langword="null"/> for a reset during the body.</summary>
+    private static Exception? FailureOf(string kind) => kind switch
+    {
+        "io" => new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely."),
+        "timeout" => new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout."),
+        _ => null,
+    };
 
     [Theory]
     [MemberData(nameof(Failures))]
     public async Task AFailedPage_IsSkipped_AndTheCrawlContinues(string kind)
     {
-        Exception failure = string.Equals(kind, "io", StringComparison.Ordinal)
-            ? new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely.")
-            : new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.");
+        var failure = FailureOf(kind);
         var pages = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["https://example.com/"] = """<a href="/broken">x</a><a href="/fine">y</a>""",
@@ -81,9 +92,7 @@ public sealed class WebCrawlerTransientFailureTests
     [MemberData(nameof(Failures))]
     public async Task AFailedRobotsTxt_ReportsTheHost_AndListsNothing(string kind)
     {
-        Exception failure = string.Equals(kind, "io", StringComparison.Ordinal)
-            ? new HttpIOException(HttpRequestError.ResponseEnded, "The response ended prematurely.")
-            : new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout.");
+        var failure = FailureOf(kind);
         var pages = new Dictionary<string, string>(StringComparer.Ordinal) { ["https://example.com/"] = "<p>home</p>" };
         var handler = new FailingHandler(pages, "https://example.com/robots.txt", failure);
 

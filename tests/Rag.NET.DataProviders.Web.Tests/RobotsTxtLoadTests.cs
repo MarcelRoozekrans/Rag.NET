@@ -88,6 +88,27 @@ public sealed class RobotsTxtLoadTests
         Assert.True(robots.IsDisallowed("https://example.com/"));
     }
 
+    /// <summary>
+    /// A reset after the headers fails inside the body read, as a plain <see cref="IOException"/>
+    /// on .NET 10. It must read as unreachable, not end the run.
+    /// </summary>
+    [Fact]
+    public async Task ConnectionResetDuringTheBody_IsUnreachable()
+    {
+        var robots = await LoadAsync(new BodyResetHandler());
+
+        var error = Assert.IsType<RagError.TransportFailed>(robots.Unreachable);
+        var inner = Assert.IsType<HttpRequestException>(error.Inner);
+        Assert.IsType<IOException>(inner.InnerException);
+        Assert.True(robots.IsDisallowed("https://example.com/"));
+    }
+
+    private sealed class BodyResetHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(BodyResetContent.Response());
+    }
+
     [Fact]
     public async Task CallerCancellation_Propagates()
     {
