@@ -381,6 +381,22 @@ public static class RagPipelineExtensions
         return failures.Count > 0 ? new RagError.ValidationFailed(failures) : null;
     }
 
+    // The catch clauses of ProcessEntryAsync, in order:
+    // - An OperationCanceledException the caller did not ask for fails this entry, not the run
+    //   (#1012). With no hash store the read happens inside IngestAsync, which rethrows it, so it
+    //   is handled the way IngestWithHashCheckAsync handles it. The caller's own cancellation
+    //   still propagates. Deliberately broad: besides a stalled content read, that includes a vector-store,
+    //   hash-store or remote-pipeline client timeout. Model calls never get here; they are
+    //   already ModelCallFailed. A store timeout is labelled TransportFailed rather than
+    //   StorageFailed; that is tracked as #1019.
+    // - ReservedMetadataKeyException is deliberately excluded from the catch-all alongside the
+    //   caller's cancellation: it is a connector authoring bug that repeats identically for every
+    //   entry, so downgrading it to a per-entry RagError would emit N copies of one bug and still
+    //   ship a corrupted ranking. Removing that exclusion silently reverts the escape — see the
+    //   tests named at the throw site in BuildMetadata.
+    // - What reaches the catch-all is a hash-store call, a content stream that failed other than
+    //   over HTTP, or a pipeline that threw instead of returning its error. A failed IngestAsync
+    //   result never gets there: Outcome passes its error on as it is (#930).
     private static async Task<EntryOutcome> ProcessEntryAsync(
         IRagPipeline pipeline,
         ProviderId providerId,
@@ -431,14 +447,12 @@ public static class RagPipelineExtensions
                     options, progress, rawStream, errors, cancellationToken).ConfigureAwait(false);
             }
         }
-        // ReservedMetadataKeyException is deliberately excluded alongside cancellation: it is a
-        // connector authoring bug that repeats identically for every entry, so downgrading it to
-        // a per-entry RagError would emit N copies of one bug and still ship a corrupted ranking.
-        // Removing that exclusion silently reverts the escape — see the tests named at the throw
-        // site in BuildMetadata.
-        // What reaches this catch is a hash-store call, a content stream that failed other than
-        // over HTTP, or a pipeline that threw instead of returning its error. A failed IngestAsync
-        // result never gets here: Outcome passes its error on as it is (#930).
+        // Not the caller's cancellation: a read that timed out (#1012). See the note above this method.
+        catch (OperationCanceledException ex) when (ContentFetchError(ex, cancellationToken) is { } timeoutError)
+        {
+            errors.Add(timeoutError);
+            return EntryOutcome.Failed;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException and not ReservedMetadataKeyException)
         {
             errors.Add(new RagError.StorageFailed(ex));

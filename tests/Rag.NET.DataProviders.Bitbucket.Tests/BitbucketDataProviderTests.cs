@@ -416,6 +416,49 @@ public sealed class BitbucketDataProviderTests
     }
 
     [Fact]
+    public async Task AStalledRawFileBody_TimesOutWithinHttpClientTimeout()
+    {
+        // #1012: the raw file is read with ResponseHeadersRead, so HttpClient.Timeout stops at the
+        // headers. The stream must bound each read itself.
+        const string json = """
+            {
+              "values": [
+                { "path": "big.bin", "type": "commit_file", "size": 5, "commit": { "hash": "abc" } }
+              ],
+              "next": null
+            }
+            """;
+        var listing = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal) { ["/src/"] = json });
+        using var http = new HttpClient(listing) { BaseAddress = new Uri("https://api.bitbucket.org") };
+        var api = new BitbucketApiClient(http, JsonSerializer);
+        using var rawHttp = new HttpClient(new StalledRawHandler())
+        {
+            BaseAddress = new Uri("https://api.bitbucket.org"),
+            Timeout     = TimeSpan.FromMilliseconds(200)
+        };
+        var sut = new BitbucketDataProvider(api, rawHttp, new BitbucketOptions
+        {
+            Workspace = "myteam",
+            RepoSlug  = "myrepo"
+        });
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var file = Assert.Single(results).Value;
+
+        // The guard fires only if the stream fails to time out on its own.
+        using var guard = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        guard.CancelAfter(TimeSpan.FromSeconds(5));
+        var ex = await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+        {
+            await using var stream = await file.OpenContentAsync(guard.Token);
+            await stream.CopyToAsync(Stream.Null, guard.Token);
+        });
+
+        Assert.IsType<TimeoutException>(ex.InnerException);
+        Assert.False(guard.IsCancellationRequested);
+    }
+
+    [Fact]
     public async Task GetFilesAsync_ETagFromSourceEntry()
     {
         const string json = """
@@ -654,6 +697,14 @@ public sealed class BitbucketDataProviderTests
 // ---------------------------------------------------------------------------
 // Test infrastructure — fake HTTP handlers
 // ---------------------------------------------------------------------------
+
+/// <summary>Answers every request with a body that yields a prefix and then stalls.</summary>
+file sealed class StalledRawHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken) =>
+        Task.FromResult(Rag.NET.DataProviders.Web.Tests.StalledBodyContent.Response("partial"));
+}
 
 /// <summary>
 /// Returns canned JSON responses keyed by URL substring, so tests never hit the network.

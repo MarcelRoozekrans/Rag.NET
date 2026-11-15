@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Rag.NET.DataProviders;
+using Rag.NET.DataProviders.Http;
 using Rag.NET.Models;
 using ZeroAlloc.Results;
 
@@ -194,8 +195,8 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
         var url = $"2.0/repositories/{workspace}/{repo}/src/{@ref}/{path}";
         var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
             .ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        return await TimeoutBoundedResponseStream.OpenAsync(response, _http.Timeout, ct)
+            .ConfigureAwait(false);
     }
 
     /// <summary>

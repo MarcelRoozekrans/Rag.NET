@@ -38,9 +38,9 @@ public abstract record RagError
     public sealed record HttpFailed(System.Net.HttpStatusCode StatusCode, string? Content) : RagError;
 
     /// <summary>
-    /// A call to an external service failed <b>before any HTTP response was received</b> —
+    /// A call to an external service failed <b>before a complete HTTP response was received</b> —
     /// DNS resolution, TLS handshake, socket reset, connection timeout, client-side request
-    /// timeout, or token acquisition.
+    /// timeout, a response body that stopped arriving, or token acquisition.
     /// <para>
     /// Distinct from <see cref="HttpFailed"/>, where an HTTP exchange did occur and a status
     /// describes its outcome: there is no status here at all, because the server never
