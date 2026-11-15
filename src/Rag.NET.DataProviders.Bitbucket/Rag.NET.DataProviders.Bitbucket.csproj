@@ -18,6 +18,8 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Linked, not published: see src/Shared/TimeoutBoundedResponseStream.cs. -->
+    <Compile Include="..\Shared\TimeoutBoundedResponseStream.cs" Link="Http\TimeoutBoundedResponseStream.cs" />
   </ItemGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">

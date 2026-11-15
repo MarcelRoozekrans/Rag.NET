@@ -13,9 +13,10 @@ namespace Rag.NET.DataProviders;
 /// </param>
 /// <param name="Failed">
 /// Entries that failed. Each contributes one entry to <see cref="Errors"/>: the pipeline's own
-/// error when ingestion failed, <see cref="RagError.HttpFailed"/> or
-/// <see cref="RagError.TransportFailed"/> when fetching the content did, and
-/// <see cref="RagError.StorageFailed"/> for a hash-store call that threw.
+/// error when ingestion failed; <see cref="RagError.HttpFailed"/> or
+/// <see cref="RagError.TransportFailed"/> when fetching or reading the content did, including a
+/// read that timed out during parsing; and <see cref="RagError.StorageFailed"/> when a hash-store,
+/// vector-store or remote-pipeline call threw or timed out.
 /// </param>
 /// <param name="NotAttempted">
 /// Entries the provider listed that this run never reached, because
