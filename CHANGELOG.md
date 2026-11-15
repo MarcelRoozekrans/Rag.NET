@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.8.4...v1.9.0) (2026-11-15)
+
+
+### Features
+
+* **reranking:** load SentencePiece cross-encoders such as bge-reranker-v2-m3 ([#1007](https://github.com/MarcelRoozekrans/Rag.NET/issues/1007)) ([81adcd9](https://github.com/MarcelRoozekrans/Rag.NET/commit/81adcd92144e87071368361a79dc7c333cc0038f)), closes [#926](https://github.com/MarcelRoozekrans/Rag.NET/issues/926)
+
+
+### Bug Fixes
+
+* **web:** bound a response body that stalls after its headers by HttpClient.Timeout ([#1016](https://github.com/MarcelRoozekrans/Rag.NET/issues/1016)) ([23966ba](https://github.com/MarcelRoozekrans/Rag.NET/commit/23966ba0ed0a7e3b0149dd93307dcb43dccceb6b)), closes [#1009](https://github.com/MarcelRoozekrans/Rag.NET/issues/1009)
+
 ## [1.8.4](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.8.3...v1.8.4) (2026-11-15)
 
 
