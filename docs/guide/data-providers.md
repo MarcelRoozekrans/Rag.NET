@@ -711,6 +711,12 @@ is skipped, as RFC 9309 section 2.3.1.4 requires. The provider reports that host
 `ProviderIngestionResult.Errors`. A run with that error does not run full cleanup, so an outage does
 not delete the documents an earlier run ingested from that host.
 
+The crawler reads each page's fetch the same way. A page that answers a 4xx other than 429 is
+gone: it is skipped without an error, so full cleanup removes its document. A page that answers
+5xx or 429, times out, or breaks off is reported as an `HttpFailed` or `TransportFailed` naming its
+URL, and the crawl goes on. That run does not run full cleanup, so a page that is down for a
+moment keeps its document.
+
 A site's `Crawl-delay` raises `MinimumRequestInterval` to its value, and never lowers it. The
 sitemap walker uses one interval for every host it visits, so a delay from one host slows the
 whole walk.

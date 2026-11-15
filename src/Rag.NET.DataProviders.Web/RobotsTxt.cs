@@ -108,22 +108,14 @@ internal sealed class RobotsTxt
 
             return Parse(content, ProductTokenOf(httpClient));
         }
-        // Only the site's own answer counts: a proxy that refuses the tunnel also carries a status
-        // (407, say) but sets HttpRequestError, and the site was never reached.
-        catch (HttpRequestException ex) when (ex.StatusCode is { } status && ex.HttpRequestError == HttpRequestError.Unknown)
+        catch (Exception ex) when (FetchFailure.IsAbsent(ex))
         {
-            // 429 is a 4xx, but it says "slow down", not "there is no file": read as unreachable.
-            if (status != HttpStatusCode.TooManyRequests && (int)status < 500) return s_allowAll;
-            return new RobotsTxt([], crawlDelay: null, new RagError.HttpFailed(status,
-                $"robots.txt at {robotsUrl} returned {(int)status}. RFC 9309 section 2.3.1.4 reads "
-                + $"that as disallow-all for {host}, so its pages were skipped."));
+            return s_allowAll;
         }
         catch (Exception ex) when (FetchFailure.IsSkippable(ex, ct))
         {
-            return new RobotsTxt([], crawlDelay: null, new RagError.TransportFailed(new HttpRequestException(
-                $"robots.txt at {robotsUrl} could not be fetched. RFC 9309 section 2.3.1.4 reads "
-                + $"that as disallow-all for {host}, so its pages were skipped.",
-                ex)));
+            return new RobotsTxt([], crawlDelay: null, FetchFailure.ToError(ex, $"robots.txt at {robotsUrl}",
+                $"RFC 9309 section 2.3.1.4 reads that as disallow-all for {host}, so its pages were skipped."));
         }
     }
 

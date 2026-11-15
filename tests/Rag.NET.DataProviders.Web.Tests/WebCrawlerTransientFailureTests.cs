@@ -5,7 +5,7 @@ using Xunit;
 namespace Rag.NET.DataProviders.Web.Tests;
 
 /// <summary>
-/// A page whose response breaks off, or times out, is skipped; the crawl goes on.
+/// A page whose response breaks off, or times out, is reported; the crawl goes on.
 /// </summary>
 /// <remarks>
 /// Found on a live 675-page crawl that died on one dropped connection: the per-page catch took only
@@ -48,7 +48,7 @@ public sealed class WebCrawlerTransientFailureTests
 
     [Theory]
     [MemberData(nameof(Failures))]
-    public async Task AFailedPage_IsSkipped_AndTheCrawlContinues(string kind)
+    public async Task AFailedPage_IsReported_AndTheCrawlContinues(string kind)
     {
         var failure = FailureOf(kind);
         var pages = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -64,9 +64,49 @@ public sealed class WebCrawlerTransientFailureTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
+        // Reported, so full cleanup cannot delete a page that may come back.
+        var reported = Assert.Single(entries, e => e.IsFailure);
+        var error = Assert.IsType<RagError.TransportFailed>(reported.Error);
+        Assert.Contains("https://example.com/broken", error.Inner.Message, StringComparison.Ordinal);
         Assert.Equal(
             ["https://example.com", "https://example.com/fine"],
-            entries.Select(e => e.Value.Id.Value).ToList());
+            entries.Where(e => e.IsSuccess).Select(e => e.Value.Id.Value).ToList());
+    }
+
+    /// <summary>A server error may pass, so the page is reported; a 404 says it is gone, so it is not.</summary>
+    [Theory]
+    [InlineData(503, true)]
+    [InlineData(429, true)]
+    [InlineData(404, false)]
+    [InlineData(410, false)]
+    public async Task APageStatus_IsReportedOnlyWhenItMayPass(int status, bool reported)
+    {
+        var pages = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["https://example.com/"] = """<a href="/broken">x</a><a href="/fine">y</a>""",
+            ["https://example.com/fine"] = "<p>fine</p>",
+        };
+        var failure = new HttpRequestException("status", null, (System.Net.HttpStatusCode)status);
+
+        var entries = await new WebCrawlerDataProvider(
+                "https://example.com/",
+                new HttpClient(new FailingHandler(pages, "https://example.com/broken", failure)),
+                new WebCrawlerOptions { RespectRobotsTxt = false })
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var failures = entries.Where(e => e.IsFailure).ToList();
+        if (reported)
+        {
+            var error = Assert.IsType<RagError.HttpFailed>(Assert.Single(failures).Error);
+            Assert.Equal((System.Net.HttpStatusCode)status, error.StatusCode);
+        }
+        else
+        {
+            Assert.Empty(failures);
+        }
+
+        Assert.Equal(2, entries.Count(e => e.IsSuccess));
     }
 
     /// <summary>Answers robots.txt with one status and every other URL with a page.</summary>
