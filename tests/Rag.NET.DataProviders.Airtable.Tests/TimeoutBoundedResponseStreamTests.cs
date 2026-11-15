@@ -8,7 +8,17 @@ public sealed class TimeoutBoundedResponseStreamTests
 {
     private static readonly TimeSpan Short = TimeSpan.FromMilliseconds(200);
 
+    private static readonly TimeSpan Guard = TimeSpan.FromSeconds(5);
+
     private static CancellationToken Token => TestContext.Current.CancellationToken;
+
+    /// <summary>A caller token that fires after 5 s, so a regressed deadline fails the test instead of hanging it.</summary>
+    private static CancellationTokenSource GuardedCaller()
+    {
+        var caller = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        caller.CancelAfter(Guard);
+        return caller;
+    }
 
     private static TimeoutBoundedResponseStream Wrap(Stream inner, TimeSpan timeout, TrackedResponse? response = null) =>
         new(response ?? new TrackedResponse(HttpStatusCode.OK), inner, timeout);
@@ -22,7 +32,7 @@ public sealed class TimeoutBoundedResponseStreamTests
     [Fact]
     public async Task AStalledReadAsync_TimesOutAsHttpClientDoes()
     {
-        using var caller = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        using var caller = GuardedCaller();
         await using var sut = Wrap(new ScriptedStream(), Short);
 
         var ex = await Assert.ThrowsAsync<TaskCanceledException>(async () =>
@@ -35,32 +45,38 @@ public sealed class TimeoutBoundedResponseStreamTests
     [Fact]
     public async Task AStalledReadAsync_ByteArrayOverload_TimesOutAsHttpClientDoes()
     {
+        using var caller = GuardedCaller();
         await using var sut = Wrap(new ScriptedStream(), Short);
 
         var ex = await Assert.ThrowsAsync<TaskCanceledException>(async () =>
-            _ = await sut.ReadAsync(new byte[8], 0, 8, Token));
+            _ = await sut.ReadAsync(new byte[8], 0, 8, caller.Token));
+
+        AssertTimedOut(ex);
+        Assert.False(caller.Token.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task AStalledSyncRead_TimesOutAsHttpClientDoes()
+    {
+        using var sut = Wrap(new ScriptedStream(), Short);
+        var buffer = new byte[8];
+
+        // The sync read cannot take a token, so the guard bounds the wait for it instead.
+        var ex = await Assert.ThrowsAsync<TaskCanceledException>(() =>
+            Task.Run(() => sut.Read(buffer, 0, 8), Token).WaitAsync(Guard, Token));
 
         AssertTimedOut(ex);
     }
 
     [Fact]
-    public void AStalledSyncRead_TimesOutAsHttpClientDoes()
+    public async Task AStalledSyncSpanRead_TimesOutAsHttpClientDoes()
     {
         using var sut = Wrap(new ScriptedStream(), Short);
         var buffer = new byte[8];
 
-        var ex = Assert.Throws<TaskCanceledException>(() => sut.Read(buffer, 0, 8));
-
-        AssertTimedOut(ex);
-    }
-
-    [Fact]
-    public void AStalledSyncSpanRead_TimesOutAsHttpClientDoes()
-    {
-        using var sut = Wrap(new ScriptedStream(), Short);
-        var buffer = new byte[8];
-
-        var ex = Assert.Throws<TaskCanceledException>(() => sut.Read(buffer.AsSpan()));
+        // The sync read cannot take a token, so the guard bounds the wait for it instead.
+        var ex = await Assert.ThrowsAsync<TaskCanceledException>(() =>
+            Task.Run(() => sut.Read(buffer.AsSpan()), Token).WaitAsync(Guard, Token));
 
         AssertTimedOut(ex);
     }
@@ -68,8 +84,8 @@ public sealed class TimeoutBoundedResponseStreamTests
     [Fact]
     public async Task SlowSteadyReads_CompleteBeyondTheTimeout()
     {
-        var inner = new ScriptedStream(delay: TimeSpan.FromMilliseconds(100), bytes: 5);
-        await using var sut = Wrap(inner, TimeSpan.FromMilliseconds(300));
+        var inner = new ScriptedStream(delay: TimeSpan.FromMilliseconds(50), bytes: 5);
+        await using var sut = Wrap(inner, TimeSpan.FromMilliseconds(200));
         using var copy = new MemoryStream();
 
         await sut.CopyToAsync(copy, Token);
@@ -83,10 +99,12 @@ public sealed class TimeoutBoundedResponseStreamTests
         var inner = new ScriptedStream(delay: TimeSpan.Zero, bytes: 2, stallAfter: true);
         await using var sut = Wrap(inner, Short);
         using var copy = new MemoryStream();
+        using var caller = GuardedCaller();
 
-        var ex = await Assert.ThrowsAsync<TaskCanceledException>(() => sut.CopyToAsync(copy, Token));
+        var ex = await Assert.ThrowsAsync<TaskCanceledException>(() => sut.CopyToAsync(copy, caller.Token));
 
         AssertTimedOut(ex);
+        Assert.False(caller.Token.IsCancellationRequested);
         Assert.Equal(2, copy.Length);
     }
 
@@ -119,22 +137,26 @@ public sealed class TimeoutBoundedResponseStreamTests
     public void Dispose_DisposesTheResponse()
     {
         var response = new TrackedResponse(HttpStatusCode.OK);
-        var sut = Wrap(new ScriptedStream(), Short, response);
+        var inner = new ScriptedStream();
+        var sut = Wrap(inner, Short, response);
 
         sut.Dispose();
 
         Assert.True(response.Disposed);
+        Assert.True(inner.Disposed);
     }
 
     [Fact]
     public async Task DisposeAsync_DisposesTheResponse()
     {
         var response = new TrackedResponse(HttpStatusCode.OK);
-        var sut = Wrap(new ScriptedStream(), Short, response);
+        var inner = new ScriptedStream();
+        var sut = Wrap(inner, Short, response);
 
         await sut.DisposeAsync();
 
         Assert.True(response.Disposed);
+        Assert.True(inner.Disposed);
     }
 
     [Fact]
@@ -178,6 +200,14 @@ public sealed class TimeoutBoundedResponseStreamTests
     private sealed class ScriptedStream(TimeSpan delay = default, int bytes = 0, bool stallAfter = false) : Stream
     {
         private int _sent;
+
+        public bool Disposed { get; private set; }
+
+        protected override void Dispose(bool disposing)
+        {
+            Disposed = true;
+            base.Dispose(disposing);
+        }
 
         public override bool CanRead => true;
         public override bool CanSeek => false;

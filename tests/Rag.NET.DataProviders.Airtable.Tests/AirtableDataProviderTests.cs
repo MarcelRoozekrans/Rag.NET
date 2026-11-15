@@ -714,6 +714,7 @@ public sealed class AirtableDataProviderTests
         Assert.Equal("Files", attachmentMetadata["field"]);
         Assert.False(attachmentMetadata.ContainsKey("attachment_id"));
     }
+
     [Fact]
     public async Task AStalledAttachmentBody_TimesOutWithinHttpClientTimeout()
     {

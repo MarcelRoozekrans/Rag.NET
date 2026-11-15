@@ -1,4 +1,3 @@
-
 namespace Rag.NET.DataProviders.Http;
 
 /// <summary>
@@ -139,6 +138,6 @@ internal sealed class TimeoutBoundedResponseStream : Stream
     {
         await _content.DisposeAsync().ConfigureAwait(false);
         _response.Dispose();
-        await base.DisposeAsync().ConfigureAwait(false);
+        GC.SuppressFinalize(this);
     }
 }
