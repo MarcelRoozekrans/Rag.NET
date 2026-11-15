@@ -1,7 +1,7 @@
 namespace Rag.NET.DataProviders;
 
 /// <summary>
-/// A read-only wrapper over an entry's content stream that remembers the first exception a read
+/// A read-only wrapper over an entry's content stream that remembers the latest exception a read
 /// threw, and rethrows it unchanged. Owns and disposes the stream it wraps.
 /// </summary>
 /// <remarks>
@@ -9,14 +9,16 @@ namespace Rag.NET.DataProviders;
 /// cancellation the caller did not ask for reaches the per-entry catch with nothing saying
 /// whether the content read stalled or a store timed out (#1019). The catch asks
 /// <see cref="IsFault"/> instead. It records the exception instance rather than a "some read
-/// failed" flag, so a read error the parser handled cannot relabel a later store timeout.
+/// failed" flag, so a read error the parser handled cannot relabel a later store timeout. The
+/// latest fault is kept, not the first: an earlier one the parser swallowed must not hide a later
+/// stall that does propagate.
 /// Seek and length calls are not recorded: they are not a stalled download.
 /// </remarks>
 internal sealed class FaultRecordingStream(Stream inner) : Stream
 {
     private Exception? _fault;
 
-    /// <summary>The first exception a read threw, or <see langword="null"/>.</summary>
+    /// <summary>The latest exception a read threw, or <see langword="null"/>.</summary>
     public Exception? Fault => Volatile.Read(ref _fault);
 
     /// <summary>
@@ -109,11 +111,13 @@ internal sealed class FaultRecordingStream(Stream inner) : Stream
         base.Dispose(disposing);
     }
 
+    // Not base.DisposeAsync: that calls Dispose(true), which would dispose the inner stream a
+    // second time, synchronously.
     public override async ValueTask DisposeAsync()
     {
         await inner.DisposeAsync().ConfigureAwait(false);
-        await base.DisposeAsync().ConfigureAwait(false);
+        GC.SuppressFinalize(this);
     }
 
-    private void Record(Exception ex) => Interlocked.CompareExchange(ref _fault, ex, null);
+    private void Record(Exception ex) => Volatile.Write(ref _fault, ex);
 }

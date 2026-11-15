@@ -43,7 +43,7 @@ the pipeline.
    read-only delegating `Stream` over the entry's content stream that owns and disposes it. Every
    read path that can reach the inner stream — `Read(byte[]…)`, `Read(Span)`, `ReadAsync`
    (both overloads), `ReadByte`, `CopyTo`, `CopyToAsync`, `BeginRead`/`EndRead` through the base
-   — catches any exception, stores the first one in a `Fault` property, and rethrows it unchanged
+   — catches any exception, stores the latest one in a `Fault` property, and rethrows it unchanged
    with `throw;`. `CanRead`/`CanSeek`/`Length`/`Position`/`Seek` delegate; writes throw
    `NotSupportedException` as for any read-only stream. Seek and length failures are not
    recorded: they are not a stalled download.

@@ -1825,6 +1825,26 @@ public sealed class IngestFromProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task AStoreTimeoutWithAHashStore_IsReportedAsStorageFailed()
+    {
+        // With a hash store the content is buffered first, so the pipeline reads a MemoryStream;
+        // a cancellation it throws can only be a store's.
+        var storeTimeout = new TaskCanceledException("store", new TimeoutException());
+        WhenIngesting("id-1", async (stream, ct) =>
+        {
+            await stream.CopyToAsync(Stream.Null, ct);
+            throw storeTimeout;
+        });
+
+        var result = await _pipeline.IngestFromProviderAsync(MakeProvider(("id-1", "a.txt", "hello", null)),
+            new ProviderId("prov"), hashStore: new SqliteContentHashStore(_dbPath),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<RagError.StorageFailed>(Assert.Single(result.Errors));
+        Assert.Same(storeTimeout, error.Inner);
+    }
+
+    [Fact]
     public async Task AReadFaultTheParserSwallowed_DoesNotLabelALaterStoreTimeout()
     {
         var readFault = new TaskCanceledException("read", new TimeoutException());

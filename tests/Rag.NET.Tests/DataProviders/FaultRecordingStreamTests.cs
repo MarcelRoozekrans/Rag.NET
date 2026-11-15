@@ -25,7 +25,7 @@ public sealed class FaultRecordingStreamTests
     }
 
     [Fact]
-    public void TheFirstFaultIsKept()
+    public void TheLatestFaultIsKept()
     {
         var first = new TaskCanceledException("first");
         var second = new TaskCanceledException("second");
@@ -36,7 +36,8 @@ public sealed class FaultRecordingStreamTests
         inner.Fault = second;
         Assert.Throws<TaskCanceledException>(() => stream.ReadByte());
 
-        Assert.Same(first, stream.Fault);
+        // An earlier fault the parser swallowed must not hide a later stall that propagates.
+        Assert.Same(second, stream.Fault);
     }
 
     [Fact]
@@ -73,12 +74,13 @@ public sealed class FaultRecordingStreamTests
     }
 
     [Fact]
-    public async Task DisposeAsync_DisposesTheInnerStream()
+    public async Task DisposeAsync_DisposesTheInnerStreamOnce_AndAsynchronously()
     {
-        var inner = new MemoryStream([1]);
+        var inner = new DisposeCountingStream();
         await new FaultRecordingStream(inner).DisposeAsync();
 
-        Assert.False(inner.CanRead);
+        Assert.Equal(1, inner.AsyncDisposals);
+        Assert.Equal(0, inner.SyncDisposals);
     }
 
     private static async Task ReadVia(Stream stream, string path)
@@ -95,6 +97,24 @@ public sealed class FaultRecordingStreamTests
             case "CopyTo": stream.CopyTo(Stream.Null, 81920); break;
             case "CopyToAsync": await stream.CopyToAsync(Stream.Null, 81920, ct); break;
             default: throw new ArgumentOutOfRangeException(nameof(path), path, null);
+        }
+    }
+
+    private sealed class DisposeCountingStream : MemoryStream
+    {
+        public int SyncDisposals { get; private set; }
+        public int AsyncDisposals { get; private set; }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) SyncDisposals++;
+            base.Dispose(disposing);
+        }
+
+        public override ValueTask DisposeAsync()
+        {
+            AsyncDisposals++;
+            return ValueTask.CompletedTask;
         }
     }
 
