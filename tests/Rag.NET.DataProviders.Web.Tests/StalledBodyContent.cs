@@ -9,8 +9,8 @@ namespace Rag.NET.DataProviders.Web.Tests;
 /// </summary>
 internal sealed class StalledBodyContent(string prefix = "<p>partial") : HttpContent
 {
-    public static HttpResponseMessage Response(string prefix = "<p>partial") =>
-        new(HttpStatusCode.OK) { Content = new StalledBodyContent(prefix) };
+    public static HttpResponseMessage Response(string prefix = "<p>partial", HttpStatusCode status = HttpStatusCode.OK) =>
+        new(status) { Content = new StalledBodyContent(prefix) };
 
     protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
         SerializeToStreamAsync(stream, context, CancellationToken.None);

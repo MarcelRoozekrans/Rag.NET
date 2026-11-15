@@ -32,6 +32,7 @@ public sealed class BodyReadTimeoutTests
             client.GetStringWithCharsetFallbackAsync(new Uri(server.BaseUri, "page").ToString(), caller.Token));
 
         Assert.False(caller.IsCancellationRequested);
+        Assert.IsType<TimeoutException>(ex.InnerException);
         Assert.True(FetchFailure.IsSkippable(ex, caller.Token));
     }
 
@@ -104,6 +105,34 @@ public sealed class BodyReadTimeoutTests
         var error = Assert.IsType<RagError.TransportFailed>(Assert.Single(entries, e => e.IsFailure).Error);
         Assert.Contains("https://example.com/stalled", error.Inner.Message, StringComparison.Ordinal);
         Assert.Equal(2, entries.Count(e => e.IsSuccess));
+    }
+
+    /// <remarks>
+    /// The status decides before the body is read: buffering the body first would turn a 404 whose
+    /// body stalls into a timeout, reported as a page that may come back, and a 503 into a
+    /// transport failure without its status.
+    /// </remarks>
+    [Theory]
+    [InlineData(404)]
+    [InlineData(503)]
+    public async Task AnErrorStatusWithAStalledBody_KeepsItsStatus(int status)
+    {
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        caller.CancelAfter(s_callerDeadline);
+        using var client = new HttpClient(new RoutingHandler(_ =>
+            StalledBodyContent.Response("<p>error", (System.Net.HttpStatusCode)status)))
+        {
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+
+        var full = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            client.GetStringWithCharsetFallbackAsync("https://example.com/page", caller.Token));
+        var prefix = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            client.GetTextPrefixWithCharsetFallbackAsync("https://example.com/robots.txt", 500 * 1024, caller.Token));
+
+        Assert.False(caller.IsCancellationRequested);
+        Assert.Equal((System.Net.HttpStatusCode)status, full.StatusCode);
+        Assert.Equal((System.Net.HttpStatusCode)status, prefix.StatusCode);
     }
 
     [Fact]
