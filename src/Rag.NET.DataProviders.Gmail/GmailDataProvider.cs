@@ -104,7 +104,7 @@ public sealed partial class GmailDataProvider : FileContentProviderBase
             return SearchQuery.All;
         }
 
-        if (!client.Capabilities.HasFlag(ImapCapabilities.GMailExt1))
+        if (!client.Capabilities.Contains(ImapCapability.GMailExt1))
         {
             throw new InvalidOperationException(
                 $"{nameof(GmailOptions)}.{nameof(GmailOptions.Query)} is set to " +
