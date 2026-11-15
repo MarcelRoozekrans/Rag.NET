@@ -84,13 +84,13 @@ public sealed class TimeoutBoundedResponseStreamTests
     [Fact]
     public async Task SlowSteadyReads_CompleteBeyondTheTimeout()
     {
-        var inner = new ScriptedStream(delay: TimeSpan.FromMilliseconds(50), bytes: 5);
-        await using var sut = Wrap(inner, TimeSpan.FromMilliseconds(200));
+        var inner = new ScriptedStream(delay: TimeSpan.FromMilliseconds(250), bytes: 6);
+        await using var sut = Wrap(inner, TimeSpan.FromSeconds(1));
         using var copy = new MemoryStream();
 
         await sut.CopyToAsync(copy, Token);
 
-        Assert.Equal(5, copy.Length);
+        Assert.Equal(6, copy.Length);
     }
 
     [Fact]
@@ -160,6 +160,28 @@ public sealed class TimeoutBoundedResponseStreamTests
     }
 
     [Fact]
+    public void Dispose_DisposesTheResponse_EvenWhenTheContentDisposeThrows()
+    {
+        var response = new TrackedResponse(HttpStatusCode.OK);
+        var sut = Wrap(new ThrowingDisposeStream(), Short, response);
+
+        Assert.Throws<InvalidOperationException>(sut.Dispose);
+
+        Assert.True(response.Disposed);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DisposesTheResponse_EvenWhenTheContentDisposeThrows()
+    {
+        var response = new TrackedResponse(HttpStatusCode.OK);
+        var sut = Wrap(new ThrowingDisposeStream(), Short, response);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await sut.DisposeAsync());
+
+        Assert.True(response.Disposed);
+    }
+
+    [Fact]
     public async Task OpenAsync_ANonSuccessStatus_ThrowsAndDisposesTheResponse()
     {
         var response = new TrackedResponse(HttpStatusCode.NotFound);
@@ -180,6 +202,13 @@ public sealed class TimeoutBoundedResponseStreamTests
         using var reader = new StreamReader(stream);
 
         Assert.Equal("abc", await reader.ReadToEndAsync(Token));
+    }
+
+    private sealed class ThrowingDisposeStream : MemoryStream
+    {
+        protected override void Dispose(bool disposing) => throw new InvalidOperationException("dispose failed");
+
+        public override ValueTask DisposeAsync() => throw new InvalidOperationException("dispose failed");
     }
 
     private sealed class TrackedResponse(HttpStatusCode status) : HttpResponseMessage(status)

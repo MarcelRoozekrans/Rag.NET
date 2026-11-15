@@ -125,19 +125,37 @@ internal sealed class TimeoutBoundedResponseStream : Stream
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
+        try
         {
-            _content.Dispose();
-            _response.Dispose();
+            if (disposing)
+            {
+                try
+                {
+                    _content.Dispose();
+                }
+                finally
+                {
+                    _response.Dispose();
+                }
+            }
         }
-
-        base.Dispose(disposing);
+        finally
+        {
+            base.Dispose(disposing);
+        }
     }
 
     public override async ValueTask DisposeAsync()
     {
-        await _content.DisposeAsync().ConfigureAwait(false);
-        _response.Dispose();
+        try
+        {
+            await _content.DisposeAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _response.Dispose();
+        }
+
         GC.SuppressFinalize(this);
     }
 }

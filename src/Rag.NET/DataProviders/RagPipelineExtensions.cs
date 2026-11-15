@@ -382,10 +382,14 @@ public static class RagPipelineExtensions
     }
 
     // The catch clauses of ProcessEntryAsync, in order:
-    // - An OperationCanceledException the caller did not ask for is a read that timed out, such as
-    //   a content stream that stalled after its headers (#1012). With no hash store that read
-    //   happens inside IngestAsync, which rethrows it, so it is handled the way
-    //   IngestWithHashCheckAsync handles it. The caller's own cancellation still propagates.
+    // - An OperationCanceledException the caller did not ask for fails this entry, not the run
+    //   (#1012). With no hash store the read happens inside IngestAsync, which rethrows it, so it
+    //   is handled the way IngestWithHashCheckAsync handles it. The caller's own cancellation
+    //   still propagates. Deliberately broad: any cancellation the caller did not request fails
+    //   this entry, not the run. Besides a stalled content read, that includes a vector-store,
+    //   hash-store or remote-pipeline client timeout. Model calls never get here; they are
+    //   already ModelCallFailed. A store timeout is labelled TransportFailed rather than
+    //   StorageFailed; that is tracked as a follow-up issue.
     // - ReservedMetadataKeyException is deliberately excluded from the catch-all alongside the
     //   caller's cancellation: it is a connector authoring bug that repeats identically for every
     //   entry, so downgrading it to a per-entry RagError would emit N copies of one bug and still
