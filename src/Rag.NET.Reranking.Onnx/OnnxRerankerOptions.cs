@@ -14,9 +14,17 @@ public sealed class OnnxRerankerOptions
     public int MaxLength { get; set; } = 512;
 
     /// <summary>
-    /// Path to the BERT vocabulary file (vocab.txt).
-    /// Each line is a token; the line index is the token ID.
-    /// Standard BERT uncased vocab.txt files are available from the model hub.
+    /// Path to the BERT vocabulary file (vocab.txt), for BERT-family cross-encoders such as
+    /// ms-marco-MiniLM. Each line is a token; the line index is the token ID.
+    /// Set exactly one of <see cref="VocabPath"/> and <see cref="TokenizerPath"/>.
     /// </summary>
-    public required string VocabPath { get; set; }
+    public string VocabPath { get; set; } = "";
+
+    /// <summary>
+    /// Path to the SentencePiece model (sentencepiece.bpe.model), for XLM-RoBERTa cross-encoders
+    /// such as bge-reranker-v2-m3. Those checkpoints ship this file instead of a vocab.txt.
+    /// Set exactly one of <see cref="VocabPath"/> and <see cref="TokenizerPath"/>; a null,
+    /// empty or whitespace value counts as unset.
+    /// </summary>
+    public string? TokenizerPath { get; set; }
 }
