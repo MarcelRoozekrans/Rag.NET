@@ -383,12 +383,13 @@ public static class RagPipelineExtensions
 
     // The catch clauses of ProcessEntryAsync, in order:
     // - An OperationCanceledException the caller did not ask for fails this entry, not the run
-    //   (#1012). With no hash store the read happens inside IngestAsync, which rethrows it, so it
-    //   is handled the way IngestWithHashCheckAsync handles it. The caller's own cancellation
-    //   still propagates. Deliberately broad: besides a stalled content read, that includes a vector-store,
-    //   hash-store or remote-pipeline client timeout. Model calls never get here; they are
-    //   already ModelCallFailed. A store timeout is labelled TransportFailed rather than
-    //   StorageFailed; that is tracked as #1019.
+    //   (#1012); the caller's own cancellation still propagates. With no hash store the content
+    //   is read inside IngestAsync, which rethrows it, so a stalled read and a store timeout
+    //   arrive here looking alike. The content stream is wrapped in a FaultRecordingStream, and
+    //   only the exception its read threw, or one wrapping it, is TransportFailed. Any other is a
+    //   vector-store, BM25, hash-store or remote-pipeline client timeout, and is StorageFailed
+    //   like every other failure of those (#1019). Model calls never get here; they are already
+    //   ModelCallFailed.
     // - ReservedMetadataKeyException is deliberately excluded from the catch-all alongside the
     //   caller's cancellation: it is a connector authoring bug that repeats identically for every
     //   entry, so downgrading it to a per-entry RagError would emit N copies of one bug and still
@@ -408,6 +409,7 @@ public static class RagPipelineExtensions
         ConcurrentBag<RagError> errors,
         CancellationToken cancellationToken)
     {
+        FaultRecordingStream? content = null;
         try
         {
             if (hashStore is not null && entry.ETag is not null)
@@ -434,23 +436,27 @@ public static class RagPipelineExtensions
                 return EntryOutcome.Failed;
             }
 
-            await using (rawStream.ConfigureAwait(false))
+            content = new FaultRecordingStream(rawStream);
+            await using (content.ConfigureAwait(false))
             {
                 if (hashStore is null)
                 {
                     var metadata = BuildMetadata(entry, baseMetadata, providerId);
-                    var ingestResult = await pipeline.IngestAsync(rawStream, metadata, options, progress, cancellationToken).ConfigureAwait(false);
+                    var ingestResult = await pipeline.IngestAsync(content, metadata, options, progress, cancellationToken).ConfigureAwait(false);
                     return Outcome(ingestResult, errors);
                 }
 
                 return await IngestWithHashCheckAsync(pipeline, providerId, entry, hashStore, baseMetadata,
-                    options, progress, rawStream, errors, cancellationToken).ConfigureAwait(false);
+                    options, progress, content, errors, cancellationToken).ConfigureAwait(false);
             }
         }
-        // Not the caller's cancellation: a read that timed out (#1012). See the note above this method.
-        catch (OperationCanceledException ex) when (ContentFetchError(ex, cancellationToken) is { } timeoutError)
+        // Not the caller's cancellation: the content read timed out (#1012), or a store did (#1019).
+        // See the note above this method.
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            errors.Add(timeoutError);
+            errors.Add(content?.IsFault(ex) == true
+                ? new RagError.TransportFailed(ex)
+                : new RagError.StorageFailed(ex));
             return EntryOutcome.Failed;
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not ReservedMetadataKeyException)
