@@ -1,10 +1,36 @@
 # Session State
 
-**Last updated:** 2026-11-15. **Next:** release PR **#1018** (1.9.0) waits for the operator; do
-not merge it unasked. The open bug queue is **#1012** (Airtable and Bitbucket stream reads not
-bounded by `HttpClient.Timeout`), which needs a design decision before work starts: a shared
-timeout `Stream` wrapper or not, and an idle or a total deadline. Bring a proposal with options,
-grounded in what #1016 did for the web provider. #944 waits for the next major.
+**Last updated:** 2026-11-15, later. **Next:** PR **#1020** (fixes #1012) is green and
+CodeRabbit-approved, and waits for the operator to merge. The `Main` ruleset requires an
+up-to-date branch, so run `gh pr update-branch 1020` and let CI re-run before merging. After the
+merge, confirm the `fix:` commit appears in the next release-please PR. Release 1.9.0 (#1018)
+was merged by the operator. Open follow-up: **#1019**, which needs a decision. A store,
+hash-store or remote-pipeline client timeout during ingestion now fails one entry as
+`TransportFailed` where `StorageFailed` would fit; options are listed on the issue. #944 waits
+for the next major.
+
+**#1012 as built (PR #1020, branch `fix/stream-read-deadline`).** Decisions by the operator on
+2026-11-15:
+- **Idle per-read deadline** of `HttpClient.Timeout`, not a total. A total would cut off large
+  attachments on slow links. `Timeout.InfiniteTimeSpan` disables it.
+- **Expiry like HttpClient**, a `TaskCanceledException` around `TimeoutException`, plus the
+  pipeline fix.
+
+The wrapper, `TimeoutBoundedResponseStream`:
+- It is internal, lives in `src/Shared/`, and is linked into both connectors.
+- It owns and disposes the response.
+- It also bounds sync reads, because the ZIP, OpenXml and MSG parsers read synchronously.
+- Its sync reads honour the token given to `OpenAsync`, a CodeRabbit finding.
+
+The pipeline fix: without a hash store, `PipelineIngestor` rethrew a non-caller OCE and the
+per-entry catch skipped it, so one stalled entry ended the run. `ProcessEntryAsync` now fails the
+entry as `TransportFailed`. This is deliberately broad, which is why #1019 exists.
+
+Design and plan: `docs/plans/2026-11-15-stream-read-deadline-{design,implementation}.md`.
+
+Local check: all 78 test projects pass, excluding E2ETests. In PackageValidation, only
+`EveryPackageCarriesTheVersionGitVersionDerives` fails locally, because it was packed with a
+hand-picked version; CI passes it.
 
 **Merged 2026-11-15 at the operator's request** ("you can merge them", covering #1007, #1015 and
 #1016). Each branch was brought up to date and passed a fresh run before the merge:
