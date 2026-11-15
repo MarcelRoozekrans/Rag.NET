@@ -1,6 +1,6 @@
 # Store timeout classification during provider ingestion — design
 
-**Issue:** #1019. **Status:** draft. **Size:** small change. **Builds on:** #1020 (#1012).
+**Issue:** #1019. **Status:** approved 2026-11-15. **Size:** small change. **Builds on:** #1020 (#1012).
 
 ## Intent
 
