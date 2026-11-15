@@ -21,7 +21,10 @@ public sealed class TimeoutBoundedResponseStreamTests
     }
 
     private static TimeoutBoundedResponseStream Wrap(Stream inner, TimeSpan timeout, TrackedResponse? response = null) =>
-        new(response ?? new TrackedResponse(HttpStatusCode.OK), inner, timeout);
+        new(response ?? new TrackedResponse(HttpStatusCode.OK), inner, timeout, CancellationToken.None);
+
+    private static TimeoutBoundedResponseStream WrapOpenedWith(Stream inner, TimeSpan timeout, CancellationToken openToken) =>
+        new(new TrackedResponse(HttpStatusCode.OK), inner, timeout, openToken);
 
     private static void AssertTimedOut(TaskCanceledException ex)
     {
@@ -106,6 +109,35 @@ public sealed class TimeoutBoundedResponseStreamTests
         AssertTimedOut(ex);
         Assert.False(caller.Token.IsCancellationRequested);
         Assert.Equal(2, copy.Length);
+    }
+
+    [Fact]
+    public async Task ASyncRead_StopsWhenTheTokenGivenAtOpenIsCancelled()
+    {
+        // A sync read has no token of its own, so it honours the one the stream was opened with.
+        // With an infinite timeout nothing else could end a stall.
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        using var sut = WrapOpenedWith(new ScriptedStream(), Timeout.InfiniteTimeSpan, caller.Token);
+        caller.CancelAfter(TimeSpan.FromMilliseconds(100));
+
+        var ex = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Task.Run(() => sut.Read(new byte[8], 0, 8), Token).WaitAsync(Guard, Token));
+
+        Assert.Equal(caller.Token, ex.CancellationToken);
+        Assert.IsNotType<TimeoutException>(ex.InnerException);
+    }
+
+    [Fact]
+    public async Task ASyncSpanRead_StopsWhenTheTokenGivenAtOpenIsCancelled()
+    {
+        using var caller = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        using var sut = WrapOpenedWith(new ScriptedStream(), Timeout.InfiniteTimeSpan, caller.Token);
+        caller.CancelAfter(TimeSpan.FromMilliseconds(100));
+
+        var ex = await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Task.Run(() => sut.Read(new byte[8].AsSpan()), Token).WaitAsync(Guard, Token));
+
+        Assert.Equal(caller.Token, ex.CancellationToken);
     }
 
     [Fact]

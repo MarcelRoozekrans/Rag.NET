@@ -24,14 +24,25 @@ internal sealed class TimeoutBoundedResponseStream : Stream
     private readonly HttpResponseMessage _response;
     private readonly Stream _content;
     private readonly TimeSpan _timeout;
+    private readonly CancellationToken _openToken;
 
-    internal TimeoutBoundedResponseStream(HttpResponseMessage response, Stream content, TimeSpan timeout)
+    /// <param name="response">The response, owned and disposed by this stream.</param>
+    /// <param name="content">The response body.</param>
+    /// <param name="timeout">The idle limit for each read.</param>
+    /// <param name="openToken">
+    /// The token the stream was opened with. Synchronous reads take no token, so they honour this
+    /// one; otherwise caller cancellation could not interrupt a ZIP or OpenXml parser stuck on a
+    /// stalled body, and with an infinite timeout nothing would.
+    /// </param>
+    internal TimeoutBoundedResponseStream(
+        HttpResponseMessage response, Stream content, TimeSpan timeout, CancellationToken openToken)
     {
         ArgumentNullException.ThrowIfNull(response);
         ArgumentNullException.ThrowIfNull(content);
         _response = response;
         _content = content;
         _timeout = timeout;
+        _openToken = openToken;
     }
 
     /// <summary>
@@ -46,7 +57,7 @@ internal sealed class TimeoutBoundedResponseStream : Stream
         {
             _ = response.EnsureSuccessStatusCode();
             var content = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            return new TimeoutBoundedResponseStream(response, content, timeout);
+            return new TimeoutBoundedResponseStream(response, content, timeout, cancellationToken);
         }
         catch
         {
@@ -101,7 +112,7 @@ internal sealed class TimeoutBoundedResponseStream : Stream
         var rented = System.Buffers.ArrayPool<byte>.Shared.Rent(buffer.Length);
         try
         {
-            var read = ReadAsync(rented.AsMemory(0, buffer.Length), CancellationToken.None)
+            var read = ReadAsync(rented.AsMemory(0, buffer.Length), _openToken)
                 .AsTask().GetAwaiter().GetResult();
             rented.AsSpan(0, read).CopyTo(buffer);
             return read;
@@ -113,7 +124,7 @@ internal sealed class TimeoutBoundedResponseStream : Stream
     }
 
     public override int Read(byte[] buffer, int offset, int count) =>
-        ReadAsync(buffer.AsMemory(offset, count), CancellationToken.None).AsTask().GetAwaiter().GetResult();
+        ReadAsync(buffer.AsMemory(offset, count), _openToken).AsTask().GetAwaiter().GetResult();
 
     public override void Flush()
     {
