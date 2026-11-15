@@ -1882,6 +1882,29 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Same(wrapped, error.Inner);
     }
 
+    [Fact]
+    public async Task AReadTimeoutRethrownAfterAFailedFallbackRead_IsStillTransportFailed()
+    {
+        // The parser saves the first timeout, tries one more read that fails too, then rethrows
+        // the first. Both are read faults; the one that propagates must still be recognised.
+        var readFault = new TaskCanceledException("read", new TimeoutException());
+        TaskCanceledException? saved = null;
+        WhenIngesting("id-1", async (stream, ct) =>
+        {
+            try { _ = await stream.ReadAsync(new byte[16], ct); }
+            catch (TaskCanceledException ex) { saved = ex; }
+            try { _ = await stream.ReadAsync(new byte[16], ct); }
+            catch (TaskCanceledException) { /* the fallback failed as well */ }
+            throw saved!;
+        });
+
+        var result = await _pipeline.IngestFromProviderAsync(ProviderWithStream(new StalledStream(readFault)),
+            new ProviderId("prov"), cancellationToken: TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<RagError.TransportFailed>(Assert.Single(result.Errors));
+        Assert.Same(readFault, error.Inner);
+    }
+
     private static IFileContentProvider ProviderWithStream(Stream stream)
     {
         var provider = Substitute.For<IFileContentProvider>();

@@ -4,7 +4,7 @@
 
 **Goal:** During provider ingestion, a cancellation the caller did not request is `TransportFailed` only when the entry's content stream threw it; every other one is `StorageFailed`.
 
-**Architecture:** An internal delegating stream records the latest exception a read of the content stream throws. The cancellation catch in `ProcessEntryAsync` compares the caught exception, and its inner-exception chain, against that recorded instance.
+**Architecture:** An internal delegating stream records every exception a read of the content stream throws. The cancellation catch in `ProcessEntryAsync` compares the caught exception, and its inner-exception chain, against those recorded instances.
 
 **Tech Stack:** .NET, xunit.v3, NSubstitute.
 
@@ -21,7 +21,7 @@
 
 - A parser swallows a stream fault, then a store times out: `StorageFailed`, not transport. Test in Task 2.
 - A parser wraps the stream's cancellation inside another exception that is itself an `OperationCanceledException`: still `TransportFailed`. Test in Task 2.
-- The hash-store path reads via `CopyToAsync`: the wrapper's `CopyToAsync` must record the fault too, and the existing `ContentWhoseReadTimesOut_FailsThatEntryAndTheRunGoesOn(withHashStore: true)` must stay green. Covered in Tasks 1 and 2.
+- The hash-store path reads via `CopyToAsync`: the inherited `CopyToAsync` reads through the wrapper's `ReadAsync`, so the fault is recorded, and the existing `ContentWhoseReadTimesOut_FailsThatEntryAndTheRunGoesOn(withHashStore: true)` must stay green. Covered in Tasks 1 and 2.
 - Disposing the wrapper must dispose the content stream, including a `TimeoutBoundedResponseStream` that owns an HTTP response. Test in Task 1.
 - A sync read, as the ZIP, OpenXml and MSG parsers do, records the fault. Test in Task 1.
 
@@ -36,17 +36,18 @@
 **Interfaces:**
 - Produces, in `namespace Rag.NET.DataProviders`:
   - `internal sealed class FaultRecordingStream(Stream inner) : Stream`
-  - `public Exception? Fault { get; }` — the latest exception any read path threw. Changed from first-wins in the final review: a swallowed earlier fault must not hide a later stall.
+  - `public IReadOnlyList<Exception> Faults { get; }` — every exception a read path threw. Changed from first-wins in review: the final review found a swallowed earlier fault hid a later stall, and CodeRabbit found that latest-wins loses a saved fault rethrown after a failed fallback read.
   - `public bool IsFault(Exception ex)` — true when `ex` or any exception in its `InnerException` chain is `Fault` by reference; false when `Fault` is null.
 
 - [x] **Step 1: Write the failing tests** in `FaultRecordingStreamTests`, with an inner stream whose every read path throws a fixed `TaskCanceledException` instance:
-  - `EachReadPath_RecordsAndRethrowsTheSameInstance`, a `[Theory]` over `Read(byte[],int,int)`, `Read(Span<byte>)`, `ReadByte()`, `ReadAsync(byte[],int,int,CancellationToken)`, `ReadAsync(Memory<byte>,CancellationToken)`, `CopyTo(Stream,int)`, `CopyToAsync(Stream,int,CancellationToken)`. Assert the thrown exception is the same instance (`Assert.Same`) and `stream.Fault` is that instance.
-  - `TheLatestFaultIsKept`: two reads throwing different instances; `Fault` is the second.
+  - `EachReadPath_RecordsAndRethrowsTheSameInstance`, a `[Theory]` over `Read(byte[],int,int)`, `Read(Span<byte>)`, `ReadByte()`, `ReadAsync(byte[],int,int,CancellationToken)`, `ReadAsync(Memory<byte>,CancellationToken)`, `CopyTo(Stream,int)`, `CopyToAsync(Stream,int,CancellationToken)`. Assert the thrown exception is the same instance (`Assert.Same`) and is the single entry in `stream.Faults`.
+  - `EveryFaultIsKept`: two reads throwing different instances; `Faults` holds both and `IsFault` matches each.
+  - `ACopyWhoseDestinationFails_RecordsNoReadFault`: a clean source copied to a destination whose writes throw records no fault, sync and async.
   - `IsFault_MatchesTheInstanceOrAnyInnerException_AndNothingElse`: true for the instance, true for `new OperationCanceledException("x", instance)`, false for a different `TaskCanceledException`, false on a stream that never faulted.
   - `CleanReads_PassBytesThroughAndRecordNothing`: over a `MemoryStream` of `"abc"`, `ReadToEnd` through a `StreamReader` gives `"abc"` and `Fault` is null.
   - `Dispose_DisposesTheInnerStream` and `DisposeAsync_DisposesTheInnerStream`.
 - [x] **Step 2: Run.** `dotnet test tests/Rag.NET.Tests -c Release --filter "FullyQualifiedName~FaultRecordingStreamTests"`. Expected: build FAILS, type not found.
-- [x] **Step 3: Implement** `FaultRecordingStream`. Each overridden read path wraps the inner call in `try { … } catch (Exception ex) { Record(ex); throw; }`, where `Record` uses `Volatile.Write` so the latest fault wins. Override `CopyTo` and `CopyToAsync` to delegate to the inner stream, so a fault there is recorded too. `CanRead`, `CanSeek`, `Length`, `Position`, `Seek` delegate unrecorded; `CanWrite` is false; `Write`, `SetLength` and `Flush` throw `NotSupportedException` except `Flush`, which is a no-op. `Dispose(bool)` and `DisposeAsync` dispose the inner stream. Add a `<summary>` naming #1019 and why the instance, not a flag, is recorded.
+- [x] **Step 3: Implement** `FaultRecordingStream`. Each overridden read path wraps the inner call in `try { … } catch (Exception ex) { Record(ex); throw; }`, where `Record` adds to a locked list. Do not override `CopyTo` or `CopyToAsync`: the inherited ones read through the overridden reads, so a destination write failure is not recorded. `CanRead`, `CanSeek`, `Length`, `Position`, `Seek` delegate unrecorded; `CanWrite` is false; `Write`, `SetLength` and `Flush` throw `NotSupportedException` except `Flush`, which is a no-op. `Dispose(bool)` and `DisposeAsync` dispose the inner stream. Add a `<summary>` naming #1019 and why the instance, not a flag, is recorded.
 - [x] **Step 4: Run** the same filter. Expected: all PASS.
 - [x] **Step 5: Commit** `fix(ingestion): add a stream that records the exception its reads throw`, body `Refs #1019.`
 

@@ -42,9 +42,11 @@ the pipeline.
 1. **`FaultRecordingStream`**, internal to `Rag.NET`, beside `RagPipelineExtensions`. A
    read-only delegating `Stream` over the entry's content stream that owns and disposes it. Every
    read path that can reach the inner stream — `Read(byte[]…)`, `Read(Span)`, `ReadAsync`
-   (both overloads), `ReadByte`, `CopyTo`, `CopyToAsync`, `BeginRead`/`EndRead` through the base
-   — catches any exception, stores the latest one in a `Fault` property, and rethrows it unchanged
-   with `throw;`. `CanRead`/`CanSeek`/`Length`/`Position`/`Seek` delegate; writes throw
+   (both overloads), `ReadByte` — catches any exception, adds it to a `Faults` list, and rethrows
+   it unchanged with `throw;`. Every fault is kept, because a parser may swallow one read fault and
+   let another propagate in either order. `CopyTo`, `CopyToAsync` and `BeginRead`/`EndRead` are
+   inherited, so they read through those methods, and a failing write to a copy's destination is
+   not recorded as a read fault. `CanRead`/`CanSeek`/`Length`/`Position`/`Seek` delegate; writes throw
    `NotSupportedException` as for any read-only stream. Seek and length failures are not
    recorded: they are not a stalled download.
 2. **`ProcessEntryAsync`** wraps `rawStream` in it right after `OpenContentAsync` and disposes

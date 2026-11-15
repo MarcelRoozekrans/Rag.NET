@@ -21,11 +21,11 @@ public sealed class FaultRecordingStreamTests
         var thrown = await Record.ExceptionAsync(() => ReadVia(stream, path));
 
         Assert.Same(fault, thrown);
-        Assert.Same(fault, stream.Fault);
+        Assert.Same(fault, Assert.Single(stream.Faults));
     }
 
     [Fact]
-    public void TheLatestFaultIsKept()
+    public void EveryFaultIsKept()
     {
         var first = new TaskCanceledException("first");
         var second = new TaskCanceledException("second");
@@ -36,8 +36,29 @@ public sealed class FaultRecordingStreamTests
         inner.Fault = second;
         Assert.Throws<TaskCanceledException>(() => stream.ReadByte());
 
-        // An earlier fault the parser swallowed must not hide a later stall that propagates.
-        Assert.Same(second, stream.Fault);
+        // Either may be the one that propagates: a parser can swallow the first and let the second
+        // through, or save the first, fail a fallback read, and rethrow the first.
+        Assert.Equal([first, second], stream.Faults);
+        Assert.True(stream.IsFault(first));
+        Assert.True(stream.IsFault(second));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ACopyWhoseDestinationFails_RecordsNoReadFault(bool async)
+    {
+        var writeTimeout = new TaskCanceledException("destination write", new TimeoutException());
+        await using var stream = new FaultRecordingStream(new MemoryStream(Encoding.UTF8.GetBytes("abc")));
+        var destination = new ThrowingWriteStream(writeTimeout);
+
+        var thrown = async
+            ? await Record.ExceptionAsync(() => stream.CopyToAsync(destination, TestContext.Current.CancellationToken))
+            : Record.Exception(() => stream.CopyTo(destination));
+
+        Assert.Same(writeTimeout, thrown);
+        Assert.Empty(stream.Faults);
+        Assert.False(stream.IsFault(writeTimeout));
     }
 
     [Fact]
@@ -61,7 +82,7 @@ public sealed class FaultRecordingStreamTests
         using var reader = new StreamReader(stream);
 
         Assert.Equal("abc", await reader.ReadToEndAsync(TestContext.Current.CancellationToken));
-        Assert.Null(stream.Fault);
+        Assert.Empty(stream.Faults);
     }
 
     [Fact]
@@ -98,6 +119,16 @@ public sealed class FaultRecordingStreamTests
             case "CopyToAsync": await stream.CopyToAsync(Stream.Null, 81920, ct); break;
             default: throw new ArgumentOutOfRangeException(nameof(path), path, null);
         }
+    }
+
+    private sealed class ThrowingWriteStream(Exception fault) : MemoryStream
+    {
+        public override void Write(byte[] buffer, int offset, int count) => throw fault;
+        public override void Write(ReadOnlySpan<byte> buffer) => throw fault;
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => Task.FromException(fault);
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+            => ValueTask.FromException(fault);
     }
 
     private sealed class DisposeCountingStream : MemoryStream
