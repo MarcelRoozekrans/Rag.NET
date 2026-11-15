@@ -1885,9 +1885,10 @@ public sealed class IngestFromProviderTests : IDisposable
     [Fact]
     public async Task AReadTimeoutRethrownAfterAFailedFallbackRead_IsStillTransportFailed()
     {
-        // The parser saves the first timeout, tries one more read that fails too, then rethrows
-        // the first. Both are read faults; the one that propagates must still be recognised.
+        // The parser saves the first timeout, tries one more read that fails with a different
+        // exception, then rethrows the first. Keeping only the latest fault lost the first one.
         var readFault = new TaskCanceledException("read", new TimeoutException());
+        var fallbackFault = new TaskCanceledException("fallback read", new TimeoutException());
         TaskCanceledException? saved = null;
         WhenIngesting("id-1", async (stream, ct) =>
         {
@@ -1898,11 +1899,27 @@ public sealed class IngestFromProviderTests : IDisposable
             throw saved!;
         });
 
-        var result = await _pipeline.IngestFromProviderAsync(ProviderWithStream(new StalledStream(readFault)),
+        var result = await _pipeline.IngestFromProviderAsync(
+            ProviderWithStream(new FailingInTurnStream(readFault, fallbackFault)),
             new ProviderId("prov"), cancellationToken: TestContext.Current.CancellationToken);
 
         var error = Assert.IsType<RagError.TransportFailed>(Assert.Single(result.Errors));
         Assert.Same(readFault, error.Inner);
+    }
+
+    /// <summary>Each read throws the next exception in turn.</summary>
+    private sealed class FailingInTurnStream(params Exception[] faults) : MemoryStream
+    {
+        private int _next;
+
+        private Exception Next() => faults[Math.Min(_next++, faults.Length - 1)];
+
+        public override int Read(byte[] buffer, int offset, int count) => throw Next();
+        public override int Read(Span<byte> buffer) => throw Next();
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => Task.FromException<int>(Next());
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => ValueTask.FromException<int>(Next());
     }
 
     private static IFileContentProvider ProviderWithStream(Stream stream)
