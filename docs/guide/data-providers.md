@@ -66,7 +66,7 @@ Every list has a matching count — `IngestedCount`, `SkippedCount`, `FailedCoun
 > wrong.
 
 A timeout you did not ask for, such as a content stream that stalls or a store client that times
-out, fails that one entry. Only cancelling your own token ends the run.
+out, fails that one entry. Only cancelling your own token, or `StopOnFirstError`, ends the run.
 
 ### Writing your own provider
 

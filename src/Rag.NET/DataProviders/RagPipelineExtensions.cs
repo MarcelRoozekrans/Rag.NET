@@ -385,8 +385,7 @@ public static class RagPipelineExtensions
     // - An OperationCanceledException the caller did not ask for fails this entry, not the run
     //   (#1012). With no hash store the read happens inside IngestAsync, which rethrows it, so it
     //   is handled the way IngestWithHashCheckAsync handles it. The caller's own cancellation
-    //   still propagates. Deliberately broad: any cancellation the caller did not request fails
-    //   this entry, not the run. Besides a stalled content read, that includes a vector-store,
+    //   still propagates. Deliberately broad: besides a stalled content read, that includes a vector-store,
     //   hash-store or remote-pipeline client timeout. Model calls never get here; they are
     //   already ModelCallFailed. A store timeout is labelled TransportFailed rather than
     //   StorageFailed; that is tracked as #1019.
