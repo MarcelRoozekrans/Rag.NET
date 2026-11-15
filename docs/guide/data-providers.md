@@ -65,6 +65,9 @@ Every list has a matching count — `IngestedCount`, `SkippedCount`, `FailedCoun
 > during cleanup. Read `Failed` for *which entries* failed; read `Errors` for *everything* that went
 > wrong.
 
+A timeout you did not ask for, such as a content stream that stalls or a store client that times
+out, fails that one entry. Only cancelling your own token ends the run.
+
 ### Writing your own provider
 
 Implement `IFileContentProvider` and yield one `FileEntry` per document. Nothing else is required — no base metadata, no registration ceremony:
@@ -592,6 +595,10 @@ services.AddBitbucketDataProvider(
     });
 ```
 
+File contents are streamed. Each read must return data within the connector `HttpClient`'s
+`Timeout` (100 seconds by default). A file whose download stalls longer fails that entry as
+`RagError.TransportFailed`, and the run goes on. Slow but steady downloads are not cut off.
+
 ### Zendesk — Tickets
 
 ```csharp
@@ -642,6 +649,12 @@ Delta runs require a "Last modified time" field in the table, named via
 change to any field. Field names containing `{` or `}` are rejected at construction (Airtable's
 formula grammar cannot escape braces inside a field reference), as are delta tokens containing
 anything outside ISO-8601 timestamp characters, since both are interpolated into the formula.
+
+Attachments are streamed, not buffered. Each read of an attachment body must return data within
+the connector `HttpClient`'s `Timeout` (100 seconds by default). An attachment whose download
+stalls longer fails that entry as `RagError.TransportFailed`, and the run goes on. A slow download
+that keeps making progress is never cut off, and a client with `Timeout.InfiniteTimeSpan` disables
+the limit.
 
 ### Web — Sitemap
 

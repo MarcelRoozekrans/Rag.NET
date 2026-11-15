@@ -63,8 +63,10 @@ entry `StorageFailed` and leaves the pipeline gap below in place.
 `OperationCanceledException` thrown while the caller's token is not cancelled fails that entry
 as `RagError.TransportFailed`, matching what `ContentFetchError` already does on the hash-store
 path. Today, without a hash store, `PipelineIngestor` rethrows it and the per-entry catch skips
-it, so it ends the whole provider run. The caller's own cancellation still propagates. This also
-covers other non-caller timeouts on that path, such as an embedder's `HttpClient` timeout.
+it, so it ends the whole provider run. The caller's own cancellation still propagates. The catch is deliberately broad: it also
+covers a vector-store, hash-store or remote-pipeline client timeout. Model calls never get
+there; they are already `ModelCallFailed`. A store timeout is labelled `TransportFailed` rather
+than `StorageFailed`, which is tracked as a follow-up issue.
 
 ## Tests
 
