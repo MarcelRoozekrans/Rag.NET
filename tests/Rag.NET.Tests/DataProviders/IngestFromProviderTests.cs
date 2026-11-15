@@ -1774,6 +1774,181 @@ public sealed class IngestFromProviderTests : IDisposable
             _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"), cancellationToken: cts.Token));
     }
 
+    [Fact]
+    public async Task AStoreTimeoutWithoutAHashStore_IsReportedAsStorageFailed()
+    {
+        // The content read cleanly; the cancellation came from a store client's own timeout, so
+        // it belongs with every other store failure, not with the source connector (#1019).
+        var storeTimeout = new TaskCanceledException("store", new TimeoutException());
+        WhenIngesting("id-1", async (stream, ct) =>
+        {
+            await stream.CopyToAsync(Stream.Null, ct);
+            throw storeTimeout;
+        });
+
+        var result = await _pipeline.IngestFromProviderAsync(
+            MakeProvider(("id-1", "a.txt", "hello", null), ("id-2", "b.txt", "world", null)),
+            new ProviderId("prov"), cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.FailedCount);
+        Assert.Equal(1, result.IngestedCount);
+        var error = Assert.IsType<RagError.StorageFailed>(Assert.Single(result.Errors));
+        Assert.Same(storeTimeout, error.Inner);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AHashStoreTimeout_IsReportedAsStorageFailed(bool onTheETagLookup)
+    {
+        var storeTimeout = new TaskCanceledException("hash store", new TimeoutException());
+        var hashStore = Substitute.For<IContentHashStore>();
+        if (onTheETagLookup)
+        {
+            hashStore.GetETagAsync(Arg.Any<ProviderId>(), Arg.Any<EntryId>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromException<string?>(storeTimeout));
+        }
+        else
+        {
+            hashStore.SetAsync(Arg.Any<ProviderId>(), Arg.Any<EntryId>(), Arg.Any<string?>(), Arg.Any<string>(),
+                    Arg.Any<CancellationToken>())
+                .Returns(Task.FromException(storeTimeout));
+        }
+
+        var result = await _pipeline.IngestFromProviderAsync(MakeProvider(("id-1", "a.txt", "hello", "etag-1")),
+            new ProviderId("prov"), hashStore: hashStore,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.FailedCount);
+        var error = Assert.IsType<RagError.StorageFailed>(Assert.Single(result.Errors));
+        Assert.Same(storeTimeout, error.Inner);
+    }
+
+    [Fact]
+    public async Task AStoreTimeoutWithAHashStore_IsReportedAsStorageFailed()
+    {
+        // With a hash store the content is buffered first, so the pipeline reads a MemoryStream;
+        // a cancellation it throws can only be a store's.
+        var storeTimeout = new TaskCanceledException("store", new TimeoutException());
+        WhenIngesting("id-1", async (stream, ct) =>
+        {
+            await stream.CopyToAsync(Stream.Null, ct);
+            throw storeTimeout;
+        });
+
+        var result = await _pipeline.IngestFromProviderAsync(MakeProvider(("id-1", "a.txt", "hello", null)),
+            new ProviderId("prov"), hashStore: new SqliteContentHashStore(_dbPath),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<RagError.StorageFailed>(Assert.Single(result.Errors));
+        Assert.Same(storeTimeout, error.Inner);
+    }
+
+    [Fact]
+    public async Task AReadFaultTheParserSwallowed_DoesNotLabelALaterStoreTimeout()
+    {
+        var readFault = new TaskCanceledException("read", new TimeoutException());
+        var storeTimeout = new TaskCanceledException("store", new TimeoutException());
+        WhenIngesting("id-1", async (stream, ct) =>
+        {
+            try { _ = await stream.ReadAsync(new byte[16], ct); }
+            catch (TaskCanceledException) { /* a parser that falls back instead of failing */ }
+            throw storeTimeout;
+        });
+
+        var result = await _pipeline.IngestFromProviderAsync(ProviderWithStream(new StalledStream(readFault)),
+            new ProviderId("prov"), cancellationToken: TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<RagError.StorageFailed>(Assert.Single(result.Errors));
+        Assert.Same(storeTimeout, error.Inner);
+    }
+
+    [Fact]
+    public async Task AStreamCancellationWrappedByTheParser_IsStillTransportFailed()
+    {
+        var readFault = new TaskCanceledException("read", new TimeoutException());
+        OperationCanceledException? wrapped = null;
+        WhenIngesting("id-1", async (stream, ct) =>
+        {
+            try { _ = await stream.ReadAsync(new byte[16], ct); }
+            catch (TaskCanceledException ex) { wrapped = new OperationCanceledException("parse", ex); }
+            throw wrapped!;
+        });
+
+        var result = await _pipeline.IngestFromProviderAsync(ProviderWithStream(new StalledStream(readFault)),
+            new ProviderId("prov"), cancellationToken: TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<RagError.TransportFailed>(Assert.Single(result.Errors));
+        Assert.Same(wrapped, error.Inner);
+    }
+
+    [Fact]
+    public async Task AReadTimeoutRethrownAfterAFailedFallbackRead_IsStillTransportFailed()
+    {
+        // The parser saves the first timeout, tries one more read that fails with a different
+        // exception, then rethrows the first. Keeping only the latest fault lost the first one.
+        var readFault = new TaskCanceledException("read", new TimeoutException());
+        var fallbackFault = new TaskCanceledException("fallback read", new TimeoutException());
+        TaskCanceledException? saved = null;
+        WhenIngesting("id-1", async (stream, ct) =>
+        {
+            try { _ = await stream.ReadAsync(new byte[16], ct); }
+            catch (TaskCanceledException ex) { saved = ex; }
+            try { _ = await stream.ReadAsync(new byte[16], ct); }
+            catch (TaskCanceledException) { /* the fallback failed as well */ }
+            throw saved!;
+        });
+
+        var result = await _pipeline.IngestFromProviderAsync(
+            ProviderWithStream(new FailingInTurnStream(readFault, fallbackFault)),
+            new ProviderId("prov"), cancellationToken: TestContext.Current.CancellationToken);
+
+        var error = Assert.IsType<RagError.TransportFailed>(Assert.Single(result.Errors));
+        Assert.Same(readFault, error.Inner);
+    }
+
+    /// <summary>Each read throws the next exception in turn.</summary>
+    private sealed class FailingInTurnStream(params Exception[] faults) : MemoryStream
+    {
+        private int _next;
+
+        private Exception Next() => faults[Math.Min(_next++, faults.Length - 1)];
+
+        public override int Read(byte[] buffer, int offset, int count) => throw Next();
+        public override int Read(Span<byte> buffer) => throw Next();
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => Task.FromException<int>(Next());
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => ValueTask.FromException<int>(Next());
+    }
+
+    private static IFileContentProvider ProviderWithStream(Stream stream)
+    {
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-1"),
+                    FileName: "a.txt",
+                    OpenContentAsync: _ => Task.FromResult(stream))),
+            }.ToAsyncEnumerable());
+        return provider;
+    }
+
+    // Runs `ingest` in place of the pipeline for one entry; it gets the stream the pipeline was handed.
+    private void WhenIngesting(string documentId, Func<Stream, CancellationToken, Task> ingest) =>
+        _pipeline.IngestAsync(
+                Arg.Any<Stream>(),
+                Arg.Is<DocumentMetadata>(m => string.Equals(m!.DocumentId, documentId, StringComparison.Ordinal)),
+                Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(async ci =>
+            {
+                await ingest(ci.ArgAt<Stream>(0), ci.ArgAt<CancellationToken>(4));
+                return Result<IngestionResult, RagError>.Success(
+                    new IngestionResult { DocumentId = ci.ArgAt<DocumentMetadata>(1).DocumentId, ChunksStored = 1 });
+            });
+
     // The mocked pipeline does not read what it is given; the real one does, and a stalled read
     // is what the tests above need to reach.
     private void ReadTheStreamWhenIngesting() =>
