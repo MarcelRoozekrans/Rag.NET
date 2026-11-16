@@ -54,11 +54,6 @@
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <PackageVersion Include="Octokit" Version="14.0.0" />
     <PackageVersion Include="OpenMcdf" Version="3.4.0" />
-    <PackageVersion Include="OpenTelemetry" Version="1.20.1" />
-    <PackageVersion Include="OpenTelemetry.Api" Version="1.20.1" />
-    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.20.1" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.1" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.20.1" />
     <PackageVersion Include="PdfPig" Version="0.1.16" />
     <PackageVersion Include="Pgvector" Version="0.3.2" />
     <PackageVersion Include="Pinecone.Client" Version="3.1.0" />
@@ -99,6 +94,8 @@
     The .NET runtime packages ship one line per runtime. Each target framework takes its own line,
     so a consumer on .NET 10 keeps the 10.x packages instead of being moved onto 11.0 by a library
     upgrade. renovate.json keeps the net10.0 entries below 11.0.
+    OpenTelemetry follows the same split: from 1.21.0 its net10.0 assets depend on the 11.0 runtime
+    packages, such as System.Diagnostics.DiagnosticSource 11.0.0, so net10.0 stays on 1.20.x.
   -->
   <ItemGroup Condition="'$(TargetFramework)' != 'net11.0'">
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.15" />
@@ -123,6 +120,11 @@
     <PackageVersion Include="System.Numerics.Tensors" Version="10.0.15" />
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.15" />
     <PackageVersion Include="System.Threading.RateLimiting" Version="10.0.15" />
+    <PackageVersion Include="OpenTelemetry" Version="1.20.1" />
+    <PackageVersion Include="OpenTelemetry.Api" Version="1.20.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.20.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.20.1" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.20.1" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net11.0'">
     <PackageVersion Include="Microsoft.Data.Sqlite" Version="11.0.0" />
@@ -147,5 +149,10 @@
     <PackageVersion Include="System.Numerics.Tensors" Version="11.0.0" />
     <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="11.0.0" />
     <PackageVersion Include="System.Threading.RateLimiting" Version="11.0.0" />
+    <PackageVersion Include="OpenTelemetry" Version="1.21.0" />
+    <PackageVersion Include="OpenTelemetry.Api" Version="1.21.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.InMemory" Version="1.21.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.21.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.21.0" />
   </ItemGroup>
 </Project>
