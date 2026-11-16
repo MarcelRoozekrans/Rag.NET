@@ -142,7 +142,7 @@ the break is intended, record it:
 4. Title the pull request `feat!:` or `fix!:`. A check fails the pull request when it adds or
    changes one of these files and the title has no `!`.
 5. After the new major ships, `pack-validate` warns about the suppression files for the old
-   major. Delete them.
+   major of that package. Delete them. A package still on the old major keeps its file.
 
 [The CI reference](docs/reference/ci.md#the-api-compatibility-check) explains how the check works.
 

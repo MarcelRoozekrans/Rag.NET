@@ -922,8 +922,10 @@ property is set, so local builds, tests and the matrix legs are unchanged.
 file for the current baseline's major is passed to the SDK. Within a major, a suppression that no
 longer matches a break fails the pack as unnecessary. Once the next major is on nuget.org, the
 baseline moves to it and the old file is inert, so `main` does not turn red over a release. The
-lookup step prints a `::warning::` naming each suppression file whose major is below the highest
-baseline major across all packages, so the warning is not per package. Delete those files. A file
+lookup step prints a `::warning::` naming each suppression file whose major is below the baseline
+major of its own package, taken from the project directory name, which is the package id. A
+package that is still on an older major, for example during a partial publish, keeps its file
+without a warning, and a directory with no baseline gets none. Delete the files it names. A file
 named `CompatibilitySuppressions.xml` is refused: the SDK falls back to that name for every major,
 so the build fails with an error naming the per-major file to rename it to. The recipe is in
 [CONTRIBUTING](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/CONTRIBUTING.md#an-intentional-api-break).

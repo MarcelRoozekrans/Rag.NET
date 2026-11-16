@@ -108,8 +108,9 @@ These ran on `Rag.NET.Abstractions` with SDK 11.0.100 against nuget.org's 1.9.2:
    `CompatibilitySuppressions.<major>.x.xml` beside the `.csproj`. The hook adds it as an
    `ApiCompatSuppressionFile` item when it exists, and always sets `ApiCompatSuppressionOutputFile`
    to the same path, so `-p:ApiCompatGenerateSuppressionFile=true` writes the right file. The lookup
-   step prints a `::warning::` for each suppression file whose major is below the current
-   baseline's major, naming it for deletion. Without the property nothing changes, so local
+   step prints a `::warning::` for each suppression file whose major is below the baseline
+   major of its own package, naming it for deletion. The package is the project directory name,
+   which equals its PackageId, so a package still on an older major keeps its file. Without the property nothing changes, so local
    builds, tests and the matrix legs behave as they do today.
 3. **Both pack commands.** `pack-validate` and `publish-nuget` pack with a character-identical
    command, which `WorkflowWiringTests` pins. Both run the lookup and pass the property, so the

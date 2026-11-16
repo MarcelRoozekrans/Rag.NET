@@ -162,6 +162,74 @@ public sealed class PackageBaselineScriptTests
         }
     }
 
+    /// <summary>A 200 whose body is not a version list says nothing about what is published, so it must fail.</summary>
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("<html><body>Bad gateway</body></html>")]
+    [InlineData("{\"versions\":")]
+    public async Task AnOkResponseThatIsNotAVersionListFails(string body)
+    {
+        var result = await RunAsync("1.9.3", ["Rag.NET.Abstractions"],
+            ("rag.net.abstractions", 200, body));
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("::error::", result.Output, StringComparison.Ordinal);
+        Assert.Contains("Rag.NET.Abstractions", result.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("RagNetUnpublishedPackage", result.Props, StringComparison.Ordinal);
+    }
+
+    /// <summary>A well-formed index with an empty list is a package with nothing published yet.</summary>
+    [Fact]
+    public async Task AnEmptyVersionListIsUnpublished()
+    {
+        var result = await RunAsync("1.9.3", ["Rag.NET.Empty"],
+            ("rag.net.empty", 200, Versions()));
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("RagNetUnpublishedPackage Include=\"Rag.NET.Empty\"", result.Props, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// During a partial publish each package is compared with its own baseline: the 1.x file of a
+    /// package still on 1.9.2 is in use and must not be reported because another package is on 2.x.
+    /// </summary>
+    [Fact]
+    public async Task ASuppressionFileStillUsedByItsOwnPackageIsNotReported()
+    {
+        var sourceRoot = Directory.CreateTempSubdirectory("ragnet-baseline-src-").FullName;
+        try
+        {
+            var foo = Directory.CreateDirectory(Path.Combine(sourceRoot, "Foo")).FullName;
+            var bar = Directory.CreateDirectory(Path.Combine(sourceRoot, "Bar")).FullName;
+            Directory.CreateDirectory(Path.Combine(sourceRoot, "Orphan"));
+            File.WriteAllText(Path.Combine(foo, "CompatibilitySuppressions.1.x.xml"), "<Suppressions />");
+            File.WriteAllText(Path.Combine(bar, "CompatibilitySuppressions.1.x.xml"), "<Suppressions />");
+            File.WriteAllText(Path.Combine(sourceRoot, "Orphan", "CompatibilitySuppressions.1.x.xml"), "<Suppressions />");
+
+            var bashRoot = sourceRoot.Replace('\\', '/');
+            var fooFile = bashRoot + "/Foo/CompatibilitySuppressions.1.x.xml";
+            var barFile = bashRoot + "/Bar/CompatibilitySuppressions.1.x.xml";
+
+            var result = await RunAsync("2.0.1", ["Foo", "Bar"], bashRoot, string.Empty,
+                ("foo", 200, Versions("1.9.2")),
+                ("bar", 200, Versions("2.0.0")));
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Equal("1.9.2", result.BaselineOf("Foo"));
+            Assert.Equal("2.0.0", result.BaselineOf("Bar"));
+            Assert.DoesNotContain(fooFile, result.Output, StringComparison.Ordinal);
+            Assert.DoesNotContain("Orphan", result.Output, StringComparison.Ordinal);
+            var warning = result.Output
+                .Split('\n')
+                .Single(line => line.Contains(barFile, StringComparison.Ordinal));
+            Assert.StartsWith("::warning::", warning, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(sourceRoot, recursive: true);
+        }
+    }
+
     /// <summary>
     /// The header comment quotes the source URL, and "--" must not appear in an XML comment. A URL
     /// with a run of hyphens must still produce a props file that parses.
