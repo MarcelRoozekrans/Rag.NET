@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.2](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.9.1...v1.9.2) (2026-11-16)
+
+
+### Bug Fixes
+
+* **deps:** make the net10.0 Renovate pins match NuGet versions ([#1034](https://github.com/MarcelRoozekrans/Rag.NET/issues/1034)) ([8472528](https://github.com/MarcelRoozekrans/Rag.NET/commit/84725287f226f0423f4affe32106d7f5035594e1))
+* **deps:** update dependency onnxruntime to v1.32.0 ([#1035](https://github.com/MarcelRoozekrans/Rag.NET/issues/1035)) ([13618a3](https://github.com/MarcelRoozekrans/Rag.NET/commit/13618a37e51180ba5f737e9f0905962aa3c73060))
+
 ## [1.9.1](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.9.0...v1.9.1) (2026-11-15)
 
 
