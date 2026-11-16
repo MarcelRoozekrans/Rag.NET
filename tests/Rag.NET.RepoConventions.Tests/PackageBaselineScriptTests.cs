@@ -18,6 +18,17 @@ public sealed class PackageBaselineScriptTests
 {
     private static readonly TimeSpan RunTimeout = TimeSpan.FromSeconds(60);
 
+    /// <summary>Empty input must not write an empty props file and succeed, which would ship the release unchecked.</summary>
+    [Fact]
+    public async Task NoIdsOnStdinFails()
+    {
+        var result = await RunAsync("1.9.3", []);
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("::error::", result.Output, StringComparison.Ordinal);
+        Assert.Equal(string.Empty, result.Props);
+    }
+
     /// <summary>Prereleases never count, and the highest stable version below the packing version wins.</summary>
     [Fact]
     public async Task PicksTheHighestStableVersionBelowThePackingVersion()
