@@ -56,11 +56,20 @@ public sealed class BreakingTitleCheckTests
     [InlineData("renamed")]
     [InlineData("copied")]
     [InlineData("changed")]
-    public async Task AnyStatusButRemovedCountsAsAChange(string status)
+    public async Task AnyStatusExceptRemovedAndUnchangedCountsAsAChange(string status)
     {
         var result = await RunAsync("fix: x", $"{status}\tsrc/Foo/CompatibilitySuppressions.2.x.xml");
 
         Assert.NotEqual(0, result.ExitCode);
+    }
+
+    /// <summary>An unchanged file has no content change, so it never requires a breaking title.</summary>
+    [Fact]
+    public async Task AnUnchangedSuppressionNeedsNoBreakingTitle()
+    {
+        var result = await RunAsync("fix: x", "unchanged\tsrc/Foo/CompatibilitySuppressions.1.x.xml");
+
+        Assert.Equal(0, result.ExitCode);
     }
 
     /// <summary>The SDK's default file name is a suppression file too, so a break cannot hide in it.</summary>

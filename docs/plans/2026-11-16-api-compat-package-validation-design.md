@@ -117,8 +117,8 @@ These ran on `Rag.NET.Abstractions` with SDK 11.0.100 against nuget.org's 1.9.2:
 4. **PR title check.** A small workflow of its own, triggered by `pull_request` with `opened`,
    `edited`, `synchronize` and `reopened`, so a title fix re-runs it without re-running the
    matrix. It reads the PR's own file list from the GitHub API, not a local diff. It fails when a
-   `CompatibilitySuppressions*.xml` file (the per-major names and the SDK's default name) is added,
-   modified, renamed or copied and the PR title has no `!` before its colon. The hook also fails
+   `CompatibilitySuppressions*.xml` file (the per-major names and the SDK's default name) is changed in
+   any way except a removal and the PR title has no `!` before its colon. The hook also fails
    the build when the default-named file exists, because the SDK would otherwise fall back to it
    for every major. A deleted suppression file, the cleanup after a major, needs no `!`. The workflow
    carries no secrets and only reads the PR. It does not need to be a required check:

@@ -930,8 +930,8 @@ so the build fails with an error naming the per-major file to rename it to. The 
 
 **The title has to say so.** The workflow `api-compat-title.yml` runs on its own, and again when
 the title is edited, so fixing a title does not re-run the matrix. It reads the pull request's
-file list from the GitHub API. If a `CompatibilitySuppressions*.xml` file is added, modified,
-renamed or copied, the title must be breaking: `feat!:` or `fix(scope)!:`. Removing one needs
+file list from the GitHub API. If a `CompatibilitySuppressions*.xml` file is changed in any
+way except a removal, the title must be breaking: `feat!:` or `fix(scope)!:`. Removing one needs
 nothing. That ties the version bump to the API break.
 
 ### The gated nuget.org push

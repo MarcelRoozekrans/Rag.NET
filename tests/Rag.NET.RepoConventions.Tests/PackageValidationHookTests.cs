@@ -117,6 +117,18 @@ public sealed class PackageValidationHookTests : IDisposable
     }
 
     [Fact]
+    public void TheGuardRunsBeforeTheSdkCollectsItsApiCompatInputs()
+    {
+        File.WriteAllText(Path.Combine(_directory, "CompatibilitySuppressions.xml"), "<Suppressions />");
+
+        // CollectApiCompatInputs is what RunPackageValidation depends on. Running it alone proves
+        // the guard is attached to it, not merely callable by name.
+        var output = EvaluateTarget(BaselinesFor(PackageId, "1.9.2"), expectError: true, target: "CollectApiCompatInputs");
+
+        Assert.Contains("SDK default suppression file", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TheDefaultSuppressionFileIsIgnoredWithoutABaselineOrTheProperty()
     {
         File.WriteAllText(Path.Combine(_directory, "CompatibilitySuppressions.xml"), "<Suppressions />");
@@ -129,7 +141,7 @@ public sealed class PackageValidationHookTests : IDisposable
     public void WithoutTheDefaultSuppressionFileTheGuardPasses() =>
         _ = EvaluateTarget(BaselinesFor(PackageId, "1.9.2"), expectError: false);
 
-    private string EvaluateTarget(string? baselinesFile, bool expectError)
+    private string EvaluateTarget(string? baselinesFile, bool expectError, string target = "RagNetRefuseDefaultSuppressionFile")
     {
         var startInfo = new ProcessStartInfo("dotnet")
         {
@@ -141,7 +153,7 @@ public sealed class PackageValidationHookTests : IDisposable
         startInfo.ArgumentList.Add(Path.Combine(_directory, "Probe.csproj"));
         startInfo.ArgumentList.Add("-nologo");
         startInfo.ArgumentList.Add("-nodeReuse:false");
-        startInfo.ArgumentList.Add("-t:RagNetRefuseDefaultSuppressionFile");
+        startInfo.ArgumentList.Add($"-t:{target}");
         startInfo.Environment.Remove("RagNetPackageBaselines");
         if (baselinesFile is not null)
         {
