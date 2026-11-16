@@ -73,6 +73,12 @@
       "matchPackageNames": ["Microsoft.Data.Sqlite", "Microsoft.Extensions.AI", "Microsoft.Extensions.AI.Abstractions", "Microsoft.Extensions.AI.OpenAI", "Microsoft.Extensions.Caching.Abstractions", "Microsoft.Extensions.Caching.Hybrid", "Microsoft.Extensions.Configuration", "Microsoft.Extensions.Configuration.Abstractions", "Microsoft.Extensions.Configuration.Binder", "Microsoft.Extensions.DependencyInjection", "Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Diagnostics.Testing", "Microsoft.Extensions.TimeProvider.Testing", "Microsoft.Extensions.Hosting", "Microsoft.Extensions.Hosting.Abstractions", "Microsoft.Extensions.Http.Resilience", "Microsoft.Extensions.Logging", "Microsoft.Extensions.Logging.Abstractions", "Microsoft.Extensions.Resilience", "System.Numerics.Tensors", "System.Security.Cryptography.Pkcs", "System.Threading.RateLimiting"],
       "matchCurrentVersion": "<11.0.0",
       "allowedVersions": "<11.0.0"
+    },
+    {
+      "description": "OpenTelemetry is pinned once per target framework in Directory.Packages.props, like the .NET runtime packages above. From 1.21.0 its net10.0 assets depend on the 11.0 runtime packages, so net10.0 stays on 1.20.x and net11.0 takes the current line. This rule keeps the net10.0 entries, recognisable by a current version below 1.21.0, below 1.21.0. The net11.0 entries are unaffected. Lift it when net10.0 leaves TargetFrameworks.",
+      "matchPackageNames": ["OpenTelemetry", "OpenTelemetry.Api", "OpenTelemetry.Exporter.InMemory", "OpenTelemetry.Exporter.OpenTelemetryProtocol", "OpenTelemetry.Extensions.Hosting"],
+      "matchCurrentVersion": "<1.21.0",
+      "allowedVersions": "<1.21.0"
     }
   ]
 }
