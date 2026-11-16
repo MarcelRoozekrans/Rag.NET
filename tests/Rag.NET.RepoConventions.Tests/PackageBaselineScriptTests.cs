@@ -51,6 +51,17 @@ public sealed class PackageBaselineScriptTests
         Assert.Equal("1.9.2", result.BaselineOf("Rag.NET.Abstractions"));
     }
 
+    /// <summary>Versions compare per numeric field: 1.10.0 is above 1.9.2, though it sorts below it as text.</summary>
+    [Fact]
+    public async Task VersionsAreComparedNumericallyNotLexically()
+    {
+        var result = await RunAsync("2.0.0", ["Rag.NET.Abstractions"],
+            ("rag.net.abstractions", 200, Versions("1.9.2", "1.10.0")));
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("1.10.0", result.BaselineOf("Rag.NET.Abstractions"));
+    }
+
     /// <summary>An id nuget.org has never seen is a new package: it is listed, and the lookup succeeds.</summary>
     [Fact]
     public async Task ANotFoundIdIsListedAsUnpublishedAndSucceeds()
@@ -184,38 +195,38 @@ public sealed class PackageBaselineScriptTests
     private static async Task<(int ExitCode, string Output)> RunScriptAsync(
         string script, string root, string packingVersion, string props, string sourceRoot, string prefix, string[] ids)
     {
-            var startInfo = new ProcessStartInfo(FindShell())
-            {
-                WorkingDirectory = root,
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-            };
-            startInfo.ArgumentList.Add(script);
-            startInfo.ArgumentList.Add(packingVersion);
-            startInfo.ArgumentList.Add(props);
-            startInfo.ArgumentList.Add(sourceRoot);
-            startInfo.Environment["NUGET_FLAT_CONTAINER"] = prefix.TrimEnd('/');
+        var startInfo = new ProcessStartInfo(FindShell())
+        {
+            WorkingDirectory = root,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add(script);
+        startInfo.ArgumentList.Add(packingVersion);
+        startInfo.ArgumentList.Add(props);
+        startInfo.ArgumentList.Add(sourceRoot);
+        startInfo.Environment["NUGET_FLAT_CONTAINER"] = prefix.TrimEnd('/');
 
-            using var process = Process.Start(startInfo)
-                ?? throw new InvalidOperationException("Process.Start returned null for bash.");
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Process.Start returned null for bash.");
 
-            var stdout = process.StandardOutput.ReadToEndAsync();
-            var stderr = process.StandardError.ReadToEndAsync();
-            await process.StandardInput.WriteAsync(string.Join("\n", ids) + "\n");
-            process.StandardInput.Close();
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        await process.StandardInput.WriteAsync(string.Join("\n", ids) + "\n");
+        process.StandardInput.Close();
 
-            using var timeout = new CancellationTokenSource(RunTimeout);
-            try
-            {
-                await process.WaitForExitAsync(timeout.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                process.Kill(entireProcessTree: true);
-                Assert.Fail($"package-baselines.sh did not exit within {RunTimeout.TotalSeconds:0}s.");
-            }
+        using var timeout = new CancellationTokenSource(RunTimeout);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            Assert.Fail($"package-baselines.sh did not exit within {RunTimeout.TotalSeconds:0}s.");
+        }
 
         return (process.ExitCode, await stdout + await stderr);
     }
