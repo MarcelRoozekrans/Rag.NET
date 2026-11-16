@@ -59,7 +59,7 @@ is_higher() {
 
 groups=""
 unpublished=""
-highest_major=-1
+majors=""
 
 while IFS= read -r id || [ -n "$id" ]; do
   id=${id%$'\r'}
@@ -86,7 +86,17 @@ while IFS= read -r id || [ -n "$id" ]; do
       ;;
   esac
 
-  stable=$(grep -o '"[0-9][^"]*"' "$tmp" | tr -d '"' | grep -v -e '-' -e '+' || true)
+  # Only a well-formed index, {"versions":[...]}, may reach the unpublished path below, and then
+  # only with an empty or prerelease-only list. An HTTP 200 with any other body, such as {} or an
+  # HTML error page, says nothing about what is published, so it fails rather than switch off
+  # validation for the id.
+  list=$(tr -d '\r\n' < "$tmp" | grep -Eo '"versions"[[:space:]]*:[[:space:]]*\[[^]]*\]' | head -n 1 || true)
+  if [ -z "$list" ]; then
+    echo "::error::nuget.org answered HTTP 200 for $url, but the body is not a version list, so the API baseline of $id is unknown."
+    exit 1
+  fi
+
+  stable=$(printf '%s' "$list" | grep -o '"[0-9][^"]*"' | tr -d '"' | grep -v -e '-' -e '+' || true)
   if [ -z "$stable" ]; then
     echo "$id has no stable version on nuget.org; API compatibility is not checked for it."
     unpublished="$unpublished  <ItemGroup><RagNetUnpublishedPackage Include=\"$id\" /></ItemGroup>"$'\n'
@@ -110,8 +120,7 @@ while IFS= read -r id || [ -n "$id" ]; do
   groups="$groups    <PackageValidationBaselineVersion>$baseline</PackageValidationBaselineVersion>"$'\n'
   groups="$groups  </PropertyGroup>"$'\n'
 
-  major=${baseline%%.*}
-  if [ "$major" -gt "$highest_major" ]; then highest_major=$major; fi
+  majors="$majors$id ${baseline%%.*}"$'\n'
 done
 
 if [ -z "$groups$unpublished" ]; then
@@ -132,16 +141,22 @@ while [ "$comment" != "${comment//--/-}" ]; do comment=${comment//--/-}; done
   echo '</Project>'
 } > "$output"
 
-# A suppression file for a major below every baseline cannot match anything any more.
-if [ "$highest_major" -ge 0 ]; then
-  for file in "$source_root"/*/CompatibilitySuppressions.*.x.xml; do
-    [ -e "$file" ] || continue
-    name=${file##*/}
-    n=${name#CompatibilitySuppressions.}
-    n=${n%.x.xml}
-    case "$n" in ''|*[!0-9]*) continue ;; esac
-    if [ "$n" -lt "$highest_major" ]; then
-      echo "::warning::$file suppresses differences against the $n.x baseline, which is no longer used. Delete it."
+# A suppression file for a major below its own package's baseline cannot match anything any more.
+# Each project directory under the source root is named after its PackageId, so the directory name
+# is the package id. A package is compared with its own baseline, not the highest of all: during a
+# partial publish one package can still be on an older major whose file its hook still uses. A
+# directory with no baseline gets no warning.
+for file in "$source_root"/*/CompatibilitySuppressions.*.x.xml; do
+  [ -e "$file" ] || continue
+  name=${file##*/}
+  n=${name#CompatibilitySuppressions.}
+  n=${n%.x.xml}
+  case "$n" in ''|*[!0-9]*) continue ;; esac
+  dir=${file%/*}
+  dir=${dir##*/}
+  while read -r pkg pkg_major; do
+    if [ "$pkg" = "$dir" ] && [ "$n" -lt "$pkg_major" ]; then
+      echo "::warning::$file suppresses differences against the $n.x baseline of $dir, which is no longer used. Delete it."
     fi
-  done
-fi
+  done <<< "$majors"
+done
