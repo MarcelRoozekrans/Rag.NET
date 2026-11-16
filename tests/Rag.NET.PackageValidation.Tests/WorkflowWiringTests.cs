@@ -64,8 +64,8 @@ public sealed class WorkflowWiringTests
     public void BothPackJobsLookUpBaselinesBeforePacking()
     {
         // The pack command points at the props file the lookup writes. Pack before lookup, or no
-        // lookup at all, and the file is missing: validation is off and every package ships
-        // unchecked against its baseline, exit 0.
+        // lookup at all, and on a fresh runner the pack fails hard with MSB4019 (the props file is
+        // imported and missing); locally a stale file from an earlier run would be read instead.
         var commands = ReadWorkflowCommands(Path.Combine(
             ProducedPackageTests.FindRepositoryRoot(), ".github", "workflows", "ci.yml"));
 

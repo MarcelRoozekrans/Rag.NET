@@ -404,14 +404,15 @@ jobs:
       # where the pack step below reads it. The id list is every src project that packs; ids come
       # from MSBuild itself because a csproj can override PackageId and IsPackable. Character-
       # identical in both pack jobs, and WorkflowWiringTests pins the lookup command and its
-      # place before the pack; without the props file the pack validates nothing and exits 0.
+      # place before the pack. Packing first on a fresh runner fails hard with MSB4019, the props
+      # file being imported and missing; only a stale file left by an earlier local run would be read.
       - name: Look up the API baselines
         shell: bash
         run: |
           mkdir -p artifacts
           for project in src/*/*.csproj; do
             dotnet msbuild "$project" -getProperty:IsPackable -getProperty:PackageId
-          done | jq -r '.Properties | select(.IsPackable == "true") | .PackageId' |
+          done | jq -r '.Properties | select((.IsPackable | ascii_downcase) == "true") | .PackageId' |
             bash .github/scripts/package-baselines.sh "$PACKAGE_VERSION" "$PWD/artifacts/package-baselines.props" src
 
       # Builds as it packs — no --no-build, because nothing has built in this job yet. The output
@@ -611,14 +612,15 @@ jobs:
       # where the pack step below reads it. The id list is every src project that packs; ids come
       # from MSBuild itself because a csproj can override PackageId and IsPackable. Character-
       # identical in both pack jobs, and WorkflowWiringTests pins the lookup command and its
-      # place before the pack; without the props file the pack validates nothing and exits 0.
+      # place before the pack. Packing first on a fresh runner fails hard with MSB4019, the props
+      # file being imported and missing; only a stale file left by an earlier local run would be read.
       - name: Look up the API baselines
         shell: bash
         run: |
           mkdir -p artifacts
           for project in src/*/*.csproj; do
             dotnet msbuild "$project" -getProperty:IsPackable -getProperty:PackageId
-          done | jq -r '.Properties | select(.IsPackable == "true") | .PackageId' |
+          done | jq -r '.Properties | select((.IsPackable | ascii_downcase) == "true") | .PackageId' |
             bash .github/scripts/package-baselines.sh "$PACKAGE_VERSION" "$PWD/artifacts/package-baselines.props" src
 
       # Character-identical to pack-validate's pack step, baselines flag included, so the

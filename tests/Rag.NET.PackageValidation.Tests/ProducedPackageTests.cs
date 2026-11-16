@@ -291,10 +291,11 @@ public sealed class ProducedPackageTests
                 $"{Path.GetFileName(package)} carries version '{version}' but GitVersion " +
                 $"derives '{derived}' for this commit. Either the pack ran without " +
                 "-p:Version (the SDK default 1.0.0 is silent), or the packages were packed on " +
-                "a different commit than this test is checking. Repack with: dotnet pack " +
-                "Rag.NET.slnx -c Release -o artifacts/packages -p:Version=\"$(dotnet " +
-                "dotnet-gitversion /output json /showvariable SemVer)\" (after `dotnet tool " +
-                "restore`).");
+                "a different commit than this test is checking. Repack with the two steps ci.yml " +
+                "runs: the id listing piped into .github/scripts/package-baselines.sh, then " +
+                "dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version=<derived> " +
+                "-p:RagNetPackageBaselines=\"$PWD/artifacts/package-baselines.props\" (after " +
+                "`dotnet tool restore`).");
         }
     }
 
@@ -381,9 +382,10 @@ public sealed class ProducedPackageTests
         Assert.SkipWhen(
             !Directory.Exists(directory),
             $"'{directory}' does not exist: nothing has packed. Produce it with " +
-            "`dotnet tool restore && dotnet pack Rag.NET.slnx -c Release -o artifacts/packages " +
-            "-p:Version=\"$(dotnet dotnet-gitversion /output json /showvariable SemVer)\"` — " +
-            "ci.yml's pack-validate job does exactly that before running this project, and " +
+            "the two steps ci.yml's pack-validate job runs before this project: the id listing " +
+            "piped into .github/scripts/package-baselines.sh, then `dotnet pack Rag.NET.slnx " +
+            "-c Release -o artifacts/packages -p:Version=<derived> " +
+            "-p:RagNetPackageBaselines=\"$PWD/artifacts/package-baselines.props\"`. " +
             "WorkflowWiringTests pins that wiring so this skip cannot rot silently.");
 
         var packages = new List<string>();
