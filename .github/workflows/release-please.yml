@@ -76,12 +76,12 @@ jobs:
       # a minor bump instead of jumping to 1.0.0, and bump-patch-for-minor-pre-major keeps a
       # feature at a patch. Without them the first `feat!:` after 0.1.0 would propose 1.0.0 and
       # nothing would ask whether that was intended. .release-please-manifest.json records the
-      # last released version — 0.0.0, because nothing has been released — and the two files
-      # must exist together: the config is what puts release-please into manifest mode.
+      # last released version, and the two files must exist together. The action reads them only
+      # in manifest mode, so this step passes no release-type input: with one, the action builds
+      # an inline config and ignores both files.
       #
-      # The first release's version is still chosen rather than derived. A `Release-As: x.y.z`
-      # footer on an empty commit overrides whatever the commits imply; the procedure in
-      # docs/reference/ci.md records it.
+      # A `Release-As: x.y.z` footer on an empty commit overrides whatever the commits imply; the
+      # procedure in docs/reference/ci.md records it.
       - name: Create or update the release pull request
         uses: googleapis/release-please-action@v5
         with:
