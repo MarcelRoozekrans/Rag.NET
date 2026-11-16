@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using AirtableApiClient;
 using Rag.NET.DataProviders;
+using Rag.NET.DataProviders.Http;
 using Rag.NET.Models;
 using ZeroAlloc.Results;
 
@@ -206,8 +207,8 @@ public sealed partial class AirtableDataProvider : FileContentProviderBase
     {
         var response = await _http.GetAsync(new Uri(url), HttpCompletionOption.ResponseHeadersRead, cancellationToken)
             .ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        return await TimeoutBoundedResponseStream.OpenAsync(response, _http.Timeout, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static string ToMarkdown(AirtableRecord record)
