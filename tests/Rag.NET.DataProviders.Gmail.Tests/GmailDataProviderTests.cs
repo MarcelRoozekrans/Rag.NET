@@ -62,7 +62,7 @@ public sealed class GmailDataProviderTests
     public async Task GetFilesAsync_ConfiguredQuery_IsSentToTheServerAsAGmailRawSearch()
     {
         var (client, inbox) = MakeMocks([new UniqueId(1)], MakeMessage());
-        client.Capabilities.Returns(ImapCapabilities.GMailExt1);
+        client.Capabilities.Returns(new ImapCapabilities([ImapCapability.GMailExt1], ["X-GM-EXT-1"]));
         var sut = MakeProvider(client, new GmailOptions { Query = "from:alice@example.com" });
 
         await sut.GetFilesAsync(TestContext.Current.CancellationToken)
@@ -77,7 +77,7 @@ public sealed class GmailDataProviderTests
     public async Task GetFilesAsync_ConfiguredQueryWithDeltaToken_NarrowsByBothRatherThanDroppingOne()
     {
         var (client, inbox) = MakeMocks([new UniqueId(9)], MakeMessage());
-        client.Capabilities.Returns(ImapCapabilities.GMailExt1);
+        client.Capabilities.Returns(new ImapCapabilities([ImapCapability.GMailExt1], ["X-GM-EXT-1"]));
         var sut = MakeProvider(client, new GmailOptions
         {
             Query = "has:attachment",
@@ -98,7 +98,8 @@ public sealed class GmailDataProviderTests
     public async Task GetFilesAsync_ConfiguredQueryWithoutTheGmailExtension_ThrowsRatherThanReturningEverything()
     {
         var (client, _) = MakeMocks([new UniqueId(1)], MakeMessage());
-        // Substitutes report ImapCapabilities.None, which is the case being asserted.
+        // A server that advertises nothing, which is the case being asserted.
+        client.Capabilities.Returns(new ImapCapabilities([], []));
         var sut = MakeProvider(client, new GmailOptions { Query = "from:alice@example.com" });
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(
