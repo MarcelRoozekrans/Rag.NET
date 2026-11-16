@@ -133,7 +133,7 @@ the break is intended, record it:
 2. Pack the project with suppression generation on:
 
    ```bash
-   dotnet pack <project> -c Release -p:Version=<next> -p:RagNetPackageBaselines=$PWD/artifacts/package-baselines.props -p:ApiCompatGenerateSuppressionFile=true
+   dotnet pack <project> -c Release -p:Version=<next> -p:RagNetPackageBaselines="$PWD/artifacts/package-baselines.props" -p:ApiCompatGenerateSuppressionFile=true
    ```
 
 3. Commit the generated `CompatibilitySuppressions.<major>.x.xml` beside the project. `<major>` is

@@ -899,7 +899,8 @@ The design and the options it weighed are in
 
 **The baseline is looked up, not pinned.** For each package id, the step "Look up the API
 baselines" asks nuget.org for the versions and takes the highest stable one strictly below the
-version being packed. A pinned version lags behind every release, and it needs a manual opt-out
+version being packed. The comparison is on major.minor.patch and ignores a prerelease label, so
+2.0.0-rc.1 packs against the last 1.x release. A pinned version lags behind every release, and it needs a manual opt-out
 for every new package. The lookup needs neither. While a release is still publishing, a commit is
 checked against the previous release, which is a weaker check but never a red `main`.
 
@@ -920,7 +921,8 @@ property is set, so local builds, tests and the matrix legs are unchanged.
 file for the current baseline's major is passed to the SDK. Within a major, a suppression that no
 longer matches a break fails the pack as unnecessary. Once the next major is on nuget.org, the
 baseline moves to it and the old file is inert, so `main` does not turn red over a release. The
-lookup step prints a `::warning::` naming each such file for deletion. The recipe is in
+lookup step prints a `::warning::` naming each suppression file whose major is below the highest
+baseline major across all packages, so the warning is not per package. Delete those files. The recipe is in
 [CONTRIBUTING](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/CONTRIBUTING.md#an-intentional-api-break).
 
 **The title has to say so.** The workflow `api-compat-title.yml` runs on its own, and again when
