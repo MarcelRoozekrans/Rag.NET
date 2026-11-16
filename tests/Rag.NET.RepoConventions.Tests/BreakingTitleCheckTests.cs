@@ -110,7 +110,7 @@ public sealed class BreakingTitleCheckTests
         }
 
         Assert.Contains(".github/scripts/check-breaking-title.sh", workflow, StringComparison.Ordinal);
-        Assert.Contains("permissions: contents: read pull-requests: read", workflow, StringComparison.Ordinal);
+        Assert.Equal(["contents: read", "pull-requests: read"], PermissionEntries());
         Assert.DoesNotContain("write", workflow, StringComparison.Ordinal);
         Assert.Contains("TITLE: ${{ github.event.pull_request.title }}", workflow, StringComparison.Ordinal);
         Assert.Equal(2, workflow.Split("permissions:").Length); // declared once, at workflow level
@@ -130,6 +130,41 @@ public sealed class BreakingTitleCheckTests
             .Select(line => line.Trim())
             .Where(line => line.Length > 0 && line[0] != '#');
         return string.Join(' ', lines);
+    }
+
+    /// <summary>The entries of the single <c>permissions:</c> block, sorted, comments stripped.</summary>
+    private static string[] PermissionEntries()
+    {
+        var path = Path.Combine(TestProject.FindRepositoryRoot(), ".github", "workflows", "api-compat-title.yml");
+        var entries = new List<string>();
+        var indent = -1;
+        foreach (var line in File.ReadLines(path))
+        {
+            var trimmed = line.TrimStart();
+            if (trimmed.Length == 0 || trimmed[0] == '#')
+            {
+                continue;
+            }
+
+            var depth = line.Length - trimmed.Length;
+            if (indent >= 0 && depth <= indent)
+            {
+                indent = -1;
+            }
+
+            if (indent >= 0)
+            {
+                var hash = trimmed.IndexOf(" #", StringComparison.Ordinal);
+                entries.Add((hash >= 0 ? trimmed[..hash] : trimmed).Trim());
+            }
+            else if (trimmed.StartsWith("permissions:", StringComparison.Ordinal))
+            {
+                indent = depth;
+            }
+        }
+
+        entries.Sort(StringComparer.Ordinal);
+        return [.. entries];
     }
 
     /// <summary>The text of every <c>run:</c> block, where an expression would be spliced into shell source.</summary>
