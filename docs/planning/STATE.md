@@ -1,30 +1,23 @@
 # Session State
 
-**Last updated:** 2026-11-15, evening. **Next:** these PRs wait for the operator. Do not merge
-them unasked. The `Main` ruleset needs an up-to-date branch, so run `gh pr update-branch <n>` and
-let CI re-run before any merge.
-- **#1024** (fixes #1019, branch `fix/store-timeout-classification`): green, CodeRabbit
-  approved, both threads resolved. Only the non-required `codecov/patch` fails. After the merge,
-  confirm its `fix(ingestion):` commit appears in release PR #1022.
-- **#1022**, release 1.9.1: ships #1020, confirmed in its changelog. A release PR is always the
-  operator's call.
-- **#997**, the dotnet monorepo update to v11, reworked at the operator's choice on 2026-11-15.
-  The 22 runtime packages are pinned per target framework in `Directory.Packages.props`: net10.0
-  keeps 10.0.15 or 10.11.0 and net11.0 takes 11.0.0, so a consumer on .NET 10 is not moved onto 11.0.
-  A new `renovate.json` rule, `matchCurrentVersion` and `allowedVersions` `<11.0.0`, keeps the
-  net10.0 entries on 10.x. A packed `Rag.NET.Abstractions` declares the two sets per dependency
-  group. Green; needs review.
-- **#991**, MailKit and MimeKit 5 together. #993 is closed and folded in, since MailKit 5 depends
-  on MimeKit.Core 5. `ImapCapabilities` is now a class, so the check is
-  `Contains(ImapCapability.GMailExt1)`, and `ContentEncoding.Default` is now `Unspecified`. MsgReader
-  does not depend on MimeKit. Green; needs review.
-- **#957**, FFMpegCore 6. `NotifyOnStandardError`, `WithStartTime`, `WithFrameCount`, and
-  `FFMpegResult.Success` replace the old calls. Checked once against a real ffmpeg: a three-scene clip
-  gave cuts at 1 s and 2 s, each with a JPEG frame. Green; needs review.
-- **#1002**, OpenTelemetry 1.21: red with NU1605, because OTel 1.21 pulls in the 11.0 runtime
-  packages for every framework. Once #997 merges, split OTel per target framework the same way,
-  1.20.1 for net10.0, with a matching Renovate rule. Not started.
-- **#989** (box.v2.core): behind main, automerge on; Renovate rebases it.
+**Last updated:** 2026-11-16. **Next:** no PR is open and nothing waits for the operator. Pick the
+next item from the milestone or the issue tracker.
+
+**Merged on 2026-11-16, at the operator's request.** Each branch was brought up to date and passed a
+fresh run before its merge. Renovate automerges a dependency bump to main every 20 to 40 minutes,
+often faster than one 20-minute CI run, so a PR can need several update rounds.
+- **#1024** (fixes #1019), shipped in **1.9.1**, which the operator merged as #1022.
+- **#997**, the dotnet 11 packages for net11.0 with 10.x kept for net10.0.
+- **#1002**, OpenTelemetry pinned per target framework: 1.20.1 for net10.0, 1.21.0 for net11.0.
+  From 1.21.0, OpenTelemetry.Api on net10.0 depends on System.Diagnostics.DiagnosticSource 11.0.0.
+- **#991**, MailKit and MimeKit 5. **#957**, FFMpegCore 6.
+- **#1034**, shipped in **1.9.2** as #1036. The Renovate rules from #997 and #1002 never matched:
+  NuGet versioning cannot parse `<11.0.0`, and `matchCurrentVersion` has no semver fallback, while
+  `allowedVersions` does. Renovate automerged #1032, net10.0 OpenTelemetry to 1.21.0, and opened
+  #1031, net10.0 runtime packages to 11.0.0. The rules now use the bracket ranges `(,11.0.0)` and
+  `(,1.21.0)`, and net10.0 is back on OpenTelemetry 1.20.1. Not yet proven in Renovate itself: a
+  local dry-run was not possible, and #1031 was closed by hand. If Renovate proposes 11.x runtime
+  packages or OpenTelemetry 1.21 for net10.0 again, the rules still do not match.
 
 #944 waits for the next major.
 
