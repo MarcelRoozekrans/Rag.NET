@@ -41,15 +41,17 @@ stays unverified. Honest and machine-readable beats absent.
 dotnet build
 ```
 
-**Do not use `dotnet test --filter`.** Every test project runs on Microsoft.Testing.Platform, which
-ignores a VSTest filter — so that command used to run *every* test in the assembly while looking like
-it ran one. The build now refuses it with `error RAGNET0001` rather than doing that silently, and the
-error prints the replacement command with an absolute path you can paste.
-
-Use the native xunit v3 runner, which honours `-class`, `-method` and `-filter`:
+`global.json` selects Microsoft.Testing.Platform as the `dotnet test` runner, so `dotnet test`
+passes `--filter` to the test platform, which applies it:
 
 ```bash
-dotnet run --project tests/Rag.NET.Storage.Sqlite.Tests -- -class Rag.NET.Tests.Storage.SqliteCostLedgerTests
+dotnet test --project tests/Rag.NET.Storage.Sqlite.Tests -c Release --filter "FullyQualifiedName~SqliteCostLedgerTests"
+```
+
+Or use the native xunit v3 runner, which honours `-class`, `-method` and `-filter`:
+
+```bash
+dotnet run --project tests/Rag.NET.Storage.Sqlite.Tests -f net10.0 -- -class Rag.NET.Tests.Storage.SqliteCostLedgerTests
 ```
 
 It also prints each test's **skip reason**, which `dotnet test` suppresses. Several suites are gated
