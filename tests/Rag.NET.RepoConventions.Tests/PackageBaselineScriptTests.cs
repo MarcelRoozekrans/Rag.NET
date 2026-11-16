@@ -128,7 +128,7 @@ public sealed class PackageBaselineScriptTests
             File.WriteAllText(stale, "<Suppressions />");
             File.WriteAllText(current, "<Suppressions />");
 
-            var result = await RunAsync("2.1.0", ["Foo"], sourceRoot,
+            var result = await RunAsync("2.1.0", ["Foo"], sourceRoot, string.Empty,
                 ("foo", 200, Versions("1.9.2", "2.0.0")));
 
             Assert.Equal(0, result.ExitCode);
@@ -145,6 +145,26 @@ public sealed class PackageBaselineScriptTests
         }
     }
 
+    /// <summary>
+    /// The header comment quotes the source URL, and "--" must not appear in an XML comment. A URL
+    /// with a run of hyphens must still produce a props file that parses.
+    /// </summary>
+    [Fact]
+    public async Task AHyphenatedSourceUrlStillProducesValidXml()
+    {
+        var result = await RunAsync(
+            "1.9.3",
+            ["Rag.NET.Abstractions"],
+            Path.Combine(Path.GetTempPath(), "ragnet-no-such-source-root"),
+            "a---b----",
+            ("a---b----/rag.net.abstractions", 200, Versions("1.9.2")));
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("1.9.2", result.BaselineOf("Rag.NET.Abstractions"));
+        var document = System.Xml.Linq.XDocument.Parse(result.Props);
+        Assert.NotNull(document.Root);
+    }
+
     private static string Versions(params string[] versions) =>
         "{\"versions\":[" + string.Join(",", versions.Select(v => $"\"{v}\"")) + "]}";
 
@@ -152,12 +172,13 @@ public sealed class PackageBaselineScriptTests
         string packingVersion,
         string[] ids,
         params (string Id, int Status, string Body)[] routes) =>
-        RunAsync(packingVersion, ids, Path.Combine(Path.GetTempPath(), "ragnet-no-such-source-root"), routes);
+        RunAsync(packingVersion, ids, Path.Combine(Path.GetTempPath(), "ragnet-no-such-source-root"), string.Empty, routes);
 
     private static async Task<ScriptResult> RunAsync(
         string packingVersion,
         string[] ids,
         string sourceRoot,
+        string containerPath,
         params (string Id, int Status, string Body)[] routes)
     {
         var root = TestProject.FindRepositoryRoot();
@@ -172,7 +193,7 @@ public sealed class PackageBaselineScriptTests
 
         try
         {
-            var (exitCode, output) = await RunScriptAsync(script, root, packingVersion, props, sourceRoot, prefix, ids);
+            var (exitCode, output) = await RunScriptAsync(script, root, packingVersion, props, sourceRoot, prefix + containerPath, ids);
             var written = File.Exists(props) ? File.ReadAllText(props) : string.Empty;
             return new ScriptResult(exitCode, output, written);
         }
