@@ -5,10 +5,12 @@
 # Usage: check-breaking-title.sh <pr-title> < files
 #
 # stdin carries one "<status><TAB><filename>" line per changed file, using the status values of
-# the GitHub pulls/files API: added, modified, removed, renamed. A suppression file is any file
-# named CompatibilitySuppressions.*.xml, in any directory. Adding, modifying or renaming one
-# records a deliberate break, and release-please derives the version bump from the title, so the
-# title must carry the "!" marker. Removing one drops a recorded break and needs nothing.
+# the GitHub pulls/files API: added, modified, removed, renamed, copied, changed, unchanged. A
+# suppression file is any file named CompatibilitySuppressions*.xml, in any directory: the
+# per-major names and the SDK's default name, which the build refuses anyway. Any status except
+# removed and unchanged records a deliberate break, and release-please derives the version bump
+# from the title, so the title must carry the "!" marker. Removing one drops a recorded break, and
+# an unchanged file has no content change, so neither needs anything.
 #
 # The title is untrusted input. It is only ever expanded inside double quotes, never evaluated.
 # Needs only bash, so it runs in Git Bash on Windows as well.
@@ -27,11 +29,10 @@ breaking='^[a-z]+(\([^)]*\))?!: '
 offending=()
 while IFS=$'\t' read -r status filename || [ -n "$status" ]; do
   case "$status" in
-    added | modified | renamed) ;;
-    *) continue ;;
+    removed | unchanged) continue ;;
   esac
   name=${filename##*/}
-  if [[ "$name" == CompatibilitySuppressions.*.xml ]]; then
+  if [[ "$name" == CompatibilitySuppressions*.xml ]]; then
     offending+=("$filename")
   fi
 done

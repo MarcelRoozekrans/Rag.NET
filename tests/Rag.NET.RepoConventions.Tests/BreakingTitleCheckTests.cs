@@ -50,15 +50,27 @@ public sealed class BreakingTitleCheckTests
         Assert.Equal(0, result.ExitCode);
     }
 
-    /// <summary>Editing or moving a suppression file changes what is suppressed.</summary>
+    /// <summary>Editing, moving or copying a suppression file changes what is suppressed.</summary>
     [Theory]
     [InlineData("modified")]
     [InlineData("renamed")]
-    public async Task AModifiedOrRenamedSuppressionCountsAsAChange(string status)
+    [InlineData("copied")]
+    [InlineData("changed")]
+    public async Task AnyStatusButRemovedCountsAsAChange(string status)
     {
         var result = await RunAsync("fix: x", $"{status}\tsrc/Foo/CompatibilitySuppressions.2.x.xml");
 
         Assert.NotEqual(0, result.ExitCode);
+    }
+
+    /// <summary>The SDK's default file name is a suppression file too, so a break cannot hide in it.</summary>
+    [Fact]
+    public async Task TheDefaultNamedSuppressionFileCountsToo()
+    {
+        var result = await RunAsync("fix: x", "added\tsrc/Foo/CompatibilitySuppressions.xml");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("src/Foo/CompatibilitySuppressions.xml", result.Output, StringComparison.Ordinal);
     }
 
     /// <summary>Other files, even ones with a similar name, never require a breaking title.</summary>
