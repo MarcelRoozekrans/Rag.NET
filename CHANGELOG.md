@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.1](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.9.0...v1.9.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* bound a stalled Airtable or Bitbucket content stream by HttpClient.Timeout per read ([#1020](https://github.com/MarcelRoozekrans/Rag.NET/issues/1020)) ([39346b5](https://github.com/MarcelRoozekrans/Rag.NET/commit/39346b5d41f0abbde63ab510cc255249bb482a28))
+* **ingestion:** report a store timeout during provider ingestion as StorageFailed ([#1024](https://github.com/MarcelRoozekrans/Rag.NET/issues/1024)) ([114f7d7](https://github.com/MarcelRoozekrans/Rag.NET/commit/114f7d77eec38c931f2a859386208784ee36c0d1))
+
 ## [1.9.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.8.4...v1.9.0) (2026-11-15)
 
 
