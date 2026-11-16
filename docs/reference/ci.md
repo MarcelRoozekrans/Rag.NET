@@ -900,9 +900,10 @@ The design and the options it weighed are in
 **The baseline is looked up, not pinned.** For each package id, the step "Look up the API
 baselines" asks nuget.org for the versions and takes the highest stable one strictly below the
 version being packed. The comparison is on major.minor.patch and ignores a prerelease label, so
-2.0.0-rc.1 packs against the last 1.x release. A pinned version lags behind every release, and it needs a manual opt-out
-for every new package. The lookup needs neither. While a release is still publishing, a commit is
-checked against the previous release, which is a weaker check but never a red `main`.
+2.0.0-rc.1 packs against the last 1.x release. A pinned version lags behind every release, and it
+needs a manual opt-out for every new package. The lookup needs neither. While a release is still
+publishing, a commit is checked against the previous release, which is a weaker check but never a
+red `main`.
 
 **A package that was never published is skipped, and named.** An id with no stable version on
 nuget.org (a 404, or only prereleases) is a new package. The script lists it as a
@@ -922,14 +923,16 @@ file for the current baseline's major is passed to the SDK. Within a major, a su
 longer matches a break fails the pack as unnecessary. Once the next major is on nuget.org, the
 baseline moves to it and the old file is inert, so `main` does not turn red over a release. The
 lookup step prints a `::warning::` naming each suppression file whose major is below the highest
-baseline major across all packages, so the warning is not per package. Delete those files. The recipe is in
+baseline major across all packages, so the warning is not per package. Delete those files. A file
+named `CompatibilitySuppressions.xml` is refused: the SDK falls back to that name for every major,
+so the build fails with an error naming the per-major file to rename it to. The recipe is in
 [CONTRIBUTING](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/CONTRIBUTING.md#an-intentional-api-break).
 
 **The title has to say so.** The workflow `api-compat-title.yml` runs on its own, and again when
 the title is edited, so fixing a title does not re-run the matrix. It reads the pull request's
-file list from the GitHub API. If a `CompatibilitySuppressions.*.xml` file is added, modified or
-renamed, the title must be breaking: `feat!:` or `fix(scope)!:`. Removing one needs nothing.
-That ties the version bump to the API break.
+file list from the GitHub API. If a `CompatibilitySuppressions*.xml` file is added, modified,
+renamed or copied, the title must be breaking: `feat!:` or `fix(scope)!:`. Removing one needs
+nothing. That ties the version bump to the API break.
 
 ### The gated nuget.org push
 

@@ -34,7 +34,8 @@ on Windows. MSBuild, the .NET SDK's package validation, GitHub Actions, xunit v3
   resolves per project.
 - Without `RagNetPackageBaselines`, builds behave exactly as today.
 - PR title rule: `^[a-z]+(\([^)]*\))?!: ` is breaking. It is required when a
-  `CompatibilitySuppressions.*.xml` file is added or modified. A removal needs no `!`.
+  `CompatibilitySuppressions*.xml` file is added, modified, renamed or copied. A removal needs no
+  `!`. The hook errors on a default-named `CompatibilitySuppressions.xml` while validating.
 - No strict mode. `pack-validate` stays unconditional, and `WorkflowWiringTests` asserts that.
 - Commits: conventional, header at most 100 characters including a later ` (#NNNN)`, no nested
   parentheses in bodies, and no Co-Authored-By trailer or session links. Commit with

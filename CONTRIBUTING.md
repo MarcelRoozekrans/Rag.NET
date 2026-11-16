@@ -119,7 +119,8 @@ reasoning is written in the file next to them.
 `pack-validate` fails when a package's public API breaks against its last release on nuget.org. If
 the break is intended, record it:
 
-1. Write the baselines file, using the same listing and lookup as CI. `<next>` is the version the
+1. Write the baselines file, using the same listing and lookup as CI. It needs `jq`, which Git Bash
+   on Windows does not ship, so install it first. `<next>` is the version the
    release will have, for example `2.0.0`.
 
    ```bash
