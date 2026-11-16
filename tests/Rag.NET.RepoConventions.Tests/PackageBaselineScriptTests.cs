@@ -134,12 +134,18 @@ public sealed class PackageBaselineScriptTests
         try
         {
             var project = Directory.CreateDirectory(Path.Combine(sourceRoot, "Foo")).FullName;
-            var stale = Path.Combine(project, "CompatibilitySuppressions.1.x.xml");
-            var current = Path.Combine(project, "CompatibilitySuppressions.2.x.xml");
-            File.WriteAllText(stale, "<Suppressions />");
-            File.WriteAllText(current, "<Suppressions />");
+            File.WriteAllText(Path.Combine(project, "CompatibilitySuppressions.1.x.xml"), "<Suppressions />");
+            File.WriteAllText(Path.Combine(project, "CompatibilitySuppressions.2.x.xml"), "<Suppressions />");
 
-            var result = await RunAsync("2.1.0", ["Foo"], sourceRoot, string.Empty,
+            // The script prints the paths its glob produced, joined to the root with forward
+            // slashes. A Windows root is handed over with forward slashes too, the form Git Bash
+            // uses, so the expected paths match byte for byte on every runner. Matching on a
+            // backslash path failed on windows-latest and would have left DoesNotContain vacuous.
+            var bashRoot = sourceRoot.Replace('\\', '/');
+            var stale = bashRoot + "/Foo/CompatibilitySuppressions.1.x.xml";
+            var current = bashRoot + "/Foo/CompatibilitySuppressions.2.x.xml";
+
+            var result = await RunAsync("2.1.0", ["Foo"], bashRoot, string.Empty,
                 ("foo", 200, Versions("1.9.2", "2.0.0")));
 
             Assert.Equal(0, result.ExitCode);
