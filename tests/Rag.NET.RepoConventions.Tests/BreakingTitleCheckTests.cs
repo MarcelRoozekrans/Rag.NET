@@ -113,8 +113,12 @@ public sealed class BreakingTitleCheckTests
         Assert.Contains("permissions: contents: read pull-requests: read", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("write", workflow, StringComparison.Ordinal);
         Assert.Contains("TITLE: ${{ github.event.pull_request.title }}", workflow, StringComparison.Ordinal);
-        Assert.DoesNotContain("github.event.pull_request.title", RunBlocks(), StringComparison.Ordinal);
-        Assert.DoesNotContain("${{", RunBlocks(), StringComparison.Ordinal);
+        Assert.Equal(2, workflow.Split("permissions:").Length); // declared once, at workflow level
+        var run = RunBlocks();
+        Assert.Contains("gh api", run, StringComparison.Ordinal);
+        Assert.Contains("check-breaking-title.sh", run, StringComparison.Ordinal);
+        Assert.DoesNotContain("github.event.pull_request.title", run, StringComparison.Ordinal);
+        Assert.DoesNotContain("${{", run, StringComparison.Ordinal);
     }
 
     /// <summary>Reads the workflow as one line, comments stripped.</summary>
