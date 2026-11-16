@@ -186,9 +186,7 @@ public sealed class PackageBaselineScriptTests
         Assert.True(File.Exists(script), $"'{script}' does not exist.");
 
         var props = Path.Combine(Path.GetTempPath(), $"ragnet-baselines-{Guid.NewGuid():N}.props");
-        using var listener = new HttpListener();
-        var prefix = FindFreePrefix(listener);
-        listener.Start();
+        var (listener, prefix) = StartListener();
         var serving = ServeAsync(listener, routes);
 
         try
@@ -199,7 +197,9 @@ public sealed class PackageBaselineScriptTests
         }
         finally
         {
-            listener.Stop();
+            // Close alone, not Stop and then Dispose: on Linux a Stop followed by Dispose re-resolves
+            // the endpoint by port to remove the prefix, and throws if another test host has taken it.
+            listener.Close();
             try
             {
                 await serving;
@@ -252,28 +252,29 @@ public sealed class PackageBaselineScriptTests
         return (process.ExitCode, await stdout + await stderr);
     }
 
-    private static string FindFreePrefix(HttpListener listener)
+    /// <summary>
+    /// Binds a listener on a random loopback port. <see cref="HttpListener"/> cannot bind port 0, so
+    /// this tries ports until <c>Start</c> succeeds. The listener that is returned is the one that
+    /// holds the port: probing with a throwaway listener and releasing it first would leave a gap in
+    /// which the other target framework's test host, running in parallel, could take the port.
+    /// </summary>
+    private static (HttpListener Listener, string Prefix) StartListener()
     {
-        // HttpListener cannot bind port 0, so probe for a free one.
         var random = new Random();
         for (var attempt = 0; attempt < 50; attempt++)
         {
-            var port = random.Next(20000, 60000);
-            var prefix = $"http://127.0.0.1:{port}/";
-            using var probe = new HttpListener();
-            probe.Prefixes.Add(prefix);
+            var prefix = $"http://127.0.0.1:{random.Next(20000, 60000)}/";
+            var listener = new HttpListener();
+            listener.Prefixes.Add(prefix);
             try
             {
-                probe.Start();
-                probe.Stop();
+                listener.Start();
+                return (listener, prefix);
             }
             catch (HttpListenerException)
             {
-                continue;
+                listener.Close();
             }
-
-            listener.Prefixes.Add(prefix);
-            return prefix;
         }
 
         throw new InvalidOperationException("No free loopback port found.");
