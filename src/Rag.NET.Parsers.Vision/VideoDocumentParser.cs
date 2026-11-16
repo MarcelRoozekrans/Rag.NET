@@ -110,8 +110,8 @@ public partial class VideoDocumentParser(
                 .WithCustomArgument($"-vf \"select=gt(scene\\,{threshold}),showinfo\"")
                 .WithCustomArgument("-vsync 0")
                 .ForceFormat("null"))
-            // showinfo writes to stderr, not stdout — use NotifyOnError to capture its output
-            .NotifyOnError(line =>
+            // showinfo writes to stderr, not stdout — use NotifyOnStandardError to capture its output
+            .NotifyOnStandardError(line =>
             {
                 if (line.Contains("pts_time:", StringComparison.Ordinal))
                 {
@@ -132,16 +132,16 @@ public partial class VideoDocumentParser(
         string videoFilePath, double timestampSeconds, CancellationToken ct)
     {
         using var ms = new MemoryStream();
-        var success = await FFMpegArguments
+        var result = await FFMpegArguments
             .FromFileInput(videoFilePath, false, opts => opts
-                .Seek(TimeSpan.FromSeconds(timestampSeconds)))
+                .WithStartTime(TimeSpan.FromSeconds(timestampSeconds)))
             .OutputToPipe(new StreamPipeSink(ms), opts => opts
-                .WithFrameOutputCount(1)
+                .WithFrameCount(1)
                 .ForceFormat("mjpeg"))
             .CancellableThrough(ct)
             .ProcessAsynchronously().ConfigureAwait(false);
 
-        return success ? ms.ToArray() : null;
+        return result.Success ? ms.ToArray() : null;
     }
 
     protected virtual async Task<string> DescribeFrameAsync(

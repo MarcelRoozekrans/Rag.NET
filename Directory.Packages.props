@@ -20,7 +20,7 @@
     <PackageVersion Include="Dropbox.Api" Version="7.4.0" />
     <PackageVersion Include="ErrorProne.NET.CoreAnalyzers" Version="0.1.2" />
     <PackageVersion Include="ErrorProne.NET.Structs" Version="0.1.2" />
-    <PackageVersion Include="FFMpegCore" Version="5.5.0" />
+    <PackageVersion Include="FFMpegCore" Version="6.0.0" />
     <PackageVersion Include="Google.Apis.Auth" Version="1.78.0" />
     <PackageVersion Include="Google.Apis.Drive.v3" Version="1.78.0.4327" />
     <PackageVersion Include="Grpc.AspNetCore" Version="2.85.0" />
