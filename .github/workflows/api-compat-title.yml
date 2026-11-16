@@ -1,0 +1,38 @@
+name: api-compat-title
+
+# A compatibility suppression records a deliberate API break, and release-please takes the version
+# bump from the pull request title. A pull request that adds or changes a suppression file must
+# therefore carry a breaking title. Editing only the title has to re-run the check, hence `edited`.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # The title is attacker-controlled text: it reaches the script through the environment, never
+      # as an inline expression in the shell source.
+      - name: Require a breaking title for compatibility suppressions
+        shell: bash
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | "\(.status)\t\(.filename)"' \
+            | bash .github/scripts/check-breaking-title.sh "$TITLE"
