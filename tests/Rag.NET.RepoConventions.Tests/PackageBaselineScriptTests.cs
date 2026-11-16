@@ -273,7 +273,7 @@ public sealed class PackageBaselineScriptTests
             }
             catch (HttpListenerException)
             {
-                listener.Close();
+                listener.Abort();
             }
         }
 
