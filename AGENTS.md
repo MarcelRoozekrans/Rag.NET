@@ -42,7 +42,8 @@ dotnet test tests/Rag.NET.Storage.Sqlite.Tests --no-build -c Release --verbosity
 
 CI picks the projects with `grep -l` over `tests/*/*.csproj` and also checks that fast and Docker
 together cover every project that references `Microsoft.NET.Test.Sdk`. Each test project must be
-in a tier, and must keep that reference. The Linux leg then runs the `coverage-gate` action from
+in a tier, and must keep that reference. The check counts `RequiresLlm` projects as Docker, but the
+Docker loop skips them: they run only in `nightly.yml`, not on a PR. The Linux leg then runs the `coverage-gate` action from
 `MarcelRoozekrans/ci-baseline` over `tests/*/bin/Release/**/TestResults/*.cobertura.xml`. The gate
 is not a command here, so the commands above do not reproduce it.
 
