@@ -40,6 +40,20 @@
   </ItemGroup>
 
   <!--
+    The SDK falls back to CompatibilitySuppressions.xml beside the csproj when the
+    ApiCompatSuppressionFile item is empty (Microsoft.NET.ApiCompat.Common.targets, target
+    CollectApiCompatInputs). The item is empty whenever no per-major file exists, so a committed
+    file with the default name would silently suppress breaks for every major, the very thing the
+    per-major scheme prevents. Refused here, at the source, while this check is in play.
+  -->
+  <Target Name="RagNetRefuseDefaultSuppressionFile"
+          BeforeTargets="CollectApiCompatInputs;RunPackageValidation"
+          Condition="'$(RagNetPackageBaselines)' != '' and '$(PackageValidationBaselineVersion)' != ''">
+    <Error Condition="Exists('$(MSBuildProjectDirectory)/CompatibilitySuppressions.xml')"
+           Text="$(MSBuildProjectDirectory)/CompatibilitySuppressions.xml is the SDK default suppression file and would suppress breaks against every baseline major. Rename it to CompatibilitySuppressions.$(PackageValidationBaselineVersion.Split('.')[0]).x.xml." />
+  </Target>
+
+  <!--
     Refuses a VSTest filter on a project Microsoft.Testing.Platform runs, because the filter is
     silently ignored there and EVERY test in the assembly runs instead (#529, phase 6.2.35).
 

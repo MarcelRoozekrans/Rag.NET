@@ -105,6 +105,65 @@ public sealed class PackageValidationHookTests : IDisposable
         Assert.Empty(result.SuppressionItems);
     }
 
+    [Fact]
+    public void TheSdkDefaultSuppressionFileIsRefusedWhileValidating()
+    {
+        File.WriteAllText(Path.Combine(_directory, "CompatibilitySuppressions.xml"), "<Suppressions />");
+
+        var output = EvaluateTarget(BaselinesFor(PackageId, "1.9.2"), expectError: true);
+
+        Assert.Contains("CompatibilitySuppressions.1.x.xml", output, StringComparison.Ordinal);
+        Assert.Contains("SDK default suppression file", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheDefaultSuppressionFileIsIgnoredWithoutABaselineOrTheProperty()
+    {
+        File.WriteAllText(Path.Combine(_directory, "CompatibilitySuppressions.xml"), "<Suppressions />");
+
+        _ = EvaluateTarget(BaselinesFor("Rag.NET.SomethingElse", "1.9.2"), expectError: false);
+        _ = EvaluateTarget(baselinesFile: null, expectError: false);
+    }
+
+    [Fact]
+    public void WithoutTheDefaultSuppressionFileTheGuardPasses() =>
+        _ = EvaluateTarget(BaselinesFor(PackageId, "1.9.2"), expectError: false);
+
+    private string EvaluateTarget(string? baselinesFile, bool expectError)
+    {
+        var startInfo = new ProcessStartInfo("dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add("msbuild");
+        startInfo.ArgumentList.Add(Path.Combine(_directory, "Probe.csproj"));
+        startInfo.ArgumentList.Add("-nologo");
+        startInfo.ArgumentList.Add("-nodeReuse:false");
+        startInfo.ArgumentList.Add("-t:RagNetRefuseDefaultSuppressionFile");
+        startInfo.Environment.Remove("RagNetPackageBaselines");
+        if (baselinesFile is not null)
+        {
+            startInfo.ArgumentList.Add($"-p:RagNetPackageBaselines={baselinesFile}");
+        }
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Process.Start returned null for dotnet.");
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+
+        Assert.True(
+            process.WaitForExit((int)RunTimeout.TotalMilliseconds),
+            $"`dotnet msbuild` did not exit within {RunTimeout.TotalSeconds:0}s.");
+
+        var output = stdout.Result + stderr.Result;
+        Assert.True(
+            expectError ? process.ExitCode != 0 : process.ExitCode == 0,
+            output);
+        return output;
+    }
+
     private string BaselinesFor(string packageId, string version)
     {
         var path = Path.Combine(_directory, "package-baselines.props");
