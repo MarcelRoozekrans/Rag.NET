@@ -1,10 +1,27 @@
 # Session State
 
-**Last updated:** 2026-11-16. **Next:** build #846 on branch `feat/apicompat-package-validation`,
-subagent-driven as the operator chose. Start at Task 1 of
-`docs/plans/2026-11-16-api-compat-package-validation-implementation.md`. The design is approved:
-`docs/plans/2026-11-16-api-compat-package-validation-design.md`. No PR is open yet. Open one when
-the branch is done, and do not merge it unasked.
+**Last updated:** 2026-11-16. **Next:** #846 is built and open as **PR #1040** from
+`feat/apicompat-package-validation`. Watch its CI, which is the first run of the new lookup step and
+of `api-compat-title.yml`, and do not merge it unasked. After the merge, check that the
+release-please PR lists the `feat(ci)` change.
+
+**#846 as built:** all six plan tasks, a whole-branch review and one fix wave. Changes beyond the plan,
+each from a review finding:
+- The hook defaults `PackageId` early, so a project without an explicit `PackageId` is still
+  validated.
+- The hook refuses the SDK's default `CompatibilitySuppressions.xml`, which would otherwise suppress
+  breaks unnoticed.
+- The title check covers every `CompatibilitySuppressions*.xml` change except a removal.
+- The lookup fails on an empty id list.
+
+Local results:
+- RepoConventions passes 330 of 330.
+- PackageValidation passes 70 of 72. Both failures are `EveryPackageCarriesTheVersionGitVersionDerives`,
+  the known local failure.
+- `Rag.NET.VectorStores.Weaviate.Tests` failed locally because the agents host disk was full, which
+  made the container read-only. On 2026-11-16 this session freed 16 GB of its own worktree's
+  `bin`/`obj`. Docker build caches hold about 20 GB that can be reclaimed; that cleanup is the
+  operator's call.
 
 **#846 decisions, operator, 2026-11-16:**
 - **Baseline:** looked up per package on nuget.org.
