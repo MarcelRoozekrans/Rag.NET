@@ -61,6 +61,36 @@ public sealed class WorkflowWiringTests
     }
 
     [Fact]
+    public void BothPackJobsLookUpBaselinesBeforePacking()
+    {
+        // The pack command points at the props file the lookup writes. Pack before lookup, or no
+        // lookup at all, and the file is missing: validation is off and every package ships
+        // unchecked against its baseline, exit 0.
+        var commands = ReadWorkflowCommands(Path.Combine(
+            ProducedPackageTests.FindRepositoryRoot(), ".github", "workflows", "ci.yml"));
+
+        Assert.Equal(2, CountOf(commands, PinnedLookupCommand));
+
+        var packValidate = commands.IndexOf("pack-validate: runs-on:", StringComparison.Ordinal);
+        var publish = commands.IndexOf("publish-nuget:", packValidate, StringComparison.Ordinal);
+        Assert.True(packValidate >= 0 && publish > packValidate, "Cannot delimit the two pack jobs.");
+
+        foreach (var (name, job) in new[]
+        {
+            ("pack-validate", commands[packValidate..publish]),
+            ("publish-nuget", commands[publish..]),
+        })
+        {
+            var lookup = job.IndexOf(PinnedLookupCommand, StringComparison.Ordinal);
+            var pack = job.IndexOf(PinnedPackCommand, StringComparison.Ordinal);
+
+            Assert.True(
+                lookup >= 0 && pack >= 0 && lookup < pack,
+                $"{name} must run the pinned baseline lookup before its pinned pack command.");
+        }
+    }
+
+    [Fact]
     public void ThePackValidateJobRunsUnconditionally()
     {
         // publish-nuget's `if:` is pinned verbatim below because that job must be gated;
@@ -396,9 +426,19 @@ public sealed class WorkflowWiringTests
     /// it validates and publish-nuget packs what it pushes, so the release day command is the
     /// one that has run green on every push. <c>-p:Version</c> is part of the pin because its
     /// absence is silent — pack falls back to the SDK default 1.0.0 and exits 0.
+    /// <c>-p:RagNetPackageBaselines</c> is part of it for the same reason: without it package
+    /// validation switches off and every package ships unchecked against its baseline, exit 0.
     /// </summary>
     private const string PinnedPackCommand =
-        "dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version=\"$PACKAGE_VERSION\"";
+        "dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version=\"$PACKAGE_VERSION\" " +
+        "-p:RagNetPackageBaselines=\"$PWD/artifacts/package-baselines.props\"";
+
+    /// <summary>
+    /// The baseline lookup both packing jobs run, character-identically, before they pack.
+    /// </summary>
+    private const string PinnedLookupCommand =
+        "bash .github/scripts/package-baselines.sh \"$PACKAGE_VERSION\" " +
+        "\"$PWD/artifacts/package-baselines.props\" src";
 
     /// <summary>
     /// Counts non-overlapping occurrences of <paramref name="needle"/>, because some pins must

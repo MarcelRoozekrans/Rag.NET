@@ -400,11 +400,28 @@ jobs:
           echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
           echo "packing as $version"
 
+      # Looks up, on nuget.org, the API baseline each package is checked against, and writes it
+      # where the pack step below reads it. The id list is every src project that packs; ids come
+      # from MSBuild itself because a csproj can override PackageId and IsPackable. Character-
+      # identical in both pack jobs, and WorkflowWiringTests pins the lookup command and its
+      # place before the pack; without the props file the pack validates nothing and exits 0.
+      - name: Look up the API baselines
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          for project in src/*/*.csproj; do
+            dotnet msbuild "$project" -getProperty:IsPackable -getProperty:PackageId
+          done | jq -r '.Properties | select(.IsPackable == "true") | .PackageId' |
+            bash .github/scripts/package-baselines.sh "$PACKAGE_VERSION" "$PWD/artifacts/package-baselines.props" src
+
       # Builds as it packs — no --no-build, because nothing has built in this job yet. The output
-      # directory is the path ProducedPackageTests reads, and WorkflowWiringTests pins this exact
-      # command text; change either only together with the tests.
+      # directory is the path ProducedPackageTests reads, the baselines file is the one the lookup
+      # step wrote, and WorkflowWiringTests pins this exact command text; change either only
+      # together with the tests.
       - name: Pack
-        run: dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION"
+        run: >-
+          dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION"
+          -p:RagNetPackageBaselines="$PWD/artifacts/package-baselines.props"
 
       # Fails the job on any defective package — count, licence, README-in-package, description,
       # repository commit, symbols, emptiness. Validation must fail the build, not warn: a warning
@@ -590,10 +607,26 @@ jobs:
           fi
           echo "$PACKAGE_VERSION is stable; continuing to pack and push."
 
-      # Character-identical to pack-validate's pack step, so the packages pushed are packed by a
-      # command that has run green on every push since Phase 4.1.
+      # Looks up, on nuget.org, the API baseline each package is checked against, and writes it
+      # where the pack step below reads it. The id list is every src project that packs; ids come
+      # from MSBuild itself because a csproj can override PackageId and IsPackable. Character-
+      # identical in both pack jobs, and WorkflowWiringTests pins the lookup command and its
+      # place before the pack; without the props file the pack validates nothing and exits 0.
+      - name: Look up the API baselines
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          for project in src/*/*.csproj; do
+            dotnet msbuild "$project" -getProperty:IsPackable -getProperty:PackageId
+          done | jq -r '.Properties | select(.IsPackable == "true") | .PackageId' |
+            bash .github/scripts/package-baselines.sh "$PACKAGE_VERSION" "$PWD/artifacts/package-baselines.props" src
+
+      # Character-identical to pack-validate's pack step, baselines flag included, so the
+      # packages pushed are packed by a command that has run green on every push since Phase 4.1.
       - name: Pack
-        run: dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION"
+        run: >-
+          dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION"
+          -p:RagNetPackageBaselines="$PWD/artifacts/package-baselines.props"
 
       # The .snupkg files are not pushed separately: nuget.org receives them automatically
       # alongside each .nupkg when they sit in the same directory, which pack guarantees and
