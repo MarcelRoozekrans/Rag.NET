@@ -1,13 +1,51 @@
 # Session State
 
-**Last updated:** 2026-11-15, later. **Next:** PR **#1020** (fixes #1012) is green and
-CodeRabbit-approved, and waits for the operator to merge. The `Main` ruleset requires an
-up-to-date branch, so run `gh pr update-branch 1020` and let CI re-run before merging. After the
-merge, confirm the `fix:` commit appears in the next release-please PR. Release 1.9.0 (#1018)
-was merged by the operator. Open follow-up: **#1019**, which needs a decision. A store,
-hash-store or remote-pipeline client timeout during ingestion now fails one entry as
-`TransportFailed` where `StorageFailed` would fit; options are listed on the issue. #944 waits
-for the next major.
+**Last updated:** 2026-11-15, evening. **Next:** these PRs wait for the operator. Do not merge
+them unasked. The `Main` ruleset needs an up-to-date branch, so run `gh pr update-branch <n>` and
+let CI re-run before any merge.
+- **#1024** (fixes #1019, branch `fix/store-timeout-classification`): green, CodeRabbit
+  approved, both threads resolved. Only the non-required `codecov/patch` fails. After the merge,
+  confirm its `fix(ingestion):` commit appears in release PR #1022.
+- **#1022**, release 1.9.1: ships #1020, confirmed in its changelog. A release PR is always the
+  operator's call.
+- **#997**, the dotnet monorepo update to v11, reworked at the operator's choice on 2026-11-15.
+  The 22 runtime packages are pinned per target framework in `Directory.Packages.props`: net10.0
+  keeps 10.0.15 or 10.11.0 and net11.0 takes 11.0.0, so a consumer on .NET 10 is not moved onto 11.0.
+  A new `renovate.json` rule, `matchCurrentVersion` and `allowedVersions` `<11.0.0`, keeps the
+  net10.0 entries on 10.x. A packed `Rag.NET.Abstractions` declares the two sets per dependency
+  group. Green; needs review.
+- **#991**, MailKit and MimeKit 5 together. #993 is closed and folded in, since MailKit 5 depends
+  on MimeKit.Core 5. `ImapCapabilities` is now a class, so the check is
+  `Contains(ImapCapability.GMailExt1)`, and `ContentEncoding.Default` is now `Unspecified`. MsgReader
+  does not depend on MimeKit. Green; needs review.
+- **#957**, FFMpegCore 6. `NotifyOnStandardError`, `WithStartTime`, `WithFrameCount`, and
+  `FFMpegResult.Success` replace the old calls. Checked once against a real ffmpeg: a three-scene clip
+  gave cuts at 1 s and 2 s, each with a JPEG frame. Green; needs review.
+- **#1002**, OpenTelemetry 1.21: red with NU1605, because OTel 1.21 pulls in the 11.0 runtime
+  packages for every framework. Once #997 merges, split OTel per target framework the same way,
+  1.20.1 for net10.0, with a matching Renovate rule. Not started.
+- **#989** (box.v2.core): behind main, automerge on; Renovate rebases it.
+
+#944 waits for the next major.
+
+**#1019 as built (PR #1024).** Operator's decision, recorded on #1019: record the stream's fault
+rather than having each store map its own timeouts. `ProcessEntryAsync` wraps the content stream in the
+internal `FaultRecordingStream`. Every exception a read throws is kept. `CopyTo` and
+`CopyToAsync` are inherited, so a failing write to a copy's destination is not recorded. The
+cancellation catch reports `TransportFailed` only when the exception is one of those faults or
+wraps one; any other unrequested cancellation becomes `StorageFailed`. Two review rounds changed
+first-wins to latest-wins, then to all-kept: the final review and CodeRabbit each found a parser
+sequence the narrower version mislabelled. Design and plan:
+`docs/plans/2026-11-15-store-timeout-classification-{design,implementation}.md`.
+
+**Agents host, 2026-11-15:** the user limit of 128 inotify instances ran out during a full test
+run, and six projects failed with `IOException`. Run with `DOTNET_USE_POLLING_FILE_WATCHER=1`. The
+Azure AI Search emulator container does not start on this host, so
+`Rag.NET.VectorStores.AzureAISearch.Tests` fails locally; CI runs it. Worktrees `wt-mailkit5`,
+`wt-ffmpeg6` and `wt-dotnet11` under `.claude/worktrees/` hold the Renovate branches. Remove them
+once those PRs merge.
+
+**#1020 merged on 2026-11-15** at the operator's request, as 39346b5d, after a fresh green run.
 
 **#1012 as built (PR #1020, branch `fix/stream-read-deadline`).** Decisions by the operator on
 2026-11-15:

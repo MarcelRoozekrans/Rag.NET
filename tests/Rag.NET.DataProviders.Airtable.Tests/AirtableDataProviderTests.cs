@@ -714,6 +714,48 @@ public sealed class AirtableDataProviderTests
         Assert.Equal("Files", attachmentMetadata["field"]);
         Assert.False(attachmentMetadata.ContainsKey("attachment_id"));
     }
+
+    [Fact]
+    public async Task AStalledAttachmentBody_TimesOutWithinHttpClientTimeout()
+    {
+        // #1012: OpenContentAsync reads with ResponseHeadersRead, so HttpClient.Timeout stops at
+        // the headers. The stream must bound each read itself.
+        var attachmentJson = Json("""
+            [{ "id": "att001", "url": "https://dl.airtable.test/big.bin", "filename": "big.bin", "type": "application/octet-stream" }]
+            """);
+        var record = MakeRecord("rec001", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Attachments"] = attachmentJson
+        });
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record]));
+        using var http = new HttpClient(new StalledDownloadHandler()) { Timeout = TimeSpan.FromMilliseconds(200) };
+        var sut = MakeProvider(client, http: http);
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var attachment = results.Single(r => string.Equals(r.Value.FileName, "big.bin", StringComparison.Ordinal)).Value;
+
+        // The guard fires only if the stream fails to time out on its own.
+        using var guard = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        guard.CancelAfter(TimeSpan.FromSeconds(5));
+        var ex = await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+        {
+            await using var stream = await attachment.OpenContentAsync(guard.Token);
+            await stream.CopyToAsync(Stream.Null, guard.Token);
+        });
+
+        Assert.IsType<TimeoutException>(ex.InnerException);
+        Assert.False(guard.IsCancellationRequested);
+    }
+}
+
+/// <summary>Fake HTTP handler whose body yields a prefix and then stalls.</summary>
+file sealed class StalledDownloadHandler : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken) =>
+        Task.FromResult(Rag.NET.DataProviders.Web.Tests.StalledBodyContent.Response("partial"));
 }
 
 /// <summary>Fake HTTP handler that returns a fixed string body for any request.</summary>

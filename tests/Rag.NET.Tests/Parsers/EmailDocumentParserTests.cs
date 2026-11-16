@@ -147,7 +147,7 @@ public class EmailDocumentParserTests
             var part = new MimePart(contentTypeParts[0], contentTypeParts.ElementAtOrDefault(1) ?? "octet-stream")
             {
                 FileName = attachmentName,
-                Content = new MimeContent(new MemoryStream(Encoding.UTF8.GetBytes(attachmentContent)), ContentEncoding.Default),
+                Content = new MimeContent(new MemoryStream(Encoding.UTF8.GetBytes(attachmentContent)), ContentEncoding.Unspecified),
                 ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
             };
             multipart.Add(part);
