@@ -26,17 +26,20 @@ public sealed class PackageValidationHookTests : IDisposable
     public PackageValidationHookTests()
     {
         Directory.CreateDirectory(_directory);
+        WriteProject($"<PackageId>{PackageId}</PackageId>");
+    }
+
+    private void WriteProject(string packageIdElement) =>
         File.WriteAllText(
             Path.Combine(_directory, "Probe.csproj"),
             $"""
             <Project Sdk="Microsoft.NET.Sdk">
               <PropertyGroup>
                 <TargetFramework>net10.0</TargetFramework>
-                <PackageId>{PackageId}</PackageId>
+                {packageIdElement}
               </PropertyGroup>
             </Project>
             """);
-    }
 
     public void Dispose() => Directory.Delete(_directory, recursive: true);
 
@@ -72,6 +75,16 @@ public sealed class PackageValidationHookTests : IDisposable
 
         Assert.Empty(result.SuppressionItems);
         Assert.EndsWith("CompatibilitySuppressions.2.x.xml", result.Property("ApiCompatSuppressionOutputFile"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheDefaultPackageIdFromTheProjectNameMatchesTheBaselinesCondition()
+    {
+        WriteProject(string.Empty);
+
+        var result = Evaluate(BaselinesFor("Probe", "1.9.2"));
+
+        Assert.Equal("true", result.Property("EnablePackageValidation"));
     }
 
     [Fact]
@@ -118,10 +131,14 @@ public sealed class PackageValidationHookTests : IDisposable
         startInfo.ArgumentList.Add("msbuild");
         startInfo.ArgumentList.Add(Path.Combine(_directory, "Probe.csproj"));
         startInfo.ArgumentList.Add("-nologo");
+        startInfo.ArgumentList.Add("-nodeReuse:false");
         startInfo.ArgumentList.Add("-getProperty:EnablePackageValidation");
         startInfo.ArgumentList.Add("-getProperty:ApiCompatSuppressionOutputFile");
         startInfo.ArgumentList.Add("-getProperty:DirectoryBuildTargetsPath");
         startInfo.ArgumentList.Add("-getItem:ApiCompatSuppressionFile");
+
+        // An inherited variable becomes an MSBuild property and would defeat the no-property test.
+        startInfo.Environment.Remove("RagNetPackageBaselines");
         if (baselinesFile is not null)
         {
             startInfo.ArgumentList.Add($"-p:RagNetPackageBaselines={baselinesFile}");

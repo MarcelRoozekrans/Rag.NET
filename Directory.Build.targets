@@ -17,7 +17,17 @@
 
     ApiCompatSuppressionFile is an ITEM. Set as a property it is silently ignored, which is why it
     is added below rather than assigned.
+
+    The SDK defaults PackageId to AssemblyName only AFTER this file is evaluated, so a project that
+    sets no PackageId would never match the generated file's condition and would silently go
+    unvalidated. The default is applied here, the same way, but only when the baselines file is in
+    play.
   -->
+  <PropertyGroup Condition="'$(RagNetPackageBaselines)' != '' and '$(PackageId)' == ''">
+    <PackageId Condition="'$(AssemblyName)' != ''">$(AssemblyName)</PackageId>
+    <PackageId Condition="'$(PackageId)' == ''">$(MSBuildProjectName)</PackageId>
+  </PropertyGroup>
+
   <Import Project="$(RagNetPackageBaselines)" Condition="'$(RagNetPackageBaselines)' != ''" />
 
   <PropertyGroup Condition="'$(PackageValidationBaselineVersion)' != ''">
