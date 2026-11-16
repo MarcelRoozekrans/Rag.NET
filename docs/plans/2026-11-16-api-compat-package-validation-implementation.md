@@ -82,7 +82,7 @@ on Windows. MSBuild, the .NET SDK's package validation, GitHub Actions, xunit v3
   `<source-root>/*/CompatibilitySuppressions.<N>.x.xml` with `N` below the highest baseline
   major, it prints `::warning::` naming the file for deletion.
 
-- [ ] **Step 1: Write the failing tests.** Serve fixtures from an `HttpListener` on loopback,
+- [x] **Step 1: Write the failing tests.** Serve fixtures from an `HttpListener` on loopback,
   following `StalledBodyServer` in `Rag.NET.DataProviders.Web.Tests` for the shape. Run the
   script through bash, as `CommitMessageHookTests.FindShell` does. Read both streams
   asynchronously and bound the wait, as `BuildGuardTests.RunTarget` does. Ids are lowercased in
@@ -103,18 +103,18 @@ on Windows. MSBuild, the .NET SDK's package validation, GitHub Actions, xunit v3
     `Foo/CompatibilitySuppressions.1.x.xml` and a baseline of `2.0.0`, stdout contains
     `::warning::` and the file's path. A `CompatibilitySuppressions.2.x.xml` is not reported.
 
-- [ ] **Step 2: Run the tests and confirm they fail.**
+- [x] **Step 2: Run the tests and confirm they fail.**
   `DOTNET_USE_POLLING_FILE_WATCHER=1 dotnet test tests/Rag.NET.RepoConventions.Tests -c Release`.
   Expect the new tests to fail because the script does not exist.
 
-- [ ] **Step 3: Implement the script.** `set -euo pipefail`. Use `curl -sS -o <tmp> -w '%{http_code}'`
+- [x] **Step 3: Implement the script.** `set -euo pipefail`. Use `curl -sS -o <tmp> -w '%{http_code}'`
   and branch on the code. Extract the versions with `grep -o '"[0-9][^"]*"'`. Stable means no `-`.
   Compare `major.minor.patch` numerically per field, not with `sort -V` across prerelease labels.
   Write a file header comment saying the file is generated, with its source and the packing version.
 
-- [ ] **Step 4: Run the tests and confirm they pass.** Same command. Expect all of them to pass.
+- [x] **Step 4: Run the tests and confirm they pass.** Same command. Expect all of them to pass.
 
-- [ ] **Step 5: Commit.** `feat(ci): look up each package's API baseline on nuget.org`
+- [x] **Step 5: Commit.** `feat(ci): look up each package's API baseline on nuget.org`
 
 ### Task 2: MSBuild hook
 
@@ -133,7 +133,7 @@ on Windows. MSBuild, the .NET SDK's package validation, GitHub Actions, xunit v3
 
   The major is `$(PackageValidationBaselineVersion.Split('.')[0])`.
 
-- [ ] **Step 1: Write the failing tests.** Evaluate with
+- [x] **Step 1: Write the failing tests.** Evaluate with
   `dotnet msbuild <project> -getProperty:EnablePackageValidation -getProperty:ApiCompatSuppressionOutputFile -getItem:ApiCompatSuppressionFile -p:RagNetPackageBaselines=<temp file>`.
   The output is JSON, parsed with `System.Text.Json`. Use the process-running shape of
   `BuildGuardTests`. The project under test is a throwaway project the test writes under its own
@@ -150,23 +150,23 @@ on Windows. MSBuild, the .NET SDK's package validation, GitHub Actions, xunit v3
   - `APackageWithoutABaselineIsNotValidated`: the generated file lists another id, so
     `EnablePackageValidation` is empty.
 
-- [ ] **Step 2: Run the tests and confirm they fail.**
+- [x] **Step 2: Run the tests and confirm they fail.**
 
-- [ ] **Step 3: Implement the hook in `Directory.Build.targets`.** Put the `Import` with
+- [x] **Step 3: Implement the hook in `Directory.Build.targets`.** Put the `Import` with
   `Condition="'$(RagNetPackageBaselines)' != ''"` first, then the property group and item group.
   The comment says why the suppression file goes per major, citing the design, and that
   `ApiCompatSuppressionFile` must be an item.
 
-- [ ] **Step 4: Run the tests and confirm they pass.**
+- [x] **Step 4: Run the tests and confirm they pass.**
 
-- [ ] **Step 5: Spot-check against the real package, without committing anything.** Run
+- [x] **Step 5: Spot-check against the real package, without committing anything.** Run
   `printf 'Rag.NET.Abstractions\n' | bash .github/scripts/package-baselines.sh 1.9.3 "$PWD/artifacts/package-baselines.props" src`.
   Then run
   `dotnet pack src/Rag.NET.Abstractions -c Release -o /tmp/pv -p:Version=1.9.3 -p:RagNetPackageBaselines="$PWD/artifacts/package-baselines.props"`.
   Expect exit 0. Rename `IEmbeddingVersionStore`, then repack with `-p:RunAnalyzers=false` and
   expect exit 1 with CP0001. Revert the rename.
 
-- [ ] **Step 6: Commit.** `feat(build): validate packages against the looked-up baseline`
+- [x] **Step 6: Commit.** `feat(build): validate packages against the looked-up baseline`
 
 ### Task 3: Wire both pack jobs
 
@@ -180,7 +180,7 @@ on Windows. MSBuild, the .NET SDK's package validation, GitHub Actions, xunit v3
 - Produces: a new pinned pack command:
   `dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION" -p:RagNetPackageBaselines="$PWD/artifacts/package-baselines.props"`.
 
-- [ ] **Step 1: Update the tests first.**
+- [x] **Step 1: Update the tests first.**
   - Change `PinnedPackCommand` to the new command. Its existing count of 2 then fails against
     the current `ci.yml`.
   - Add `BothPackJobsLookUpBaselinesBeforePacking`: the lookup command
@@ -193,9 +193,9 @@ on Windows. MSBuild, the .NET SDK's package validation, GitHub Actions, xunit v3
     `RagNetUnpublishedPackage` item. It uses the class's existing skip gate on
     `artifacts/packages`. When the packages exist, a missing props file is a failure, not a skip.
 
-- [ ] **Step 2: Run `tests/Rag.NET.PackageValidation.Tests` and confirm the wiring tests fail.**
+- [x] **Step 2: Run `tests/Rag.NET.PackageValidation.Tests` and confirm the wiring tests fail.**
 
-- [ ] **Step 3: Edit `ci.yml`.** In both jobs, after the derive step (and, in `publish-nuget`,
+- [x] **Step 3: Edit `ci.yml`.** In both jobs, after the derive step (and, in `publish-nuget`,
   after "Refuse to publish a prerelease"), add a step "Look up the API baselines".
   - It lists the packable project ids with
     `dotnet msbuild <csproj> -getProperty:IsPackable -getProperty:PackageId` over `src/*/*.csproj`.
@@ -205,14 +205,14 @@ on Windows. MSBuild, the .NET SDK's package validation, GitHub Actions, xunit v3
   - Update the comments that say "character-identical" and the one above `PinnedPackCommand`, so
     they mention the baselines.
 
-- [ ] **Step 4: Rehearse the pack-validate sequence locally.** Run the id listing, the lookup,
+- [x] **Step 4: Rehearse the pack-validate sequence locally.** Run the id listing, the lookup,
   the pinned pack with `PACKAGE_VERSION=1.9.3-local.1`, and
   `dotnet test tests/Rag.NET.PackageValidation.Tests -c Release`. Expect the lookup to report 74
   baselines and 0 unpublished, the pack to exit 0 with 74 `.nupkg` files, and all tests to pass.
   The only exception is `EveryPackageCarriesTheVersionGitVersionDerives`, which is known to fail
   locally because of the hand-picked version.
 
-- [ ] **Step 5: Commit.** `feat(ci): check the public API of every package before it ships`. The
+- [x] **Step 5: Commit.** `feat(ci): check the public API of every package before it ships`. The
   body says this closes the gap from #846.
 
 ### Task 4: Breaking-title check for suppression files
@@ -228,7 +228,7 @@ on Windows. MSBuild, the .NET SDK's package validation, GitHub Actions, xunit v3
   `added`, `modified`, `removed`, `renamed`. It exits non-zero with `::error::` naming the files
   when the rule in Global Constraints is broken.
 
-- [ ] **Step 1: Write the failing tests.** Run the script through bash as in Task 1.
+- [x] **Step 1: Write the failing tests.** Run the script through bash as in Task 1.
   - `ASuppressionAddedUnderANonBreakingTitleFails`: `added` with `feat(core): x` fails, and the
     output names the file.
   - `ASuppressionAddedUnderABreakingTitlePasses`: `feat(core)!: x` and `feat!: x` both pass.
@@ -242,15 +242,15 @@ on Windows. MSBuild, the .NET SDK's package validation, GitHub Actions, xunit v3
     `pull-requests: read`. The title reaches the script through an `env:` variable, never as an
     inline `${{ }}` in `run:`.
 
-- [ ] **Step 2: Run the tests and confirm they fail.**
+- [x] **Step 2: Run the tests and confirm they fail.**
 
-- [ ] **Step 3: Implement the script and the workflow.** The workflow runs
+- [x] **Step 3: Implement the script and the workflow.** The workflow runs
   `gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | "\(.status)\t\(.filename)"'`
   and pipes it into the script, with `GH_TOKEN: ${{ github.token }}`.
 
-- [ ] **Step 4: Run the tests and confirm they pass.**
+- [x] **Step 4: Run the tests and confirm they pass.**
 
-- [ ] **Step 5: Commit.** `feat(ci): require a breaking PR title for API compat suppressions`
+- [x] **Step 5: Commit.** `feat(ci): require a breaking PR title for API compat suppressions`
 
 ### Task 5: Docs
 
@@ -258,7 +258,7 @@ on Windows. MSBuild, the .NET SDK's package validation, GitHub Actions, xunit v3
 - Modify: `docs/reference/ci.md`, adding a section on the API compatibility check.
 - Modify: `CONTRIBUTING.md`, adding an intentional-break recipe.
 
-- [ ] **Step 1: Write the `ci.md` section.** Cover:
+- [x] **Step 1: Write the `ci.md` section.** Cover:
   - what is compared and against which baseline;
   - why there is a lookup and not a pin;
   - that unpublished packages are skipped and named;
@@ -268,26 +268,26 @@ on Windows. MSBuild, the .NET SDK's package validation, GitHub Actions, xunit v3
 
   Link the design.
 
-- [ ] **Step 2: Write the `CONTRIBUTING.md` recipe.** The exact commands:
+- [x] **Step 2: Write the `CONTRIBUTING.md` recipe.** The exact commands:
   1. the id listing and lookup from Task 3;
   2. `dotnet pack <project> -c Release -p:Version=<next> -p:RagNetPackageBaselines=$PWD/artifacts/package-baselines.props -p:ApiCompatGenerateSuppressionFile=true`;
   3. commit the generated `CompatibilitySuppressions.<major>.x.xml`;
   4. title the PR `feat!:` or `fix!:`;
   5. after the major ships, delete the files that `pack-validate` warns about.
 
-- [ ] **Step 3: Run the docs guards.** `tests/Rag.NET.RepoConventions.Tests` includes the
+- [x] **Step 3: Run the docs guards.** `tests/Rag.NET.RepoConventions.Tests` includes the
   documentation guards, and `npm run build` checks the site if `ci.md` is in the docs site.
   Expect both to pass.
 
-- [ ] **Step 4: Commit.** `docs(ci): explain the API compatibility check and intentional breaks`
+- [x] **Step 4: Commit.** `docs(ci): explain the API compatibility check and intentional breaks`
 
 ### Task 6: Whole-branch verification
 
-- [ ] **Step 1: Run every test project.** Enumerate them; don't list them by hand. Exclude
+- [x] **Step 1: Run every test project.** Enumerate them; don't list them by hand. Exclude
   E2ETests. The known local failures stay excluded and are named in the report:
   `Rag.NET.VectorStores.AzureAISearch.Tests`, whose emulator does not start on this host, and
   `EveryPackageCarriesTheVersionGitVersionDerives`.
-- [ ] **Step 2: Run the mutation checks, without committing anything.**
+- [x] **Step 2: Run the mutation checks, without committing anything.**
   1. Delete the lookup step from `pack-validate`: Task 3's wiring test fails.
   2. Set the property as `<ApiCompatSuppressionFile>` instead of an item: Task 2's item test fails.
   3. Drop `edited` from the title workflow: Task 4's wiring test fails.
