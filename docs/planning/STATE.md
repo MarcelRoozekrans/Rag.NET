@@ -1,7 +1,21 @@
 # Session State
 
-**Last updated:** 2026-11-16. **Next:** no PR is open and nothing waits for the operator. Pick the
-next item from the milestone or the issue tracker.
+**Last updated:** 2026-11-16. **Next:** build #846 on branch `feat/apicompat-package-validation`,
+subagent-driven as the operator chose. Start at Task 1 of
+`docs/plans/2026-11-16-api-compat-package-validation-implementation.md`. The design is approved:
+`docs/plans/2026-11-16-api-compat-package-validation-design.md`. No PR is open yet. Open one when
+the branch is done, and do not merge it unasked.
+
+**#846 decisions, operator, 2026-11-16:**
+- **Baseline:** looked up per package on nuget.org.
+- **Suppressions:** a per-major file, `CompatibilitySuppressions.<major>.x.xml`, plus a PR title
+  check that requires `!`.
+- **Verified before planning:**
+  - All 74 packages pass validation against 1.9.2.
+  - `ApiCompatSuppressionFile` must be an MSBuild item; set as a property it is silently ignored.
+- **#1030** (SourceLink, F12) has a volunteer, Narendersingh007, so we left it to them. Note for
+  whoever reviews their PR: `.snupkg` files already ship, and the open question is embedded PDBs
+  versus the symbol server.
 
 **Merged on 2026-11-16, at the operator's request.** Each branch was brought up to date and passed a
 fresh run before its merge. Renovate automerges a dependency bump to main every 20 to 40 minutes,
