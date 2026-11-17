@@ -35,11 +35,21 @@
     <PackageTags>rag;retrieval-augmented-generation;llm;ai;embeddings;vector-search;chunking;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
-    <!-- Symbol packages, one .snupkg beside every .nupkg. dotnet pack says nothing when these are
-         absent — the symbol package simply never exists — so the guard is
+    <!-- The PDB travels inside each DLL, not in a separate .snupkg. Visual Studio and Rider read an
+         embedded PDB with no extra setting, whereas a .snupkg is only downloaded when the
+         NuGet.org symbol server is enabled under Tools > Options > Debugging > Symbols, which is
+         off by default — so F12 into this library showed decompiled code (#1030). The SDK's own
+         Source Link (.NET 8+) still stamps the repository and commit into the PDB; only where the
+         PDB lives changed. dotnet pack says nothing when a DLL has no PDB, so the guard is
          tests/Rag.NET.PackageValidation.Tests, not the SDK. -->
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <!-- Deterministic build, CI only. It rewrites the source paths in the PDB to /_/ instead of
+       /home/runner/work/..., so the packed binaries do not depend on the runner's directory layout.
+       Not set locally: a local build keeps real paths so the debugger finds the working tree. -->
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.IO.Compression;
+using System.Reflection.PortableExecutable;
 using System.Xml.Linq;
 using Xunit;
 
@@ -234,21 +235,66 @@ public sealed class ProducedPackageTests
     }
 
     [Fact]
-    public void EveryPackageShipsItsSymbols()
+    public void EveryPackageShipsItsSymbolsInsideItsAssemblies()
     {
-        // dotnet pack produces symbol packages only when IncludeSymbols is set, and says nothing
-        // when it is not — the .snupkg simply never exists. No exemption for the DotnetTool
-        // package: measured on 2026-08-03, pack produces a .snupkg for Rag.NET.Mcp.Tool exactly
-        // like the libraries, so demanding fewer than all 66 would be leniency nothing needs.
+        // The PDB is embedded in each DLL (DebugType=embedded in Directory.Build.props), not
+        // shipped as a separate .snupkg. Visual Studio and Rider read an embedded PDB with no extra
+        // setting; a .snupkg is only fetched when the NuGet.org symbol server is enabled, which is
+        // off by default, so F12 into this library showed decompiled code (#1030). dotnet pack says
+        // nothing when a DLL has no PDB, so this reads each shipped assembly's debug directory
+        // rather than trusting the property. No exemption for the DotnetTool packages: their
+        // assemblies sit under tools/ and are checked exactly like lib/.
         foreach (var package in DiscoverPackages())
         {
-            var symbols = Path.ChangeExtension(package, ".snupkg");
+            var name = Path.GetFileName(package);
+            var assemblies = 0;
+
+            using var archive = ZipFile.OpenRead(package);
+            foreach (var entry in archive.Entries)
+            {
+                if (!IsShippedAssembly(entry.FullName))
+                {
+                    continue;
+                }
+
+                assemblies++;
+                Assert.True(
+                    HasEmbeddedPdb(entry),
+                    $"{name} ships {entry.FullName} without an embedded PDB. Consumers' stack " +
+                    "traces into this library are line-numberless and F12 shows decompiled code. " +
+                    "DebugType=embedded in Directory.Build.props produces it.");
+            }
+
             Assert.True(
-                File.Exists(symbols),
-                $"{Path.GetFileName(package)} has no matching .snupkg. Without symbol packages " +
-                "every consumer stack trace into this library is line-numberless. IncludeSymbols " +
-                "and SymbolPackageFormat=snupkg in Directory.Build.props produce them.");
+                assemblies > 0,
+                $"{name} contains no assemblies under lib/ or tools/, so there is nothing to " +
+                "hold an embedded PDB against. NoPackageIsEmpty reports the same shape.");
         }
+    }
+
+    [Fact]
+    public void NoPackageShipsASeparateSymbolPackage()
+    {
+        // A .snupkg beside the .nupkg means IncludeSymbols or SymbolPackageFormat crept back into
+        // the build. It would not break anything — the embedded PDB still wins in the debugger —
+        // but it would push a second copy of the symbols to nuget.org for no consumer to read, and
+        // the symbol server it needs is the very setting this change exists to make unnecessary.
+        var directory = Path.Combine(FindRepositoryRoot(), "artifacts", "packages");
+
+        // DiscoverPackages skips when nothing has packed; do the same before reading the folder.
+        _ = DiscoverPackages();
+
+        var symbolPackages = Directory
+            .EnumerateFiles(directory, "*.snupkg", SearchOption.TopDirectoryOnly)
+            .Select(static file => Path.GetFileName(file))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        Assert.True(
+            symbolPackages.Count == 0,
+            $"dotnet pack produced {symbolPackages.Count} symbol package(s): " +
+            $"{string.Join(", ", symbolPackages.Take(5))}. Symbols now live inside each DLL as an " +
+            "embedded PDB; remove IncludeSymbols and SymbolPackageFormat from whatever set them.");
     }
 
     [Fact]
@@ -493,6 +539,61 @@ public sealed class ProducedPackageTests
 
         throw new InvalidOperationException(
             $"'{packagePath}' contains no root-level .nuspec entry — it is not a NuGet package.");
+    }
+
+    /// <summary>
+    /// Whether a package entry is an assembly the package ships: a <c>.dll</c> under <c>lib/</c>
+    /// or <c>tools/</c>. Satellite resource assemblies and reference assemblies carry no code to
+    /// debug, so <c>ref/</c> and <c>*.resources.dll</c> are not held to the embedded-PDB rule.
+    /// </summary>
+    /// <param name="entryName">The entry's full name inside the package.</param>
+    /// <returns><see langword="true"/> for an assembly that must carry an embedded PDB.</returns>
+    private static bool IsShippedAssembly(string entryName)
+    {
+        if (!entryName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ||
+            entryName.EndsWith(".resources.dll", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // Only this repository's own assemblies are held to the rule. A DotnetTool package carries
+        // its dependencies under tools/, and those are other people's builds.
+        var file = Path.GetFileName(entryName);
+        if (!file.StartsWith("Rag.NET", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return entryName.StartsWith("lib/", StringComparison.OrdinalIgnoreCase) ||
+               entryName.StartsWith("tools/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Whether a packed assembly has a PDB embedded in it, read from the PE debug directory.
+    /// </summary>
+    /// <param name="entry">The assembly's entry in the package archive.</param>
+    /// <returns><see langword="true"/> when the debug directory has an embedded portable PDB.</returns>
+    private static bool HasEmbeddedPdb(ZipArchiveEntry entry)
+    {
+        // PEReader needs a seekable stream; a zip entry stream is not, so copy it first.
+        using var buffer = new MemoryStream();
+        using (var stream = entry.Open())
+        {
+            stream.CopyTo(buffer);
+        }
+
+        buffer.Position = 0;
+        using var peReader = new PEReader(buffer);
+
+        foreach (var debugEntry in peReader.ReadDebugDirectory())
+        {
+            if (debugEntry.Type == DebugDirectoryEntryType.EmbeddedPortablePdb)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool HasEntry(string packagePath, Func<string, bool> predicate)

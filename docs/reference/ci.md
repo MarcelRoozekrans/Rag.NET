@@ -861,7 +861,8 @@ selection with a hardcoded list passed it. A guard that a comment can satisfy is
 `ci.yml` has a second gating job besides the test matrix: `pack-validate`, on `ubuntu-latest`.
 Every run it derives the version from git history (see [Versioning](#versioning-gitversion-and-the-release-tooling)
 below), packs the 70 shippable packages with it (`dotnet pack Rag.NET.slnx -c Release -o
-artifacts/packages -p:Version="$PACKAGE_VERSION"` — 70 `.nupkg` plus 70 `.snupkg`), validates
+artifacts/packages -p:Version="$PACKAGE_VERSION"` — 70 `.nupkg`, each assembly carrying its PDB
+embedded, so there is no `.snupkg`), validates
 them with `tests/Rag.NET.PackageValidation.Tests` — the only guard there is, because `dotnet
 pack` enforces almost none of its own metadata — and then **pushes every package to a local
 directory feed, twice, asserting per file that each one arrived**.
@@ -879,9 +880,13 @@ Three things the rehearsal measured (2026-08-03), each pinned by a workflow asse
 - duplicates against a directory feed are **silently overwritten** — it cannot produce the 409
   that `--skip-duplicate` exists to tolerate, and the CLI warns the flag is unsupported for this
   push type — so the second push proves a rerun is harmless, not that the skip works;
-- a `.snupkg` push to a directory feed is a **complete silent no-op**: exit 0, no output,
-  nothing delivered. The workflow attempts it anyway and asserts non-arrival, so the day NuGet
-  changes that behaviour the run fails and the rehearsal widens to cover symbol packages.
+- there is no symbol package to rehearse: each DLL carries its PDB embedded
+  (`DebugType=embedded` in `Directory.Build.props`), so Visual Studio and Rider find it without
+  the NuGet.org symbol server being enabled. `ProducedPackageTests` asserts the embedded PDB on
+  every shipped assembly and fails if a `.snupkg` is produced. The workflow used to push
+  `.snupkg` files to the local feed and assert nothing arrived; that step was removed with the
+  package it rehearsed. CI also sets `ContinuousIntegrationBuild`, which makes the build
+  deterministic and writes `/_/` source paths into the PDB instead of runner paths.
 
 `--skip-duplicate` is the deliberate duplicate policy for the real push: nuget.org never forgets
 a published version, so a push that dies partway through 70 packages must be re-runnable, and
@@ -994,9 +999,9 @@ a documented procedure, and guarded so it cannot be deleted or drift silently.
 Pushing to a local feed is not pushing to nuget.org. **Exercised for real exactly once, on
 release day:** authentication, API-key scoping, package-ID availability (none of the 70 IDs is
 reserved until then — an exposure the design accepts and records), the service's own validation,
-the real 409-and-skip behaviour of `--skip-duplicate`, and `.snupkg` symbol delivery — which at
-nuget.org rides automatically on each `.nupkg` push and cannot be rehearsed against a directory
-feed at all. This gap is the argument the rejected alternative — publish prereleases now — was
+and the real 409-and-skip behaviour of `--skip-duplicate`. (Symbol delivery used to be on this
+list as `.snupkg` delivery; since the PDB is embedded in each DLL there is nothing separate to
+deliver.) This gap is the argument the rejected alternative — publish prereleases now — was
 making, and it does not vanish because that alternative was not chosen.
 
 ## Versioning: GitVersion and the release tooling

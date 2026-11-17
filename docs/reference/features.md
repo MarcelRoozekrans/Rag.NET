@@ -1248,7 +1248,7 @@ Automated NuGet publishing on git tag push:
 - Version stamped from git tag (e.g. `v1.0.0` → `1.0.0`) using `MinVer` or `Nerdbank.GitVersioning`
 - GitHub Actions workflow: build → test → pack → push to `nuget.org`
 - Package icons, `README.md` embedded per package, license expression (`MIT`)
-- Symbol packages (`.snupkg`) for source-linked debugging
+- Embedded PDBs with Source Link for source-linked debugging (no separate `.snupkg`; Visual Studio and Rider need no symbol-server setting)
 
 **Why:** Rag.NET has no NuGet packages today — consuming it requires a git submodule or local project reference. Publishing to NuGet is the single highest-leverage action for adoption.
 

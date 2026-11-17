@@ -256,29 +256,20 @@ public sealed class WorkflowWiringTests
                 commands,
                 "dotnet nuget push \"artifacts/packages/*.nupkg\" --source \"$feed\" --skip-duplicate"));
 
-        // The .snupkg push is a measured silent no-op against a directory feed (exit 0, nothing
-        // delivered, 2026-08-03); the workflow attempts it and asserts non-arrival so the day
-        // NuGet changes that, the run fails and the rehearsal widens. This pin keeps the attempt
-        // itself from being removed as "does nothing anyway" — doing nothing loudly is its job.
-        Assert.Contains(
-            "dotnet nuget push \"artifacts/packages/*.snupkg\" --source \"$feed\" --skip-duplicate",
-            commands,
-            StringComparison.Ordinal);
+        // There is no symbol package to push any more: symbols are embedded in each DLL
+        // (DebugType=embedded, #1030), so the .nupkg push above is the whole push. The workflow
+        // used to attempt a .snupkg push to the directory feed and assert nothing arrived; that
+        // rehearsal went with the package it rehearsed. Pinning its absence keeps it from
+        // coming back as a second push nobody reads — a symbol package that reappears is caught
+        // by ProducedPackageTests.NoPackageShipsASeparateSymbolPackage.
+        Assert.DoesNotContain("*.snupkg", commands, StringComparison.Ordinal);
 
-        // The rehearsal's teeth, pinned as the check commands rather than their error prose:
+        // The rehearsal's teeth, pinned as the check command rather than its error prose:
         // a push that no-ops silently exits 0, so only reading the feed back proves delivery.
-        // The per-file arrival test, the .snupkg count, and the count's comparison — the error
-        // messages stay unpinned deliberately, because the checks are what run.
+        // The per-file arrival test — the error message stays unpinned deliberately, because the
+        // check is what runs.
         Assert.Contains(
             "if [ ! -f \"$feed/$(basename \"$package\")\" ]; then",
-            commands,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "snupkg_arrived=$(find \"$feed\" -name '*.snupkg' -type f | wc -l)",
-            commands,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "if [ \"$snupkg_arrived\" -ne 0 ]; then",
             commands,
             StringComparison.Ordinal);
     }
