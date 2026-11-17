@@ -1,6 +1,5 @@
 ﻿using System.Diagnostics;
 using System.IO.Compression;
-using System.Reflection.PortableExecutable;
 using System.Xml.Linq;
 using Xunit;
 
@@ -28,6 +27,12 @@ namespace Rag.NET.PackageValidation.Tests;
 /// </remarks>
 public sealed class ProducedPackageTests
 {
+    /// <summary>
+    /// What every Source Link URL in a shipped assembly must start with: this repository's raw
+    /// content on GitHub. A map to a fork or another repository would send F12 to the wrong source.
+    /// </summary>
+    private const string ExpectedSourceLinkPrefix = "https://raw.githubusercontent.com/MarcelRoozekrans/Rag.NET/";
+
     /// <summary>
     /// The shippable set: the 67 packable projects under <c>src/</c> (68 minus
     /// <c>Rag.NET.Benchmarks.Quality</c>, which declares <c>IsPackable=false</c>). The
@@ -244,6 +249,17 @@ public sealed class ProducedPackageTests
         // nothing when a DLL has no PDB, so this reads each shipped assembly's debug directory
         // rather than trusting the property. No exemption for the DotnetTool packages: their
         // assemblies sit under tools/ and are checked exactly like lib/.
+        //
+        // A PDB being there is not enough for F12 to land in the source: an embedded PDB with no
+        // Source Link map, or with the runner's paths, still shows decompiled code. So each assembly
+        // must also be a deterministic build, and on a CI build, which is the only one that
+        // writes /_/ document roots, carry a Source Link map that sends every document to this
+        // repository. A local pack skips those two checks, because it is not a CI build.
+        var continuousIntegrationBuild = string.Equals(
+            Environment.GetEnvironmentVariable("GITHUB_ACTIONS"),
+            "true",
+            StringComparison.Ordinal);
+
         foreach (var package in DiscoverPackages())
         {
             var name = Path.GetFileName(package);
@@ -258,11 +274,26 @@ public sealed class ProducedPackageTests
                 }
 
                 assemblies++;
+
+                // PEReader needs a seekable stream; a zip entry stream is not, so copy it first.
+                using var buffer = new MemoryStream();
+                using (var stream = entry.Open())
+                {
+                    stream.CopyTo(buffer);
+                }
+
+                buffer.Position = 0;
+                var problems = EmbeddedPdbInspector.FindProblems(
+                    buffer,
+                    ExpectedSourceLinkPrefix,
+                    continuousIntegrationBuild);
+
                 Assert.True(
-                    HasEmbeddedPdb(entry),
-                    $"{name} ships {entry.FullName} without an embedded PDB. Consumers' stack " +
-                    "traces into this library are line-numberless and F12 shows decompiled code. " +
-                    "DebugType=embedded in Directory.Build.props produces it.");
+                    problems.Count == 0,
+                    $"{name} ships {entry.FullName}, which {string.Join("; which ", problems)}. " +
+                    "Without an embedded, deterministic PDB whose Source Link map points at this " +
+                    "repository, F12 into this library shows decompiled code. DebugType=embedded " +
+                    "and ContinuousIntegrationBuild in Directory.Build.props produce it.");
             }
 
             Assert.True(
@@ -566,34 +597,6 @@ public sealed class ProducedPackageTests
 
         return entryName.StartsWith("lib/", StringComparison.OrdinalIgnoreCase) ||
                entryName.StartsWith("tools/", StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>
-    /// Whether a packed assembly has a PDB embedded in it, read from the PE debug directory.
-    /// </summary>
-    /// <param name="entry">The assembly's entry in the package archive.</param>
-    /// <returns><see langword="true"/> when the debug directory has an embedded portable PDB.</returns>
-    private static bool HasEmbeddedPdb(ZipArchiveEntry entry)
-    {
-        // PEReader needs a seekable stream; a zip entry stream is not, so copy it first.
-        using var buffer = new MemoryStream();
-        using (var stream = entry.Open())
-        {
-            stream.CopyTo(buffer);
-        }
-
-        buffer.Position = 0;
-        using var peReader = new PEReader(buffer);
-
-        foreach (var debugEntry in peReader.ReadDebugDirectory())
-        {
-            if (debugEntry.Type == DebugDirectoryEntryType.EmbeddedPortablePdb)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static bool HasEntry(string packagePath, Func<string, bool> predicate)

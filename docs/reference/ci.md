@@ -889,7 +889,7 @@ Three things the rehearsal measured (2026-08-03), each pinned by a workflow asse
   deterministic and writes `/_/` source paths into the PDB instead of runner paths.
 
 `--skip-duplicate` is the deliberate duplicate policy for the real push: nuget.org never forgets
-a published version, so a push that dies partway through 70 packages must be re-runnable, and
+a published version, so a push that dies partway through 74 packages must be re-runnable, and
 without the flag the retry fails on the first package that already arrived. Idempotent is the
 only retry-safe shape against an append-only feed.
 
@@ -997,7 +997,7 @@ a documented procedure, and guarded so it cannot be deleted or drift silently.
 > happened yet. It will be exercised by the first republish, not by the v1.0 push.
 
 Pushing to a local feed is not pushing to nuget.org. **Exercised for real exactly once, on
-release day:** authentication, API-key scoping, package-ID availability (none of the 70 IDs is
+release day:** authentication, API-key scoping, package-ID availability (none of the 74 IDs is
 reserved until then — an exposure the design accepts and records), the service's own validation,
 and the real 409-and-skip behaviour of `--skip-duplicate`. (Symbol delivery used to be on this
 list as `.snupkg` delivery; since the PDB is embedded in each DLL there is nothing separate to

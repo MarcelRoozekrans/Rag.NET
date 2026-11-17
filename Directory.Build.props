@@ -45,10 +45,13 @@
     <DebugType>embedded</DebugType>
   </PropertyGroup>
 
-  <!-- Deterministic build, CI only. It rewrites the source paths in the PDB to /_/ instead of
-       /home/runner/work/..., so the packed binaries do not depend on the runner's directory layout.
-       Not set locally: a local build keeps real paths so the debugger finds the working tree. -->
-  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+  <!-- Deterministic build, CI only, and only for the shipped projects, which all live under src/.
+       It rewrites the source paths in the PDB to /_/ instead of /home/runner/work/..., so the
+       packed binaries do not depend on the runner's directory layout. The test projects are left
+       out on purpose: there it also turns [CallerFilePath] into /_/..., which breaks a test that
+       finds files through that path. Not set locally: a local build keeps real paths so the
+       debugger finds the working tree. -->
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true' and $(MSBuildProjectDirectory.StartsWith('$(MSBuildThisFileDirectory)src$([System.IO.Path]::DirectorySeparatorChar)'))">
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
