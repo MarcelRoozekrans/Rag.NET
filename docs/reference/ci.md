@@ -860,8 +860,8 @@ selection with a hardcoded list passed it. A guard that a comment can satisfy is
 
 `ci.yml` has a second gating job besides the test matrix: `pack-validate`, on `ubuntu-latest`.
 Every run it derives the version from git history (see [Versioning](#versioning-gitversion-and-the-release-tooling)
-below), packs the 70 shippable packages with it (`dotnet pack Rag.NET.slnx -c Release -o
-artifacts/packages -p:Version="$PACKAGE_VERSION"` — 70 `.nupkg`, each assembly carrying its PDB
+below), packs the 74 shippable packages with it (`dotnet pack Rag.NET.slnx -c Release -o
+artifacts/packages -p:Version="$PACKAGE_VERSION"` — 74 `.nupkg`, each assembly carrying its PDB
 embedded, so there is no `.snupkg`), validates
 them with `tests/Rag.NET.PackageValidation.Tests` — the only guard there is, because `dotnet
 pack` enforces almost none of its own metadata — and then **pushes every package to a local
