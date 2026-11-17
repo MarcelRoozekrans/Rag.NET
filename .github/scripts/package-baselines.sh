@@ -87,13 +87,19 @@ while IFS= read -r id || [ -n "$id" ]; do
   esac
 
   # Only a well-formed index may reach the unpublished path below, and then only with an empty or
-  # prerelease-only list. With all whitespace removed, the whole body must be exactly the nuget.org
-  # flat-container shape {"versions":["1.0.0","2.0.0-beta"]}, so {} and an HTML error page fail, and
-  # so do a truncated body, a non-string entry and trailing junk. An HTTP 200 with any other body
-  # says nothing about what is published, so it fails rather than switch off validation for the id.
-  list=$(tr -d ' \t\r\n' < "$tmp")
-  version='"[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+-]*"'
-  if ! printf '%s\n' "$list" | grep -Eq "^\{\"versions\":\[($version(,$version)*)?\]\}\$"; then
+  # prerelease-only list. The whole body must be the nuget.org flat-container shape
+  # {"versions":["1.0.0","2.0.0-beta"]}, so {} and an HTML error page fail, and so do a truncated
+  # body, a non-string entry, a malformed version and trailing junk. Line breaks become spaces rather
+  # than being deleted, and whitespace is allowed only between tokens, so a line break inside a
+  # version string fails too. Each version is a semver version: three numbers, then optional
+  # prerelease and build parts made of non-empty dot-separated identifiers. An HTTP 200 with any
+  # other body says nothing about what is published, so it fails rather than switch off validation.
+  list=$(tr '\r\n\t' '   ' < "$tmp")
+  ident='[0-9A-Za-z-]+'
+  version="\"[0-9]+\\.[0-9]+\\.[0-9]+(-$ident(\\.$ident)*)?(\\+$ident(\\.$ident)*)?\""
+  ws='[[:space:]]*'
+  shape="^$ws\\{$ws\"versions\"$ws:$ws\\[$ws($version($ws,$ws$version)*)?$ws\\]$ws\\}$ws\$"
+  if ! printf '%s\n' "$list" | grep -Eq "$shape"; then
     echo "::error::nuget.org answered HTTP 200 for $url, but the body is not a version list, so the API baseline of $id is unknown."
     exit 1
   fi

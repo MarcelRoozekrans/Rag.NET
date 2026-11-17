@@ -172,6 +172,9 @@ public sealed class PackageBaselineScriptTests
     [InlineData("{\"versions\":[1]}")]
     [InlineData("{\"versions\":[\"abc\"]}")]
     [InlineData("{\"versions\":[\"1.0.0\"]}x")]
+    [InlineData("{\"versions\":[\"1.0.0-\"]}")]
+    [InlineData("{\"versions\":[\"1.0.0-\nbeta\"]}")]
+    [InlineData("{\"versions\":[\"1.0.0\n\"]}")]
     public async Task AnOkResponseThatIsNotAVersionListFails(string body)
     {
         var result = await RunAsync("1.9.3", ["Rag.NET.Abstractions"],
