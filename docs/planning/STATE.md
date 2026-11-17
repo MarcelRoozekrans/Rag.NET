@@ -5,6 +5,15 @@
 of `api-compat-title.yml`, and do not merge it unasked. After the merge, check that the
 release-please PR lists the `feat(ci)` change.
 
+**Operator's decision, 2026-11-17:** the `Main branch` ruleset now allows **squash merges only**. A
+CodeRabbit finding on #1040 showed why: the breaking-title rule holds only when the PR title
+becomes the release commit. CodeRabbit's other three findings on #1040 are fixed:
+- an HTTP 200 that is not a version list now fails;
+- the stale-suppression warning compares each file with its own package's baseline;
+- the docs describe that rule.
+
+CodeRabbit's "changes requested" review was written before those fixes.
+
 **#846 as built:** all six plan tasks, a whole-branch review and one fix wave. Changes beyond the plan,
 each from a review finding:
 - The hook defaults `PackageId` early, so a project without an explicit `PackageId` is still
