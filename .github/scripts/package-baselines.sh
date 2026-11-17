@@ -94,10 +94,17 @@ while IFS= read -r id || [ -n "$id" ]; do
   # version string fails too. Each version is a semver version: three numbers, then optional
   # prerelease and build parts made of non-empty dot-separated identifiers. An HTTP 200 with any
   # other body says nothing about what is published, so it fails rather than switch off validation.
+  # The raw bytes are checked first: the index is ASCII, and JSON allows only space, tab, CR and LF
+  # as whitespace. Any other byte, such as NUL, which command substitution would silently drop, or a
+  # vertical tab or form feed, fails before the shape is matched.
+  if [ -n "$(LC_ALL=C tr -d ' -~\t\r\n' < "$tmp" | head -c 1 | od -An -c)" ]; then
+    echo "::error::nuget.org answered HTTP 200 for $url with bytes a version index cannot contain, so the API baseline of $id is unknown."
+    exit 1
+  fi
   list=$(tr '\r\n\t' '   ' < "$tmp")
   ident='[0-9A-Za-z-]+'
   version="\"[0-9]+\\.[0-9]+\\.[0-9]+(-$ident(\\.$ident)*)?(\\+$ident(\\.$ident)*)?\""
-  ws='[[:space:]]*'
+  ws=' *'
   shape="^$ws\\{$ws\"versions\"$ws:$ws\\[$ws($version($ws,$ws$version)*)?$ws\\]$ws\\}$ws\$"
   if ! printf '%s\n' "$list" | grep -Eq "$shape"; then
     echo "::error::nuget.org answered HTTP 200 for $url, but the body is not a version list, so the API baseline of $id is unknown."
