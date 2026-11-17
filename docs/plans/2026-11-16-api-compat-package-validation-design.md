@@ -25,8 +25,9 @@ keep breaks visible until then and to tell an intentional break from an accident
 - Strict mode, which also flags additions. Additions are minor-compatible and need no gate.
 - Validating local `dotnet pack` runs by default. Locally the check is opt-in, through the same
   script CI uses.
-- Making `pack-validate` a required check. That is the separate branch-protection decision the
-  `ci.yml` comments already track.
+- Changing which checks are required. `pack-validate` is already a required check of the `Main`
+  ruleset (corrected 2026-11-17; an earlier version of this design said it was not), so an API
+  break it reports blocks the merge.
 
 ## Anti-goals
 
@@ -122,8 +123,8 @@ These ran on `Rag.NET.Abstractions` with SDK 11.0.100 against nuget.org's 1.9.2:
    any way except a removal and the PR title has no `!` before its colon. The hook also fails
    the build when the default-named file exists, because the SDK would otherwise fall back to it
    for every major. A deleted suppression file, the cleanup after a major, needs no `!`. The workflow
-   carries no secrets and only reads the PR. It does not need to be a required check:
-   `pack-validate` is not one either, and the operator merges.
+   carries no secrets and only reads the PR. It is not a required check:
+   the operator merges, and checks the title result before merging a suppression change.
 5. **Docs.** `docs/reference/ci.md` describes the check. `CONTRIBUTING.md` gives the
    intentional-break recipe: run the script locally, regenerate the suppressions, title the PR
    `feat!:`, and delete the older-major suppression files once `pack-validate` warns about them.

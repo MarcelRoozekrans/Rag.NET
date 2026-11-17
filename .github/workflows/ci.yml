@@ -305,10 +305,8 @@ jobs:
   # of commits this job already linted, plus a merge commit commitlint ignores by default.
   # WorkflowWiringTests pins this wiring; change it only together with the tests.
   #
-  # BRANCH PROTECTION: like pack-validate, this check is not in the required set — the "Main"
-  # ruleset requires only the two build-test legs (measured 2026-08-03). It runs on every pull
-  # request and fails loudly, but nothing mechanically blocks a merge on it until it is added to
-  # the required checks — scheduled, with pack-validate, on Phase 6.3's checklist in the ROADMAP.
+  # BRANCH PROTECTION: "commitlint" is a required check of the "Main" ruleset, as are both
+  # build-test legs and pack-validate (measured 2026-11-17), so a red run blocks the merge.
   commitlint:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -346,11 +344,9 @@ jobs:
   # skip cannot rot into permanent green if someone renames this job's output directory or deletes
   # its validate step.
   #
-  # BRANCH PROTECTION: this check is named "pack-validate" and is NOT currently in the required
-  # checks — the "Main" ruleset requires "build-test (ubuntu-latest)" and "build-test
-  # (windows-latest)" only (measured 2026-08-03). Until it is added there, this job can go red
-  # without blocking a merge, which is exactly the non-gating-check failure this repository has
-  # already documented. Adding it is scheduled: Phase 6.3's checklist in the ROADMAP.
+  # BRANCH PROTECTION: "pack-validate" is a required check of the "Main" ruleset (measured
+  # 2026-11-17), so a red run, an API break included, blocks the merge. Renaming the job breaks
+  # that requirement silently; change the ruleset in the same step.
   pack-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
