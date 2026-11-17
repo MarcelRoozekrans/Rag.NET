@@ -5,7 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Airtable" Version="1.9.0" />
-    <PackageVersion Include="AngleSharp" Version="1.10.2" />
+    <PackageVersion Include="AngleSharp" Version="1.10.3" />
     <PackageVersion Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
     <PackageVersion Include="Azure.Messaging.ServiceBus" Version="7.21.0" />
@@ -17,7 +17,7 @@
     <PackageVersion Include="Cohere" Version="1.0.1" />
     <PackageVersion Include="CsvHelper" Version="34.0.0" />
     <PackageVersion Include="DocumentFormat.OpenXml" Version="3.5.1" />
-    <PackageVersion Include="Dropbox.Api" Version="7.4.0" />
+    <PackageVersion Include="Dropbox.Api" Version="7.4.1" />
     <PackageVersion Include="ErrorProne.NET.CoreAnalyzers" Version="0.1.2" />
     <PackageVersion Include="ErrorProne.NET.Structs" Version="0.1.2" />
     <PackageVersion Include="FFMpegCore" Version="6.0.0" />
@@ -29,7 +29,7 @@
     <PackageVersion Include="MailKit" Version="5.0.0" />
     <PackageVersion Include="MathNet.Numerics" Version="5.0.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
-    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.339" />
+    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.340" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.15" />
     <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.15" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
@@ -81,7 +81,7 @@
     <PackageVersion Include="ZeroAlloc.Inject.Generator" Version="1.12.0" />
     <PackageVersion Include="ZeroAlloc.Mediator" Version="5.1.5" />
     <PackageVersion Include="ZeroAlloc.Mediator.Generator" Version="5.1.5" />
-    <PackageVersion Include="ZeroAlloc.Pipeline" Version="1.5.0" />
+    <PackageVersion Include="ZeroAlloc.Pipeline" Version="1.5.1" />
     <PackageVersion Include="ZeroAlloc.Rest" Version="1.3.4" />
     <PackageVersion Include="ZeroAlloc.Rest.SystemTextJson" Version="1.3.4" />
     <PackageVersion Include="ZeroAlloc.Results" Version="1.5.0" />

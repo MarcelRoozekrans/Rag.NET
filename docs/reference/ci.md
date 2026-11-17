@@ -6,7 +6,7 @@ sidebar_position: 3
 
 # CI and Test Tiers
 
-Rag.NET has 64 test projects and they do not all want the same thing. Some need nothing but a
+Rag.NET has 79 test projects and they do not all want the same thing. Some need nothing but a
 runtime; some start Docker containers; one downloads two gigabytes of language model; five need
 credentials or large local assets that a plain checkout does not have. Running them all on every
 push would be slow and flaky. Running only the easy ones would be a lie.

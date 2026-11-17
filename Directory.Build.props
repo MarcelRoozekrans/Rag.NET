@@ -23,7 +23,7 @@
 
   <!-- Shared NuGet package metadata. Genuinely identical for every package.
        Description is deliberately NOT set here: a shared description would make
-       66 packages describe themselves identically — each .csproj owns its own.
+       74 packages describe themselves identically — each .csproj owns its own.
        PackageIcon is the brand mark's 128 px verdigris raster, assets/brand/icon-128.png, packed
        as icon.png by the item below — see docs/design/LOGO.md § Raster set. -->
   <PropertyGroup>
