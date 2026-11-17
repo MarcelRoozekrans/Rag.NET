@@ -936,6 +936,11 @@ file list from the GitHub API. If a `CompatibilitySuppressions*.xml` file is cha
 way except a removal, the title must be breaking: `feat!:` or `fix(scope)!:`. Removing one needs
 nothing. That ties the version bump to the API break.
 
+That tie holds only because `main` accepts squash merges alone, a setting of the `Main branch`
+ruleset since 2026-11-17. A squash merge makes the pull request title the commit that
+release-please reads. A merge commit or a rebase would land the branch's own commits instead, and a
+`fix:` among them would ship the break as a patch.
+
 ### The gated nuget.org push
 
 **Publishing is automatic from a tag.** Merging a release-please pull request creates the tag
