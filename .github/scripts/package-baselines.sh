@@ -86,12 +86,14 @@ while IFS= read -r id || [ -n "$id" ]; do
       ;;
   esac
 
-  # Only a well-formed index, {"versions":[...]}, may reach the unpublished path below, and then
-  # only with an empty or prerelease-only list. An HTTP 200 with any other body, such as {} or an
-  # HTML error page, says nothing about what is published, so it fails rather than switch off
-  # validation for the id.
-  list=$(tr -d '\r\n' < "$tmp" | grep -Eo '"versions"[[:space:]]*:[[:space:]]*\[[^]]*\]' | head -n 1 || true)
-  if [ -z "$list" ]; then
+  # Only a well-formed index may reach the unpublished path below, and then only with an empty or
+  # prerelease-only list. With all whitespace removed, the whole body must be exactly the nuget.org
+  # flat-container shape {"versions":["1.0.0","2.0.0-beta"]}, so {} and an HTML error page fail, and
+  # so do a truncated body, a non-string entry and trailing junk. An HTTP 200 with any other body
+  # says nothing about what is published, so it fails rather than switch off validation for the id.
+  list=$(tr -d ' \t\r\n' < "$tmp")
+  version='"[0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+-]*"'
+  if ! printf '%s\n' "$list" | grep -Eq "^\{\"versions\":\[($version(,$version)*)?\]\}\$"; then
     echo "::error::nuget.org answered HTTP 200 for $url, but the body is not a version list, so the API baseline of $id is unknown."
     exit 1
   fi

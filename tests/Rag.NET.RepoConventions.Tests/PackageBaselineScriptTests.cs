@@ -167,6 +167,11 @@ public sealed class PackageBaselineScriptTests
     [InlineData("{}")]
     [InlineData("<html><body>Bad gateway</body></html>")]
     [InlineData("{\"versions\":")]
+    [InlineData("{\"versions\":[]")]
+    [InlineData("{\"versions\":[null]}")]
+    [InlineData("{\"versions\":[1]}")]
+    [InlineData("{\"versions\":[\"abc\"]}")]
+    [InlineData("{\"versions\":[\"1.0.0\"]}x")]
     public async Task AnOkResponseThatIsNotAVersionListFails(string body)
     {
         var result = await RunAsync("1.9.3", ["Rag.NET.Abstractions"],
@@ -176,6 +181,18 @@ public sealed class PackageBaselineScriptTests
         Assert.Contains("::error::", result.Output, StringComparison.Ordinal);
         Assert.Contains("Rag.NET.Abstractions", result.Output, StringComparison.Ordinal);
         Assert.DoesNotContain("RagNetUnpublishedPackage", result.Props, StringComparison.Ordinal);
+    }
+
+    /// <summary>The real response is indented with CRLF line breaks; whitespace must not matter.</summary>
+    [Fact]
+    public async Task AnIndentedCrlfVersionListIsAccepted()
+    {
+        var body = "{\r\n  \"versions\": [\r\n    \"0.1.0\",\r\n    \"1.0.0\",\r\n    \"2.0.0-beta.1\"\r\n  ]\r\n}";
+        var result = await RunAsync("1.9.3", ["Rag.NET.Abstractions"],
+            ("rag.net.abstractions", 200, body));
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("1.0.0", result.BaselineOf("Rag.NET.Abstractions"));
     }
 
     /// <summary>A well-formed index with an empty list is a package with nothing published yet.</summary>
