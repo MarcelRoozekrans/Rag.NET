@@ -1,6 +1,59 @@
 <Project>
 
   <!--
+    Turns on the SDK's package validation, per package, when a generated baselines file is passed in
+    (#846). The file comes from .github/scripts/package-baselines.sh and sets
+    PackageValidationBaselineVersion under a PackageId condition for each package that has a
+    published release to compare against. Without the RagNetPackageBaselines property nothing here
+    runs, so local builds, tests and the matrix legs behave as they always did. Pass an absolute path.
+
+    Suppressions are per MAJOR of the baseline: CompatibilitySuppressions.1.x.xml, 2.x and so on,
+    beside the csproj. Only the file for the current baseline's major reaches the SDK, because after
+    a major release every suppression written against the old major reads as "unnecessary" against
+    the new baseline and would turn main red (design "What was verified" and "Design" item 2,
+    docs/plans/2026-11-16-api-compat-package-validation-design.md). Older files are inert.
+    ApiCompatSuppressionOutputFile always names the same path, so generating suppressions writes
+    the file the next pack reads.
+
+    ApiCompatSuppressionFile is an ITEM. Set as a property it is silently ignored, which is why it
+    is added below rather than assigned.
+
+    The SDK defaults PackageId to AssemblyName only AFTER this file is evaluated, so a project that
+    sets no PackageId would never match the generated file's condition and would silently go
+    unvalidated. The default is applied here, the same way, but only when the baselines file is in
+    play.
+  -->
+  <PropertyGroup Condition="'$(RagNetPackageBaselines)' != '' and '$(PackageId)' == ''">
+    <PackageId Condition="'$(AssemblyName)' != ''">$(AssemblyName)</PackageId>
+    <PackageId Condition="'$(PackageId)' == ''">$(MSBuildProjectName)</PackageId>
+  </PropertyGroup>
+
+  <Import Project="$(RagNetPackageBaselines)" Condition="'$(RagNetPackageBaselines)' != ''" />
+
+  <PropertyGroup Condition="'$(PackageValidationBaselineVersion)' != ''">
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <ApiCompatSuppressionOutputFile>$(MSBuildProjectDirectory)/CompatibilitySuppressions.$(PackageValidationBaselineVersion.Split('.')[0]).x.xml</ApiCompatSuppressionOutputFile>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PackageValidationBaselineVersion)' != '' and Exists('$(ApiCompatSuppressionOutputFile)')">
+    <ApiCompatSuppressionFile Include="$(ApiCompatSuppressionOutputFile)" />
+  </ItemGroup>
+
+  <!--
+    The SDK falls back to CompatibilitySuppressions.xml beside the csproj when the
+    ApiCompatSuppressionFile item is empty (Microsoft.NET.ApiCompat.Common.targets, target
+    CollectApiCompatInputs). The item is empty whenever no per-major file exists, so a committed
+    file with the default name would silently suppress breaks for every major, the very thing the
+    per-major scheme prevents. Refused here, at the source, while this check is in play.
+  -->
+  <Target Name="RagNetRefuseDefaultSuppressionFile"
+          BeforeTargets="CollectApiCompatInputs;RunPackageValidation"
+          Condition="'$(RagNetPackageBaselines)' != '' and '$(PackageValidationBaselineVersion)' != ''">
+    <Error Condition="Exists('$(MSBuildProjectDirectory)/CompatibilitySuppressions.xml')"
+           Text="$(MSBuildProjectDirectory)/CompatibilitySuppressions.xml is the SDK default suppression file and would suppress breaks against every baseline major. Rename it to CompatibilitySuppressions.$(PackageValidationBaselineVersion.Split('.')[0]).x.xml." />
+  </Target>
+
+  <!--
     Refuses a VSTest filter on a project Microsoft.Testing.Platform runs, because the filter is
     silently ignored there and EVERY test in the assembly runs instead (#529, phase 6.2.35).
 
