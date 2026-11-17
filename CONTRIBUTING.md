@@ -116,6 +116,38 @@ If a guard blocks something you believe is correct, say so in the PR rather than
 Several guards in this repository exist because a previous silent failure was expensive, and their
 reasoning is written in the file next to them.
 
+### An intentional API break
+
+`pack-validate` fails when a package's public API breaks against its last release on nuget.org. If
+the break is intended, record it:
+
+1. Write the baselines file, using the same listing and lookup as CI. It needs `jq`, which Git Bash
+   on Windows does not ship, so install it first. `<next>` is the version the
+   release will have, for example `2.0.0`.
+
+   ```bash
+   mkdir -p artifacts
+   for project in src/*/*.csproj; do
+     dotnet msbuild "$project" -getProperty:IsPackable -getProperty:PackageId
+   done | jq -r '.Properties | select((.IsPackable | ascii_downcase) == "true") | .PackageId' |
+     bash .github/scripts/package-baselines.sh <next> "$PWD/artifacts/package-baselines.props" src
+   ```
+
+2. Pack the project with suppression generation on:
+
+   ```bash
+   dotnet pack <project> -c Release -p:Version=<next> -p:RagNetPackageBaselines="$PWD/artifacts/package-baselines.props" -p:ApiCompatGenerateSuppressionFile=true
+   ```
+
+3. Commit the generated `CompatibilitySuppressions.<major>.x.xml` beside the project. `<major>` is
+   the major of the baseline, so it reads `1.x` while 1.x is the latest release.
+4. Title the pull request `feat!:` or `fix!:`. A check fails the pull request when it adds or
+   changes one of these files and the title has no `!`.
+5. After the new major ships, `pack-validate` warns about the suppression files for the old
+   major of that package. Delete them. A package still on the old major keeps its file.
+
+[The CI reference](docs/reference/ci.md#the-api-compatibility-check) explains how the check works.
+
 ## Code of conduct
 
 Be decent. Assume good faith, including when you are pointing out that something is broken —

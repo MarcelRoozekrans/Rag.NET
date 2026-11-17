@@ -305,10 +305,8 @@ jobs:
   # of commits this job already linted, plus a merge commit commitlint ignores by default.
   # WorkflowWiringTests pins this wiring; change it only together with the tests.
   #
-  # BRANCH PROTECTION: like pack-validate, this check is not in the required set — the "Main"
-  # ruleset requires only the two build-test legs (measured 2026-08-03). It runs on every pull
-  # request and fails loudly, but nothing mechanically blocks a merge on it until it is added to
-  # the required checks — scheduled, with pack-validate, on Phase 6.3's checklist in the ROADMAP.
+  # BRANCH PROTECTION: "commitlint" is a required check of the "Main" ruleset, as are both
+  # build-test legs and pack-validate (measured 2026-11-17), so a red run blocks the merge.
   commitlint:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -346,11 +344,9 @@ jobs:
   # skip cannot rot into permanent green if someone renames this job's output directory or deletes
   # its validate step.
   #
-  # BRANCH PROTECTION: this check is named "pack-validate" and is NOT currently in the required
-  # checks — the "Main" ruleset requires "build-test (ubuntu-latest)" and "build-test
-  # (windows-latest)" only (measured 2026-08-03). Until it is added there, this job can go red
-  # without blocking a merge, which is exactly the non-gating-check failure this repository has
-  # already documented. Adding it is scheduled: Phase 6.3's checklist in the ROADMAP.
+  # BRANCH PROTECTION: "pack-validate" is a required check of the "Main" ruleset (measured
+  # 2026-11-17), so a red run, an API break included, blocks the merge. Renaming the job breaks
+  # that requirement silently; change the ruleset in the same step.
   pack-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -400,11 +396,29 @@ jobs:
           echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
           echo "packing as $version"
 
+      # Looks up, on nuget.org, the API baseline each package is checked against, and writes it
+      # where the pack step below reads it. The id list is every src project that packs; ids come
+      # from MSBuild itself because a csproj can override PackageId and IsPackable. Character-
+      # identical in both pack jobs, and WorkflowWiringTests pins the lookup command and its
+      # place before the pack. Packing first on a fresh runner fails hard with MSB4019, the props
+      # file being imported and missing; only a stale file left by an earlier local run would be read.
+      - name: Look up the API baselines
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          for project in src/*/*.csproj; do
+            dotnet msbuild "$project" -getProperty:IsPackable -getProperty:PackageId
+          done | jq -r '.Properties | select((.IsPackable | ascii_downcase) == "true") | .PackageId' |
+            bash .github/scripts/package-baselines.sh "$PACKAGE_VERSION" "$PWD/artifacts/package-baselines.props" src
+
       # Builds as it packs — no --no-build, because nothing has built in this job yet. The output
-      # directory is the path ProducedPackageTests reads, and WorkflowWiringTests pins this exact
-      # command text; change either only together with the tests.
+      # directory is the path ProducedPackageTests reads, the baselines file is the one the lookup
+      # step wrote, and WorkflowWiringTests pins this exact command text; change either only
+      # together with the tests.
       - name: Pack
-        run: dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION"
+        run: >-
+          dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION"
+          -p:RagNetPackageBaselines="$PWD/artifacts/package-baselines.props"
 
       # Fails the job on any defective package — count, licence, README-in-package, description,
       # repository commit, symbols, emptiness. Validation must fail the build, not warn: a warning
@@ -590,10 +604,27 @@ jobs:
           fi
           echo "$PACKAGE_VERSION is stable; continuing to pack and push."
 
-      # Character-identical to pack-validate's pack step, so the packages pushed are packed by a
-      # command that has run green on every push since Phase 4.1.
+      # Looks up, on nuget.org, the API baseline each package is checked against, and writes it
+      # where the pack step below reads it. The id list is every src project that packs; ids come
+      # from MSBuild itself because a csproj can override PackageId and IsPackable. Character-
+      # identical in both pack jobs, and WorkflowWiringTests pins the lookup command and its
+      # place before the pack. Packing first on a fresh runner fails hard with MSB4019, the props
+      # file being imported and missing; only a stale file left by an earlier local run would be read.
+      - name: Look up the API baselines
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          for project in src/*/*.csproj; do
+            dotnet msbuild "$project" -getProperty:IsPackable -getProperty:PackageId
+          done | jq -r '.Properties | select((.IsPackable | ascii_downcase) == "true") | .PackageId' |
+            bash .github/scripts/package-baselines.sh "$PACKAGE_VERSION" "$PWD/artifacts/package-baselines.props" src
+
+      # Character-identical to pack-validate's pack step, baselines flag included, so the
+      # packages pushed are packed by a command that has run green on every push since Phase 4.1.
       - name: Pack
-        run: dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION"
+        run: >-
+          dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION"
+          -p:RagNetPackageBaselines="$PWD/artifacts/package-baselines.props"
 
       # The .snupkg files are not pushed separately: nuget.org receives them automatically
       # alongside each .nupkg when they sit in the same directory, which pack guarantees and

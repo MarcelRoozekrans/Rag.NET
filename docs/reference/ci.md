@@ -888,6 +888,61 @@ a published version, so a push that dies partway through 70 packages must be re-
 without the flag the retry fails on the first package that already arrived. Idempotent is the
 only retry-safe shape against an append-only feed.
 
+### The API compatibility check
+
+Rag.NET publishes its packages under semver, and release-please picks the bump from commit
+types. Nothing in a commit type proves the public API is unchanged, so `pack-validate` checks it.
+The SDK's package validation compares each package with a baseline, on both target frameworks,
+and fails the pack when a type or member was removed or changed. Additions are not flagged.
+The design and the options it weighed are in
+[`docs/plans/2026-11-16-api-compat-package-validation-design.md`](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/docs/plans/2026-11-16-api-compat-package-validation-design.md).
+
+**The baseline is looked up, not pinned.** For each package id, the step "Look up the API
+baselines" asks nuget.org for the versions and takes the highest stable one strictly below the
+version being packed. The comparison is on major.minor.patch and ignores a prerelease label, so
+2.0.0-rc.1 packs against the last 1.x release. A pinned version lags behind every release, and it
+needs a manual opt-out for every new package. The lookup needs neither. While a release is still
+publishing, a commit is checked against the previous release, which is a weaker check but never a
+red `main`.
+
+**A package that was never published is skipped, and named.** An id with no stable version on
+nuget.org (a 404, or only prereleases) is a new package. The script lists it as a
+`RagNetUnpublishedPackage` item and logs its name, so a retired id that comes back as a project
+shows up in the log. An id that has stable versions but none below the packing version fails the
+step, and so does any HTTP failure other than a 404. A lookup that cannot answer must not switch
+the check off.
+
+**The release packs the same way.** `publish-nuget` runs the same lookup step and the same pinned
+pack command as `pack-validate`, with `-p:RagNetPackageBaselines` pointing at the generated
+`artifacts/package-baselines.props`. `Directory.Build.targets` imports that file only when the
+property is set, so local builds, tests and the matrix legs are unchanged.
+
+**An intentional break is a committed suppression file.** Suppressions live beside the project as
+`CompatibilitySuppressions.<major>.x.xml`, where `<major>` is the major of the baseline. Only the
+file for the current baseline's major is passed to the SDK. Within a major, a suppression that no
+longer matches a break fails the pack as unnecessary. Once the next major is on nuget.org, the
+baseline moves to it and the old file is inert, so `main` does not turn red over a release. The
+lookup step prints a `::warning::` naming each suppression file whose major is below the baseline
+major of its own package, taken from the project directory name, which is the package id. A
+package that is still on an older major, for example during a partial publish, keeps its file
+without a warning, and a directory with no baseline gets none. Delete the files it names. A file
+named `CompatibilitySuppressions.xml` is refused: the SDK falls back to that name for every major,
+so the build fails with an error naming the per-major file to rename it to. The recipe is in
+[CONTRIBUTING](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/CONTRIBUTING.md#an-intentional-api-break).
+
+**The title has to say so.** The workflow `api-compat-title.yml` runs on its own, and again when
+the title is edited, so fixing a title does not re-run the matrix. It reads the pull request's
+file list from the GitHub API. If a `CompatibilitySuppressions*.xml` file is changed in any
+way except a removal, the title must be breaking: `feat!:` or `fix(scope)!:`. Removing one needs
+nothing. That ties the version bump to the API break.
+
+That tie depends on two repository settings, both set on 2026-11-17. The `Main branch` ruleset
+accepts squash merges only, and the squash commit title defaults to the pull request title. A merge
+commit or a rebase would land the branch's own commits instead. Under the older title default, a
+pull request with a single commit was squashed under that commit's header. Either way, a `fix:`
+header would ship the break as a patch. The person merging can still edit the subject, so keep
+the `!` when you do.
+
 ### The gated nuget.org push
 
 **Publishing is automatic from a tag.** Merging a release-please pull request creates the tag

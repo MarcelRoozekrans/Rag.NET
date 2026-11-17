@@ -1,7 +1,47 @@
 # Session State
 
-**Last updated:** 2026-11-16. **Next:** no PR is open and nothing waits for the operator. Pick the
-next item from the milestone or the issue tracker.
+**Last updated:** 2026-11-16. **Next:** #846 is built and open as **PR #1040** from
+`feat/apicompat-package-validation`. Watch its CI, which is the first run of the new lookup step and
+of `api-compat-title.yml`, and do not merge it unasked. After the merge, check that the
+release-please PR lists the `feat(ci)` change.
+
+**Operator's decision, 2026-11-17:** the `Main branch` ruleset now allows **squash merges only**. A
+CodeRabbit finding on #1040 showed why: the breaking-title rule holds only when the PR title
+becomes the release commit. CodeRabbit's other three findings on #1040 are fixed:
+- an HTTP 200 that is not a version list now fails;
+- the stale-suppression warning compares each file with its own package's baseline;
+- the docs describe that rule.
+
+CodeRabbit's "changes requested" review was written before those fixes.
+
+**#846 as built:** all six plan tasks, a whole-branch review and one fix wave. Changes beyond the plan,
+each from a review finding:
+- The hook defaults `PackageId` early, so a project without an explicit `PackageId` is still
+  validated.
+- The hook refuses the SDK's default `CompatibilitySuppressions.xml`, which would otherwise suppress
+  breaks unnoticed.
+- The title check covers every `CompatibilitySuppressions*.xml` change except a removal.
+- The lookup fails on an empty id list.
+
+Local results:
+- RepoConventions passes 330 of 330.
+- PackageValidation passes 70 of 72. Both failures are `EveryPackageCarriesTheVersionGitVersionDerives`,
+  the known local failure.
+- `Rag.NET.VectorStores.Weaviate.Tests` failed locally because the agents host disk was full, which
+  made the container read-only. On 2026-11-16 this session freed 16 GB of its own worktree's
+  `bin`/`obj`. Docker build caches hold about 20 GB that can be reclaimed; that cleanup is the
+  operator's call.
+
+**#846 decisions, operator, 2026-11-16:**
+- **Baseline:** looked up per package on nuget.org.
+- **Suppressions:** a per-major file, `CompatibilitySuppressions.<major>.x.xml`, plus a PR title
+  check that requires `!`.
+- **Verified before planning:**
+  - All 74 packages pass validation against 1.9.2.
+  - `ApiCompatSuppressionFile` must be an MSBuild item; set as a property it is silently ignored.
+- **#1030** (SourceLink, F12) has a volunteer, Narendersingh007, so we left it to them. Note for
+  whoever reviews their PR: `.snupkg` files already ship, and the open question is embedded PDBs
+  versus the symbol server.
 
 **Merged on 2026-11-16, at the operator's request.** Each branch was brought up to date and passed a
 fresh run before its merge. Renovate automerges a dependency bump to main every 20 to 40 minutes,
