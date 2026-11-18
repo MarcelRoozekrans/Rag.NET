@@ -421,7 +421,7 @@ jobs:
           -p:RagNetPackageBaselines="$PWD/artifacts/package-baselines.props"
 
       # Fails the job on any defective package — count, licence, README-in-package, description,
-      # repository commit, symbols, emptiness. Validation must fail the build, not warn: a warning
+      # repository commit, embedded PDBs, emptiness. Validation must fail the build, not warn: a warning
       # nobody reads is the shape this project keeps finding.
       - name: Validate the produced packages
         run: dotnet test tests/Rag.NET.PackageValidation.Tests -c Release --verbosity normal
@@ -444,15 +444,12 @@ jobs:
       #     push" (expected in this log, once per package) and overwrites instead of 409ing —
       #     so what is proven here is that the exact 6.3 command line parses and delivers; the
       #     409-skip is part of the recorded residual in docs/reference/ci.md.
-      #   - A .snupkg push to a directory feed is a complete silent no-op: exit 0, no output,
-      #     nothing delivered — measured with an exact filename and with the glob. It is
-      #     attempted anyway and asserted to deliver nothing, so the day NuGet starts delivering
-      #     symbol packages to directory feeds this step fails and the rehearsal widens to
-      #     assert their arrival. Symbol delivery to nuget.org rides on the .nupkg push
-      #     automatically (--no-symbols exists to turn that off) and cannot be rehearsed against
-      #     a directory; it is exercised for real exactly once, at 6.3.
+      #   - There is no symbol package to push: each DLL carries its PDB embedded (DebugType=embedded
+      #     in Directory.Build.props), so the .nupkg is the only artifact and the glob above is the
+      #     whole push. ProducedPackageTests asserts both halves — every shipped assembly has an
+      #     embedded PDB and no .snupkg is produced — so a symbol package cannot creep back unseen.
       #
-      # WorkflowWiringTests pins both push commands; change them only together with the tests.
+      # WorkflowWiringTests pins the push command; change it only together with the tests.
       - name: Push every package to a local feed
         shell: bash
         run: |
@@ -465,18 +462,12 @@ jobs:
             exit 1
           fi
           dotnet nuget push "artifacts/packages/*.nupkg" --source "$feed" --skip-duplicate
-          dotnet nuget push "artifacts/packages/*.snupkg" --source "$feed" --skip-duplicate
           for package in "${packages[@]}"; do
             if [ ! -f "$feed/$(basename "$package")" ]; then
               echo "::error::$(basename "$package") was pushed and did not arrive in the local feed — the push no-opped silently, which is exactly the failure this step exists to surface."
               exit 1
             fi
           done
-          snupkg_arrived=$(find "$feed" -name '*.snupkg' -type f | wc -l)
-          if [ "$snupkg_arrived" -ne 0 ]; then
-            echo "::error::$snupkg_arrived .snupkg files arrived in the local feed. When this was written a directory feed silently dropped symbol packages; NuGet now delivers them, so widen this rehearsal to assert their arrival instead of their absence."
-            exit 1
-          fi
           echo "${#packages[@]} packages pushed and verified present in the local feed"
 
       # The same push a second time — the rerun shape 6.3 hits if a push dies partway, because
@@ -522,8 +513,7 @@ jobs:
   #
   # RESIDUAL, recorded rather than papered over (docs/reference/ci.md states it in full): a
   # local feed is not nuget.org. Authentication, API-key scoping, package-ID availability, the
-  # service's own validation, the real 409-skip and .snupkg symbol delivery are exercised for
-  # real exactly once, at 6.3.
+  # service's own validation and the real 409-skip are exercised for real exactly once, at 6.3.
   publish-nuget:
     # Two ways in, and the difference between them is who decided, not what is checked:
     #
@@ -626,12 +616,11 @@ jobs:
           dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION"
           -p:RagNetPackageBaselines="$PWD/artifacts/package-baselines.props"
 
-      # The .snupkg files are not pushed separately: nuget.org receives them automatically
-      # alongside each .nupkg when they sit in the same directory, which pack guarantees and
-      # ProducedPackageTests asserts (--no-symbols is the flag that would turn that off, and it
-      # is deliberately absent). --skip-duplicate is the duplicate policy chosen and rehearsed in
-      # pack-validate: nuget.org never forgets a published version, so a push that dies partway
-      # must be re-runnable, and without the flag the retry fails on whatever already arrived.
+      # There is no separate symbol package to push: each DLL carries its PDB embedded, which
+      # ProducedPackageTests asserts on every shipped assembly. --skip-duplicate is the duplicate
+      # policy chosen and rehearsed in pack-validate: nuget.org never forgets a published version,
+      # so a push that dies partway must be re-runnable, and without the flag the retry fails on
+      # whatever already arrived.
       # Trusted Publishing, not a stored key. NuGet deprecated long-lived API keys in favour of
       # this; the token minted here lasts minutes and cannot be exfiltrated from the repository
       # because it does not exist there. It requires a matching Trusted Publishing policy on
