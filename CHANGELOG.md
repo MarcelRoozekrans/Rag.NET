@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.1](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.10.0...v1.10.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **build:** embed PDBs in each DLL instead of shipping .snupkg ([#1030](https://github.com/MarcelRoozekrans/Rag.NET/issues/1030)) ([#1041](https://github.com/MarcelRoozekrans/Rag.NET/issues/1041)) ([355518b](https://github.com/MarcelRoozekrans/Rag.NET/commit/355518b20a2f60f3dcd10a654ba894cd2d980ca1))
+
 ## [1.10.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.9.2...v1.10.0) (2026-11-18)
 
 
