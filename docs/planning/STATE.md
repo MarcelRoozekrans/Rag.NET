@@ -1,18 +1,36 @@
 # Session State
 
-**Last updated:** 2026-11-16. **Next:** #846 is built and open as **PR #1040** from
-`feat/apicompat-package-validation`. Watch its CI, which is the first run of the new lookup step and
-of `api-compat-title.yml`, and do not merge it unasked. After the merge, check that the
-release-please PR lists the `feat(ci)` change.
+**Last updated:** 2026-11-17. **Next:** nothing is in flight. The release PR **#1054**
+(`chore(main): release 1.10.0`) lists #1040 under Features; merging it is the operator's call.
+After it merges, watch the tag and publish runs. The release is the first `publish-nuget` run with
+the API baseline lookup.
 
-**Operator's decision, 2026-11-17:** the `Main branch` ruleset now allows **squash merges only**. A
-CodeRabbit finding on #1040 showed why: the breaking-title rule holds only when the PR title
-becomes the release commit. CodeRabbit's other three findings on #1040 are fixed:
-- an HTTP 200 that is not a version list now fails;
-- the stale-suppression warning compares each file with its own package's baseline;
-- the docs describe that rule.
+**#846 merged on 2026-11-17** as 2dc18b11 (#1040), squash-merged by the operator after CodeRabbit's
+threads were resolved. From now on, `pack-validate` and `publish-nuget` fail on any public-API break
+against nuget.org. The how-to is in `docs/reference/ci.md` ("The API compatibility check") and
+`CONTRIBUTING.md` ("An intentional API break").
 
-CodeRabbit's "changes requested" review was written before those fixes.
+**Repository settings changed by the operator on 2026-11-17, from CodeRabbit findings on #1040:**
+- The `Main branch` ruleset allows **squash merges only**.
+- The squash commit title is the **PR title**, and the body is the commit messages.
+
+Together these make the PR title, with its `!`, the commit release-please reads.
+
+The `Main` ruleset's required checks, read on 2026-11-17:
+- both build-test legs
+- `pack-validate`
+- `commitlint`
+- gitleaks, CodeQL and nuget-audit
+- `codecov/project`
+
+The `ci.yml` comments that called `pack-validate` not required were from 2026-08-03 and are fixed.
+
+CodeRabbit pressed the version-index check through three rounds. After an HTTP 200, the script now
+checks the raw bytes first. The whole body must then match the flat-container shape, with semver
+entries, before an id can count as unpublished.
+
+The worktree `bridge-cse_01RwoARgDsHKF59aFv1jqv2A` still has `feat/apicompat-package-validation`
+checked out from the handoff; the remote branch is already deleted. Remove that worktree once its session is gone.
 
 **#846 as built:** all six plan tasks, a whole-branch review and one fix wave. Changes beyond the plan,
 each from a review finding:
