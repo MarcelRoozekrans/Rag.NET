@@ -368,11 +368,66 @@ public sealed class ProducedPackageTests
                 $"{Path.GetFileName(package)} carries version '{version}' but GitVersion " +
                 $"derives '{derived}' for this commit. Either the pack ran without " +
                 "-p:Version (the SDK default 1.0.0 is silent), or the packages were packed on " +
-                "a different commit than this test is checking. Repack with: dotnet pack " +
-                "Rag.NET.slnx -c Release -o artifacts/packages -p:Version=\"$(dotnet " +
-                "dotnet-gitversion /output json /showvariable SemVer)\" (after `dotnet tool " +
-                "restore`).");
+                "a different commit than this test is checking. Repack with the two steps ci.yml " +
+                "runs: the id listing piped into .github/scripts/package-baselines.sh, then " +
+                "dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version=<derived> " +
+                "-p:RagNetPackageBaselines=\"$PWD/artifacts/package-baselines.props\" (after " +
+                "`dotnet tool restore`).");
         }
+    }
+
+    [Fact]
+    public void EveryProducedPackageWasValidatedOrIsUnpublished()
+    {
+        var packages = DiscoverPackages();
+        var propsPath = Path.Combine(FindRepositoryRoot(), "artifacts", "package-baselines.props");
+
+        Assert.True(
+            File.Exists(propsPath),
+            $"'{propsPath}' does not exist although packages were produced. The lookup step " +
+            "writes it before the pack; without it package validation is off for every package.");
+
+        var accounted = ReadAccountedPackageIds(propsPath);
+
+        foreach (var package in packages)
+        {
+            var id = ReadNuspecElement(package, "id");
+
+            Assert.True(
+                id is not null && accounted.Contains(id),
+                $"{Path.GetFileName(package)} has neither a baseline PropertyGroup nor a " +
+                "RagNetUnpublishedPackage item in artifacts/package-baselines.props: it was " +
+                "packed without its public API being checked against anything.");
+        }
+    }
+
+    /// <summary>
+    /// Reads the package ids the baseline lookup accounted for: validated ones carry a
+    /// <c>PropertyGroup</c> conditioned on the id, unpublished ones a
+    /// <c>RagNetUnpublishedPackage</c> item.
+    /// </summary>
+    /// <param name="propsPath">The absolute path of the generated props file.</param>
+    /// <returns>The accounted package ids, compared case-insensitively.</returns>
+    private static HashSet<string> ReadAccountedPackageIds(string propsPath)
+    {
+        var accounted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var element in XDocument.Load(propsPath).Descendants())
+        {
+            if (string.Equals(element.Name.LocalName, "RagNetUnpublishedPackage", StringComparison.Ordinal) &&
+                element.Attribute("Include")?.Value is { } include)
+            {
+                _ = accounted.Add(include);
+            }
+            else if (string.Equals(element.Name.LocalName, "PropertyGroup", StringComparison.Ordinal) &&
+                     element.Attribute("Condition")?.Value.Split('\'') is { Length: >= 4 } parts)
+            {
+                // Condition="'$(PackageId)' == '<id>'" splits to "", "$(PackageId)", " == ", "<id>".
+                _ = accounted.Add(parts[3]);
+            }
+        }
+
+        return accounted;
     }
 
     [Fact]
@@ -404,9 +459,10 @@ public sealed class ProducedPackageTests
         Assert.SkipWhen(
             !Directory.Exists(directory),
             $"'{directory}' does not exist: nothing has packed. Produce it with " +
-            "`dotnet tool restore && dotnet pack Rag.NET.slnx -c Release -o artifacts/packages " +
-            "-p:Version=\"$(dotnet dotnet-gitversion /output json /showvariable SemVer)\"` — " +
-            "ci.yml's pack-validate job does exactly that before running this project, and " +
+            "the two steps ci.yml's pack-validate job runs before this project: the id listing " +
+            "piped into .github/scripts/package-baselines.sh, then `dotnet pack Rag.NET.slnx " +
+            "-c Release -o artifacts/packages -p:Version=<derived> " +
+            "-p:RagNetPackageBaselines=\"$PWD/artifacts/package-baselines.props\"`. " +
             "WorkflowWiringTests pins that wiring so this skip cannot rot silently.");
 
         var packages = new List<string>();

@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.10.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.9.2...v1.10.0) (2026-11-18)
+
+
+### Features
+
+* **ci:** check the public API of every package before it ships ([#1040](https://github.com/MarcelRoozekrans/Rag.NET/issues/1040)) ([2dc18b1](https://github.com/MarcelRoozekrans/Rag.NET/commit/2dc18b119ab6d141c107924170db0254c754c674))
+
+
+### Bug Fixes
+
+* **deps:** update dependency llama-index-core to v0.14.26 ([#1051](https://github.com/MarcelRoozekrans/Rag.NET/issues/1051)) ([caee90e](https://github.com/MarcelRoozekrans/Rag.NET/commit/caee90eaeba569a835df76a77c2c324dc375dd69))
+
 ## [1.9.2](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.9.1...v1.9.2) (2026-11-16)
 
 
