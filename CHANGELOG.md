@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.3](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.10.2...v1.10.3) (2026-11-19)
+
+
+### Bug Fixes
+
+* **deps:** update dependency numpy to v2.5.5 ([#1060](https://github.com/MarcelRoozekrans/Rag.NET/issues/1060)) ([984e657](https://github.com/MarcelRoozekrans/Rag.NET/commit/984e6571d2e6c1aaf1f169744eb5a89de8ae37b5))
+
 ## [1.10.2](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.10.1...v1.10.2) (2026-11-18)
 
 
