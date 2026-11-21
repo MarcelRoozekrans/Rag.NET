@@ -676,7 +676,7 @@ wheels = [
 
 [[package]]
 name = "langchain-core"
-version = "1.8.2"
+version = "1.8.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -691,9 +691,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "uuid-utils" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/e1/7650b9126e1b9ff1dd7110ea5bbdb45de935cb7a5be737a13984d213bb74/langchain_core-1.8.2.tar.gz", hash = "sha256:6d35fae6c7f9946bcb9a8a0fa02a2c176cc958ea264ebc59d2dc5e0b01046f22", size = 1020848, upload-time = "2026-11-17T22:42:40.94Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f6/0f/857be5053ed2dcc50bdbcc416e44a2ba0c2f35bdefc30b1ac847a3b46731/langchain_core-1.8.3.tar.gz", hash = "sha256:ce448f055dd2cf1db7def27d2b6c2902519369642e8b89d08255c7ca7abd6b36", size = 1023113, upload-time = "2026-11-18T15:38:19.064Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/29/f1/8fe2b596002a8831d0c85998231889051f633591e767026706ea00de8301/langchain_core-1.8.2-py3-none-any.whl", hash = "sha256:11f1047c4b243df746c01c10208082f580bb55f5fbf17bdb38355b6b63c4f63b", size = 588899, upload-time = "2026-11-17T22:42:39.406Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/2e/299c92f812acebc20fbff5ac613f39a9ad0fa70282946ff90aa1ce06af40/langchain_core-1.8.3-py3-none-any.whl", hash = "sha256:4d2764d2ab4faf3fec9f17515f15c0d3485a6ef55f75c088f6929944225ff578", size = 589771, upload-time = "2026-11-18T15:38:17.404Z" },
 ]
 
 [[package]]
@@ -771,7 +771,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "haystack-ai", specifier = "==3.5.0" },
-    { name = "langchain-core", specifier = "==1.8.2" },
+    { name = "langchain-core", specifier = "==1.8.3" },
     { name = "langchain-text-splitters", specifier = "==1.1.3" },
     { name = "llama-index-core", specifier = "==0.14.26" },
     { name = "numpy", specifier = "==2.5.5" },
