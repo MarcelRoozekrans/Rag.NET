@@ -4,7 +4,9 @@
 
 Rag.NET follows the [security policy of the product line](https://github.com/MarcelRoozekrans/product-line/blob/main/SECURITY.md).
 
-* The latest release receives security fixes. Today that is the 1.x line; `0.1.0` is not supported.
+* The latest release receives security fixes. Today that is the 1.x line.
+* `0.1.0`, the last release of the previous major, receives fixes for critical and high findings
+  until 2027-03-15, six months after 1.0.0 was released.
 * After a new major version, the previous major still receives fixes for critical and high findings
   for 6 months. After that, only the latest release.
 
