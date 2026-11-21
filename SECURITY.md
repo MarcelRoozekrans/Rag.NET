@@ -2,17 +2,11 @@
 
 ## Supported versions
 
-| Version | Supported |
-|---|---|
-| 1.0.0 | ✅ current release |
-| 0.1.0 | ❌ superseded by 1.0.0 |
+Rag.NET follows the [security policy of the product line](https://github.com/MarcelRoozekrans/product-line/blob/main/SECURITY.md).
 
-**Rag.NET reached 1.0.0 on 2026-09-15**, across 73 packages on nuget.org. `0.1.0` was the only
-earlier release and is not supported.
-
-Fixes ship in the next release rather than as backports — there is no maintenance branch, and saying
-so is more useful than implying a support matrix that does not exist. If that changes, this table
-changes with it.
+* The latest release receives security fixes. Today that is the 1.x line; `0.1.0` is not supported.
+* After a new major version, the previous major still receives fixes for critical and high findings
+  for 6 months. After that, only the latest release.
 
 ## Reporting a vulnerability
 
@@ -27,11 +21,13 @@ anything to upgrade to.
 
 ### What to expect
 
-This is a small project, so the honest answer is **best effort**: an acknowledgement within about a
-week, and a fix in a normal release once there is one. If a report is valid and you want credit in
-the advisory, say so and you will get it.
+* A confirmation of receipt within 5 working days.
+* A first assessment, including severity, within 15 working days.
+* The aim is to fix the issue and disclose it together with you within 90 days, sooner for critical
+  findings.
+* If a report is valid and you want credit in the advisory, say so and you will get it.
 
-No bug bounty. No embargo demands in either direction.
+No bug bounty.
 
 ## What is in scope
 
