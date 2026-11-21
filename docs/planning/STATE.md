@@ -1,9 +1,24 @@
 # Session State
 
-**Last updated:** 2026-11-17. **Next:** nothing is in flight. The release PR **#1054**
-(`chore(main): release 1.10.0`) lists #1040 under Features; merging it is the operator's call.
-After it merges, watch the tag and publish runs. The release is the first `publish-nuget` run with
-the API baseline lookup.
+**Last updated:** 2026-11-21. **Next:** nothing is in flight.
+
+**Released since #1040:** 1.10.0 (#1054, with #1040's API check) through 1.10.4 (#1067). Every
+`publish-nuget` run passed, and so the API baseline lookup ran on each release. 1.10.0 and 1.10.4
+are on nuget.org.
+
+**#1030 closed by #1041**, Narendersingh007's PR, merged 2026-11-18 as 355518b2. Assemblies now
+embed their PDBs, and no `.snupkg` ships. `ContinuousIntegrationBuild` is set only for `src/`
+projects on GitHub Actions. `pack-validate` checks each assembly for:
+- a `Reproducible` entry;
+- a Source Link map to this repository;
+- `/_/` document paths.
+
+The squash body of 355518b2 kept a `Co-Authored-By: Claude` trailer and a `Claude-Session` link
+from the contributor's commit. It is permanent now. When squash-merging a contributor PR, check the
+body: the squash body is the commit messages.
+
+Follow-ups from the review of #1041 are filed as **#1069**: one Source Link problem can hide the
+rest, generated `obj/` files pass the map check, and a stale `.snupkg` gives a misleading failure.
 
 **#846 merged on 2026-11-17** as 2dc18b11 (#1040), squash-merged by the operator after CodeRabbit's
 threads were resolved. From now on, `pack-validate` and `publish-nuget` fail on any public-API break
