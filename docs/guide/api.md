@@ -56,10 +56,43 @@ app.Run();
 | `POST` | `/rag/ingest` | `IngestAsync` |
 | `POST` | `/rag/retrieve` | `RetrieveAsync` |
 | `POST` | `/rag/ask` | `AskAsync` |
-| `GET` | `/rag/ask/stream?query=...` | `AskStreamingAsync`, as server-sent events |
+| `POST` | `/rag/ask/stream` | `AskStreamingAsync`, as server-sent events; same body as `/rag/ask` |
 | `DELETE` | `/rag/documents/{documentId}` | `DeleteAsync` |
 
 `RagApiOptions.RoutePrefix` changes the `/rag` prefix.
+
+### Request options
+
+`/rag/ask` and `/rag/ask/stream` take a query and an `options` object that mirrors `RagOptions`,
+with `retrieval` nested inside it the way `RagOptions.Retrieval` is. `/rag/retrieve` takes an
+`options` object that mirrors `RetrievalOptions`. Every field is optional. One you leave out takes
+the value the in-process `RagPipeline` uses when a caller does not set it, so hybrid search is off
+unless you turn it on.
+
+```json
+{
+  "query": "What changed in the 2026 tax rules?",
+  "options": {
+    "retrieval": { "topK": 8, "useHybridSearch": true, "useMmr": true },
+    "synthesisStrategy": "Refine"
+  }
+}
+```
+
+The same rules as in-process apply, and the server answers `400` with the offending fields named:
+
+- `retrieval` together with any short-form retrieval field, such as `topK`, is rejected.
+- The fields that shape the prompt, `systemPrompt`, `temperature`, `conversationHistory` and the
+  map-reduce and refine prompt templates, are rejected unless the server opts in with
+  `RagApiOptions.AllowClientPromptOverrides`. It is off by default, so a client cannot replace the
+  server's prompt unless the server allows it. Retrieval fields are always accepted.
+
+`RetrievalOptions.Filter` is a specification object, code rather than data, so it has no field.
+The clients throw `NotSupportedException` when it is set instead of dropping it.
+
+Before 2.0 the requests carried only flat `topK` and `useHybridSearch` fields, hybrid search
+defaulted to on, and the stream endpoint was `GET /rag/ask/stream?query=...` with no options.
+Clients and servers must be upgraded together.
 
 ### Authentication is a decision you have to make
 
@@ -151,6 +184,12 @@ service RagService {
 }
 ```
 
+`AskRequest` and `RetrieveRequest` carry the same options as the REST bodies, as
+`RagOptionsProto` and `RetrievalOptionsProto`. Their fields are `optional`, so an unset field takes
+the in-process default; the numbers of the removed flat fields are `reserved`. The same requests
+are refused, with `INVALID_ARGUMENT` naming the fields, and
+`RagGrpcApiOptions.AllowClientPromptOverrides` is the opt-in for the prompt-shaping fields.
+
 `rag.proto` lives at `src/Rag.NET.Api.Grpc/Protos/rag.proto` in the repository. It is compiled
 into the package rather than shipped alongside it, so a non-.NET caller generating its own client
 takes the file from source control.
@@ -174,13 +213,13 @@ The key travels as call credentials on every request.
 | | REST | gRPC |
 |---|---|---|
 | Non-.NET callers | Any HTTP client | Needs a generated client from `rag.proto` |
-| Streaming answers | Server-sent events over `GET` | A native server-streaming call |
+| Streaming answers | Server-sent events over `POST` | A native server-streaming call |
 | Payload | JSON | Protobuf — smaller and faster to parse |
 | Debugging | `curl`, browser dev tools | `grpcurl`, or a proto-aware proxy |
 | Metadata fidelity | Typed JSON | `map<string,string>` — [typed chunk metadata](ingestion.md#typed-metadata-values) is flattened to strings on the wire |
 
-REST unless you have a reason. The metadata row is the one that bites: a filter that depends on a
-numeric or date-typed metadata value is comparing strings by the time it crosses gRPC.
+REST unless you have a reason. The metadata row is the one that bites: chunk metadata in a result
+arrives as strings over gRPC. A metadata filter in the request options keeps its type on both.
 
 ## What neither gives you
 

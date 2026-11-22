@@ -77,7 +77,7 @@ public static class EndpointRouteBuilderExtensions
         app.MapPost(ingest, HandleIngestAsync);
         app.MapPost(retrieve, HandleRetrieveAsync);
         app.MapPost(ask, HandleAskAsync);
-        app.MapGet(askStream, HandleAskStreamAsync);
+        app.MapPost(askStream, HandleAskStreamAsync);
         app.MapDelete(deleteDocument, HandleDeleteDocumentAsync);
 
         return app;
@@ -165,7 +165,7 @@ public static class EndpointRouteBuilderExtensions
     private static async Task<IResult> HandleRetrieveAsync(
         RetrieveRequest req, IRagMediator mediator, CancellationToken ct)
     {
-        var retrievalOptions = new RetrievalOptions { TopK = req.TopK, UseHybridSearch = req.UseHybridSearch };
+        var retrievalOptions = RagOptionsMapper.ToRetrievalOptions(req.Options);
         var result = await mediator.Send(new RetrieveQuery(req.Query, retrievalOptions), ct).ConfigureAwait(false);
         return result.IsSuccess
             ? Results.Ok(new RetrieveResponse(result.Value.Select(SearchResultMapper.ToDto).ToList()))
@@ -173,22 +173,30 @@ public static class EndpointRouteBuilderExtensions
     }
 
     private static async Task<IResult> HandleAskAsync(
-        AskRequest req, IRagPipeline pipeline, CancellationToken ct)
+        AskRequest req, IRagPipeline pipeline, [FromServices] RagApiOptions apiOptions, CancellationToken ct)
     {
-        var ragOptions = new RagOptions { TopK = req.TopK, UseHybridSearch = req.UseHybridSearch };
-        var result = await pipeline.AskAsync(req.Query, ragOptions, ct).ConfigureAwait(false);
+        if (RagOptionsMapper.Reject(req.Options, apiOptions.AllowClientPromptOverrides) is { } rejection)
+            return Results.BadRequest(new { error = rejection });
+
+        var result = await pipeline.AskAsync(req.Query, RagOptionsMapper.ToRagOptions(req.Options), ct).ConfigureAwait(false);
         return Results.Ok(new AskResponse(result.Answer, result.Sources.Select(SearchResultMapper.ToDto).ToList()));
     }
 
-    private static async Task HandleAskStreamAsync(
-        string query, IRagPipeline pipeline, HttpContext ctx, CancellationToken ct)
+    // POST with the same body as the ask endpoint, so the stream takes the same options (#944).
+    private static async Task<IResult> HandleAskStreamAsync(
+        AskRequest req, IRagPipeline pipeline, [FromServices] RagApiOptions apiOptions, HttpContext ctx, CancellationToken ct)
     {
+        if (RagOptionsMapper.Reject(req.Options, apiOptions.AllowClientPromptOverrides) is { } rejection)
+            return Results.BadRequest(new { error = rejection });
+
         ctx.Response.ContentType = "text/event-stream";
-        await foreach (var update in pipeline.AskStreamingAsync(query, cancellationToken: ct).ConfigureAwait(false))
+        await foreach (var update in pipeline.AskStreamingAsync(req.Query, RagOptionsMapper.ToRagOptions(req.Options), ct).ConfigureAwait(false))
         {
             if (update.TextDelta is not null)
                 await ctx.Response.WriteAsync($"data: {update.TextDelta}\n\n", ct).ConfigureAwait(false);
         }
+
+        return Results.Empty;
     }
 
     private static async Task<IResult> HandleDeleteDocumentAsync(

@@ -54,6 +54,15 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>Rag.NET.Security</_Parameter1>
     </AssemblyAttribute>
+    <!-- For RagOptions.AssignedRetrievalFields: the remote clients send only the short-form
+         retrieval fields the caller assigned, and reject them next to Retrieval the way
+         RagPipeline does (#944). See src/Shared/RemoteOptionsGuard.cs. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Api.Client</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Api.Grpc.Client</_Parameter1>
+    </AssemblyAttribute>
     <!-- The next five exist for LlmJsonExtractor: every assembly that parses structured JSON
          out of a chat-model response routes through that one internal helper rather than
          growing its own fence-stripping copy (the copies drifted, and the drift shipped a

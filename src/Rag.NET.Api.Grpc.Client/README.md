@@ -51,6 +51,12 @@ await foreach (var update in pipeline.AskStreamingAsync("Summarise the incident 
 }
 ```
 
+The client sends the full `RagOptions` and `RetrievalOptions`, `Retrieval` included, and the
+server applies the same defaults as the in-process pipeline. Options it cannot send, a
+`RetrievalOptions.Filter` specification or a non-text conversation turn, throw
+`NotSupportedException` instead of being dropped. The server accepts the prompt-shaping fields
+only when it opts in. Client and server must be on the same major version.
+
 ## Full guide
 
 - [Hosting patterns (gRPC proxy)](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/docs/guide/mcp.mdx)

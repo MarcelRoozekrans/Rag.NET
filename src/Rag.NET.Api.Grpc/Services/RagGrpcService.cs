@@ -1,13 +1,15 @@
 using System.Text;
 using Grpc.Core;
 using Rag.NET.Abstractions;
+using Rag.NET.Api.Grpc.DependencyInjection;
 using Rag.NET.Api.Grpc.Proto;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 
 namespace Rag.NET.Api.Grpc.Services;
 
-internal sealed class RagGrpcService(IRagPipeline pipeline, IGuidProvider? guidProvider = null)
+internal sealed class RagGrpcService(
+    IRagPipeline pipeline, RagGrpcApiOptions apiOptions, IGuidProvider? guidProvider = null)
     : RagService.RagServiceBase
 {
     private readonly IGuidProvider _guidProvider = guidProvider ?? SystemGuidProvider.Instance;
@@ -41,12 +43,10 @@ internal sealed class RagGrpcService(IRagPipeline pipeline, IGuidProvider? guidP
 
     public override async Task<RetrieveResponse> Retrieve(RetrieveRequest request, ServerCallContext context)
     {
-        var options = new RetrievalOptions
-        {
-            TopK = request.TopK == 0 ? 5 : request.TopK,
-            UseHybridSearch = request.UseHybrid
-        };
+        if (ProtoOptionsMapper.Reject(request.Options, "options") is { } rejection)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, rejection));
 
+        var options = ProtoOptionsMapper.ToRetrievalOptions(request.Options);
         var result = await pipeline.RetrieveAsync(request.Query, options, context.CancellationToken).ConfigureAwait(false);
 
         if (!result.IsSuccess)
@@ -59,12 +59,7 @@ internal sealed class RagGrpcService(IRagPipeline pipeline, IGuidProvider? guidP
 
     public override async Task<AskResponse> Ask(AskRequest request, ServerCallContext context)
     {
-        var options = new RagOptions
-        {
-            TopK = request.TopK == 0 ? 5 : request.TopK,
-            UseHybridSearch = request.UseHybrid
-        };
-
+        var options = ToRagOptions(request);
         var result = await pipeline.AskAsync(request.Query, options, context.CancellationToken).ConfigureAwait(false);
 
         var response = new AskResponse { Answer = result.Answer };
@@ -77,12 +72,7 @@ internal sealed class RagGrpcService(IRagPipeline pipeline, IGuidProvider? guidP
         IServerStreamWriter<AskStreamUpdate> responseStream,
         ServerCallContext context)
     {
-        var options = new RagOptions
-        {
-            TopK = request.TopK == 0 ? 5 : request.TopK,
-            UseHybridSearch = request.UseHybrid
-        };
-
+        var options = ToRagOptions(request);
         await foreach (var update in pipeline.AskStreamingAsync(request.Query, options, context.CancellationToken).ConfigureAwait(false))
         {
             if (update.TextDelta is not null)
@@ -96,6 +86,15 @@ internal sealed class RagGrpcService(IRagPipeline pipeline, IGuidProvider? guidP
     {
         await pipeline.DeleteAsync(request.DocumentId, context.CancellationToken).ConfigureAwait(false);
         return new DeleteResponse();
+    }
+
+    // Rejected options fail the call with InvalidArgument, naming the fields, before anything runs.
+    private RagOptions? ToRagOptions(AskRequest request)
+    {
+        if (ProtoOptionsMapper.Reject(request.Options, apiOptions.AllowClientPromptOverrides) is { } rejection)
+            throw new RpcException(new Status(StatusCode.InvalidArgument, rejection));
+
+        return ProtoOptionsMapper.ToRagOptions(request.Options);
     }
 
     // A refused call, usually a spent cost budget, is a quota rather than a fault: ResourceExhausted,

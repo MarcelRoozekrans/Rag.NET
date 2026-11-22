@@ -13,4 +13,15 @@ public sealed class RagApiOptions
     public bool AllowAnonymous { get; set; }
 
     public string RoutePrefix { get; set; } = "/rag";
+
+    /// <summary>
+    /// Lets clients set the fields that shape the prompt: <c>systemPrompt</c>, <c>temperature</c>,
+    /// <c>conversationHistory</c>, and the map-reduce and refine prompt templates.
+    /// <see langword="false"/> by default.
+    /// </summary>
+    /// <remarks>
+    /// While it is off, an ask request that sets one of them is rejected with 400, and the error
+    /// names the field. Nothing is dropped silently. Retrieval fields are always accepted (#944).
+    /// </remarks>
+    public bool AllowClientPromptOverrides { get; set; }
 }

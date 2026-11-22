@@ -48,8 +48,10 @@ public sealed class RagOptions
     /// object instead.
     /// </para>
     /// <para>
-    /// The remote clients, <c>HttpRagPipeline</c> and <c>GrpcRagPipeline</c>, cannot send this to
-    /// the server yet and throw <see cref="NotSupportedException"/> when it is set (issue #944).
+    /// The remote clients, <c>HttpRagPipeline</c> and <c>GrpcRagPipeline</c>, send this to the
+    /// server, and reject it next to a short-form field the same way, before sending (issue #944).
+    /// They cannot send <c>RetrievalOptions.Filter</c>, a specification object, and throw
+    /// <see cref="NotSupportedException"/> when it is set.
     /// </para>
     /// <para>
     /// Serializing a <see cref="RagOptions"/> writes the short-form fields too, so deserializing

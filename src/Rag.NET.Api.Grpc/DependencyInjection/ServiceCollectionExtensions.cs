@@ -50,6 +50,7 @@ public static class ServiceCollectionExtensions
             o.ApiKeys = options.ApiKeys;
             o.AllowAnonymous = options.AllowAnonymous;
         });
+        services.AddSingleton(options);
         services.AddSingleton<ApiKeyInterceptor>();
         services.AddGrpc(o => o.Interceptors.Add<ApiKeyInterceptor>());
 
