@@ -178,9 +178,21 @@ public static class EndpointRouteBuilderExtensions
         if (RagOptionsMapper.Reject(req.Options, apiOptions.AllowClientPromptOverrides) is { } rejection)
             return Results.BadRequest(new { error = rejection });
 
-        var result = await pipeline.AskAsync(req.Query, RagOptionsMapper.ToRagOptions(req.Options), ct).ConfigureAwait(false);
-        return Results.Ok(new AskResponse(result.Answer, result.Sources.Select(SearchResultMapper.ToDto).ToList()));
+        try
+        {
+            var result = await pipeline.AskAsync(req.Query, RagOptionsMapper.ToRagOptions(req.Options), ct).ConfigureAwait(false);
+            return Results.Ok(new AskResponse(result.Answer, result.Sources.Select(SearchResultMapper.ToDto).ToList()));
+        }
+        catch (Exception ex) when (AsRefusal(ex) is { } refusal)
+        {
+            return MapRagError(new RagError.CallRefused(refusal));
+        }
     }
+
+    // AskAsync throws a refusal itself when an answer engine's call is refused, and wraps it in an
+    // InvalidOperationException when retrieval is; either way it is a 429, not a 500 (#937).
+    private static CallRefusedException? AsRefusal(Exception ex) =>
+        ex as CallRefusedException ?? ex.InnerException as CallRefusedException;
 
     // POST with the same body as the ask endpoint, so the stream takes the same options (#944).
     private static async Task<IResult> HandleAskStreamAsync(
@@ -190,10 +202,19 @@ public static class EndpointRouteBuilderExtensions
             return Results.BadRequest(new { error = rejection });
 
         ctx.Response.ContentType = "text/event-stream";
-        await foreach (var update in pipeline.AskStreamingAsync(req.Query, RagOptionsMapper.ToRagOptions(req.Options), ct).ConfigureAwait(false))
+        try
         {
-            if (update.TextDelta is not null)
-                await ctx.Response.WriteAsync($"data: {update.TextDelta}\n\n", ct).ConfigureAwait(false);
+            await foreach (var update in pipeline.AskStreamingAsync(req.Query, RagOptionsMapper.ToRagOptions(req.Options), ct).ConfigureAwait(false))
+            {
+                if (update.TextDelta is not null)
+                    await ctx.Response.WriteAsync($"data: {update.TextDelta}\n\n", ct).ConfigureAwait(false);
+            }
+        }
+        // Only before the first byte: a response that has started cannot change its status.
+        catch (Exception ex) when (!ctx.Response.HasStarted && AsRefusal(ex) is { } refusal)
+        {
+            ctx.Response.ContentType = null;
+            return MapRagError(new RagError.CallRefused(refusal));
         }
 
         return Results.Empty;

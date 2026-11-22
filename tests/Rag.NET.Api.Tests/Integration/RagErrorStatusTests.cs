@@ -12,6 +12,7 @@ using Rag.NET.Api.DependencyInjection;
 using Rag.NET.Mediator;
 using Rag.NET.Mediator.Requests;
 using Rag.NET.Models;
+using Rag.NET.Models.Options;
 using Xunit;
 using ZeroAlloc.Results;
 
@@ -58,14 +59,51 @@ public sealed class RagErrorStatusTests
         Assert.Equal(expected, response.StatusCode);
     }
 
-    private static TestServer CreateServer(IRagMediator mediator)
+    /// <summary>
+    /// AskAsync reports a refusal by throwing: the refusal itself, or an InvalidOperationException
+    /// around it when retrieval was refused. Both ask endpoints answer 429 for either.
+    /// </summary>
+    [Theory]
+    [InlineData("/rag/ask", false)]
+    [InlineData("/rag/ask", true)]
+    [InlineData("/rag/ask/stream", false)]
+    [InlineData("/rag/ask/stream", true)]
+    public async Task Ask_ARefusal_Is429(string path, bool wrapped)
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        Exception thrown = wrapped ? new InvalidOperationException("Retrieval failed", refusal) : refusal;
+        var pipeline = Substitute.For<IRagPipeline>();
+        pipeline.AskAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<RagResponse>>(_ => throw thrown);
+        pipeline.AskStreamingAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Throwing(thrown));
+
+        using var server = CreateServer(Substitute.For<IRagMediator>(), pipeline);
+        using var client = server.CreateClient();
+
+        using var response = await client.PostAsJsonAsync(path, new AskRequest { Query = "q" },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+    }
+
+    private static async IAsyncEnumerable<RagStreamingUpdate> Throwing(Exception ex)
+    {
+        await Task.Yield();
+        throw ex;
+#pragma warning disable CS0162 // Unreachable code: the yield makes this an iterator
+        yield break;
+#pragma warning restore CS0162
+    }
+
+    private static TestServer CreateServer(IRagMediator mediator, IRagPipeline? pipeline = null)
     {
 #pragma warning disable ASPDEPR004 // WebHostBuilder is deprecated in favor of HostBuilder/WebApplicationBuilder — intentional for TestServer usage
 #pragma warning disable ASPDEPR008 // TestServer(IWebHostBuilder) is deprecated — intentional for minimal test setup
         var builder = new WebHostBuilder()
             .ConfigureServices(services =>
             {
-                services.AddSingleton(Substitute.For<IRagPipeline>());
+                services.AddSingleton(pipeline ?? Substitute.For<IRagPipeline>());
                 services.AddSingleton(mediator);
                 services.AddRagNetApi(o => o.AllowAnonymous = true);
                 services.AddRouting();

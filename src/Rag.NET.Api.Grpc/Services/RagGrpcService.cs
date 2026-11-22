@@ -60,7 +60,15 @@ internal sealed class RagGrpcService(
     public override async Task<AskResponse> Ask(AskRequest request, ServerCallContext context)
     {
         var options = ToRagOptions(request);
-        var result = await pipeline.AskAsync(request.Query, options, context.CancellationToken).ConfigureAwait(false);
+        RagResponse result;
+        try
+        {
+            result = await pipeline.AskAsync(request.Query, options, context.CancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (AsRefusal(ex) is { } refusal)
+        {
+            throw Refused(refusal);
+        }
 
         var response = new AskResponse { Answer = result.Answer };
         response.Sources.AddRange(result.Sources.Select(ToProto));
@@ -73,14 +81,29 @@ internal sealed class RagGrpcService(
         ServerCallContext context)
     {
         var options = ToRagOptions(request);
-        await foreach (var update in pipeline.AskStreamingAsync(request.Query, options, context.CancellationToken).ConfigureAwait(false))
+        try
         {
-            if (update.TextDelta is not null)
+            await foreach (var update in pipeline.AskStreamingAsync(request.Query, options, context.CancellationToken).ConfigureAwait(false))
             {
-                await responseStream.WriteAsync(new AskStreamUpdate { TextDelta = update.TextDelta }, context.CancellationToken).ConfigureAwait(false);
+                if (update.TextDelta is not null)
+                {
+                    await responseStream.WriteAsync(new AskStreamUpdate { TextDelta = update.TextDelta }, context.CancellationToken).ConfigureAwait(false);
+                }
             }
         }
+        catch (Exception ex) when (AsRefusal(ex) is { } refusal)
+        {
+            throw Refused(refusal);
+        }
     }
+
+    // AskAsync throws a refusal itself when an answer engine's call is refused, and wraps it in an
+    // InvalidOperationException when retrieval is; either way it is ResourceExhausted (#937).
+    private static CallRefusedException? AsRefusal(Exception ex) =>
+        ex as CallRefusedException ?? ex.InnerException as CallRefusedException;
+
+    private static RpcException Refused(CallRefusedException refusal) =>
+        new(new Status(StatusCode.ResourceExhausted, $"Call refused: {refusal.Message}"));
 
     public override async Task<DeleteResponse> Delete(DeleteRequest request, ServerCallContext context)
     {
