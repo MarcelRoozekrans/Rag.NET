@@ -45,4 +45,21 @@ public class PipelineRetrieverResultTests
         var error = Assert.IsType<RagError.StorageFailed>(result.Error);
         Assert.Equal("vector db down", error.Inner.Message);
     }
+
+    /// <summary>
+    /// A refusal that reaches the retriever is <see cref="RagError.CallRefused"/>, not a storage
+    /// failure: no store was asked anything (#937). Caught by type, so a subclass maps too.
+    /// </summary>
+    [Fact]
+    public async Task RetrieveAsync_PipelineThrowsARefusal_ReturnsCallRefused()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var pipeline = new Pipeline<RetrievalContext, IReadOnlyList<SearchResult>>((_, _) => throw refusal);
+        var sut = CreateSut(pipeline);
+
+        var result = await sut.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        Assert.Same(refusal, Assert.IsType<RagError.CallRefused>(result.Error).Inner);
+    }
 }

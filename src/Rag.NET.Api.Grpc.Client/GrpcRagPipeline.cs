@@ -48,12 +48,7 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var request = new RetrieveRequest
-        {
-            Query = query,
-            TopK = options?.TopK ?? 5,
-            UseHybrid = options?.UseHybridSearch ?? true
-        };
+        var request = new RetrieveRequest { Query = query, Options = ProtoOptionsWire.ToProto(options) };
 
         var response = await grpcClient.RetrieveAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -66,14 +61,7 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
         RagOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        ThrowIfRetrievalSet(options);
-
-        var request = new AskRequest
-        {
-            Query = query,
-            TopK = options?.TopK ?? 5,
-            UseHybrid = options?.UseHybridSearch ?? true
-        };
+        var request = new AskRequest { Query = query, Options = ProtoOptionsWire.ToProto(options) };
 
         var response = await grpcClient.AskAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -89,14 +77,7 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
         RagOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        ThrowIfRetrievalSet(options);
-
-        var request = new AskRequest
-        {
-            Query = query,
-            TopK = options?.TopK ?? 5,
-            UseHybrid = options?.UseHybridSearch ?? true
-        };
+        var request = new AskRequest { Query = query, Options = ProtoOptionsWire.ToProto(options) };
 
         using var call = grpcClient.AskStream(request, cancellationToken: cancellationToken);
 
@@ -130,15 +111,5 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
             Chunk = chunk,
             Score = proto.Score
         };
-    }
-
-    // Stopgap until #944: the wire contract has no field for RagOptions.Retrieval, and dropping
-    // it would silently run a different retrieval than the caller asked for.
-    private static void ThrowIfRetrievalSet(RagOptions? options)
-    {
-        if (options?.Retrieval is not null)
-            throw new NotSupportedException(
-                "GrpcRagPipeline cannot send RagOptions.Retrieval to the server yet; see issue #944. "
-                + "Use the short-form RagOptions fields, or call an in-process RagPipeline.");
     }
 }

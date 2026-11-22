@@ -53,6 +53,15 @@ you set `AllowAnonymous` — if `app.UseRagNetApiAuthentication()` has not alrea
 middleware in the pipeline. Either omission used to map the endpoints anyway and serve
 every one of them to every caller, with the configured keys sitting unread.
 
+## Request options
+
+`POST /rag/ask` and `POST /rag/ask/stream` take `{ "query": ..., "options": { ... } }`, where
+`options` mirrors `RagOptions` with `retrieval` nested inside; `POST /rag/retrieve` takes options
+that mirror `RetrievalOptions`. A field left out takes the in-process default. The fields that
+shape the prompt, `systemPrompt`, `temperature`, `conversationHistory` and the map-reduce and
+refine prompt templates, are rejected with `400` unless you set
+`o.AllowClientPromptOverrides = true`. Retrieval fields are always accepted.
+
 ## Example
 
 Event-driven ingestion via the webhook endpoint — callers authenticate with an

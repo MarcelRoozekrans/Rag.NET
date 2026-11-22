@@ -20,6 +20,10 @@ namespace Rag.NET.Models;
 /// stop as "the model failed". Deriving from this type is how a refusal says what it is.
 /// </para>
 /// <para>
+/// <c>IngestAsync</c> and <c>RetrieveAsync</c> report a refusal as <see cref="RagError.CallRefused"/>,
+/// not as a storage or model failure (#937).
+/// </para>
+/// <para>
 /// It derives from <see cref="InvalidOperationException"/>, so code that already catches that keeps
 /// working. <see cref="BudgetExceededException"/> is the library's own refusal.
 /// </para>

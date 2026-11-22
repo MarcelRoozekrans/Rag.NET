@@ -77,7 +77,7 @@ public static class EndpointRouteBuilderExtensions
         app.MapPost(ingest, HandleIngestAsync);
         app.MapPost(retrieve, HandleRetrieveAsync);
         app.MapPost(ask, HandleAskAsync);
-        app.MapGet(askStream, HandleAskStreamAsync);
+        app.MapPost(askStream, HandleAskStreamAsync);
         app.MapDelete(deleteDocument, HandleDeleteDocumentAsync);
 
         return app;
@@ -165,7 +165,7 @@ public static class EndpointRouteBuilderExtensions
     private static async Task<IResult> HandleRetrieveAsync(
         RetrieveRequest req, IRagMediator mediator, CancellationToken ct)
     {
-        var retrievalOptions = new RetrievalOptions { TopK = req.TopK, UseHybridSearch = req.UseHybridSearch };
+        var retrievalOptions = RagOptionsMapper.ToRetrievalOptions(req.Options);
         var result = await mediator.Send(new RetrieveQuery(req.Query, retrievalOptions), ct).ConfigureAwait(false);
         return result.IsSuccess
             ? Results.Ok(new RetrieveResponse(result.Value.Select(SearchResultMapper.ToDto).ToList()))
@@ -173,22 +173,51 @@ public static class EndpointRouteBuilderExtensions
     }
 
     private static async Task<IResult> HandleAskAsync(
-        AskRequest req, IRagPipeline pipeline, CancellationToken ct)
+        AskRequest req, IRagPipeline pipeline, [FromServices] RagApiOptions apiOptions, CancellationToken ct)
     {
-        var ragOptions = new RagOptions { TopK = req.TopK, UseHybridSearch = req.UseHybridSearch };
-        var result = await pipeline.AskAsync(req.Query, ragOptions, ct).ConfigureAwait(false);
-        return Results.Ok(new AskResponse(result.Answer, result.Sources.Select(SearchResultMapper.ToDto).ToList()));
+        if (RagOptionsMapper.Reject(req.Options, apiOptions.AllowClientPromptOverrides) is { } rejection)
+            return Results.BadRequest(new { error = rejection });
+
+        try
+        {
+            var result = await pipeline.AskAsync(req.Query, RagOptionsMapper.ToRagOptions(req.Options), ct).ConfigureAwait(false);
+            return Results.Ok(new AskResponse(result.Answer, result.Sources.Select(SearchResultMapper.ToDto).ToList()));
+        }
+        catch (Exception ex) when (AsRefusal(ex) is { } refusal)
+        {
+            return MapRagError(new RagError.CallRefused(refusal));
+        }
     }
 
-    private static async Task HandleAskStreamAsync(
-        string query, IRagPipeline pipeline, HttpContext ctx, CancellationToken ct)
+    // AskAsync throws a refusal itself when an answer engine's call is refused, and wraps it in an
+    // InvalidOperationException when retrieval is; either way it is a 429, not a 500 (#937).
+    private static CallRefusedException? AsRefusal(Exception ex) =>
+        ex as CallRefusedException ?? ex.InnerException as CallRefusedException;
+
+    // POST with the same body as the ask endpoint, so the stream takes the same options (#944).
+    private static async Task<IResult> HandleAskStreamAsync(
+        AskRequest req, IRagPipeline pipeline, [FromServices] RagApiOptions apiOptions, HttpContext ctx, CancellationToken ct)
     {
+        if (RagOptionsMapper.Reject(req.Options, apiOptions.AllowClientPromptOverrides) is { } rejection)
+            return Results.BadRequest(new { error = rejection });
+
         ctx.Response.ContentType = "text/event-stream";
-        await foreach (var update in pipeline.AskStreamingAsync(query, cancellationToken: ct).ConfigureAwait(false))
+        try
         {
-            if (update.TextDelta is not null)
-                await ctx.Response.WriteAsync($"data: {update.TextDelta}\n\n", ct).ConfigureAwait(false);
+            await foreach (var update in pipeline.AskStreamingAsync(req.Query, RagOptionsMapper.ToRagOptions(req.Options), ct).ConfigureAwait(false))
+            {
+                if (update.TextDelta is not null)
+                    await ctx.Response.WriteAsync($"data: {update.TextDelta}\n\n", ct).ConfigureAwait(false);
+            }
         }
+        // Only before the first byte: a response that has started cannot change its status.
+        catch (Exception ex) when (!ctx.Response.HasStarted && AsRefusal(ex) is { } refusal)
+        {
+            ctx.Response.ContentType = null;
+            return MapRagError(new RagError.CallRefused(refusal));
+        }
+
+        return Results.Empty;
     }
 
     private static async Task<IResult> HandleDeleteDocumentAsync(
@@ -275,15 +304,6 @@ public static class EndpointRouteBuilderExtensions
         }
     }
 
-    /// <summary>
-    /// Projects a <see cref="RagError"/> onto an HTTP response.
-    /// <para>
-    /// Both upstream-dependency cases answer 502. An upstream status is never echoed as this
-    /// API's own: Graph returning 404 for a mailbox does not make <i>this</i> resource
-    /// missing, and a 403 upstream is not a 403 against this API's caller. The distinction the
-    /// two cases preserve is whether an HTTP exchange happened at all.
-    /// </para>
-    /// </summary>
     // The REST wire contract (IngestRequest.Tags) still carries strings, so every tag arrives
     // as a String-kind value; a typed JSON contract is follow-up work tracked with the
     // typed-metadata change.
@@ -299,6 +319,16 @@ public static class EndpointRouteBuilderExtensions
         return result;
     }
 
+    /// <summary>
+    /// Projects a <see cref="RagError"/> onto an HTTP response.
+    /// <para>
+    /// The upstream-dependency cases, a failed model call included, answer 502. A refused call,
+    /// such as a spent cost budget, answers 429. An upstream status is never echoed as this
+    /// API's own: Graph returning 404 for a mailbox does not make <i>this</i> resource
+    /// missing, and a 403 upstream is not a 403 against this API's caller. The distinction
+    /// HttpFailed and TransportFailed preserve is whether an HTTP exchange happened at all.
+    /// </para>
+    /// </summary>
     private static IResult MapRagError(RagError err) => err switch
     {
         RagError.ValidationFailed v => Results.UnprocessableEntity(new { errors = v.Failures.Select(f => new { f.PropertyName, f.ErrorMessage }) }),
@@ -309,6 +339,10 @@ public static class EndpointRouteBuilderExtensions
         RagError.HttpFailed h       => Results.Problem($"Upstream HTTP error: {(int)h.StatusCode}", statusCode: 502),
         // No HTTP response was received at all (DNS/TLS/socket/timeout/token acquisition).
         RagError.TransportFailed t  => Results.Problem($"Transport error: {t.Inner.Message}", statusCode: 502),
+        // A model the server called failed: an upstream dependency, like the two cases above.
+        RagError.ModelCallFailed m  => Results.Problem($"Model call failed: {m.Inner.Message}", statusCode: 502),
+        // Refused on purpose, usually a spent cost budget: a quota, not a fault (#937).
+        RagError.CallRefused r      => Results.Problem($"Call refused: {r.Inner.Message}", statusCode: 429),
         // Unreachable for every case defined on RagError today. RagError is not a sealed
         // hierarchy — it has no private protected constructor, so an external assembly can
         // derive from it — and C# has no exhaustiveness checking for reference types, so

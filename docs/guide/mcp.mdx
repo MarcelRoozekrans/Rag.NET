@@ -345,7 +345,7 @@ When using `Rag.NET.Api`, the following endpoints are available:
 | `POST` | `/rag/ingest` | `IngestAsync` |
 | `POST` | `/rag/retrieve` | `RetrieveAsync` |
 | `POST` | `/rag/ask` | `AskAsync` |
-| `GET` | `/rag/ask/stream?query=...` | `AskStreamingAsync` (SSE) |
+| `POST` | `/rag/ask/stream` | `AskStreamingAsync` (SSE) |
 | `DELETE` | `/rag/documents/{id}` | `DeleteAsync` |
 
 The route prefix `/rag` is configurable via `RagApiOptions.RoutePrefix`.

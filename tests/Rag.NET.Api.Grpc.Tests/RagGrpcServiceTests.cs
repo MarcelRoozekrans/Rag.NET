@@ -129,4 +129,67 @@ public sealed class RagGrpcServiceTests : IAsyncLifetime
         Assert.NotNull(response);
         await _pipeline.Received(1).DeleteAsync("doc-1", Arg.Any<CancellationToken>());
     }
+
+    /// <summary>
+    /// A refused call, such as a spent cost budget, is ResourceExhausted rather than Internal (#937).
+    /// </summary>
+    [Fact]
+    public async Task Retrieve_ARefusal_IsResourceExhausted()
+    {
+        _pipeline.RetrieveAsync("refused", Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Failure(
+                new RagError.CallRefused(new BudgetExceededException(CostWindow.Day, 1m, 1m)))));
+        var client = new RagService.RagServiceClient(_channel);
+
+        var ex = await Assert.ThrowsAsync<RpcException>(async () =>
+            await client.RetrieveAsync(
+                new RetrieveRequest { Query = "refused" },
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(StatusCode.ResourceExhausted, ex.StatusCode);
+    }
+
+    /// <summary>
+    /// AskAsync reports a refusal by throwing: the refusal itself, or an InvalidOperationException
+    /// around it when retrieval was refused. Ask and AskStream answer ResourceExhausted for either.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Ask_ARefusal_IsResourceExhausted(bool stream, bool wrapped)
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        Exception thrown = wrapped ? new InvalidOperationException("Retrieval failed", refusal) : refusal;
+        _pipeline.AskAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<RagResponse>>(_ => throw thrown);
+        _pipeline.AskStreamingAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Throwing(thrown));
+        var client = new RagService.RagServiceClient(_channel);
+        var ct = TestContext.Current.CancellationToken;
+
+        var ex = await Assert.ThrowsAsync<RpcException>(async () =>
+        {
+            if (!stream)
+            {
+                await client.AskAsync(new AskRequest { Query = "q" }, cancellationToken: ct);
+                return;
+            }
+
+            using var call = client.AskStream(new AskRequest { Query = "q" }, cancellationToken: ct);
+            while (await call.ResponseStream.MoveNext(ct)) { }
+        });
+
+        Assert.Equal(StatusCode.ResourceExhausted, ex.StatusCode);
+    }
+
+    private static async IAsyncEnumerable<RagStreamingUpdate> Throwing(Exception ex)
+    {
+        await Task.Yield();
+        throw ex;
+#pragma warning disable CS0162 // Unreachable code: the yield makes this an iterator
+        yield break;
+#pragma warning restore CS0162
+    }
 }

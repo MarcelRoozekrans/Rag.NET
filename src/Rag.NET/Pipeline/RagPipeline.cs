@@ -153,6 +153,7 @@ public sealed class RagPipeline(
                 RagError.StorageFailed e => e.Inner,
                 RagError.ModelCallFailed e => e.Inner,
                 RagError.TransportFailed e => e.Inner,
+                RagError.CallRefused e => e.Inner,
                 _ => null,
             });
         }

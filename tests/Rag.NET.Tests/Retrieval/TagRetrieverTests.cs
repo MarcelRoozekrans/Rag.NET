@@ -206,7 +206,7 @@ public class TagRetrieverTests
         var result = await sut.RetrieveAsync("query", new RetrievalOptions { UseTagRetrieval = true }, ct);
 
         Assert.False(result.IsSuccess);
-        Assert.Same(refusal, Assert.IsType<RagError.StorageFailed>(result.Error).Inner);
+        Assert.Same(refusal, Assert.IsType<RagError.CallRefused>(result.Error).Inner);
         _ = await inner.DidNotReceive().RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>());
     }
 }

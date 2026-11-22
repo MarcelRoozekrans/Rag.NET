@@ -1054,7 +1054,7 @@ var response = await pipeline.AskAsync("What is our refund policy?", new RagOpti
 
 The two forms do not mix. If `Retrieval` is set and any of the eight short-form fields was assigned, even to its default value as in `TopK = 5`, the call throws `ArgumentException` before any retrieval runs. Move those values into `Retrieval`.
 
-The remote clients, `HttpRagPipeline` and `GrpcRagPipeline`, cannot send `Retrieval` to the server yet, so they throw `NotSupportedException` when it is set ([#944](https://github.com/MarcelRoozekrans/Rag.NET/issues/944)).
+The remote clients, `HttpRagPipeline` and `GrpcRagPipeline`, send `Retrieval` and the rest of `RagOptions` to the server, which applies the same defaults and the same rule ([#944](https://github.com/MarcelRoozekrans/Rag.NET/issues/944)). The server accepts the prompt-shaping fields only when it opts in; see [REST and gRPC APIs](api.md#request-options).
 
 ### What the model actually receives
 
