@@ -30,7 +30,7 @@ internal sealed class RagGrpcService(IRagPipeline pipeline, IGuidProvider? guidP
         var result = await pipeline.IngestAsync(stream, metadata, cancellationToken: context.CancellationToken).ConfigureAwait(false);
 
         if (!result.IsSuccess)
-            throw new RpcException(new Status(StatusCode.Internal, $"Ingestion failed: {result.Error}"));
+            throw new RpcException(new Status(ToStatusCode(result.Error), $"Ingestion failed: {result.Error}"));
 
         return new IngestResponse
         {
@@ -50,7 +50,7 @@ internal sealed class RagGrpcService(IRagPipeline pipeline, IGuidProvider? guidP
         var result = await pipeline.RetrieveAsync(request.Query, options, context.CancellationToken).ConfigureAwait(false);
 
         if (!result.IsSuccess)
-            throw new RpcException(new Status(StatusCode.Internal, $"Retrieval failed: {result.Error}"));
+            throw new RpcException(new Status(ToStatusCode(result.Error), $"Retrieval failed: {result.Error}"));
 
         var response = new RetrieveResponse();
         response.Results.AddRange(result.Value.Select(ToProto));
@@ -97,6 +97,11 @@ internal sealed class RagGrpcService(IRagPipeline pipeline, IGuidProvider? guidP
         await pipeline.DeleteAsync(request.DocumentId, context.CancellationToken).ConfigureAwait(false);
         return new DeleteResponse();
     }
+
+    // A refused call, usually a spent cost budget, is a quota rather than a fault: ResourceExhausted,
+    // the status the HTTP API's 429 corresponds to (#937). Every other failure stays Internal.
+    private static StatusCode ToStatusCode(RagError error) =>
+        error is RagError.CallRefused ? StatusCode.ResourceExhausted : StatusCode.Internal;
 
     // The inbound side of the same wire contract as ToProto below: the proto map carries
     // strings, so every tag arrives as a String-kind value. A typed proto map is follow-up

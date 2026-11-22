@@ -231,7 +231,7 @@ public sealed class FlareAnswerEngine : IAnswerEngine
             {
                 // The retriever reports a refusal as a failed result, not an exception; keeping the
                 // sentence like any failed lookahead would swallow it (#948).
-                if (result.Error is RagError.StorageFailed { Inner: CallRefusedException refusal })
+                if (result.Error is RagError.CallRefused { Inner: var refusal })
                     ExceptionDispatchInfo.Throw(refusal);
 
                 AnswerEngineLog.FlareLookaheadFailed(_logger, result.Error.GetType().Name);

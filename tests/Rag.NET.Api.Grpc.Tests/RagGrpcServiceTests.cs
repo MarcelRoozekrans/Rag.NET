@@ -129,4 +129,23 @@ public sealed class RagGrpcServiceTests : IAsyncLifetime
         Assert.NotNull(response);
         await _pipeline.Received(1).DeleteAsync("doc-1", Arg.Any<CancellationToken>());
     }
+
+    /// <summary>
+    /// A refused call, such as a spent cost budget, is ResourceExhausted rather than Internal (#937).
+    /// </summary>
+    [Fact]
+    public async Task Retrieve_ARefusal_IsResourceExhausted()
+    {
+        _pipeline.RetrieveAsync("refused", Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Failure(
+                new RagError.CallRefused(new BudgetExceededException(CostWindow.Day, 1m, 1m)))));
+        var client = new RagService.RagServiceClient(_channel);
+
+        var ex = await Assert.ThrowsAsync<RpcException>(async () =>
+            await client.RetrieveAsync(
+                new RetrieveRequest { Query = "refused" },
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(StatusCode.ResourceExhausted, ex.StatusCode);
+    }
 }

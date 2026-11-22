@@ -275,15 +275,6 @@ public static class EndpointRouteBuilderExtensions
         }
     }
 
-    /// <summary>
-    /// Projects a <see cref="RagError"/> onto an HTTP response.
-    /// <para>
-    /// Both upstream-dependency cases answer 502. An upstream status is never echoed as this
-    /// API's own: Graph returning 404 for a mailbox does not make <i>this</i> resource
-    /// missing, and a 403 upstream is not a 403 against this API's caller. The distinction the
-    /// two cases preserve is whether an HTTP exchange happened at all.
-    /// </para>
-    /// </summary>
     // The REST wire contract (IngestRequest.Tags) still carries strings, so every tag arrives
     // as a String-kind value; a typed JSON contract is follow-up work tracked with the
     // typed-metadata change.
@@ -299,6 +290,16 @@ public static class EndpointRouteBuilderExtensions
         return result;
     }
 
+    /// <summary>
+    /// Projects a <see cref="RagError"/> onto an HTTP response.
+    /// <para>
+    /// The upstream-dependency cases, a failed model call included, answer 502. A refused call,
+    /// such as a spent cost budget, answers 429. An upstream status is never echoed as this
+    /// API's own: Graph returning 404 for a mailbox does not make <i>this</i> resource
+    /// missing, and a 403 upstream is not a 403 against this API's caller. The distinction
+    /// HttpFailed and TransportFailed preserve is whether an HTTP exchange happened at all.
+    /// </para>
+    /// </summary>
     private static IResult MapRagError(RagError err) => err switch
     {
         RagError.ValidationFailed v => Results.UnprocessableEntity(new { errors = v.Failures.Select(f => new { f.PropertyName, f.ErrorMessage }) }),
@@ -309,6 +310,10 @@ public static class EndpointRouteBuilderExtensions
         RagError.HttpFailed h       => Results.Problem($"Upstream HTTP error: {(int)h.StatusCode}", statusCode: 502),
         // No HTTP response was received at all (DNS/TLS/socket/timeout/token acquisition).
         RagError.TransportFailed t  => Results.Problem($"Transport error: {t.Inner.Message}", statusCode: 502),
+        // A model the server called failed: an upstream dependency, like the two cases above.
+        RagError.ModelCallFailed m  => Results.Problem($"Model call failed: {m.Inner.Message}", statusCode: 502),
+        // Refused on purpose, usually a spent cost budget: a quota, not a fault (#937).
+        RagError.CallRefused r      => Results.Problem($"Call refused: {r.Inner.Message}", statusCode: 429),
         // Unreachable for every case defined on RagError today. RagError is not a sealed
         // hierarchy — it has no private protected constructor, so an external assembly can
         // derive from it — and C# has no exhaustiveness checking for reference types, so

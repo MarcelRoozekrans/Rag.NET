@@ -82,4 +82,18 @@ public abstract record RagError
     /// </summary>
     /// <param name="Inner">The model-call exception that was caught.</param>
     public sealed record ModelCallFailed(Exception Inner) : RagError;
+
+    /// <summary>
+    /// A call was refused on purpose, so no model was called: a cost budget was spent, or a
+    /// decorator such as a benchmark cache opened refuse-on-miss declined to call the model.
+    /// <para>
+    /// Distinct from <see cref="ModelCallFailed"/>: nothing failed, so retrying or falling back to
+    /// another provider is the wrong response. Retrying a spent budget keeps spending past the
+    /// limit it exists to enforce. Distinct from <see cref="StorageFailed"/>, which covers an
+    /// <c>IVectorStore</c>/persistence operation; before this case existed a refusal was reported
+    /// as <see cref="StorageFailed"/>, with the refusal as its <c>Inner</c> (#937).
+    /// </para>
+    /// </summary>
+    /// <param name="Inner">The refusal that was caught, such as a <see cref="BudgetExceededException"/>.</param>
+    public sealed record CallRefused(CallRefusedException Inner) : RagError;
 }

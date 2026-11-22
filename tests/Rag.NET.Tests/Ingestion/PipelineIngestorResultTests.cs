@@ -83,8 +83,8 @@ public class PipelineIngestorResultTests
     }
 
     /// <summary>
-    /// A refusal is not a model failure either. It stays <see cref="RagError.StorageFailed"/> with the
-    /// refusal as <c>Inner</c> until #937 gives it a case; this pins the stopgap the docs describe.
+    /// A refusal is not a model failure either, nor a storage failure: it is
+    /// <see cref="RagError.CallRefused"/>, with the refusal as <c>Inner</c> (#937).
     /// </summary>
     [Fact]
     public async Task IngestAsync_EmbedderRefuses_IsNotReportedAsAModelFailure()
@@ -107,7 +107,7 @@ public class PipelineIngestorResultTests
         var result = await sut.IngestAsync(
             new MemoryStream([1]), metadata, cancellationToken: TestContext.Current.CancellationToken);
 
-        var error = Assert.IsType<RagError.StorageFailed>(result.Error);
+        var error = Assert.IsType<RagError.CallRefused>(result.Error);
         Assert.Same(refusal, error.Inner);
     }
 
@@ -115,10 +115,6 @@ public class PipelineIngestorResultTests
     /// A refusal inside a behaviour that degrades on a model failure fails the document, rather
     /// than letting it be ingested without what the refused call would have produced (#938).
     /// </summary>
-    /// <remarks>
-    /// <see cref="RagError.StorageFailed"/> is what a refusal maps to until a case of its own
-    /// exists (#937); what this pins is that the result is a failure carrying the refusal.
-    /// </remarks>
     [Fact]
     public async Task IngestAsync_RefusalInsideADegradingBehaviour_FailsTheDocument()
     {
@@ -143,8 +139,27 @@ public class PipelineIngestorResultTests
             new MemoryStream([1]), metadata, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(result.IsSuccess);
-        var error = Assert.IsType<RagError.StorageFailed>(result.Error);
+        var error = Assert.IsType<RagError.CallRefused>(result.Error);
         Assert.Same(refusal, error.Inner);
+    }
+
+    /// <summary>
+    /// A refusal thrown straight out of the pipeline, not through a model-call wrap, is still
+    /// <see cref="RagError.CallRefused"/> (#937). The base type is caught, not only the budget.
+    /// </summary>
+    [Fact]
+    public async Task IngestAsync_PipelineThrowsARefusal_ReturnsCallRefused()
+    {
+        var refusal = new CallRefusedException("cache opened refuse-on-miss");
+        var pipeline = new Pipeline<IngestionContext, IngestionResult>((_, _) => throw refusal);
+        var sut = CreateSut(pipeline);
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "f.txt" };
+
+        var result = await sut.IngestAsync(
+            new MemoryStream([1]), metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        Assert.Same(refusal, Assert.IsType<RagError.CallRefused>(result.Error).Inner);
     }
 
     /// <summary>A sparse generator that refuses every call.</summary>

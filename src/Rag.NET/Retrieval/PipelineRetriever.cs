@@ -64,6 +64,13 @@ public sealed class PipelineRetriever : IRetriever
             return Result<IReadOnlyList<SearchResult>, RagError>.Success(result);
         }
         catch (OperationCanceledException) { throw; }
+        catch (CallRefusedException ex)
+        {
+            // A refusal, such as a spent budget, is not a storage failure: nothing was called (#937).
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            RagTelemetry.RetrieveErrors.Add(1);
+            return Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.CallRefused(ex));
+        }
         catch (Exception ex)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);

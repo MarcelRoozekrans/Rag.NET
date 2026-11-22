@@ -64,7 +64,9 @@ public static class SettlePolicy
             RagError.HttpFailed http => IsRetryable(http.StatusCode)
                 ? IngestionOutcome.TransientFailure
                 : IngestionOutcome.PermanentFailure,
-            // StorageFailed, TransportFailed, and any error added later: assume transient.
+            // StorageFailed, TransportFailed, ModelCallFailed, CallRefused, and any error added
+            // later: assume transient. A refused call is usually a spent cost budget, which a later
+            // delivery can find replenished; redelivering it calls no model, so it costs nothing.
             // Getting this wrong in the transient direction costs redeliveries that the
             // broker's MaxDeliveryCount eventually converts into a dead-letter anyway;
             // getting it wrong in the permanent direction discards a document that would

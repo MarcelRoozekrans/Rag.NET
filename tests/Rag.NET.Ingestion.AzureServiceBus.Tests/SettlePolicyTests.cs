@@ -59,6 +59,15 @@ public sealed class SettlePolicyTests
             new RagError.ModelCallFailed(
                 new ModelCallException("rate limited", new InvalidOperationException("429"))).Classify());
 
+    /// <summary>
+    /// A refused call, usually a spent budget, is transient: a later delivery can find the budget
+    /// replenished, and redelivering it calls no model (#937).
+    /// </summary>
+    [Fact]
+    public void Classify_CallRefused_IsTransient() =>
+        Assert.Equal(IngestionOutcome.TransientFailure,
+            new RagError.CallRefused(new CallRefusedException("budget spent")).Classify());
+
     [Fact]
     public void Classify_TransportFailed_IsTransient() =>
         Assert.Equal(IngestionOutcome.TransientFailure,

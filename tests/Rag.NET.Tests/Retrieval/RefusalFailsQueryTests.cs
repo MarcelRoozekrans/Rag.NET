@@ -12,8 +12,8 @@ namespace Rag.NET.Tests.Retrieval;
 
 /// <summary>
 /// End to end: a deliberate refusal raised inside the retrieval pipeline fails the query instead
-/// of being swallowed by a degrading step (#948). Until #937 the failure is reported as
-/// <see cref="RagError.StorageFailed"/> with the refusal as its inner exception.
+/// of being swallowed by a degrading step (#948). The failure is reported as
+/// <see cref="RagError.CallRefused"/> with the refusal as its inner exception (#937).
 /// </summary>
 public class RefusalFailsQueryTests
 {
@@ -64,7 +64,7 @@ public class RefusalFailsQueryTests
             "query", new RetrievalOptions { UseHyde = true }, TestContext.Current.CancellationToken);
 
         Assert.False(result.IsSuccess);
-        var error = Assert.IsType<RagError.StorageFailed>(result.Error);
+        var error = Assert.IsType<RagError.CallRefused>(result.Error);
         Assert.Same(refusal, error.Inner);
         await vectorStore.DidNotReceive().SearchAsync(
             Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
