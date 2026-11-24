@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.0.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.10.4...v2.0.0) (2026-11-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* RagError has a new case, RagError.CallRefused. An exhaustive switch over RagError needs an arm for it. Code that checked StorageFailed.Inner is CallRefusedException must match RagError.CallRefused instead; a refusal is no longer reported as StorageFailed.
+
+### Features
+
+* RagError.CallRefused and full RagOptions over the remote clients ([#1081](https://github.com/MarcelRoozekrans/Rag.NET/issues/1081)) ([fb79a12](https://github.com/MarcelRoozekrans/Rag.NET/commit/fb79a1243014aa43f8f9f66657233315c5bfb8d2))
+
+
+### Bug Fixes
+
+* **deps:** update dependency langchain-core to v1.8.3 ([#1076](https://github.com/MarcelRoozekrans/Rag.NET/issues/1076)) ([f46f379](https://github.com/MarcelRoozekrans/Rag.NET/commit/f46f379364b42aff01990e16f6d8a8aed9c47c4c))
+* **deps:** update dependency langchain-core to v1.8.4 ([#1086](https://github.com/MarcelRoozekrans/Rag.NET/issues/1086)) ([6467469](https://github.com/MarcelRoozekrans/Rag.NET/commit/646746988504f1095619e7e195fa626dea85ee36))
+
 ## [1.10.4](https://github.com/MarcelRoozekrans/Rag.NET/compare/v1.10.3...v1.10.4) (2026-11-21)
 
 
