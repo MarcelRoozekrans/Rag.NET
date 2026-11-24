@@ -422,7 +422,7 @@ public class DeepResearchRetrieverTests
         var result = await sut.RetrieveAsync("q", null, ct);
 
         Assert.False(result.IsSuccess);
-        Assert.Same(refusal, Assert.IsType<RagError.StorageFailed>(result.Error).Inner);
+        Assert.Same(refusal, Assert.IsType<RagError.CallRefused>(result.Error).Inner);
     }
 
     [Fact]
@@ -440,7 +440,7 @@ public class DeepResearchRetrieverTests
         var result = await sut.RetrieveAsync("q", null, ct);
 
         Assert.False(result.IsSuccess);
-        Assert.Same(refusal, Assert.IsType<RagError.StorageFailed>(result.Error).Inner);
+        Assert.Same(refusal, Assert.IsType<RagError.CallRefused>(result.Error).Inner);
     }
 
     [Fact]
@@ -452,14 +452,14 @@ public class DeepResearchRetrieverTests
         var chatClient = Substitute.For<IChatClient>();
         inner.RetrieveAsync("q",    Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0)));
         inner.RetrieveAsync("sub1", Arg.Any<RetrievalOptions?>(), ct)
-             .Returns(Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(refusal)));
+             .Returns(Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.CallRefused(refusal)));
         ReturnInsufficientThenSufficient(chatClient, "sub1");
 
         var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
         var result = await sut.RetrieveAsync("q", null, ct);
 
         Assert.False(result.IsSuccess);
-        Assert.Same(refusal, Assert.IsType<RagError.StorageFailed>(result.Error).Inner);
+        Assert.Same(refusal, Assert.IsType<RagError.CallRefused>(result.Error).Inner);
     }
 
     [Fact]
@@ -474,6 +474,6 @@ public class DeepResearchRetrieverTests
         var result = await sut.RetrieveAsync("q", null, ct);
 
         Assert.False(result.IsSuccess);
-        Assert.Same(refusal, Assert.IsType<RagError.StorageFailed>(result.Error).Inner);
+        Assert.Same(refusal, Assert.IsType<RagError.CallRefused>(result.Error).Inner);
     }
 }

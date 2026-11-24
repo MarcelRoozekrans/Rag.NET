@@ -397,7 +397,8 @@ public static class RagPipelineExtensions
     //   tests named at the throw site in BuildMetadata.
     // - What reaches the catch-all is a hash-store call, a content stream that failed other than
     //   over HTTP, or a pipeline that threw instead of returning its error. A failed IngestAsync
-    //   result never gets there: Outcome passes its error on as it is (#930).
+    //   result never gets there: Outcome passes its error on as it is (#930). A refusal a
+    //   pipeline throws instead of returning is CallRefused, like the one it returns (#937).
     private static async Task<EntryOutcome> ProcessEntryAsync(
         IRagPipeline pipeline,
         ProviderId providerId,
@@ -461,7 +462,7 @@ public static class RagPipelineExtensions
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not ReservedMetadataKeyException)
         {
-            errors.Add(new RagError.StorageFailed(ex));
+            errors.Add(CatchAllError(ex));
 
             // Failed, not Skipped. Skipped means the entry was already up to date; saying
             // that about a throw reported a broken run as a quiet one (#355).
@@ -584,6 +585,12 @@ public static class RagPipelineExtensions
 
         return deleted;
     }
+
+    // A refusal a pipeline throws instead of returning is still a refusal (#937); anything else
+    // that reaches ProcessEntryAsync's catch-all is a storage failure.
+    private static RagError CatchAllError(Exception ex) => ex is CallRefusedException refusal
+        ? new RagError.CallRefused(refusal)
+        : new RagError.StorageFailed(ex);
 
     private static string ComputeHash(byte[] buffer, int length)
     {

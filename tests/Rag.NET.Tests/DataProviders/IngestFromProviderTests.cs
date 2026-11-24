@@ -1686,6 +1686,27 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Same(cause, error.Inner);
     }
 
+    /// <summary>
+    /// A pipeline that throws a refusal instead of returning it is reported as
+    /// <see cref="RagError.CallRefused"/>, the same as one it returns, not as a storage failure (#937).
+    /// </summary>
+    [Fact]
+    public async Task APipelineThatThrowsARefusal_IsReportedAsCallRefused()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        var pipeline = Substitute.For<IRagPipeline>();
+        pipeline.IngestAsync(
+                Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<Result<IngestionResult, RagError>>>(_ => throw refusal);
+
+        var result = await pipeline.IngestFromProviderAsync(MakeProvider(("id-1", "a.txt", "hello", null)),
+            new ProviderId("prov"), cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.FailedCount);
+        Assert.Same(refusal, Assert.IsType<RagError.CallRefused>(Assert.Single(result.Errors)).Inner);
+    }
+
     [Fact]
     public async Task AHashStoreThatThrows_IsStillReportedAsStorageFailed()
     {

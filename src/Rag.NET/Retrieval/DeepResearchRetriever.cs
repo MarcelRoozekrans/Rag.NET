@@ -53,9 +53,8 @@ public sealed class DeepResearchRetriever : IRetriever
         }
         catch (CallRefusedException ex)
         {
-            // A refusal fails the query the way the inner pipeline reports one: as StorageFailed
-            // with the refusal inside, until #937 gives it a case of its own (#948).
-            return Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(ex));
+            // A refusal fails the query the way the inner pipeline reports one (#948, #937).
+            return Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.CallRefused(ex));
         }
     }
 
@@ -98,7 +97,7 @@ public sealed class DeepResearchRetriever : IRetriever
                         chunks.AddRange(sub.Value);
                         rankings.Add((sub.Value, 1.0));
                     }
-                    else if (sub.Error is RagError.StorageFailed { Inner: CallRefusedException })
+                    else if (sub.Error is RagError.CallRefused)
                     {
                         // The inner retriever already turned a refusal into a failure; skipping
                         // it like any failed sub-query would swallow it (#948).

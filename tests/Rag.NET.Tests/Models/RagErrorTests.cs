@@ -85,4 +85,15 @@ public class RagErrorTests
         var typed = Assert.IsType<RagError.HttpFailed>(error);
         Assert.Equal("Invalid CQL", typed.Content);
     }
+
+    [Fact]
+    public void CallRefused_HoldsTheRefusal_AndIsNotAStorageOrModelFailure()
+    {
+        var refusal = new BudgetExceededException(CostWindow.Day, 1m, 1m);
+        RagError error = new RagError.CallRefused(refusal);
+
+        Assert.Same(refusal, Assert.IsType<RagError.CallRefused>(error).Inner);
+        Assert.IsNotType<RagError.StorageFailed>(error);
+        Assert.IsNotType<RagError.ModelCallFailed>(error);
+    }
 }

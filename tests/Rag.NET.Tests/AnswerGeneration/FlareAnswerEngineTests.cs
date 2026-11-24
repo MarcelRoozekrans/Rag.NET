@@ -423,7 +423,7 @@ public class FlareAnswerEngineTests
         ScriptChat("Fact one.", "<DONE>");
         _scorer.Script(0.0, 0.9);
         _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(refusal)));
+            .Returns(Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.CallRefused(refusal)));
 
         var ex = await Assert.ThrowsAsync<BudgetExceededException>(() => CreateSut().AskAsync(
             "q", [MakeSource("ctx")], cancellationToken: TestContext.Current.CancellationToken));

@@ -4,6 +4,10 @@ Rag.NET is a modular RAG pipeline library for .NET, built on Microsoft.Extension
 chunking, vector stores, retrieval and chat. It ships 74 NuGet packages from `src/`; applications
 install the two or three they need. `docs/` is also the Docusaurus site, published to GitHub Pages.
 
+## Product-line standards
+
+This repository is part of a .NET product line. Read the [product-line standards](https://github.com/MarcelRoozekrans/product-line/blob/main/standards.md) before changing anything: they hold the rules for every product, including how to build (a failing test first, the cause before a fix, build and test output before calling work done) and what may appear in commits, pull requests and issues. Build sessions do not use superpowers. This file adds what is specific to this repository.
+
 ## Layout
 
 - Only `src/` ships. `src/Rag.NET.Benchmarks.Quality` is the one `src/` project with `IsPackable`

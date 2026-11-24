@@ -85,6 +85,13 @@ public sealed class PipelineIngestor : IIngestor
             RagTelemetry.IngestErrors.Add(1);
             return Result<IngestionResult, RagError>.Failure(new RagError.ModelCallFailed(ex));
         }
+        catch (CallRefusedException ex)
+        {
+            // A refusal is not a storage failure either: no store, and no model, was called (#937).
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            RagTelemetry.IngestErrors.Add(1);
+            return Result<IngestionResult, RagError>.Failure(new RagError.CallRefused(ex));
+        }
         catch (Exception ex)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);

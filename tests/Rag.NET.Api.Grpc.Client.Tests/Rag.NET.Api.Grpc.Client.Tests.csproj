@@ -18,4 +18,9 @@
     </PackageReference>
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- One options comparer for both remote clients' round-trip tests (#944). -->
+    <Compile Include="..\Rag.NET.Api.Client.Tests\OptionsAssert.cs" Link="OptionsAssert.cs" />
+  </ItemGroup>
 </Project>

@@ -4,6 +4,8 @@ option csharp_namespace = "Rag.NET.Api.Grpc.Proto";
 
 package rag;
 
+import "google/protobuf/timestamp.proto";
+
 service RagService {
   rpc Ingest    (IngestRequest)   returns (IngestResponse);
   rpc Retrieve  (RetrieveRequest) returns (RetrieveResponse);
@@ -25,10 +27,14 @@ message IngestResponse {
   int32  chunks_stored = 2;
 }
 
+// Every options field is optional: one that is left out takes the value the in-process
+// RagPipeline uses when the caller does not set it.
 message RetrieveRequest {
-  string query      = 1;
-  int32  top_k      = 2;
-  bool   use_hybrid = 3;
+  string query = 1;
+  // The flat fields before 2.0, replaced by options.
+  reserved 2, 3;
+  reserved "top_k", "use_hybrid";
+  RetrievalOptionsProto options = 4;
 }
 
 message SearchResultProto {
@@ -44,9 +50,114 @@ message RetrieveResponse {
 }
 
 message AskRequest {
-  string query      = 1;
-  int32  top_k      = 2;
-  bool   use_hybrid = 3;
+  string query = 1;
+  // The flat fields before 2.0, replaced by options.
+  reserved 2, 3;
+  reserved "top_k", "use_hybrid";
+  RagOptionsProto options = 4;
+}
+
+// RagOptions. As there, retrieval is set either with the short-form fields 1 to 8 or with
+// retrieval, never both; a request that sets both fails with INVALID_ARGUMENT. The prompt-shaping
+// fields, system_prompt, temperature, conversation_history and the map-reduce and refine prompt
+// templates, fail with INVALID_ARGUMENT unless the server sets AllowClientPromptOverrides.
+message RagOptionsProto {
+  optional int32  top_k                             = 1;
+  optional int32  max_context_tokens                = 2;
+  optional double min_score                         = 3;
+  optional bool   use_hybrid_search                 = 4;
+  optional bool   use_lost_in_the_middle_reordering = 5;
+  optional bool   use_redundancy_filter             = 6;
+  optional float  redundancy_threshold              = 7;
+  map<string, MetadataValueProto> metadata_filter   = 8;
+  RetrievalOptionsProto retrieval                   = 9;
+  optional string system_prompt                     = 10;
+  optional bool   send_sources_as_tool_result       = 11;
+  optional float  temperature                       = 12;
+  repeated ChatMessageProto conversation_history    = 13;
+  optional SynthesisStrategyProto synthesis_strategy = 14;
+  MapReduceOptionsProto map_reduce_options          = 15;
+  RefineOptionsProto refine_options                 = 16;
+  optional bool   skip_compression                  = 17;
+}
+
+// RetrievalOptions. Filter, a specification object, has no field: it is code, not data.
+message RetrievalOptionsProto {
+  optional int32  top_k                             = 1;
+  optional double min_score                         = 2;
+  map<string, MetadataValueProto> metadata_filter   = 3;
+  optional bool   use_hybrid_search                 = 4;
+  EnsembleOptionsProto ensemble_options             = 5;
+  optional bool   use_sparse_search                 = 6;
+  optional bool   use_lost_in_the_middle_reordering = 7;
+  optional bool   use_redundancy_filter             = 8;
+  optional float  redundancy_threshold              = 9;
+  optional int32  max_context_tokens                = 10;
+  optional bool   use_mmr                           = 11;
+  optional float  mmr_lambda                        = 12;
+  optional int32  mmr_candidate_count               = 13;
+  optional bool   use_multi_query                   = 14;
+  optional bool   use_reranking                     = 15;
+  optional int32  candidate_count                   = 16;
+  optional bool   use_hyde                          = 17;
+  optional bool   use_adaptive_retrieval            = 18;
+  optional bool   use_crag                          = 19;
+  optional float  crag_score_threshold              = 20;
+  optional CragFallbackModeProto crag_fallback_mode = 21;
+  optional bool   use_self_query                    = 22;
+  optional bool   use_cache_embedding               = 23;
+  optional bool   use_cache_result                  = 24;
+  optional bool   use_parent_document               = 25;
+  optional bool   use_tag_retrieval                 = 26;
+  optional bool   use_time_weighting                = 27;
+}
+
+message EnsembleOptionsProto {
+  optional float dense_weight  = 1;
+  optional float bm25_weight   = 2;
+  optional float sparse_weight = 3;
+  optional int32 k             = 4;
+}
+
+message MapReduceOptionsProto {
+  optional int32  map_concurrency        = 1;
+  optional string map_prompt_template    = 2;
+  optional string reduce_prompt_template = 3;
+}
+
+message RefineOptionsProto {
+  optional string initial_prompt_template = 1;
+  optional string refine_prompt_template  = 2;
+}
+
+// One conversation turn: a role, such as "user" or "assistant", and its text.
+message ChatMessageProto {
+  string role = 1;
+  string text = 2;
+}
+
+// A typed metadata value; the kind travels with it.
+message MetadataValueProto {
+  oneof kind {
+    string string_value  = 1;
+    double number_value  = 2;
+    bool   boolean_value = 3;
+    google.protobuf.Timestamp date_time_offset_value = 4;
+  }
+}
+
+enum SynthesisStrategyProto {
+  SYNTHESIS_STRATEGY_UNSPECIFIED = 0;
+  SYNTHESIS_STRATEGY_DEFAULT     = 1;
+  SYNTHESIS_STRATEGY_MAP_REDUCE  = 2;
+  SYNTHESIS_STRATEGY_REFINE      = 3;
+  SYNTHESIS_STRATEGY_FLARE       = 4;
+}
+
+enum CragFallbackModeProto {
+  CRAG_FALLBACK_MODE_UNSPECIFIED = 0;
+  CRAG_FALLBACK_MODE_REPLACE     = 1;
+  CRAG_FALLBACK_MODE_APPEND      = 2;
 }
 
 message AskResponse {

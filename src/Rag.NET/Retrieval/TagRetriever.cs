@@ -51,9 +51,8 @@ public sealed class TagRetriever : IRetriever
         }
         catch (CallRefusedException ex)
         {
-            // A refusal fails the query the way the inner pipeline reports one: as StorageFailed
-            // with the refusal inside, until #937 gives it a case of its own (#948).
-            return Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(ex));
+            // A refusal fails the query the way the inner pipeline reports one (#948, #937).
+            return Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.CallRefused(ex));
         }
 
         return await _inner.RetrieveAsync(query, merged, cancellationToken).ConfigureAwait(false);

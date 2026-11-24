@@ -13,5 +13,7 @@
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
     <ProjectReference Include="..\Rag.NET.Api.Grpc\Rag.NET.Api.Grpc.csproj" />
     <PackageReference Include="Grpc.Net.ClientFactory" />
+    <!-- Linked, not published: see src/Shared/RemoteOptionsGuard.cs. -->
+    <Compile Include="..\Shared\RemoteOptionsGuard.cs" Link="Remote\RemoteOptionsGuard.cs" />
   </ItemGroup>
 </Project>

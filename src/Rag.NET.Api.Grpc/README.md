@@ -46,6 +46,12 @@ upstream). Setting both at once is rejected as a contradiction. The interceptor 
 fails closed at call time — if the options end up with no keys and no opt-out, calls
 are refused with `Unauthenticated` rather than an accidentally open service.
 
+## Request options
+
+`AskRequest` and `RetrieveRequest` carry `RagOptionsProto` and `RetrievalOptionsProto`, whose
+fields are all `optional`: an unset field takes the in-process default. The fields that shape the
+prompt fail the call with `InvalidArgument` unless you set `o.AllowClientPromptOverrides = true`.
+
 ## Example
 
 Any gRPC client can call the service; pair it with the `Rag.NET.Api.Grpc.Client` package
@@ -55,7 +61,7 @@ line:
 ```bash
 grpcurl -H "x-api-key: your-api-key" \
   -d '{"query": "What changed in the Q4 report?"}' \
-  rag-backend.internal:5001 ragnet.RagService/Ask
+  rag-backend.internal:5001 rag.RagService/Ask
 ```
 
 ## Full guide
