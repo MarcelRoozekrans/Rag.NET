@@ -50,7 +50,7 @@
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.4.0" />
     <PackageVersion Include="MsgReader" Version="6.2.1" />
     <PackageVersion Include="NGitLab" Version="12.6.1" />
-    <PackageVersion Include="Npgsql" Version="10.0.4" />
+    <PackageVersion Include="Npgsql" Version="11.0.0" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
     <PackageVersion Include="Octokit" Version="14.0.0" />
     <PackageVersion Include="OpenMcdf" Version="3.4.0" />
